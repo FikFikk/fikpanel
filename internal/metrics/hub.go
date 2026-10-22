@@ -12,7 +12,7 @@ import (
 type Hub struct {
 	mu          sync.Mutex
 	ring        *RingBuffer
-	collector   Collector // Pada Linux di-resolve ke interface atau collector terkait
+	collector   Collector
 	subscribers map[chan Point]struct{}
 	tickerDone  chan struct{}
 	running     bool
@@ -25,6 +25,19 @@ func NewHub() *Hub {
 		collector:   NewCollector(),
 		subscribers: make(map[chan Point]struct{}),
 	}
+}
+
+// GetLatest mengembalikan titik data metrik terkini untuk overview dashboard
+func (h *Hub) GetLatest() Point {
+	if pt, ok := h.ring.GetLatest(); ok {
+		return pt
+	}
+	pt, err := h.collector.Collect()
+	if err == nil {
+		h.ring.Push(pt)
+		return pt
+	}
+	return Point{}
 }
 
 // subscribe mendaftarkan channel subscriber baru dan mengaktifkan ticker jika subscriber pertama
@@ -133,5 +146,3 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-

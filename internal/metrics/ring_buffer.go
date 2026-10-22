@@ -49,3 +49,15 @@ func (rb *RingBuffer) GetAll() []Point {
 	copy(result[n:], rb.data[:rb.cursor])
 	return result
 }
+
+// GetLatest mengambil satu titik data metrik paling mutakhir dari ring buffer
+func (rb *RingBuffer) GetLatest() (Point, bool) {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+
+	if rb.cursor == 0 && !rb.isFull {
+		return Point{}, false
+	}
+	idx := (rb.cursor - 1 + rb.capacity) % rb.capacity
+	return rb.data[idx], true
+}

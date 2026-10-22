@@ -1,4 +1,4 @@
-﻿# Dokumentasi Spesifikasi API & Tugas Terjadwal (fikpanel)
+# Dokumentasi Spesifikasi API & Tugas Terjadwal (fikpanel)
 
 ## 1. Daftar Endpoint API
 
@@ -152,6 +152,46 @@
 
 ---
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/overview` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"system": {...}, "counts": {"sites_total": 0, "services_active": 3}, "latest_metric": {...}}` |
+| Notes | Menyajikan ringkasan agregat server, spesifikasi kernel, jumlah website aktif, dan metrik terkini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/toggle` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1, "enabled": 0}` |
+| Notes | Mengaktifkan atau menonaktifkan konfigurasi vhost situs secara on/off atomik. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/audit` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, default: 50) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"logs": [{"id": 1, "ts": 1771747200, "actor": "user", "action": "site.create", "ok": 1}]}` |
+| Notes | Riwayat audit kejadian keamanan sistem. Retensi 90 hari. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/exec` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `command` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "command": "uptime", "output": "..."}` |
+| Notes | Konsol perintah terminal terisolasi aman dengan validasi allowlist perintah sistem. |
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Fungsi | Frekuensi | Tujuan | Efek Samping |
@@ -159,4 +199,3 @@
 | `acme.RenewLoop` | 1x sehari (pukul 02:00) | Memeriksa seluruh sertifikat terdaftar di `certificates`; memperpanjang via Lego HTTP-01 jika sisa masa aktif < 30 hari | Me-reload Nginx saat sertifikat baru terpasang; mencatat error pada DB jika DNS/jaringan gagal |
 | `store.CleanupRoutine` | 1x sehari (pukul 03:00) | Menghapus baris audit log berumur > 90 hari dan pesan obrolan AI berumur > 30 hari | Menjaga ukuran database `/var/lib/panel/panel.db` tetap ringkas di bawah 10 MB |
 | `store.BackupRoutine` | 1x sehari (pukul 04:00) | Eksekusi `VACUUM INTO` untuk snapshot SQLite ke direktori `/var/lib/panel/backups/panel-<timestamp>.db` | Menahan penulisan DB selama hitungan milidetik; mempertahankan rotasi 7 file backup terbaru |
-
