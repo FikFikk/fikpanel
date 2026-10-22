@@ -1,0 +1,11 @@
+﻿[Unit]
+Description=fik-panel Privileged Agent Socket
+
+[Socket]
+ListenStream=/run/panel/agent.sock
+SocketUser=root
+SocketGroup=panel
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target
