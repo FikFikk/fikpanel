@@ -1,5 +1,5 @@
 ﻿{
-  "name": "fik-panel-web",
+  "name": "fikpanel-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -19,3 +19,4 @@
     "uplot": "^1.6.30"
   }
 }
+

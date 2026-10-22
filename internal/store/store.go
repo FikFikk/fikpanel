@@ -13,7 +13,7 @@ import (
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
-// Store merepresentasikan koneksi database terkelola untuk fik-panel
+// Store merepresentasikan koneksi database terkelola untuk fikpanel
 type Store struct {
 	db *sql.DB
 }
@@ -80,3 +80,4 @@ func (s *Store) migrate(ctx context.Context) error {
 
 	return tx.Commit()
 }
+

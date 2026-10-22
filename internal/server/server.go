@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"fik-panel/internal/store"
-	"fik-panel/web"
+	"fikpanel/internal/store"
+	"fikpanel/web"
 )
 
 // Server mengelola siklus hidup HTTP router dan middleware unprivileged
@@ -65,3 +65,4 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
+

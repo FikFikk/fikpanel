@@ -1,4 +1,4 @@
-﻿-- Skema Database Awal fik-panel
+﻿-- Skema Database Awal fikpanel
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY,
   username      TEXT NOT NULL UNIQUE CHECK (length(username) BETWEEN 3 AND 32),
@@ -90,3 +90,4 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   tool_name       TEXT,
   ts              INTEGER NOT NULL
 );
+

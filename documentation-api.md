@@ -1,4 +1,4 @@
-﻿# Dokumentasi Spesifikasi API & Tugas Terjadwal (fik-panel)
+﻿# Dokumentasi Spesifikasi API & Tugas Terjadwal (fikpanel)
 
 ## 1. Daftar Endpoint API
 
@@ -159,3 +159,4 @@
 | `acme.RenewLoop` | 1x sehari (pukul 02:00) | Memeriksa seluruh sertifikat terdaftar di `certificates`; memperpanjang via Lego HTTP-01 jika sisa masa aktif < 30 hari | Me-reload Nginx saat sertifikat baru terpasang; mencatat error pada DB jika DNS/jaringan gagal |
 | `store.CleanupRoutine` | 1x sehari (pukul 03:00) | Menghapus baris audit log berumur > 90 hari dan pesan obrolan AI berumur > 30 hari | Menjaga ukuran database `/var/lib/panel/panel.db` tetap ringkas di bawah 10 MB |
 | `store.BackupRoutine` | 1x sehari (pukul 04:00) | Eksekusi `VACUUM INTO` untuk snapshot SQLite ke direktori `/var/lib/panel/backups/panel-<timestamp>.db` | Menahan penulisan DB selama hitungan milidetik; mempertahankan rotasi 7 file backup terbaru |
+

@@ -1,4 +1,4 @@
-﻿# Dokumentasi Logika Bisnis & Siklus Hidup Entitas (fik-panel)
+﻿# Dokumentasi Logika Bisnis & Siklus Hidup Entitas (fikpanel)
 
 ## 1. Siklus Hidup Entitas
 
@@ -153,3 +153,4 @@ flowchart TD
 | **BR-04** | Redaksi Log | Data log diambil sebelum dikirim ke AI | Hapus otomatis pola token, password, dan kunci privat |
 | **BR-05** | Perpanjangan SSL | Pengecekan waktu sertifikat harian | Picu renovasi ACME jika sisa masa aktif < 30 hari |
 | **BR-06** | Retensi Audit & Chat| Job pembersihan berkala tengah malam | Hapus audit > 90 hari dan pesan AI > 30 hari |
+

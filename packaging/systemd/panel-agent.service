@@ -1,14 +1,15 @@
 ﻿[Unit]
-Description=fik-panel Privileged Agent (Root Worker)
+Description=fikpanel Privileged Agent (Root Worker)
 Requires=panel-agent.socket
 After=panel-agent.socket
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/fik-panel agent --idle-exit=60s
+ExecStart=/usr/local/bin/fikpanel agent --idle-exit=60s
 StandardInput=socket
 KillMode=process
 
 [Install]
 WantedBy=multi-user.target
+
