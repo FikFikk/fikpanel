@@ -25,6 +25,21 @@ export interface Site {
   updated_at: number;
 }
 
+export interface SoftwareItem {
+  name: string;
+  display_name: string;
+  category: 'webserver' | 'database' | 'runtime' | 'tools';
+  installed: boolean;
+  version: string;
+  running: boolean;
+  service_unit: string;
+}
+
+export interface SitesData {
+  sites: Site[];
+  web_server: SoftwareItem;
+}
+
 export interface Service {
   unit: string;
   label: string;

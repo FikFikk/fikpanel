@@ -83,6 +83,10 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))
 
+	// Deteksi & Manajemen Software Sistem
+	s.mux.Handle("GET /api/system/software", s.AuthMiddleware(http.HandlerFunc(s.handleListSoftware)))
+	s.mux.Handle("POST /api/system/software/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallSoftware)))
+
 	// Audit Log Keamanan
 	s.mux.Handle("GET /api/audit", s.AuthMiddleware(http.HandlerFunc(s.handleListAudit)))
 

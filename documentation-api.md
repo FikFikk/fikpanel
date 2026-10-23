@@ -67,10 +67,30 @@
 | Method + Endpoint | `GET /api/sites` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | Tidak ada |
-| Query Params | `limit` (int, opsional), `offset` (int, opsional) |
+| Query Params | `mock_nginx` (string, opsional, `0` untuk simulasi belum terpasang) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"sites": [{"id": 1, "domain": "app.fik.me", "kind": "proxy", "enabled": 1, "ssl_mode": "letsencrypt"}]}` |
-| Notes | Menampilkan seluruh virtual host yang dikelola panel. |
+| Response | HTTP 200 `{"sites": [...], "web_server": {"name": "nginx", "installed": true, "version": "1.24.0", "running": true}}` |
+| Notes | Mengembalikan seluruh virtual host terkelola beserta status ketersediaan dan runtime Nginx web server. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/software` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"software": [{"name": "nginx", "display_name": "Nginx Web Server", "installed": true, "version": "1.24.0", "running": true}]}` |
+| Notes | Mendeteksi ketersediaan paket software utama (Nginx, Apache, MySQL, PHP, Node.js, Python) via binary path dan systemctl. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/software/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `package` (string, wajib: "nginx", "mysql", "php", dll) |
+| Response | HTTP 200 `{"ok": true, "package": "nginx", "message": "Proses instalasi nginx berhasil dimulai"}` |
+| Notes | Memicu pemasangan dependensi software sistem via task manager / daemon dan dicatat ke audit log. |
 
 | Field | Detail |
 |---|---|

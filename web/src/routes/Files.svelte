@@ -989,7 +989,14 @@
   }
 
   onMount(() => {
-    loadDirectory();
+    // Periksa apakah ada permintaan pembukaan direktori dari halaman lain (misal tombol aksi cepat situs)
+    const openPath = sessionStorage.getItem('fikpanel_open_path');
+    if (openPath) {
+      sessionStorage.removeItem('fikpanel_open_path');
+      loadDirectory(openPath);
+    } else {
+      loadDirectory();
+    }
     window.addEventListener('click', closeAllMenus);
   });
 

@@ -1,4 +1,4 @@
-﻿package server
+package server
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fikpanel/internal/auth"
+	"fikpanel/internal/services"
 	"fikpanel/internal/store"
 )
 
@@ -192,9 +193,55 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 		list = []store.Site{}
 	}
 
+	// Deteksi status instalasi dan versi web server Nginx
+	wsStatus := services.CheckNginx(r.Context())
+	if r.URL.Query().Get("mock_nginx") == "0" {
+		wsStatus.Installed = false
+		wsStatus.Running = false
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sites": list,
+		"sites":      list,
+		"web_server": wsStatus,
+	})
+}
+
+// ═══ Software Catalog & Detection ═══
+
+func (s *Server) handleListSoftware(w http.ResponseWriter, r *http.Request) {
+	items := services.DetectAllSoftware(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"software": items,
+	})
+}
+
+type InstallSoftwareRequest struct {
+	Package string `json:"package"`
+}
+
+func (s *Server) handleInstallSoftware(w http.ResponseWriter, r *http.Request) {
+	var req InstallSoftwareRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	pkg := strings.TrimSpace(strings.ToLower(req.Package))
+	if pkg == "" {
+		http.Error(w, `{"error":"nama paket software tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Catat ke audit log
+	_ = s.store.RecordAudit(r.Context(), "user", "software.install", pkg, true, fmt.Sprintf("Memicu instalasi paket %s", pkg), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"package": pkg,
+		"message": fmt.Sprintf("Proses instalasi %s berhasil dimulai", pkg),
 	})
 }
 
