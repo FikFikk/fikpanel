@@ -226,7 +226,7 @@
   .sites-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
   }
   .head-bar {
     display: flex;
@@ -236,26 +236,28 @@
     gap: 1rem;
   }
   .title {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: #f1f5f9;
+    letter-spacing: -0.01em;
   }
   .subtitle {
-    font-size: 0.8rem;
-    color: #9ca3af;
-    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    color: #8b95a5;
+    margin-top: 0.15rem;
   }
   .panel {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: #10131b;
+    border: 1px solid #1c2230;
     border-radius: 12px;
-    padding: 1.25rem 1.5rem;
+    padding: 1.15rem 1.35rem;
   }
   .loading,
   .empty {
     text-align: center;
-    padding: 3rem 1rem;
-    color: #9ca3af;
+    padding: 2.5rem 1rem;
+    color: #8b95a5;
+    font-size: 0.85rem;
   }
   .table-wrap {
     overflow-x: auto;
@@ -263,99 +265,105 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
   th {
     text-align: left;
-    padding: 0.75rem;
-    font-size: 0.7rem;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    color: #9ca3af;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    letter-spacing: 0.05em;
+    color: #64748b;
+    border-bottom: 1px solid #1c2230;
   }
   td {
-    padding: 0.85rem 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 0.75rem;
+    border-bottom: 1px solid #161924;
   }
   .mono {
     font-family: 'Fira Code', monospace;
   }
   .type-pill {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    padding: 0.2rem 0.5rem;
+    padding: 0.15rem 0.45rem;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #d1d5db;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
     font-weight: 600;
   }
   .ssl-badge {
-    font-size: 0.72rem;
-    padding: 0.2rem 0.5rem;
+    font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
     border-radius: 4px;
     font-weight: 600;
   }
   .ssl-on {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
+    background: rgba(16, 185, 129, 0.08);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
   }
   .ssl-off {
-    background: rgba(156, 163, 175, 0.1);
-    color: #9ca3af;
+    background: rgba(148, 163, 184, 0.08);
+    color: #8b95a5;
+    border: 1px solid rgba(148, 163, 184, 0.15);
   }
   .status-toggle {
     cursor: pointer;
     border: none;
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
     font-weight: 600;
-    transition: all 0.15s;
+    transition: background 0.15s ease;
   }
   .is-active {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
   }
   .is-disabled {
-    background: rgba(156, 163, 175, 0.1);
-    color: #9ca3af;
-    border: 1px solid rgba(156, 163, 175, 0.2);
+    background: rgba(148, 163, 184, 0.08);
+    color: #8b95a5;
+    border: 1px solid rgba(148, 163, 184, 0.15);
   }
   .btn {
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-size: 0.82rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
     border: none;
-    transition: all 0.15s;
+    transition: background 0.15s ease;
   }
   .btn-primary {
-    background: #22c55e;
-    color: #0f172a;
+    background: #10b981;
+    color: #05130b;
   }
   .btn-primary:hover {
-    filter: brightness(1.1);
+    background: #059669;
   }
   .btn-sm {
-    padding: 0.3rem 0.65rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
     border: none;
   }
   .btn-danger {
-    background: rgba(244, 63, 94, 0.15);
+    background: rgba(244, 63, 94, 0.1);
     color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    border: 1px solid rgba(244, 63, 94, 0.25);
+  }
+  .btn-danger:hover {
+    background: rgba(244, 63, 94, 0.2);
   }
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.75);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -363,12 +371,13 @@
     padding: 1rem;
   }
   .modal {
-    background: #1c1d22;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #0d0f17;
+    border: 1px solid #1c2230;
     border-radius: 12px;
     width: 100%;
-    max-width: 480px;
+    max-width: 460px;
     padding: 1.5rem;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
   }
   .modal-head {
     display: flex;
@@ -376,52 +385,62 @@
     align-items: center;
     margin-bottom: 1.25rem;
   }
+  .modal-head h3 {
+    font-size: 1rem;
+    color: #f1f5f9;
+  }
   .btn-close {
     background: transparent;
     border: none;
-    color: #9ca3af;
-    font-size: 1.5rem;
+    color: #8b95a5;
+    font-size: 1.25rem;
     cursor: pointer;
   }
   .field {
-    margin-bottom: 1rem;
+    margin-bottom: 0.95rem;
   }
   label {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: #d1d5db;
+    color: #cbd5e1;
     margin-bottom: 0.35rem;
   }
   input,
   select {
     width: 100%;
-    padding: 0.6rem 0.75rem;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    color: #f3f4f6;
-    font-size: 0.85rem;
+    padding: 0.55rem 0.75rem;
+    background: #090b10;
+    border: 1px solid #1c2230;
+    border-radius: 6px;
+    color: #f1f5f9;
+    font-size: 0.82rem;
     outline: none;
+    transition: border-color 0.15s ease;
   }
   input:focus,
   select:focus {
-    border-color: #22c55e;
+    border-color: #38bdf8;
   }
   .hint {
     display: block;
-    font-size: 0.7rem;
-    color: #9ca3af;
+    font-size: 0.68rem;
+    color: #8b95a5;
     margin-top: 0.25rem;
   }
   .modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
+    gap: 0.65rem;
+    margin-top: 1.35rem;
   }
   .btn-ghost {
-    background: transparent;
-    color: #9ca3af;
+    background: #131622;
+    border: 1px solid #1e2434;
+    color: #cbd5e1;
+  }
+  .btn-ghost:hover {
+    background: #181d2a;
+    color: #f1f5f9;
   }
 </style>

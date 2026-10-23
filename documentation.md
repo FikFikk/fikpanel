@@ -1,4 +1,4 @@
-﻿# Dokumentasi Logika Bisnis & Siklus Hidup Entitas (fikpanel)
+# Dokumentasi Logika Bisnis & Siklus Hidup Entitas (fikpanel)
 
 ## 1. Siklus Hidup Entitas
 
@@ -50,6 +50,29 @@ flowchart TD
     
     SesiAktif --> TimeoutLogout{Idle 15 Menit / Expired?}
     TimeoutLogout -- Ya --> HapusSesi[Hapus Sesi dari DB & Invalidate Cookie]
+```
+
+### 1.3 Siklus Operasi Manajemen Berkas (File Manager)
+
+```mermaid
+flowchart TD
+    ReqFile[Permintaan Operasi Berkas] --> ValPath{Validasi & Sanitasi Path}
+    ValPath -- Path Traversal / Ilegal --> TolakReq[Tolak HTTP 400 Bad Request]
+    ValPath -- Path Valid --> CekAksi{Jenis Aksi}
+    
+    CekAksi -- Baca / List --> CekExist{Berkas / Folder Ada?}
+    CekExist -- Tidak --> Ret404[Kembalikan HTTP 404]
+    CekExist -- Ya --> RenderResp[Kirim Metadata / Konten]
+    
+    CekAksi -- Tulis / Edit / Unggah --> CekBatasUkuran{Ukuran <= Batas?}
+    CekBatasUkuran -- Terlalu Besar --> TolakUkuran[Tolak HTTP 400 Ukuran Melebihi Batas]
+    CekBatasUkuran -- Lolos --> TulisDisk[Tulis Berkas ke Disk]
+    TulisDisk --> CatatAudit[Rekam Riwayat ke Audit Log]
+    
+    CekAksi -- Hapus / Chmod --> CekProteksiRoot{Target Root Drive?}
+    CekProteksiRoot -- Ya --> TolakAksiRoot[Blokir Operasi Demi Integritas Sistem]
+    CekProteksiRoot -- Tidak --> EksekusiOS[Eksekusi via OS File System]
+    EksekusiOS --> CatatAudit
 ```
 
 ---
@@ -153,4 +176,6 @@ flowchart TD
 | **BR-04** | Redaksi Log | Data log diambil sebelum dikirim ke AI | Hapus otomatis pola token, password, dan kunci privat |
 | **BR-05** | Perpanjangan SSL | Pengecekan waktu sertifikat harian | Picu renovasi ACME jika sisa masa aktif < 30 hari |
 | **BR-06** | Retensi Audit & Chat| Job pembersihan berkala tengah malam | Hapus audit > 90 hari dan pesan AI > 30 hari |
+| **BR-07** | Operasi Berkas Kritis | Upaya penghapusan root volume / traversal | Blokir path ilegal dan cegah penghapusan root drive |
+| **BR-08** | Editor Teks Berkas | Perubahan konten berkas teks | Deteksi dirty state, konfirmasi sebelum tutup, simpan dengan `Ctrl+S` |
 

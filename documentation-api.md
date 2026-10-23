@@ -192,6 +192,142 @@
 | Response | HTTP 200 `{"ok": true, "command": "uptime", "output": "..."}` |
 | Notes | Konsol perintah terminal terisolasi aman dengan validasi allowlist perintah sistem. |
 
+---
+
+### 1.6 Manajemen Berkas (File Manager)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/files/list` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `path` (string, opsional, default: root aplikasi), `search` (string, opsional) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"current_path": "...", "parent_path": "...", "items": [...], "total_dirs": 7, "total_files": 13, "total_size": 981571}` |
+| Notes | Menampilkan isi direktori dengan metadata nama, ukuran, permissions (mode), owner, waktu modifikasi, dan ekstensi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/files/read` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `path` (string, wajib), `download` (int, opsional, `1` untuk attachment) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "path": "...", "content": "..."}` atau stream file biner |
+| Notes | Membaca konten teks untuk editor internal (batas 5 MB) atau streaming unduhan langsung. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/save` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `path` (string, wajib), `content` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "berkas berhasil disimpan", "path": "..."}` |
+| Notes | Menyimpan perubahan isi berkas teks langsung ke disk dengan pencatatan audit log otomatis. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/new` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `parent_path` (string, wajib), `name` (string, wajib), `type` (string: "file" atau "dir") |
+| Response | HTTP 200 `{"ok": true, "path": "...", "name": "...", "type": "file"}` |
+| Notes | Membuat berkas baru atau folder baru dengan sanitasi karakter ilegal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/rename` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `path` (string, wajib), `new_name` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "path": "...", "name": "..."}` |
+| Notes | Mengganti nama berkas atau folder dengan proteksi penimpaan file yang ada. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/delete` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `paths` (array string, wajib) |
+| Response | HTTP 200 `{"ok": true, "deleted": 1, "errors": []}` |
+| Notes | Menghapus satu atau beberapa berkas/folder secara rekursif dengan proteksi terhadap root drive. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/chmod` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `path` (string, wajib), `mode` (string oktal, misal "0755") |
+| Response | HTTP 200 `{"ok": true, "path": "...", "mode": "0755"}` |
+| Notes | Mengubah izin hak akses berkas (POSIX chmod) via angka oktal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/upload` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `multipart/form-data`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Form fields: `destination` (string), `files` (file multipart binary) |
+| Response | HTTP 200 `{"ok": true, "uploaded": 2, "files": ["app.js", "style.css"]}` |
+| Notes | Mengunggah satu atau beberapa berkas secara bersamaan (maks 100 MB). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/paste` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `action` (string: "copy" atau "cut"), `source_paths` (array string), `destination_dir` (string) |
+| Response | HTTP 200 `{"ok": true, "processed": 1, "action": "copy", "errors": []}` |
+| Notes | Operasi penempelan berkas hasil salin atau potong (move) dengan penanganan fallback direktori rekursif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/compress` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `paths` (array string), `zip_name` (string), `dest_dir` (string) |
+| Response | HTTP 200 `{"ok": true, "path": "...", "name": "archive.zip"}` |
+| Notes | Mengompresi daftar berkas dan folder secara rekursif menjadi berkas arsip .zip via stdlib archive/zip. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/remote-download` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `url` (string, wajib), `dest_dir` (string, wajib), `filename` (string, opsional) |
+| Response | HTTP 200 `{"ok": true, "path": "...", "filename": "...", "bytes": 102400}` |
+| Notes | Mengunduh berkas dari URL publik langsung ke direktori target di server. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/symlink` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `target_path` (string, wajib), `link_name` (string, wajib), `dest_dir` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "path": "...", "name": "..."}` |
+| Notes | Membuat tautan simbolik (soft link) POSIX/OS filesystem. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/files/search-content` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `dir` (string, wajib), `query` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "matches": [{"file": "...", "line": 10, "text": "..."}], "count": 1}` |
+| Notes | Memindai isi berkas teks di dalam direktori target untuk menemukan kata kunci dengan batas hasil 50 baris. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Fungsi | Frekuensi | Tujuan | Efek Samping |

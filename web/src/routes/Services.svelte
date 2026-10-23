@@ -76,7 +76,7 @@
   .services-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
   }
   .head-bar {
     display: flex;
@@ -86,20 +86,21 @@
     gap: 1rem;
   }
   .title {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: #f1f5f9;
+    letter-spacing: -0.01em;
   }
   .subtitle {
-    font-size: 0.8rem;
-    color: #9ca3af;
-    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    color: #8b95a5;
+    margin-top: 0.15rem;
   }
   .panel {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: #10131b;
+    border: 1px solid #1c2230;
     border-radius: 12px;
-    padding: 1.25rem 1.5rem;
+    padding: 1.15rem 1.35rem;
   }
   .table-wrap {
     overflow-x: auto;
@@ -107,58 +108,61 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
   th {
     text-align: left;
-    padding: 0.75rem;
-    font-size: 0.7rem;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    color: #9ca3af;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    letter-spacing: 0.05em;
+    color: #64748b;
+    border-bottom: 1px solid #1c2230;
   }
   td {
-    padding: 0.85rem 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 0.75rem;
+    border-bottom: 1px solid #161924;
   }
   .mono {
     font-family: 'Fira Code', monospace;
   }
   .shield-badge {
     display: inline-block;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    padding: 0.15rem 0.4rem;
+    padding: 0.12rem 0.35rem;
     border-radius: 4px;
-    background: rgba(245, 158, 11, 0.15);
+    background: rgba(245, 158, 11, 0.1);
     color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    border: 1px solid rgba(245, 158, 11, 0.25);
     margin-left: 0.4rem;
   }
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.2rem 0.55rem;
+    padding: 0.15rem 0.5rem;
     border-radius: 4px;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 600;
   }
   .badge-ok {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
+    background: rgba(16, 185, 129, 0.08);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
   }
   .badge-fail {
-    background: rgba(244, 63, 94, 0.12);
+    background: rgba(244, 63, 94, 0.08);
     color: #f43f5e;
+    border: 1px solid rgba(244, 63, 94, 0.2);
   }
   .dot-status {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
   }
   .dot-green {
-    background: #22c55e;
+    background: #10b981;
   }
   .dot-red {
     background: #f43f5e;
@@ -169,33 +173,45 @@
     gap: 0.4rem;
   }
   .btn {
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-size: 0.82rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
     border: none;
+    transition: background 0.15s ease;
   }
   .btn-ghost {
-    background: transparent;
-    color: #d1d5db;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #131622;
+    color: #cbd5e1;
+    border: 1px solid #1e2434;
+  }
+  .btn-ghost:hover {
+    background: #181d2a;
+    color: #f1f5f9;
   }
   .btn-sm {
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
     border: none;
+    transition: background 0.15s ease;
   }
   .btn-accent {
-    background: #22c55e;
-    color: #0f172a;
+    background: #10b981;
+    color: #05130b;
+  }
+  .btn-accent:hover {
+    background: #059669;
   }
   .btn-danger {
-    background: rgba(244, 63, 94, 0.15);
+    background: rgba(244, 63, 94, 0.1);
     color: #f43f5e;
     border: 1px solid rgba(244, 63, 94, 0.25);
+  }
+  .btn-danger:hover {
+    background: rgba(244, 63, 94, 0.2);
   }
 </style>

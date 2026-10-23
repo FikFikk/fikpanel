@@ -61,25 +61,25 @@
       warningThreshold={80}
     />
 
-    <!-- CPU Usage (Indigo/Ungu) -->
+    <!-- CPU Usage (Sky Blue) -->
     <Gauge
       percent={currentMetric.cpu}
       title="CPU Usage"
       subtitle="{currentMetric.cpu.toFixed(1)}% Active"
       detailValue="{overview?.system?.cpu_cores || 4} Cores"
-      color="#6366f1"
+      color="#38bdf8"
       icon="ri-cpu-line"
       warningThreshold={85}
       showMiniBar={true}
     />
 
-    <!-- RAM Usage (Cyan) -->
+    <!-- RAM Usage (Indigo) -->
     <Gauge
       percent={ramPercent}
       title="Memory (RAM)"
       subtitle="{formatBytes(currentMetric.ram_used)} / {formatBytes(currentMetric.ram_total)}"
       detailValue="Sisa: {formatBytes(freeRAM)}"
-      color="#06b6d4"
+      color="#818cf8"
       icon="ri-database-2-line"
       warningThreshold={85}
       showMiniBar={true}
@@ -310,19 +310,17 @@
 
   /* Bento Card Surface */
   .bento-panel {
-    background: rgba(17, 20, 29, 0.85);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 20px rgba(0, 0, 0, 0.35);
-    border-radius: 14px;
-    padding: 1.25rem 1.5rem;
+    background: #10131b;
+    border: 1px solid #1c2230;
+    border-radius: 12px;
+    padding: 1.15rem 1.35rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    transition: border-color 0.2s;
+    transition: border-color 0.15s ease;
   }
   .bento-panel:hover {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: #262e3e;
   }
 
   /* Header Row di Panel */
@@ -339,42 +337,41 @@
     gap: 0.65rem;
   }
   .panel-heading {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #f8fafc;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f1f5f9;
     letter-spacing: -0.01em;
   }
   .panel-subtext {
-    font-size: 0.75rem;
-    color: #94a3b8;
+    font-size: 0.73rem;
+    color: #8b95a5;
     margin-top: 0.15rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;
   }
   .pulse-live-inline {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: #10b981;
-    box-shadow: 0 0 6px #10b981;
   }
 
   .badge-system {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
     color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    padding: 0.2rem 0.6rem;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    padding: 0.15rem 0.55rem;
     border-radius: 999px;
   }
   .dot-system {
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
     background: #10b981;
   }
@@ -383,60 +380,57 @@
   .quick-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
   }
   .btn-action {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    padding: 0.32rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 500;
     text-decoration: none;
-    background: rgba(255, 255, 255, 0.04);
+    background: #131622;
     color: #cbd5e1;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    transition: all 0.15s;
+    border: 1px solid #1e2434;
+    transition: all 0.15s ease;
   }
   .btn-action:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: #181d2a;
     color: #f8fafc;
-    border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-1px);
+    border-color: #2b3448;
   }
   .btn-action-primary {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.12);
     color: #10b981;
-    border-color: rgba(16, 185, 129, 0.3);
+    border-color: rgba(16, 185, 129, 0.25);
   }
   .btn-action-primary:hover {
     background: #10b981;
-    color: #090d16;
+    color: #06120c;
   }
 
   /* 4 Bento Sub-Cards */
   .bento-subcards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.85rem;
+    gap: 0.75rem;
   }
   .subcard {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
+    background: #0d0f16;
+    border: 1px solid #181c26;
+    border-radius: 8px;
+    padding: 0.85rem 0.95rem;
     text-decoration: none;
-    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: border-color 0.15s ease, background 0.15s ease;
   }
   .subcard:hover {
-    transform: translateY(-2px);
-    border-color: rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.03);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    border-color: #242c3d;
+    background: #11141e;
   }
   .subcard-top {
     display: flex;
@@ -445,66 +439,60 @@
     margin-bottom: 0.65rem;
   }
   .subcard-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    background: #141824;
+    border: 1px solid #1e2334;
   }
   .icon-emerald {
-    background: rgba(16, 185, 129, 0.12);
     color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.2);
   }
   .icon-indigo {
-    background: rgba(99, 102, 241, 0.12);
     color: #818cf8;
-    border: 1px solid rgba(99, 102, 241, 0.2);
   }
   .icon-cyan {
-    background: rgba(6, 182, 212, 0.12);
-    color: #06b6d4;
-    border: 1px solid rgba(6, 182, 212, 0.2);
+    color: #38bdf8;
   }
   .icon-green {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    color: #10b981;
   }
   .subcard-arrow {
-    color: #64748b;
-    font-size: 0.85rem;
-    transition: transform 0.2s, color 0.2s;
+    color: #545e6f;
+    font-size: 0.8rem;
+    transition: transform 0.15s ease, color 0.15s ease;
   }
   .subcard:hover .subcard-arrow {
-    transform: translateX(3px);
-    color: #f8fafc;
+    transform: translateX(2px);
+    color: #cbd5e1;
   }
   .subcard-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #8b95a5;
     margin-bottom: 0.2rem;
   }
   .subcard-stats {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-family: 'Fira Code', monospace;
     font-variant-numeric: tabular-nums;
   }
   .stat-highlight {
-    font-weight: 700;
+    font-weight: 600;
   }
   .stat-sep {
-    color: #475569;
+    color: #334155;
   }
   .stat-muted {
     color: #64748b;
-    font-size: 0.75rem;
+    font-size: 0.73rem;
   }
   .text-emerald {
     color: #10b981;
@@ -513,21 +501,20 @@
     color: #818cf8;
   }
   .text-cyan {
-    color: #06b6d4;
+    color: #38bdf8;
   }
   .pulse-emerald {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: #10b981;
-    box-shadow: 0 0 6px #10b981;
   }
 
   /* Traffic Pills */
   .traffic-pills {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
   }
   .traffic-pill {
     display: inline-flex;
@@ -536,19 +523,19 @@
     font-size: 0.72rem;
     font-family: 'Fira Code', monospace;
     font-variant-numeric: tabular-nums;
-    padding: 0.25rem 0.65rem;
-    border-radius: 7px;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
     border: 1px solid transparent;
   }
   .pill-in {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(16, 185, 129, 0.08);
     color: #10b981;
-    border-color: rgba(16, 185, 129, 0.25);
+    border-color: rgba(16, 185, 129, 0.2);
   }
   .pill-out {
-    background: rgba(6, 182, 212, 0.1);
-    color: #06b6d4;
-    border-color: rgba(6, 182, 212, 0.25);
+    background: rgba(56, 189, 248, 0.08);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.2);
   }
 
   /* Layanan Prioritas Table */

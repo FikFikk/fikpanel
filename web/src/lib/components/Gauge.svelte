@@ -1,5 +1,4 @@
 <script lang="ts">
-  // Properti Gauge radial modern dengan ambient glow & reactive warning
   interface Props {
     percent: number;
     title: string;
@@ -13,287 +12,372 @@
     size?: number;
   }
 
+  type Level = 'ok' | 'warn' | 'crit';
+
   let {
     percent = 0,
     title = '',
     subtitle = '',
-    color = '#10b981',
+    color = '#0ea5e9',
     icon = 'ri-dashboard-line',
     warningThreshold = 85,
     detailLabel = '',
     detailValue = '',
     showMiniBar = false,
-    size = 110,
+    size = 120,
   }: Props = $props();
 
-  const strokeWidth = 8;
-  let radius = $derived((size - strokeWidth) / 2);
-  let circumference = $derived(2 * Math.PI * radius);
+  // Status dibedakan lewat teks + ikon + warna, supaya tidak bergantung pada warna saja.
+  const STATUS: Record<Level, { label: string; icon: string }> = {
+    ok: { label: 'Normal', icon: 'ri-checkbox-circle-line' },
+    warn: { label: 'Waspada', icon: 'ri-error-warning-line' },
+    crit: { label: 'Kritis', icon: 'ri-alert-fill' },
+  };
 
-  let clampedPercent = $derived(Math.min(Math.max(percent, 0), 100));
-  let strokeDashoffset = $derived(circumference - (clampedPercent / 100) * circumference);
-  let isWarning = $derived(clampedPercent >= warningThreshold);
-  let activeColor = $derived(isWarning ? '#ef4444' : color);
+  const STROKE = 8;
+  const TICK_OVERSHOOT = 2;
+
+  const center = $derived(size / 2);
+  const radius = $derived((size - STROKE) / 2 - TICK_OVERSHOOT);
+
+  const clamped = $derived(Math.min(Math.max(percent, 0), 100));
+  const limit = $derived(Math.min(Math.max(warningThreshold, 0), 100));
+  const shown = $derived(Math.round(clamped));
+
+  const level: Level = $derived(
+    clamped >= limit
+      ? 'crit'
+      : clamped >= Math.max(limit - 15, 65)
+        ? 'warn'
+        : 'ok'
+  );
+
+  const accent = $derived(
+    level === 'crit' ? '#ef4444' : level === 'warn' ? '#f59e0b' : color
+  );
+  const status = $derived(STATUS[level]);
 </script>
 
-<div class="gauge-card {isWarning ? 'card-warning' : ''}" style="--accent-color: {activeColor};">
-  <!-- Baris Atas: Icon + Judul + Status Badge -->
-  <div class="card-top">
-    <div class="title-wrap">
-      <span class="icon-chip" style="color: {activeColor}; background: {activeColor}15; border-color: {activeColor}30;">
-        <i class="{icon}"></i>
-      </span>
-      <span class="gauge-title">{title}</span>
-    </div>
+<section class="gauge" data-level={level} style:--accent={accent}>
+  <header class="head">
+    <h3 class="title">
+      <i class={icon} aria-hidden="true"></i>
+      <span>{title}</span>
+    </h3>
 
-    {#if isWarning}
-      <span class="badge-warn">
-        <span class="pulse-warn"></span>
-        High
-      </span>
-    {:else}
-      <span class="badge-normal">
-        <span class="dot-normal" style="background: {activeColor};"></span>
-        Normal
-      </span>
-    {/if}
+    <span class="status">
+      <i class={status.icon} aria-hidden="true"></i>
+      {status.label}
+    </span>
+  </header>
+
+  <div
+    class="dial"
+    style:width="{size}px"
+    style:height="{size}px"
+    role="meter"
+    aria-label={title}
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow={shown}
+    aria-valuetext="{shown}%, {status.label}"
+  >
+    <svg width={size} height={size} viewBox="0 0 {size} {size}" aria-hidden="true">
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="var(--g-track)"
+        stroke-width={STROKE}
+      />
+
+      <circle
+        class="progress"
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="var(--accent)"
+        stroke-width={STROKE}
+        pathLength="100"
+        stroke-dasharray="100"
+        stroke-dashoffset={100 - clamped}
+        transform="rotate(-90 {center} {center})"
+      />
+
+      <!-- Tanda batas peringatan pada ring -->
+      <line
+        class="limit-tick"
+        x1={center}
+        y1={center - radius - STROKE / 2 - TICK_OVERSHOOT}
+        x2={center}
+        y2={center - radius + STROKE / 2 + TICK_OVERSHOOT}
+        transform="rotate({limit * 3.6} {center} {center})"
+      />
+    </svg>
+
+    <div class="readout">
+      <span class="value">{shown}</span><span class="unit">%</span>
+    </div>
   </div>
 
-  <!-- Area Tengah: SVG Gauge Lingkaran dengan Ambient Radial Glow -->
-  <div class="gauge-center">
-    <div class="ambient-glow" style="background: radial-gradient(circle, {activeColor}22 0%, transparent 70%);"></div>
-
-    <div class="svg-wrapper" style="width: {size}px; height: {size}px;">
-      <svg width={size} height={size}>
-        <!-- Lingkaran latar belakang (Track) -->
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="transparent"
-          stroke="rgba(255, 255, 255, 0.06)"
-          stroke-width={strokeWidth}
-        />
-        <!-- Lingkaran progress dengan drop-shadow menyala -->
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="transparent"
-          stroke={activeColor}
-          stroke-width={strokeWidth}
-          stroke-dasharray={circumference}
-          stroke-dashoffset={strokeDashoffset}
-          stroke-linecap="round"
-          transform="rotate(-90 {size / 2} {size / 2})"
-          class="progress-ring"
-          style="filter: drop-shadow(0 0 6px {activeColor}60);"
-        />
-      </svg>
-      <!-- Angka Persentase Tegas di Tengah -->
-      <div class="gauge-number" style="color: {activeColor};">
-        <span class="number-val">{clampedPercent.toFixed(0)}</span><span class="number-unit">%</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Baris Bawah: Detail Metrik & Mini Progress Bar -->
-  <div class="card-bottom">
-    <div class="metric-text-row">
-      <span class="metric-subtitle">{subtitle}</span>
-      {#if detailValue}
-        <span class="detail-badge">{detailValue}</span>
-      {/if}
+  <dl class="facts">
+    <div class="fact">
+      <dt>{detailLabel || 'Penggunaan'}</dt>
+      <dd class="fact-main">{subtitle || '-'}</dd>
     </div>
 
-    {#if showMiniBar}
-      <div class="mini-bar-track">
-        <div
-          class="mini-bar-fill"
-          style="width: {clampedPercent}%; background: {activeColor}; box-shadow: 0 0 8px {activeColor}80;"
-        ></div>
+    {#if detailValue}
+      <div class="fact">
+        <dt class="sr-only">Keterangan</dt>
+        <dd class="fact-note">{detailValue}</dd>
       </div>
     {/if}
-  </div>
-</div>
+
+    <div class="fact">
+      <dt>Batas peringatan</dt>
+      <dd>{limit}%</dd>
+    </div>
+  </dl>
+
+  {#if showMiniBar}
+    <div class="bar" aria-hidden="true">
+      <div class="bar-track">
+        <div class="bar-fill" style:transform="scaleX({clamped / 100})"></div>
+      </div>
+      <div class="bar-limit" style:left="{limit}%"></div>
+    </div>
+  {/if}
+</section>
 
 <style>
-  .gauge-card {
-    position: relative;
+  .gauge {
+    /* Bisa dioverride dari parent: --gauge-surface, --gauge-border, dst. */
+    --g-surface: var(--gauge-surface, #0e131b);
+    --g-border: var(--gauge-border, #232d3b);
+    --g-track: var(--gauge-track, #1c2533);
+    --g-text: var(--gauge-text, #e8edf4);
+    --g-muted: var(--gauge-text-muted, #9aa6b8);
+
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    background: rgba(17, 20, 29, 0.85);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 4px 20px rgba(0, 0, 0, 0.35);
-    border-radius: 14px;
-    padding: 1.15rem 1.25rem;
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s, box-shadow 0.25s;
-    overflow: hidden;
-  }
-  .gauge-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(255, 255, 255, 0.16);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 15px -3px var(--accent-color);
-  }
-  .gauge-card.card-warning {
-    border-color: rgba(239, 68, 68, 0.35);
+    align-items: stretch;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--g-surface);
+    border: 1px solid var(--g-border);
+    border-radius: 10px;
+    color: var(--g-text);
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    transition: border-color 0.2s ease;
   }
 
-  /* Header Kartu */
-  .card-top {
+  .gauge[data-level='warn'] {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--g-border));
+  }
+
+  .gauge[data-level='crit'] {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--g-border));
+  }
+
+  /* Header */
+  .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
+    gap: 0.75rem;
   }
-  .title-wrap {
+
+  .title {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-  .icon-chip {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    font-size: 0.95rem;
-    border: 1px solid transparent;
-  }
-  .gauge-title {
-    font-size: 0.88rem;
+    margin: 0;
+    min-width: 0;
+    font-size: 0.9375rem;
     font-weight: 600;
-    color: #f3f4f6;
-    letter-spacing: -0.01em;
+    line-height: 1.3;
   }
 
-  .badge-normal {
+  .title i {
+    flex: none;
+    font-size: 1.125rem;
+    color: var(--g-muted);
+  }
+
+  .title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Status: tenang saat normal, menonjol saat waspada/kritis */
+  .status {
     display: inline-flex;
+    flex: none;
     align-items: center;
-    gap: 0.35rem;
-    font-size: 0.7rem;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: #9ca3af;
-    background: rgba(255, 255, 255, 0.04);
-    padding: 0.2rem 0.55rem;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
-  .dot-normal {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-  }
-  .badge-warn {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    padding: 0.2rem 0.55rem;
-    border-radius: 999px;
-  }
-  .pulse-warn {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 8px #ef4444;
-    animation: pingWarn 1.6s infinite;
-  }
-  @keyframes pingWarn {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(1.3); }
+    line-height: 1.2;
+    color: var(--g-muted);
   }
 
-  /* Center Area */
-  .gauge-center {
+  .status i {
+    font-size: 0.9375rem;
+  }
+
+  .gauge[data-level='ok'] .status i {
+    color: var(--accent);
+  }
+
+  .gauge[data-level='warn'] .status,
+  .gauge[data-level='crit'] .status {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    font-weight: 600;
+  }
+
+  /* Dial */
+  .dial {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem 0;
+    align-self: center;
+    flex: none;
   }
-  .ambient-glow {
+
+  .progress {
+    transition:
+      stroke-dashoffset 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+      stroke 0.2s ease;
+  }
+
+  .limit-tick {
+    stroke: var(--g-text);
+    stroke-width: 2;
+    opacity: 0.55;
+  }
+
+  .readout {
     position: absolute;
-    width: 130px;
-    height: 130px;
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 0;
-  }
-  .svg-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1;
-  }
-  .progress-ring {
-    transition: stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .gauge-number {
-    position: absolute;
+    inset: 0;
     display: flex;
     align-items: baseline;
-    font-family: 'Fira Code', monospace;
-    font-variant-numeric: tabular-nums;
-  }
-  .number-val {
-    font-size: 1.55rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-  }
-  .number-unit {
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin-left: 1px;
-    opacity: 0.85;
+    justify-content: center;
+    padding-top: 0;
+    align-content: center;
+    line-height: 1;
   }
 
-  /* Footer Kartu */
-  .card-bottom {
+  .readout {
+    align-items: center;
+  }
+
+  .value {
+    font-size: 1.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .unit {
+    margin-left: 0.125rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--g-muted);
+  }
+
+  /* Data */
+  .facts {
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
-    margin-top: 0.25rem;
+    gap: 0.375rem;
+    margin: 0;
   }
-  .metric-text-row {
+
+  .fact {
     display: flex;
+    align-items: baseline;
     justify-content: space-between;
-    align-items: center;
-    font-family: 'Fira Code', monospace;
-    font-variant-numeric: tabular-nums;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
   }
-  .metric-subtitle {
-    font-size: 0.75rem;
-    color: #94a3b8;
+
+  .fact dt {
+    color: var(--g-muted);
   }
-  .detail-badge {
-    font-size: 0.7rem;
-    color: #cbd5e1;
-    background: rgba(255, 255, 255, 0.05);
-    padding: 0.15rem 0.45rem;
-    border-radius: 5px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+
+  .fact dd {
+    margin: 0;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .mini-bar-track {
+
+  .fact-main {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .fact-note {
     width: 100%;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 999px;
+    color: var(--g-muted);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Mini bar */
+  .bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 8px;
+  }
+
+  .bar-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--g-track);
     overflow: hidden;
   }
-  .mini-bar-fill {
+
+  .bar-fill {
+    width: 100%;
     height: 100%;
-    border-radius: 999px;
-    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    background: var(--accent);
+    transform-origin: left center;
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .bar-limit {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--g-text);
+    opacity: 0.55;
+    border-radius: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress,
+    .bar-fill,
+    .gauge {
+      transition: none;
+    }
   }
 </style>

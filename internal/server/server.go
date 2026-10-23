@@ -1,10 +1,14 @@
-﻿package server
+package server
 
 import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"os"
 	"time"
 
 	"fikpanel/internal/metrics"
@@ -88,11 +92,57 @@ func (s *Server) registerRoutes() {
 	// AI Copilot Diagnostik
 	s.mux.Handle("POST /api/ai/chat", s.AuthMiddleware(http.HandlerFunc(s.handleAIChat)))
 
-	// Sajikan aset statis frontend dari embed.FS web.DistFS
-	distSub, err := fs.Sub(web.DistFS, "dist")
-	if err == nil {
-		s.mux.Handle("/", http.FileServer(http.FS(distSub)))
+	// Manajemen Berkas (File Manager)
+	s.mux.Handle("GET /api/files/list", s.AuthMiddleware(http.HandlerFunc(s.handleListFiles)))
+	s.mux.Handle("GET /api/files/read", s.AuthMiddleware(http.HandlerFunc(s.handleReadFile)))
+	s.mux.Handle("POST /api/files/save", s.AuthMiddleware(http.HandlerFunc(s.handleSaveFile)))
+	s.mux.Handle("POST /api/files/new", s.AuthMiddleware(http.HandlerFunc(s.handleNewFile)))
+	s.mux.Handle("POST /api/files/rename", s.AuthMiddleware(http.HandlerFunc(s.handleRenameFile)))
+	s.mux.Handle("POST /api/files/delete", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFiles)))
+	s.mux.Handle("POST /api/files/chmod", s.AuthMiddleware(http.HandlerFunc(s.handleChmodFile)))
+	s.mux.Handle("POST /api/files/upload", s.AuthMiddleware(http.HandlerFunc(s.handleUploadFile)))
+	s.mux.Handle("POST /api/files/paste", s.AuthMiddleware(http.HandlerFunc(s.handlePasteFiles)))
+	s.mux.Handle("POST /api/files/compress", s.AuthMiddleware(http.HandlerFunc(s.handleCompressFiles)))
+	s.mux.Handle("POST /api/files/remote-download", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteDownload)))
+	s.mux.Handle("POST /api/files/symlink", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSymlink)))
+	s.mux.Handle("POST /api/files/search-content", s.AuthMiddleware(http.HandlerFunc(s.handleSearchContent)))
+
+	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS)
+	viteURL, _ := url.Parse("http://127.0.0.1:5173")
+	viteProxy := httputil.NewSingleHostReverseProxy(viteURL)
+
+	localDistDir := "web/dist"
+	localFileServer := http.FileServer(http.Dir(localDistDir))
+
+	distSub, _ := fs.Sub(web.DistFS, "dist")
+	var embedFileServer http.Handler
+	if distSub != nil {
+		embedFileServer = http.FileServer(http.FS(distSub))
 	}
+
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// 1. Cek apakah Vite Dev Server aktif di port 5173 (memberikan HMR otomatis seketika saat file disimpan)
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:5173", 50*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			viteProxy.ServeHTTP(w, r)
+			return
+		}
+
+		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)
+		if stat, err := os.Stat(localDistDir); err == nil && stat.IsDir() {
+			localFileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// 3. Fallback biner produksi (disematkan via embed.FS)
+		if embedFileServer != nil {
+			embedFileServer.ServeHTTP(w, r)
+			return
+		}
+
+		http.NotFound(w, r)
+	})
 }
 
 // Start menjalankan listener HTTP

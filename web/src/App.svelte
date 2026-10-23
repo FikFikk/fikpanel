@@ -11,6 +11,7 @@
   import Security from './routes/Security.svelte';
   import Assistant from './routes/Assistant.svelte';
   import Settings from './routes/Settings.svelte';
+  import Files from './routes/Files.svelte';
 
   // State Otentikasi
   let authenticated = $state(false);
@@ -271,6 +272,10 @@
           <i class="ri-line-chart-line nav-icon"></i>
           <span>Monitor</span>
         </a>
+        <a href="#/files" class="nav-item {currentRoute === 'files' ? 'active' : ''}">
+          <i class="ri-folder-3-line nav-icon"></i>
+          <span>Files</span>
+        </a>
         <a href="#/security" class="nav-item {currentRoute === 'security' ? 'active' : ''}">
           <i class="ri-shield-keyhole-line nav-icon"></i>
           <span>Security</span>
@@ -368,6 +373,8 @@
           <Terminal />
         {:else if currentRoute === 'monitor'}
           <Monitor {currentMetric} {history} />
+        {:else if currentRoute === 'files'}
+          <Files onNotify={showToast} />
         {:else if currentRoute === 'security'}
           <Security />
         {:else if currentRoute === 'assistant'}
@@ -392,117 +399,125 @@
     padding: 0;
   }
   :global(body) {
-    background: #121316;
-    color: #f3f4f6;
-    font-family: 'Fira Sans', system-ui, -apple-system, sans-serif;
+    background: #090a0f !important;
+    color: #f1f5f9;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
+    overflow-x: hidden;
   }
   .mono {
     font-family: 'Fira Code', monospace;
   }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 
-  /* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Login Page Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+  /* --- Halaman Login --- */
   .login-wrapper {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
     padding: 1.5rem;
-    background: radial-gradient(circle at 50% 20%, rgba(34, 197, 94, 0.08) 0%, transparent 60%);
+    background: #090a0f;
   }
   .login-box {
-    background: rgba(28, 29, 34, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(20px);
-    border-radius: 16px;
+    background: #0d0f17;
+    border: 1px solid #1c2230;
+    border-radius: 12px;
     width: 100%;
-    max-width: 400px;
-    padding: 2.25rem;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    max-width: 380px;
+    padding: 2rem;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
   }
   .brand-logo {
     text-align: center;
-    margin-bottom: 1.75rem;
+    margin-bottom: 1.5rem;
   }
   .login-title {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     font-weight: 700;
-    margin-top: 0.75rem;
-    color: #f3f4f6;
+    margin-top: 0.65rem;
+    color: #f1f5f9;
+    letter-spacing: -0.02em;
   }
   .login-sub {
-    font-size: 0.8rem;
-    color: #9ca3af;
+    font-size: 0.78rem;
+    color: #8b95a5;
     margin-top: 0.25rem;
   }
   .err-box {
-    background: rgba(244, 63, 94, 0.15);
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: rgba(244, 63, 94, 0.08);
+    border: 1px solid rgba(244, 63, 94, 0.25);
     color: #f43f5e;
-    padding: 0.6rem 0.85rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
     margin-bottom: 1rem;
   }
   .field {
-    margin-bottom: 1.15rem;
+    margin-bottom: 1rem;
   }
   label {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: #d1d5db;
+    color: #cbd5e1;
     margin-bottom: 0.35rem;
   }
   input {
     width: 100%;
-    padding: 0.65rem 0.85rem;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    color: #f3f4f6;
-    font-size: 0.88rem;
+    padding: 0.6rem 0.8rem;
+    background: #090b10;
+    border: 1px solid #1c2230;
+    border-radius: 6px;
+    color: #f1f5f9;
+    font-size: 0.85rem;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.15s ease;
   }
   input:focus {
-    border-color: #22c55e;
+    border-color: #38bdf8;
   }
   .btn-login {
     width: 100%;
-    padding: 0.75rem;
-    border-radius: 8px;
-    background: #22c55e;
-    color: #0f172a;
-    font-size: 0.9rem;
-    font-weight: 700;
+    padding: 0.65rem;
+    border-radius: 6px;
+    background: #10b981;
+    color: #05130b;
+    font-size: 0.85rem;
+    font-weight: 600;
     cursor: pointer;
     border: none;
-    transition: filter 0.2s;
+    transition: background 0.15s ease;
     margin-top: 0.5rem;
   }
   .btn-login:hover {
-    filter: brightness(1.1);
+    background: #059669;
   }
   .dev-hint {
     text-align: center;
-    font-size: 0.72rem;
-    color: #6b7280;
+    font-size: 0.7rem;
+    color: #64748b;
     margin-top: 1.25rem;
   }
   .dev-hint code {
-    color: #22c55e;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
   }
 
-  /* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â App Layout (Sidebar + Content) Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+  /* --- Tata Letak Panel (Sidebar + Wrapper) --- */
   .app-layout {
     display: flex;
     min-height: 100vh;
+    background: #090a0f;
   }
   .sidebar {
     width: 220px;
-    background: #18191d;
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background: #0d0f17;
+    border-right: 1px solid #181b24;
     display: flex;
     flex-direction: column;
     position: fixed;
@@ -512,56 +527,60 @@
     z-index: 50;
   }
   .sidebar-brand {
-    height: 60px;
+    height: 54px;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.65rem;
     padding: 0 1.25rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid #181b24;
   }
   .brand-text {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: #f3f4f6;
+    color: #f1f5f9;
   }
   .nav-menu {
     flex: 1;
-    padding: 1rem 0.6rem;
+    padding: 0.85rem 0.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.2rem;
     overflow-y: auto;
   }
   .nav-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.65rem 0.85rem;
-    border-radius: 8px;
-    color: #9ca3af;
+    gap: 0.65rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    color: #8b95a5;
     text-decoration: none;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 500;
-    transition: all 0.15s;
+    transition: background 0.15s ease, color 0.15s ease;
   }
   .nav-item:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: #f3f4f6;
+    background: #141722;
+    color: #f1f5f9;
   }
   .nav-item.active {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
+    background: #161925;
+    color: #f1f5f9;
     font-weight: 600;
+    border-left: 2px solid #38bdf8;
+  }
+  .nav-item.active .nav-icon {
+    color: #38bdf8;
   }
   .nav-icon {
-    font-size: 1.05rem;
+    font-size: 1rem;
   }
   .sidebar-foot {
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    font-size: 0.7rem;
-    color: #6b7280;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid #181b24;
+    font-size: 0.68rem;
+    color: #545e6f;
   }
 
   .main-wrapper {
@@ -572,12 +591,11 @@
     min-height: 100vh;
   }
 
-  /* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Topbar Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+  /* --- Topbar Navigasi --- */
   .topbar {
-    height: 60px;
-    background: rgba(24, 25, 29, 0.85);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    height: 54px;
+    background: #0d0f17;
+    border-bottom: 1px solid #181b24;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -590,122 +608,173 @@
   .top-right {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
+    gap: 0.65rem;
+  }
+  .ip-container {
+    display: inline-flex;
+    align-items: center;
+    background: #11141e;
+    border: 1px solid #1c2230;
+    border-radius: 6px;
+    padding: 0.1rem;
   }
   .ip-pill {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    font-size: 0.8rem;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 0.25rem 0.65rem;
-    border-radius: 6px;
-    color: #f3f4f6;
+    background: transparent;
+    border: none;
+    color: #f1f5f9;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+  }
+  .ip-pill:hover {
+    background: #191e2b;
   }
   .dot-online {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: #22c55e;
-    box-shadow: 0 0 6px #22c55e;
+    background: #10b981;
+  }
+  .copy-icon {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .btn-eye {
+    background: transparent;
+    border: none;
+    color: #545e6f;
+    padding: 0.2rem 0.4rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    transition: color 0.15s ease;
+  }
+  .btn-eye:hover {
+    color: #cbd5e1;
   }
   .os-badge {
-    font-size: 0.75rem;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 0.25rem 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #11141e;
+    border: 1px solid #1c2230;
+    color: #8b95a5;
+    font-size: 0.72rem;
+    padding: 0.22rem 0.6rem;
     border-radius: 6px;
-    color: #d1d5db;
-    font-weight: 500;
   }
   .sse-pill {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    padding: 0.25rem 0.6rem;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 0.2rem 0.55rem;
     border-radius: 999px;
+    background: #11141e;
+    border: 1px solid #1c2230;
   }
   .sse-on {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
+    color: #10b981;
   }
   .sse-warn {
-    background: rgba(245, 158, 11, 0.12);
     color: #f59e0b;
   }
-  .sse-dot {
+  .live-ping-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 6px;
     height: 6px;
+  }
+  .live-ping-outer {
+    display: none;
+  }
+  .live-ping-inner {
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: currentColor;
   }
   .top-action-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #d1d5db;
-    font-size: 0.75rem;
-    padding: 0.35rem 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #11141e;
+    border: 1px solid #1c2230;
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    padding: 0.28rem 0.6rem;
     border-radius: 6px;
     text-decoration: none;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
   .top-action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #f3f4f6;
+    background: #181d2a;
+    border-color: #2b3448;
+    color: #f1f5f9;
   }
   .user-badge {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.8rem;
-    color: #d1d5db;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    background: #11141e;
+    border: 1px solid #1c2230;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
   }
   .user-avatar {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    color: #8b95a5;
   }
   .btn-logout {
-    background: rgba(244, 63, 94, 0.12);
+    background: rgba(244, 63, 94, 0.08);
     color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.25);
-    padding: 0.35rem 0.75rem;
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    padding: 0.28rem 0.65rem;
     border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background 0.15s ease;
   }
   .btn-logout:hover {
-    background: rgba(244, 63, 94, 0.2);
+    background: rgba(244, 63, 94, 0.16);
   }
 
-  /* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Main Page Content Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+  /* --- Konten Halaman Utama --- */
   .page-content {
     flex: 1;
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
     max-width: 1400px;
     width: 100%;
     margin: 0 auto;
   }
 
-  /* Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Toast Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â */
+  /* --- Notifikasi Toast Global --- */
   .toast {
     position: fixed;
     bottom: 1.5rem;
     right: 1.5rem;
-    background: #1e293b;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #f3f4f6;
-    padding: 0.75rem 1.25rem;
-    border-radius: 8px;
-    font-size: 0.82rem;
+    background: #11141d;
+    border: 1px solid #232a3c;
+    color: #f1f5f9;
+    padding: 0.65rem 1.15rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 500;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     opacity: 0;
-    transform: translateY(12px);
-    transition: all 0.25s;
+    transform: translateY(8px);
+    transition: all 0.2s ease;
     pointer-events: none;
     z-index: 999;
   }
@@ -717,7 +786,7 @@
 
   @media (max-width: 768px) {
     .sidebar {
-      width: 60px;
+      width: 54px;
     }
     .brand-text,
     .nav-item span:last-child,
@@ -726,107 +795,10 @@
     }
     .nav-item {
       justify-content: center;
-      padding: 0.75rem;
+      padding: 0.65rem;
     }
     .main-wrapper {
-      margin-left: 60px;
+      margin-left: 54px;
     }
-  }
-  :global(body) {
-    background: #090d16 !important;
-    background-image: radial-gradient(circle at 10% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
-      radial-gradient(circle at 90% 100%, rgba(99, 102, 241, 0.04) 0%, transparent 40%) !important;
-  }
-  .tabular {
-    font-variant-numeric: tabular-nums !important;
-  }
-  .sidebar {
-    background: #0d111b !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
-  }
-  .topbar {
-    background: rgba(13, 17, 27, 0.85) !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
-  }
-  .ip-container {
-    display: inline-flex;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    padding: 0.15rem;
-  }
-  .ip-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: transparent;
-    border: none;
-    color: #f3f4f6;
-    font-size: 0.78rem;
-    padding: 0.25rem 0.55rem;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.15s;
-  }
-  .ip-pill:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .copy-icon {
-    font-size: 0.75rem;
-    color: #94a3b8;
-  }
-  .btn-eye {
-    background: transparent;
-    border: none;
-    color: #64748b;
-    padding: 0.25rem 0.45rem;
-    cursor: pointer;
-    font-size: 0.85rem;
-    border-radius: 6px;
-    transition: color 0.15s, background 0.15s;
-  }
-  .btn-eye:hover {
-    color: #cbd5e1;
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .os-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    color: #94a3b8;
-    font-size: 0.75rem;
-    padding: 0.28rem 0.65rem;
-    border-radius: 8px;
-  }
-  .live-ping-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 10px;
-    height: 10px;
-  }
-  .live-ping-outer {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: #10b981;
-    opacity: 0.75;
-    animation: livePing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-  .live-ping-inner {
-    position: relative;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #10b981;
-  }
-  @keyframes livePing {
-    0% { transform: scale(1); opacity: 0.8; }
-    75%, 100% { transform: scale(2.2); opacity: 0; }
   }
 </style>

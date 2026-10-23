@@ -67,3 +67,25 @@ export interface OverviewData {
   };
   latest_metric: MetricPoint;
 }
+
+export interface FileItem {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  mode: string;
+  owner: string;
+  mod_time: string;
+  ext: string;
+  protected: boolean;
+  ps: string;
+}
+
+export interface FileListData {
+  current_path: string;
+  parent_path: string;
+  items: FileItem[];
+  total_dirs: number;
+  total_files: number;
+  total_size: number;
+}

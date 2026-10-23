@@ -147,34 +147,34 @@
     flex-wrap: wrap;
   }
   .chip {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #9ca3af;
+    background: #11141e;
+    border: 1px solid #1c2230;
+    color: #8b95a5;
     font-family: 'Fira Code', monospace;
     font-size: 0.72rem;
-    padding: 0.25rem 0.55rem;
-    border-radius: 6px;
+    padding: 0.22rem 0.55rem;
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
   }
   .chip:hover {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.25);
+    background: #161925;
+    color: #f1f5f9;
+    border-color: #2b3448;
   }
   .terminal-box {
-    background: #0d0f14;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    background: #090a0f;
+    border: 1px solid #1c2230;
+    border-radius: 10px;
     overflow: hidden;
     font-family: 'Fira Code', monospace;
   }
   .term-head {
     display: flex;
     align-items: center;
-    background: #16181f;
-    padding: 0.6rem 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: #0f121a;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid #1c2230;
     position: relative;
   }
   .dots {
