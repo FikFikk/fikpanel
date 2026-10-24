@@ -13,7 +13,7 @@
   import Settings from './routes/Settings.svelte';
   import Files from './routes/Files.svelte';
 
-  // State Otentikasi
+  // State Otentikasi Pengguna
   let authenticated = $state(false);
   let currentUser = $state('root');
   let loginUser = $state('root');
@@ -368,6 +368,7 @@
             {services}
             onSvcAction={handleSvcAction}
             onRefresh={loadInitialData}
+            onNotify={showToast}
           />
         {:else if currentRoute === 'terminal'}
           <Terminal />

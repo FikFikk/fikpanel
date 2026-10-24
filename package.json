@@ -1,0 +1,12 @@
+{
+  "name": "fikpanel",
+  "version": "0.1.0-dev",
+  "private": true,
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./dev.ps1",
+    "dev:go": "air",
+    "dev:web": "npm --prefix web run dev",
+    "build": "make build",
+    "build:web": "npm --prefix web run build"
+  }
+}

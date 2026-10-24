@@ -1,10 +1,12 @@
-﻿package store
+package store
 
 import (
 	"context"
 	"database/sql"
 	"embed"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -60,24 +62,62 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate menjalankan seluruh file migrasi SQL ter-embed
+// migrate menjalankan seluruh file migrasi ter-embed secara berurutan dan mencatat versinya
 func (s *Store) migrate(ctx context.Context) error {
-	// Baca file migrasi awal 001_init.sql
-	content, err := migrationFS.ReadFile("migrations/001_init.sql")
+	if _, err := s.db.ExecContext(ctx,
+		"CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)"); err != nil {
+		return fmt.Errorf("gagal membuat tabel schema_migrations: %w", err)
+	}
+
+	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("gagal membaca file migrasi 001: %w", err)
+		return fmt.Errorf("gagal membaca folder migrasi: %w", err)
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	// Prefiks angka (001_, 002_, ...) menjamin urutan eksekusi leksikal
+	sort.Strings(files)
+
+	for _, name := range files {
+		var exists int
+		err := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM schema_migrations WHERE version = ?", name).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("gagal memeriksa status migrasi %s: %w", name, err)
+		}
+		if exists > 0 {
+			continue
+		}
+		if err := s.applyMigration(ctx, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyMigration mengeksekusi satu file migrasi dalam transaksi dan mencatat versinya
+func (s *Store) applyMigration(ctx context.Context, name string) error {
+	content, err := migrationFS.ReadFile("migrations/" + name)
+	if err != nil {
+		return fmt.Errorf("gagal membaca file migrasi %s: %w", name, err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("gagal memulai transaksi migrasi: %w", err)
+		return fmt.Errorf("gagal memulai transaksi migrasi %s: %w", name, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(ctx, string(content)); err != nil {
-		return fmt.Errorf("gagal mengeksekusi skrip migrasi: %w", err)
+		return fmt.Errorf("gagal mengeksekusi migrasi %s: %w", name, err)
 	}
-
+	if _, err := tx.ExecContext(ctx,
+		"INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", name, time.Now().Unix()); err != nil {
+		return fmt.Errorf("gagal mencatat migrasi %s: %w", name, err)
+	}
 	return tx.Commit()
 }
 

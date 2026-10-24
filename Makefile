@@ -1,10 +1,14 @@
-﻿BINARY_NAME=fikpanel
+BINARY_NAME=fikpanel
 BUILD_DIR=bin
 VERSION?=0.1.0-dev
 
-.PHONY: all build build-linux test clean
+.PHONY: all build build-linux test clean dev
 
 all: build
+
+dev:
+	@powershell -ExecutionPolicy Bypass -File ./dev.ps1
+
 
 build:
 	go build -ldflags "-s -w -X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/fikpanel

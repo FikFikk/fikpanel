@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -171,7 +171,7 @@ func runResetPassword(args []string) {
 	fmt.Printf("[fikpanel reset-password] Mereset kata sandi untuk: %s\n", *username)
 }
 
-// runDoctor melakukan pengecekan diagnostik sistem
+// runDoctor melakukan pengecekan diagnostik sistem FikPanel
 func runDoctor(args []string) {
 	fmt.Println("[fikpanel doctor] Memeriksa status kesehatan sistem...")
 	fmt.Println("  [OK] SQLite WAL engine siap")

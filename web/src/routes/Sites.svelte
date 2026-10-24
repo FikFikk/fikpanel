@@ -1,7 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
-  import type { Site, SoftwareItem, SitesData } from '../lib/types';
+  import type { Site, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
+  import NginxManager from '../lib/components/NginxManager.svelte';
+  import AddSiteModal from '../lib/components/AddSiteModal.svelte';
+  import SiteSettings from '../lib/components/SiteSettings.svelte';
 
   interface Props {
     onNotify: (msg: string) => void;
@@ -23,36 +26,26 @@
   let loading = $state(true);
   let installingNginx = $state(false);
   let mockNginxInstalled = $state(true);
+  let showNginxManager = $state(false);
+
+  // Sinkronkan badge web server dengan status terbaru dari Nginx Manager
+  function onNginxStatus(st: NginxStatus) {
+    webServer = { ...webServer, installed: st.installed, running: st.running, version: st.version };
+  }
 
   // Filter dan Pencarian
   let activeTab = $state<'all' | 'php' | 'node' | 'proxy' | 'go' | 'python' | 'static'>('all');
   let searchQuery = $state('');
   let selectedIds = $state<Set<number>>(new Set());
 
-  // Form Tambah Situs
-  let showModal = $state(false);
-  let domain = $state('');
-  let kind = $state<'proxy' | 'static' | 'php'>('proxy');
-  let upstream = $state('http://127.0.0.1:3000');
-  let rootPath = $state('/var/www/html');
-  let sslMode = $state('none');
-  let forceHTTPS = $state(true);
-  let submitting = $state(false);
-
-  // Modal Konfigurasi Vhost Nginx
-  let showVhostModal = $state(false);
-  let vhostTarget = $state<Site | null>(null);
-  let vhostContent = $state('');
-  let vhostSaving = $state(false);
+  // Modal Tambah Situs & Pengaturan Situs (Domain, Situs, SSL, Konfigurasi)
+  let showAddModal = $state(false);
+  let settingsTarget = $state<{ id: number; tab: 'domain' | 'site' | 'ssl' | 'conf' } | null>(null);
 
   // Modal Log Akses / Error Situs
   let showLogModal = $state(false);
   let logTarget = $state<Site | null>(null);
   let logTab = $state<'access' | 'error'>('access');
-
-  // Modal Manajemen SSL
-  let showSSLModal = $state(false);
-  let sslTarget = $state<Site | null>(null);
 
   // Filter daftar situs berdasarkan tab dan pencarian
   let filteredSites = $derived.by(() => {
@@ -69,6 +62,8 @@
       const q = searchQuery.toLowerCase();
       result = result.filter(s =>
         s.domain.toLowerCase().includes(q) ||
+        s.aliases.toLowerCase().includes(q) ||
+        (s.description && s.description.toLowerCase().includes(q)) ||
         (s.root_path && s.root_path.toLowerCase().includes(q)) ||
         (s.upstream && s.upstream.toLowerCase().includes(q))
       );
@@ -76,9 +71,9 @@
     return result;
   });
 
-  // Memuat daftar situs dan status Nginx dari server
-  async function loadSites() {
-    loading = true;
+  // Memuat daftar situs dan status Nginx dari server (silent = tanpa indikator loading)
+  async function loadSites(silent = false) {
+    if (!silent) loading = true;
     try {
       const mockQuery = mockNginxInstalled ? '' : '?mock_nginx=0';
       const data = await apiFetch<SitesData>(`/api/sites${mockQuery}`);
@@ -91,6 +86,22 @@
     } finally {
       loading = false;
     }
+  }
+
+  // Selama ada sertifikat berstatus pending, segarkan daftar secara senyap agar badge SSL ikut berubah
+  $effect(() => {
+    if (!sites.some((s) => s.ssl_status === 'pending')) return;
+    const t = setTimeout(() => loadSites(true), 3000);
+    return () => clearTimeout(t);
+  });
+
+  // Sisa hari masa berlaku sertifikat
+  function sslDaysLeft(s: Site) {
+    return Math.max(0, Math.floor((s.ssl_expires * 1000 - Date.now()) / 86400000));
+  }
+
+  function openSettings(s: Site, tab: 'domain' | 'site' | 'ssl' | 'conf') {
+    settingsTarget = { id: s.id, tab };
   }
 
   // Toggle mode simulasi Nginx (untuk testing tampilan missing dependency)
@@ -117,36 +128,6 @@
     } catch (err: any) {
       onNotify(err.message || 'Gagal memulai instalasi Nginx');
       installingNginx = false;
-    }
-  }
-
-  // Tambah Situs Baru
-  async function handleCreateSite(e: Event) {
-    e.preventDefault();
-    if (!domain.trim()) return;
-
-    submitting = true;
-    try {
-      await apiFetch('/api/sites', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: domain.trim(),
-          kind,
-          upstream: kind === 'proxy' ? upstream.trim() : '',
-          root_path: kind !== 'proxy' ? rootPath.trim() : '',
-          ssl_mode: sslMode,
-          force_https: forceHTTPS,
-        }),
-      });
-
-      onNotify(`Situs ${domain} berhasil ditambahkan`);
-      showModal = false;
-      domain = '';
-      await loadSites();
-    } catch (err: any) {
-      onNotify(err.message || 'Gagal menambahkan situs');
-    } finally {
-      submitting = false;
     }
   }
 
@@ -187,55 +168,10 @@
     onNotify(`Membuka terminal pada direktori ${targetPath}`);
   }
 
-  // Buka editor vhost Nginx
-  function openVhostEditor(site: Site) {
-    vhostTarget = site;
-    vhostContent = `# Konfigurasi Virtual Host Nginx untuk ${site.domain}
-server {
-    listen 80;
-    server_name ${site.domain};
-
-    # Lokasi Web Root & Index
-    root ${site.root_path || '/var/www/html'};
-    index index.html index.htm index.php;
-
-    # Logging Akses dan Error
-    access_log /var/log/nginx/${site.domain}.access.log;
-    error_log /var/log/nginx/${site.domain}.error.log;
-
-    ${site.kind === 'proxy' ? `location / {
-        proxy_pass ${site.upstream};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }` : `location / {
-        try_files $uri $uri/ /index.html;
-    }`}
-}`;
-    showVhostModal = true;
-  }
-
-  // Simpan konfigurasi vhost Nginx
-  async function saveVhost() {
-    vhostSaving = true;
-    setTimeout(() => {
-      vhostSaving = false;
-      showVhostModal = false;
-      onNotify(`Konfigurasi vhost ${vhostTarget?.domain} berhasil disimpan dan di-reload`);
-    }, 600);
-  }
-
   // Buka penampil log situs
   function openLogViewer(site: Site) {
     logTarget = site;
     showLogModal = true;
-  }
-
-  // Buka modal SSL
-  function openSSLModal(site: Site) {
-    sslTarget = site;
-    showSSLModal = true;
   }
 
   // Memicu pencadangan situs
@@ -300,22 +236,25 @@ server {
   <!-- ═════════ 2. Action Toolbar: Tombol Tambah, Badge Nginx, & Search ═════════ -->
   <div class="action-toolbar">
     <div class="tb-left">
-      <button class="btn btn-add-site" onclick={() => (showModal = true)}>
+      <button class="btn btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
         <i class="ri-add-line"></i>
         <span>Tambah Situs</span>
       </button>
 
       <!-- Badge Web Server Aktif (Nginx 1.24.0 ▶) -->
       {#if webServer.installed}
-        <div
-          class="server-badge {webServer.running ? 'is-running' : 'is-stopped'}"
-          title="Status web server di server ini"
+        <button
+          id="nginx-badge-btn"
+          class="server-badge clickable {webServer.running ? 'is-running' : 'is-stopped'}"
+          title="Klik untuk membuka Nginx Manager"
+          onclick={() => (showNginxManager = true)}
         >
           <span class="pulse-indicator"></span>
           <i class="ri-server-line"></i>
           <span class="server-label">Nginx {webServer.version || '1.24.0'}</span>
           <span class="server-status-tag">{webServer.running ? 'Running' : 'Stopped'}</span>
-        </div>
+          <i class="ri-settings-4-line badge-gear"></i>
+        </button>
       {:else}
         <div class="server-badge is-missing" title="Nginx belum terpasang">
           <i class="ri-alert-fill"></i>
@@ -400,7 +339,7 @@ server {
         <div class="empty-state">
           <i class="ri-global-line empty-icon"></i>
           <p>Tidak ada situs yang cocok dengan kriteria pencarian.</p>
-          <button class="btn btn-primary" onclick={() => (showModal = true)}>
+          <button class="btn btn-primary" onclick={() => (showAddModal = true)}>
             + Tambah Situs Baru
           </button>
         </div>
@@ -453,6 +392,12 @@ server {
                       <i class="ri-folder-2-line"></i>
                       <span>{s.kind === 'proxy' ? s.upstream : (s.root_path || '/var/www/html')}</span>
                     </div>
+                    {#if s.description}
+                      <div class="site-path-sub" title={s.description}>
+                        <i class="ri-sticky-note-line"></i>
+                        <span>{s.description}</span>
+                      </div>
+                    {/if}
                   </div>
                 </td>
 
@@ -504,14 +449,14 @@ server {
 
                     <button
                       class="quick-act-btn"
-                      onclick={() => openVhostEditor(s)}
-                      title="Sunting berkas konfigurasi Nginx vhost"
+                      onclick={() => openSettings(s, 'site')}
+                      title="Pengaturan situs (domain, jenis, SSL, konfigurasi)"
                     >
                       <i class="ri-settings-3-line icon-gray"></i>
                     </button>
 
                     <span class="badge-runtime {s.kind}">
-                      {s.kind === 'php' ? '8.3' : s.kind === 'static' ? 'Static' : 'Proxy'}
+                      {s.kind === 'php' ? (s.php_version || 'PHP') : s.kind === 'static' ? 'Static' : 'Proxy'}
                     </span>
                   </div>
                 </td>
@@ -523,19 +468,30 @@ server {
 
                 <!-- Kolom Sertifikat SSL -->
                 <td class="col-ssl">
-                  {#if s.ssl_mode !== 'none'}
+                  {#if s.ssl_status === 'issued' && s.ssl_mode !== 'none'}
                     <button
                       class="ssl-badge ssl-active"
-                      onclick={() => openSSLModal(s)}
-                      title="Klik untuk detail sertifikat SSL"
+                      class:ssl-expiring={sslDaysLeft(s) < 15}
+                      onclick={() => openSettings(s, 'ssl')}
+                      title="Berlaku sampai {new Date(s.ssl_expires * 1000).toLocaleDateString('id-ID')}"
                     >
                       <i class="ri-shield-check-fill"></i>
-                      <span>89 Hari</span>
+                      <span>{sslDaysLeft(s)} Hari</span>
+                    </button>
+                  {:else if s.ssl_status === 'pending'}
+                    <button class="ssl-badge ssl-pending" onclick={() => openSettings(s, 'ssl')} title="Sertifikat sedang diterbitkan">
+                      <i class="ri-loader-4-line spin"></i>
+                      <span>Menerbitkan</span>
+                    </button>
+                  {:else if s.ssl_status === 'failed' && s.ssl_mode !== 'none'}
+                    <button class="ssl-badge ssl-failed" onclick={() => openSettings(s, 'ssl')} title="Penerbitan gagal, klik untuk detail">
+                      <i class="ri-shield-cross-line"></i>
+                      <span>Gagal</span>
                     </button>
                   {:else}
                     <button
                       class="ssl-badge ssl-inactive"
-                      onclick={() => openSSLModal(s)}
+                      onclick={() => openSettings(s, 'ssl')}
                       title="Klik untuk memasang sertifikat Let's Encrypt"
                     >
                       <i class="ri-shield-line"></i>
@@ -555,7 +511,7 @@ server {
                 <!-- Kolom Operasi (Conf, Log, Hapus) -->
                 <td class="col-ops">
                   <div class="ops-wrap">
-                    <button class="btn-op-link" onclick={() => openVhostEditor(s)}>Conf</button>
+                    <button class="btn-op-link" onclick={() => openSettings(s, 'conf')}>Conf</button>
                     <span class="op-div">|</span>
                     <button class="btn-op-link" onclick={() => openLogViewer(s)}>Log</button>
                     <span class="op-div">|</span>
@@ -586,119 +542,27 @@ server {
     </div>
   {/if}
 
-  <!-- ═════════ MODAL: Tambah Situs Baru ═════════ -->
-  {#if showModal}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) showModal = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showModal = false; }}
-    >
-      <div class="modal-card">
-        <div class="modal-head">
-          <div class="modal-title-wrap">
-            <i class="ri-global-line"></i>
-            <h3>Tambah Situs Web Baru</h3>
-          </div>
-          <button class="btn-close" onclick={() => (showModal = false)}>&times;</button>
-        </div>
-
-        <form onsubmit={handleCreateSite}>
-          <div class="field">
-            <label for="f-domain">Nama Domain Utama</label>
-            <input
-              id="f-domain"
-              type="text"
-              placeholder="contoh: api.domainanda.com atau app.local"
-              bind:value={domain}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label for="f-kind">Jenis Proyek Web</label>
-            <select id="f-kind" bind:value={kind}>
-              <option value="proxy">Reverse Proxy (Node.js, Go, Python, Docker)</option>
-              <option value="static">Static HTML / SPA (Build Distribution)</option>
-              <option value="php">PHP-FPM Application</option>
-            </select>
-          </div>
-
-          {#if kind === 'proxy'}
-            <div class="field">
-              <label for="f-upstream">Upstream Target URL</label>
-              <input id="f-upstream" type="text" bind:value={upstream} required />
-              <small class="hint">Alamat lokal server backend, misal http://127.0.0.1:3000</small>
-            </div>
-          {:else}
-            <div class="field">
-              <label for="f-root">Direktori Web Root</label>
-              <input id="f-root" type="text" bind:value={rootPath} required />
-              <small class="hint">Direktori fisik berkas situs, misal /var/www/html/situs_saya</small>
-            </div>
-          {/if}
-
-          <div class="field">
-            <label for="f-ssl">Kebijakan Sertifikat SSL</label>
-            <select id="f-ssl" bind:value={sslMode}>
-              <option value="none">Tanpa SSL (HTTP biasa)</option>
-              <option value="letsencrypt">Let's Encrypt Otomatis (HTTP-01 Challenge)</option>
-              <option value="custom">Sertifikat Kustom (Kunci PEM Mandiri)</option>
-            </select>
-          </div>
-
-          <div class="modal-actions">
-            <button type="button" class="btn btn-ghost" onclick={() => (showModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn-primary" disabled={submitting}>
-              {submitting ? 'Menyimpan...' : 'Buat Situs Web'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+  <!-- ═════════ MODAL: Tambah Situs (SSL diaktifkan setelah situs dibuat) ═════════ -->
+  {#if showAddModal}
+    <AddSiteModal
+      onClose={() => (showAddModal = false)}
+      onCreated={() => loadSites(true)}
+      onOpenSSL={(s) => { showAddModal = false; openSettings(s, 'ssl'); }}
+      {onNotify}
+    />
   {/if}
 
-  <!-- ═════════ MODAL: Editor Virtual Host Nginx ═════════ -->
-  {#if showVhostModal && vhostTarget}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) showVhostModal = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showVhostModal = false; }}
-    >
-      <div class="modal-card modal-wide">
-        <div class="modal-head">
-          <div class="modal-title-wrap">
-            <i class="ri-file-code-line icon-cyan"></i>
-            <h3>Konfigurasi Nginx: {vhostTarget.domain}</h3>
-          </div>
-          <button class="btn-close" onclick={() => (showVhostModal = false)}>&times;</button>
-        </div>
-
-        <div class="editor-wrap">
-          <textarea
-            class="vhost-textarea mono"
-            bind:value={vhostContent}
-            spellcheck="false"
-          ></textarea>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={() => (showVhostModal = false)}>
-            Tutup
-          </button>
-          <button type="button" class="btn btn-primary" onclick={saveVhost} disabled={vhostSaving}>
-            {vhostSaving ? 'Menyimpan & Reload...' : 'Simpan & Reload Nginx'}
-          </button>
-        </div>
-      </div>
-    </div>
+  <!-- ═════════ MODAL: Pengaturan Situs (Domain, Situs, SSL, Konfigurasi) ═════════ -->
+  {#if settingsTarget}
+    {#key settingsTarget.id}
+      <SiteSettings
+        siteId={settingsTarget.id}
+        initialTab={settingsTarget.tab}
+        onClose={() => (settingsTarget = null)}
+        onChanged={() => loadSites(true)}
+        {onNotify}
+      />
+    {/key}
   {/if}
 
   <!-- ═════════ MODAL: Penampil Log Akses & Error ═════════ -->
@@ -749,50 +613,13 @@ server {
     </div>
   {/if}
 
-  <!-- ═════════ MODAL: Kelola Sertifikat SSL ═════════ -->
-  {#if showSSLModal && sslTarget}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) showSSLModal = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showSSLModal = false; }}
-    >
-      <div class="modal-card">
-        <div class="modal-head">
-          <div class="modal-title-wrap">
-            <i class="ri-shield-keyhole-line icon-green"></i>
-            <h3>Kelola Sertifikat SSL: {sslTarget.domain}</h3>
-          </div>
-          <button class="btn-close" onclick={() => (showSSLModal = false)}>&times;</button>
-        </div>
-
-        <div class="ssl-info-box">
-          <div class="info-row">
-            <span>Domain:</span>
-            <strong class="mono">{sslTarget.domain}</strong>
-          </div>
-          <div class="info-row">
-            <span>Penyedia:</span>
-            <span>Let's Encrypt ACME v2</span>
-          </div>
-          <div class="info-row">
-            <span>Masa Berlaku:</span>
-            <span class="text-green">89 Hari Tersisa</span>
-          </div>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={() => (showSSLModal = false)}>
-            Tutup
-          </button>
-          <button type="button" class="btn btn-primary" onclick={() => { onNotify('Pembaruan sertifikat SSL Let\'s Encrypt berhasil diajukan'); showSSLModal = false; }}>
-            Perbarui Sertifikat Sekarang
-          </button>
-        </div>
-      </div>
-    </div>
+  <!-- ═════════ MODAL: Nginx Manager (Layanan, Config, Versi, Beban, Optimasi, Log) ═════════ -->
+  {#if showNginxManager}
+    <NginxManager
+      onClose={() => (showNginxManager = false)}
+      {onNotify}
+      onStatusChange={onNginxStatus}
+    />
   {/if}
 </div>
 
@@ -912,6 +739,27 @@ server {
     background: rgba(245, 158, 11, 0.1);
     border: 1px solid rgba(245, 158, 11, 0.3);
     color: #f59e0b;
+  }
+
+  .server-badge.clickable {
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  }
+
+  .server-badge.clickable:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px -4px currentColor;
+  }
+
+  .badge-gear {
+    opacity: 0.55;
+    transition: transform 0.4s ease, opacity 0.15s ease;
+  }
+
+  .server-badge.clickable:hover .badge-gear {
+    opacity: 1;
+    transform: rotate(90deg);
   }
 
   .pulse-indicator {
@@ -1270,6 +1118,24 @@ server {
     border: 1px solid rgba(245, 158, 11, 0.25);
   }
 
+  .ssl-badge.ssl-active.ssl-expiring {
+    background: rgba(245, 158, 11, 0.1);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+
+  .ssl-badge.ssl-pending {
+    background: rgba(56, 189, 248, 0.1);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+  }
+
+  .ssl-badge.ssl-failed {
+    background: rgba(244, 63, 94, 0.1);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.25);
+  }
+
   /* Permintaan */
   .req-stat-box {
     display: flex;
@@ -1404,19 +1270,7 @@ server {
     cursor: pointer;
   }
 
-  .field {
-    margin-bottom: 1rem;
-  }
-
-  label {
-    display: block;
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: #cbd5e1;
-    margin-bottom: 0.35rem;
-  }
-
-  input, select {
+  input {
     width: 100%;
     padding: 0.5rem 0.75rem;
     background: #080b11;
@@ -1427,36 +1281,8 @@ server {
     outline: none;
   }
 
-  input:focus, select:focus {
+  input:focus {
     border-color: #10b981;
-  }
-
-  .hint {
-    display: block;
-    font-size: 0.68rem;
-    color: #64748b;
-    margin-top: 0.25rem;
-  }
-
-  .editor-wrap {
-    background: #080a10;
-    border: 1px solid #1a2232;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 1rem;
-  }
-
-  .vhost-textarea {
-    width: 100%;
-    height: 320px;
-    background: transparent;
-    border: none;
-    color: #e2e8f0;
-    padding: 0.85rem;
-    font-size: 0.78rem;
-    line-height: 1.6;
-    outline: none;
-    resize: vertical;
   }
 
   .log-tabs {
@@ -1491,30 +1317,6 @@ server {
     font-size: 0.74rem;
     line-height: 1.6;
   }
-
-  .ssl-info-box {
-    background: #080b11;
-    border: 1px solid #1a2230;
-    border-radius: 8px;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    font-size: 0.78rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    color: #94a3b8;
-  }
-
-  .info-row strong, .info-row span:last-child {
-    color: #f1f5f9;
-  }
-
-  .text-green { color: #10b981 !important; }
 
   .modal-actions {
     display: flex;

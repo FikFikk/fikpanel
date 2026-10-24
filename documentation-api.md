@@ -2,6 +2,18 @@
 
 ## 1. Daftar Endpoint API
 
+### 1.0 Pemeriksaan Kesehatan (Health Check)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /healthz` |
+| Auth Required | No |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"status": "ok"}` |
+| Notes | Endpoint liveness probe publik untuk load balancer, container orchestrator, atau pemantau status dev. |
+
 ### 1.1 Autentikasi & Sesi
 
 | Field | Detail |
@@ -94,13 +106,63 @@
 
 | Field | Detail |
 |---|---|
+| Method + Endpoint | `GET /api/sites/meta` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"php_versions": ["8.3", "8.2"], "server_ips": ["203.0.113.10"]}` |
+| Notes | Versi PHP dideteksi dari `/etc/php/*/fpm`. IP server = env `FIKPANEL_PUBLIC_IP` + IP publik (api.ipify.org, cache 1 jam) + IP interface. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/check-domains` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `domains` (string, wajib, multi-baris, maks 4096 karakter), `add_www` (bool), `exclude_id` (int, opsional, untuk edit), `dns` (bool, sertakan resolusi DNS) |
+| Response | HTTP 200 `{"primary", "aliases": [], "checks": [{"input", "domain", "wildcard", "auto", "error"}], "dns": [{"domain", "ips", "points_here", "error"}], "server_ips": [], "valid"}` |
+| Notes | Dipakai validasi realtime form. `valid=false` bila ada format salah, duplikat, domain dipakai situs lain, atau tidak ada domain non-wildcard. Status DNS tidak memengaruhi `valid`. |
+
+| Field | Detail |
+|---|---|
 | Method + Endpoint | `POST /api/sites` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `domain` (string, wajib), `kind` (string, wajib: proxy/static/php), `upstream` (string, opsional), `root_path` (string, opsional), `ssl_mode` (string, default: none), `force_https` (int, default: 1), `extra_conf` (string, opsional) |
-| Response | HTTP 201 `{"ok": true, "id": 2}` |
-| Notes | Menjalankan validasi RFC1123, render file sementara, uji `nginx -t`, rename atomik, dan reload Nginx. Rollback otomatis jika uji sintaks gagal. |
+| Request Body | `domains` (string, wajib, satu per baris), `add_www` (bool), `kind` (string, wajib: proxy/static/php), `upstream` (string, wajib jika proxy), `root_path` (string, opsional, default `/var/www/<domain>/public_html`), `php_version` (string `X.Y`, untuk php), `description` (string, maks 200) |
+| Response | HTTP 201 objek `Site` (`id`, `domain`, `aliases`, `kind`, `root_path`, `ssl_status`=none, ...); HTTP 400 validasi gagal |
+| Notes | Tanpa opsi SSL (SSL diaktifkan setelah dibuat). Membuat web root + index.html, render vhost port 80 + lokasi ACME, `nginx -t`, reload. Gagal = baris DB dihapus & file dipulihkan. Dicatat audit `site.create`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"site": Site, "domains": [], "certificate": {"status", "issuer", "not_before", "not_after", "domains", "signature", "key_type", "last_error"}, "ssl_job": {"running", "step", "ok", "message"}}`; HTTP 404 |
+| Notes | Dipoll UI tiap 1,5 detik selama `ssl_job.running=true`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/sites/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Sama dengan `POST /api/sites` (payload lengkap) |
+| Response | HTTP 200 `{"ok": true, "site": Site, "ssl_reset": bool}` |
+| Notes | Bila domain/alias berubah saat sertifikat `issued`, sertifikat dihapus (`ssl_reset=true`). Pergantian domain utama ikut mengganti nama file vhost. Gagal diterapkan = data DB dikembalikan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/toggle` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 2, "enabled": 0}` |
+| Notes | Nonaktif = file di-rename `.conf.disabled` lalu reload; gagal = status dikembalikan. |
 
 | Field | Detail |
 |---|---|
@@ -109,18 +171,89 @@
 | Headers | `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true}` |
-| Notes | Menghapus konfigurasi Nginx vhost, sertifikat terkait, dan me-reload Nginx. |
+| Response | HTTP 200 `{"ok": true, "id": 2}` |
+| Notes | Menghapus file vhost (aktif & disabled), reload Nginx, lalu baris DB (sertifikat ikut terhapus via cascade). Isi web root tidak dihapus. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/vhost` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"content": "server { ... }"}` |
+| Notes | Preview hanya-baca hasil render template sesuai pengaturan situs & status sertifikat saat ini. |
 
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `POST /api/sites/{id}/ssl` |
 | Auth Required | Yes (Cookie `panel_session`) |
-| Headers | `X-Panel-Request: 1` |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "issuer": "Let's Encrypt", "not_after": 1780000000}` |
-| Notes | Memicu penerbitan sertifikat SSL via lego HTTP-01 webroot secara on-demand. |
+| Request Body | `enabled` (bool), `force_https` (bool), `hsts` (bool, diabaikan bila `force_https=false`), `issue` (bool, paksa terbit ulang), `skip_dns` (bool, lewati prasyarat DNS) |
+| Response | HTTP 200 `{"ok": true, "issuing": bool, "ssl_job": {...}}`; HTTP 400 DNS belum siap / wildcard; HTTP 409 job masih berjalan |
+| Notes | Penerbitan berjalan async (ACME HTTP-01 via `x/crypto/acme`, staging bila `FIKPANEL_ACME_STAGING=1`). Otomatis menerbitkan bila `enabled=true` dan belum `issued`. Mode non-Linux disimulasikan ±4 detik. Audit `ssl.settings` & `ssl.issue`. |
+
+---
+
+### 1.3a Nginx Manager
+
+Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi wajib header `Content-Type: application/json` + `X-Panel-Request: 1`; body maks 3 MB.
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/software/nginx/status` |
+| Query Params / Body | Tidak ada |
+| Response | HTTP 200 `{"installed", "running", "version", "pid", "uptime", "config_ok", ...}` |
+| Notes | Sumber status badge Nginx di halaman Sites & Services. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/software/nginx/service` |
+| Request Body | `action` (string, wajib: start/stop/restart/reload) |
+| Response | HTTP 200 `{"ok": true, "status": {...}}`; HTTP 400 bila `nginx -t` gagal |
+| Notes | start/restart/reload didahului uji sintaks `nginx -t`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET` / `POST /api/software/nginx/settings` |
+| Request Body | `daemon` (bool, watchdog auto-start), `alert` (bool) |
+| Response | HTTP 200 `{"settings": {"daemon", "alert"}}` |
+| Notes | Disimpan pada tabel `settings`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET` / `POST /api/software/nginx/config` |
+| Request Body | `content` (string, wajib, isi `nginx.conf`) |
+| Response | GET: `{"path", "content"}`; POST: `{"ok": true}`; HTTP 400 sintaks salah |
+| Notes | File sementara diuji, backup rotasi 10 file, rename atomik, reload. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/software/nginx/versions`, `POST /api/software/nginx/versions/switch` |
+| Request Body | `version` (string, wajib, salah satu versi tersedia) |
+| Response | GET: `{"current", "available": [], "job"}`; POST: `{"ok", "target"}` |
+| Notes | Ganti versi via apt sebagai job async; progres dibaca dari `job`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/software/nginx/load` |
+| Response | HTTP 200 metrik `stub_status` (active, accepts, handled, requests, reading, writing, waiting) + proses worker |
+| Notes | Butuh `stub_status` pada localhost; data simulasi di non-Linux. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET` / `POST /api/software/nginx/optimize` |
+| Request Body | Directive optimasi (`worker_processes`, `worker_connections`, `keepalive_timeout`, `client_max_body_size`, `server_names_hash_bucket_size`, gzip, dll.) |
+| Response | GET: nilai saat ini; POST: `{"ok": true}`; HTTP 400 nilai di luar batas |
+| Notes | `server_names_hash_bucket_size` wajib kelipatan 32. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/software/nginx/error-log`, `POST /api/software/nginx/error-log/clear` |
+| Query Params | `lines` (int, opsional, jumlah baris akhir) |
+| Response | GET: `{"path", "lines", "content"}`; POST: `{"ok": true}` |
+| Notes | Clear = truncate file, bukan hapus. |
 
 ---
 
@@ -352,6 +485,7 @@
 
 | Perintah / Fungsi | Frekuensi | Tujuan | Efek Samping |
 |---|---|---|---|
-| `acme.RenewLoop` | 1x sehari (pukul 02:00) | Memeriksa seluruh sertifikat terdaftar di `certificates`; memperpanjang via Lego HTTP-01 jika sisa masa aktif < 30 hari | Me-reload Nginx saat sertifikat baru terpasang; mencatat error pada DB jika DNS/jaringan gagal |
+| `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
+| `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |
 | `store.CleanupRoutine` | 1x sehari (pukul 03:00) | Menghapus baris audit log berumur > 90 hari dan pesan obrolan AI berumur > 30 hari | Menjaga ukuran database `/var/lib/panel/panel.db` tetap ringkas di bawah 10 MB |
 | `store.BackupRoutine` | 1x sehari (pukul 04:00) | Eksekusi `VACUUM INTO` untuk snapshot SQLite ke direktori `/var/lib/panel/backups/panel-<timestamp>.db` | Menahan penulisan DB selama hitungan milidetik; mempertahankan rotasi 7 file backup terbaru |

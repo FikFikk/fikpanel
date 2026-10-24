@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -180,33 +179,6 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ═══ Sites Management ═══
-
-func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.ListSites(r.Context())
-	if err != nil {
-		http.Error(w, `{"error":"gagal mengambil daftar situs"}`, http.StatusInternalServerError)
-		return
-	}
-
-	if list == nil {
-		list = []store.Site{}
-	}
-
-	// Deteksi status instalasi dan versi web server Nginx
-	wsStatus := services.CheckNginx(r.Context())
-	if r.URL.Query().Get("mock_nginx") == "0" {
-		wsStatus.Installed = false
-		wsStatus.Running = false
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sites":      list,
-		"web_server": wsStatus,
-	})
-}
-
 // ═══ Software Catalog & Detection ═══
 
 func (s *Server) handleListSoftware(w http.ResponseWriter, r *http.Request) {
@@ -242,112 +214,6 @@ func (s *Server) handleInstallSoftware(w http.ResponseWriter, r *http.Request) {
 		"ok":      true,
 		"package": pkg,
 		"message": fmt.Sprintf("Proses instalasi %s berhasil dimulai", pkg),
-	})
-}
-
-type CreateSiteRequest struct {
-	Domain     string `json:"domain"`
-	Kind       string `json:"kind"`
-	Upstream   string `json:"upstream"`
-	RootPath   string `json:"root_path"`
-	SSLMode    string `json:"ssl_mode"`
-	ForceHTTPS bool   `json:"force_https"`
-}
-
-func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
-	var req CreateSiteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
-		return
-	}
-
-	req.Domain = strings.TrimSpace(strings.ToLower(req.Domain))
-	if req.Domain == "" {
-		http.Error(w, `{"error":"domain tidak boleh kosong"}`, http.StatusBadRequest)
-		return
-	}
-
-	if req.Kind == "" {
-		req.Kind = "proxy"
-	}
-	if req.SSLMode == "" {
-		req.SSLMode = "none"
-	}
-
-	forceHTTPS := 0
-	if req.ForceHTTPS {
-		forceHTTPS = 1
-	}
-
-	newSite := &store.Site{
-		Domain:     req.Domain,
-		Aliases:    "[]",
-		Kind:       req.Kind,
-		Upstream:   req.Upstream,
-		RootPath:   req.RootPath,
-		SSLMode:    req.SSLMode,
-		ForceHTTPS: forceHTTPS,
-		ExtraConf:  "",
-		Enabled:    1,
-	}
-
-	created, err := s.store.CreateSite(r.Context(), newSite)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
-		return
-	}
-
-	user := GetUserFromContext(r.Context())
-	var uid *int64
-	if user != nil {
-		uid = &user.ID
-	}
-	_ = s.store.RecordAudit(r.Context(), "user", "site.create", req.Domain, true, fmt.Sprintf("Kind: %s, Upstream: %s", req.Kind, req.Upstream), uid)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(created)
-}
-
-func (s *Server) handleToggleSite(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, `{"error":"ID situs tidak valid"}`, http.StatusBadRequest)
-		return
-	}
-
-	newState, err := s.store.ToggleSite(r.Context(), id)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"id":      id,
-		"enabled": newState,
-	})
-}
-
-func (s *Server) handleDeleteSite(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, `{"error":"ID situs tidak valid"}`, http.StatusBadRequest)
-		return
-	}
-
-	if err := s.store.DeleteSite(r.Context(), id); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok": true,
-		"id": id,
 	})
 }
 

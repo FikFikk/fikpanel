@@ -1,14 +1,18 @@
 <script lang="ts">
   import { formatBytes } from '../lib/api';
   import type { Service } from '../lib/types';
+  import NginxManager from '../lib/components/NginxManager.svelte';
 
   interface Props {
     services: Service[];
     onSvcAction: (unit: string, action: string) => void;
     onRefresh: () => void;
+    onNotify: (msg: string) => void;
   }
 
-  let { services = [], onSvcAction, onRefresh }: Props = $props();
+  let { services = [], onSvcAction, onRefresh, onNotify }: Props = $props();
+
+  let showNginxManager = $state(false);
 </script>
 
 <div class="services-container">
@@ -37,7 +41,13 @@
           {#each services as s}
             <tr>
               <td>
-                <span class="mono font-bold">{s.unit}</span>
+                {#if s.unit === 'nginx.service'}
+                  <button id="svc-nginx-manage" class="unit-link mono font-bold" onclick={() => (showNginxManager = true)} title="Buka Nginx Manager">
+                    {s.unit} <i class="ri-settings-4-line"></i>
+                  </button>
+                {:else}
+                  <span class="mono font-bold">{s.unit}</span>
+                {/if}
                 {#if s.protected}
                   <span class="shield-badge">PROTECTED</span>
                 {/if}
@@ -72,7 +82,30 @@
   </div>
 </div>
 
+{#if showNginxManager}
+  <NginxManager
+    onClose={() => { showNginxManager = false; onRefresh(); }}
+    {onNotify}
+  />
+{/if}
+
 <style>
+  .unit-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: #34d399;
+    font-size: inherit;
+    cursor: pointer;
+    border-bottom: 1px dashed rgba(52, 211, 153, 0.4);
+  }
+  .unit-link:hover {
+    color: #6ee7b7;
+    border-bottom-style: solid;
+  }
   .services-container {
     display: flex;
     flex-direction: column;

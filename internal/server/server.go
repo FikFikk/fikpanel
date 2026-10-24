@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"fikpanel/internal/metrics"
+	"fikpanel/internal/nginx"
 	"fikpanel/internal/services"
+	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 	"fikpanel/web"
 )
@@ -24,7 +26,13 @@ type Server struct {
 	store    *store.Store
 	metrics  *metrics.Hub
 	services *services.Manager
+	nginx    *nginx.Manager
+	sites    *sites.Manager
 	limiter  *RateLimiter
+
+	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
 }
 
 // NewServer membuat instansiasi Server baru dengan routing terdaftar
@@ -36,8 +44,11 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		store:    s,
 		metrics:  m,
 		services: svc,
+		nginx:    nginx.NewManager(nginx.DefaultPaths(), s, s),
 		limiter:  NewRateLimiter(),
 	}
+	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
+	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
 
 	srv.registerRoutes()
 
@@ -80,6 +91,12 @@ func (s *Server) registerRoutes() {
 	// Manajemen Situs Web (Sites)
 	s.mux.Handle("GET /api/sites", s.AuthMiddleware(http.HandlerFunc(s.handleListSites)))
 	s.mux.Handle("POST /api/sites", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSite)))
+	s.mux.Handle("GET /api/sites/meta", s.AuthMiddleware(http.HandlerFunc(s.handleSiteMeta)))
+	s.mux.Handle("POST /api/sites/check-domains", s.AuthMiddleware(http.HandlerFunc(s.handleCheckDomains)))
+	s.mux.Handle("GET /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetSite)))
+	s.mux.Handle("PUT /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSite)))
+	s.mux.Handle("GET /api/sites/{id}/vhost", s.AuthMiddleware(http.HandlerFunc(s.handleSiteVhost)))
+	s.mux.Handle("POST /api/sites/{id}/ssl", s.AuthMiddleware(http.HandlerFunc(s.handleSiteSSL)))
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))
 
@@ -110,6 +127,26 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/files/remote-download", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteDownload)))
 	s.mux.Handle("POST /api/files/symlink", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSymlink)))
 	s.mux.Handle("POST /api/files/search-content", s.AuthMiddleware(http.HandlerFunc(s.handleSearchContent)))
+
+	// Nginx Manager (layanan, config, versi, beban, optimasi, log error)
+	nginxRoutes := map[string]http.HandlerFunc{
+		"GET /api/software/nginx/status":           s.handleNginxStatus,
+		"POST /api/software/nginx/service":         s.handleNginxService,
+		"GET /api/software/nginx/settings":         s.handleNginxGetSettings,
+		"POST /api/software/nginx/settings":        s.handleNginxSaveSettings,
+		"GET /api/software/nginx/config":           s.handleNginxGetConfig,
+		"POST /api/software/nginx/config":          s.handleNginxSaveConfig,
+		"GET /api/software/nginx/versions":         s.handleNginxVersions,
+		"POST /api/software/nginx/versions/switch": s.handleNginxSwitchVersion,
+		"GET /api/software/nginx/load":             s.handleNginxLoad,
+		"GET /api/software/nginx/optimize":         s.handleNginxGetOptimize,
+		"POST /api/software/nginx/optimize":        s.handleNginxSaveOptimize,
+		"GET /api/software/nginx/error-log":        s.handleNginxErrorLog,
+		"POST /api/software/nginx/error-log/clear": s.handleNginxClearErrorLog,
+	}
+	for pattern, h := range nginxRoutes {
+		s.mux.Handle(pattern, s.AuthMiddleware(h))
+	}
 
 	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS)
 	viteURL, _ := url.Parse("http://127.0.0.1:5173")
@@ -151,10 +188,15 @@ func (s *Server) registerRoutes() {
 
 // Start menjalankan listener HTTP
 func (s *Server) Start() error {
+	go s.nginx.RunWatchdog(s.bgCtx, time.Minute)
+	go s.sites.RunRenewLoop(s.bgCtx, func(ok bool, target, msg string) {
+		_ = s.store.RecordAudit(s.bgCtx, "system", "ssl.renew", target, ok, msg, nil)
+	})
 	return s.server.ListenAndServe()
 }
 
 // Shutdown menghentikan server secara graceful dengan batas waktu
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.bgCancel()
 	return s.server.Shutdown(ctx)
 }

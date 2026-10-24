@@ -1,4 +1,4 @@
-﻿# Binaries
+# Binaries
 bin/
 *.exe
 *.exe~
@@ -18,3 +18,6 @@ web/node_modules/
 *.db-wal
 *.db-shm
 *.log
+
+# Data simulasi dev (nginx.conf & log contoh di non-Linux)
+dev-data/
