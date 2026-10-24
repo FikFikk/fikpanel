@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
+  import { confirmDialog } from '../lib/stores/confirm.svelte';
   import type { Site, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
   import NginxManager from '../lib/components/NginxManager.svelte';
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
@@ -142,9 +143,13 @@
     }
   }
 
-  // Menghapus situs dari sistem
   async function deleteSite(id: number, siteDomain: string) {
-    if (!confirm(`Hapus konfigurasi virtual host situs "${siteDomain}"?`)) return;
+    if (!(await confirmDialog({
+      title: `Hapus situs "${siteDomain}"?`,
+      message: 'Konfigurasi virtual host Nginx dan sertifikat SSL akan dihapus dari server.',
+      confirmText: 'Hapus Situs',
+      tone: 'danger',
+    }))) return;
     try {
       await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
       await loadSites();
@@ -636,7 +641,7 @@
     align-items: center;
     gap: 0.5rem;
     overflow-x: auto;
-    border-bottom: 1px solid #1a2232;
+    border-bottom: 1px solid var(--border);
     padding-bottom: 0.4rem;
   }
 
@@ -648,7 +653,7 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #8b98a9;
+    color: var(--text-muted);
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
@@ -658,23 +663,23 @@
   }
 
   .proj-tab:hover {
-    color: #f1f5f9;
-    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 3%, transparent);
   }
 
   .proj-tab.active {
-    color: #10b981;
+    color: var(--accent);
     font-weight: 600;
-    border-bottom-color: #10b981;
-    background: rgba(16, 185, 129, 0.06);
+    border-bottom-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
 
-  .icon-php { color: #8892bf; }
-  .icon-node { color: #68a063; }
-  .icon-proxy { color: #38bdf8; }
-  .icon-go { color: #00add8; }
-  .icon-python { color: #facc15; }
-  .icon-static { color: #f97316; }
+  .icon-php { color: var(--brand-php); }
+  .icon-node { color: var(--brand-node); }
+  .icon-proxy { color: var(--info); }
+  .icon-go { color: var(--brand-go); }
+  .icon-python { color: var(--brand-python); }
+  .icon-static { color: var(--brand-html); }
 
   /* ═════════ 2. Action Toolbar ═════════ */
   .action-toolbar {
@@ -695,9 +700,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    background: #059669;
-    color: #ffffff;
-    border: 1px solid #10b981;
+    background: var(--accent-hover);
+    color: var(--text);
+    border: 1px solid var(--accent);
     padding: 0.42rem 0.85rem;
     border-radius: 6px;
     font-size: 0.78rem;
@@ -707,8 +712,8 @@
   }
 
   .btn-add-site:hover {
-    background: #047857;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+    background: var(--accent-hover);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
   /* Badge Server Nginx */
@@ -724,21 +729,21 @@
   }
 
   .server-badge.is-running {
-    background: rgba(16, 185, 129, 0.08);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: #10b981;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    color: var(--accent);
   }
 
   .server-badge.is-stopped {
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.25);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger-strong) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
+    color: var(--danger-strong);
   }
 
   .server-badge.is-missing {
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    color: #f59e0b;
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    color: var(--warning);
   }
 
   .server-badge.clickable {
@@ -766,7 +771,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent);
     animation: pulse 1.5s infinite;
   }
 
@@ -779,9 +784,9 @@
   }
 
   .btn-mock-toggle {
-    background: #151a24;
-    border: 1px solid #232d3f;
-    color: #94a3b8;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     padding: 0.35rem 0.65rem;
     border-radius: 6px;
     font-size: 0.72rem;
@@ -792,15 +797,15 @@
   }
 
   .btn-mock-toggle:hover {
-    background: #1d2535;
-    color: #f1f5f9;
+    background: var(--bg-active);
+    color: var(--text);
   }
 
   .search-box {
     display: flex;
     align-items: center;
-    background: #0d1017;
-    border: 1px solid #1f2736;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.3rem 0.6rem;
     gap: 0.4rem;
@@ -811,27 +816,27 @@
     background: transparent;
     border: none;
     outline: none;
-    color: #f1f5f9;
+    color: var(--text);
     font-size: 0.78rem;
     width: 100%;
   }
 
   .search-icon {
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   .btn-clear-search {
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--text-subtle);
     cursor: pointer;
   }
 
   /* ═════════ 3. Dependency Warning Card (aaPanel Gambar 2 Style) ═════════ */
   .dep-warning-card {
     position: relative;
-    background: #111520;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--bg-raised);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
     border-radius: 12px;
     padding: 2.2rem 2rem;
     overflow: hidden;
@@ -844,7 +849,7 @@
     left: -50px;
     width: 200px;
     height: 200px;
-    background: rgba(245, 158, 11, 0.08);
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
     filter: blur(60px);
     border-radius: 50%;
   }
@@ -861,25 +866,25 @@
     width: 48px;
     height: 48px;
     border-radius: 10px;
-    background: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.8rem;
-    color: #f59e0b;
+    color: var(--warning);
     flex-shrink: 0;
   }
 
   .dep-warn-details h3 {
-    color: #f8fafc;
+    color: var(--text);
     font-size: 1.05rem;
     font-weight: 700;
     margin: 0 0 0.5rem 0;
   }
 
   .dep-warn-details p {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 0.82rem;
     line-height: 1.6;
     margin: 0 0 1.25rem 0;
@@ -896,9 +901,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    background: #059669;
-    color: #ffffff;
-    border: 1px solid #10b981;
+    background: var(--accent-hover);
+    color: var(--text);
+    border: 1px solid var(--accent);
     padding: 0.5rem 1.1rem;
     border-radius: 6px;
     font-size: 0.82rem;
@@ -908,14 +913,14 @@
   }
 
   .btn-install-now:hover:not(:disabled) {
-    background: #047857;
-    box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+    background: var(--accent-hover);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 40%, transparent);
   }
 
   /* ═════════ 4. Tabel Situs Web (aaPanel Gambar 1 Style) ═════════ */
   .table-container {
-    background: #0e121a;
-    border: 1px solid #1a2230;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
@@ -933,24 +938,24 @@
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #64748b;
-    background: #121622;
-    border-bottom: 1px solid #1a2230;
+    color: var(--text-subtle);
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
     font-weight: 600;
   }
 
   td {
     padding: 0.75rem 0.85rem;
-    border-bottom: 1px solid #151b27;
+    border-bottom: 1px solid var(--border-subtle);
     vertical-align: middle;
   }
 
   .site-row:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in srgb, var(--text) 2%, transparent);
   }
 
   .site-row.selected-row {
-    background: rgba(16, 185, 129, 0.04);
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
   }
 
   .col-chk {
@@ -969,19 +974,19 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    color: #f1f5f9;
+    color: var(--text);
     font-weight: 600;
     text-decoration: none;
     font-size: 0.85rem;
   }
 
   .domain-link:hover {
-    color: #10b981;
+    color: var(--accent);
   }
 
   .icon-ext {
     font-size: 0.8rem;
-    color: #10b981;
+    color: var(--accent);
     opacity: 0.75;
   }
 
@@ -990,7 +995,7 @@
     align-items: center;
     gap: 0.3rem;
     font-size: 0.68rem;
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   /* Status Toggle */
@@ -1006,11 +1011,11 @@
   }
 
   .btn-status-play.is-active {
-    color: #10b981;
+    color: var(--accent);
   }
 
   .btn-status-play.is-paused {
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   /* Backup Box */
@@ -1020,14 +1025,14 @@
     gap: 0.4rem;
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 0.72rem;
   }
 
   .btn-backup-info i {
     font-size: 1.1rem;
-    color: #38bdf8;
+    color: var(--info);
   }
 
   .backup-text-wrap {
@@ -1038,13 +1043,13 @@
   }
 
   .backup-main {
-    color: #e2e8f0;
+    color: var(--text);
     font-weight: 500;
   }
 
   .backup-sub {
     font-size: 0.65rem;
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   /* Quick Actions Bar (Folder -> File Manager) */
@@ -1060,8 +1065,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #141924;
-    border: 1px solid #1f2736;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
     border-radius: 5px;
     cursor: pointer;
     font-size: 0.9rem;
@@ -1069,27 +1074,27 @@
   }
 
   .quick-act-btn:hover {
-    background: #1f283a;
-    border-color: #33435e;
+    background: var(--bg-active);
+    border-color: var(--border-strong);
   }
 
-  .icon-amber { color: #f59e0b; }
-  .icon-cyan { color: #38bdf8; }
-  .icon-gray { color: #94a3b8; }
+  .icon-amber { color: var(--warning); }
+  .icon-cyan { color: var(--info); }
+  .icon-gray { color: var(--text-muted); }
 
   .badge-runtime {
     font-size: 0.68rem;
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #cbd5e1;
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text-secondary);
     font-weight: 600;
     font-family: monospace;
   }
 
   .perpetual-badge {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 0.75rem;
   }
 
@@ -1107,33 +1112,33 @@
   }
 
   .ssl-badge.ssl-active {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.25);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   }
 
   .ssl-badge.ssl-inactive {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
   }
 
   .ssl-badge.ssl-active.ssl-expiring {
-    background: rgba(245, 158, 11, 0.1);
-    color: #fbbf24;
-    border-color: rgba(245, 158, 11, 0.3);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    color: var(--warning-strong);
+    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
   }
 
   .ssl-badge.ssl-pending {
-    background: rgba(56, 189, 248, 0.1);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.25);
+    background: color-mix(in srgb, var(--info) 10%, transparent);
+    color: var(--info);
+    border: 1px solid color-mix(in srgb, var(--info) 25%, transparent);
   }
 
   .ssl-badge.ssl-failed {
-    background: rgba(244, 63, 94, 0.1);
-    color: #fb7185;
-    border: 1px solid rgba(244, 63, 94, 0.25);
+    background: color-mix(in srgb, var(--danger-strong) 10%, transparent);
+    color: var(--danger-strong);
+    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
   }
 
   /* Permintaan */
@@ -1146,8 +1151,8 @@
   .req-sparkline {
     width: 28px;
     height: 10px;
-    background: linear-gradient(90deg, #10b981 30%, transparent 30%);
-    border-bottom: 2px solid #10b981;
+    background: linear-gradient(90deg, var(--accent) 30%, transparent 30%);
+    border-bottom: 2px solid var(--accent);
   }
 
   /* Operasi */
@@ -1160,7 +1165,7 @@
   .btn-op-link {
     background: transparent;
     border: none;
-    color: #38bdf8;
+    color: var(--info);
     font-size: 0.75rem;
     cursor: pointer;
     font-weight: 500;
@@ -1171,11 +1176,11 @@
   }
 
   .btn-op-link.link-danger {
-    color: #f43f5e;
+    color: var(--danger-strong);
   }
 
   .op-div {
-    color: #273449;
+    color: var(--text-on-accent);
     font-size: 0.7rem;
   }
 
@@ -1185,14 +1190,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 0.85rem;
-    background: #0a0d14;
-    border-top: 1px solid #161c28;
+    background: var(--bg-inset);
+    border-top: 1px solid var(--border-subtle);
     font-size: 0.72rem;
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   .badge-tag {
-    background: rgba(255, 255, 255, 0.04);
+    background: color-mix(in srgb, var(--text) 4%, transparent);
     padding: 0.15rem 0.45rem;
     border-radius: 4px;
   }
@@ -1201,12 +1206,12 @@
   .loading-state, .empty-state {
     text-align: center;
     padding: 3rem 1.5rem;
-    color: #8b95a5;
+    color: var(--text-muted);
   }
 
   .empty-icon {
     font-size: 2.2rem;
-    color: #334155;
+    color: var(--text-disabled);
     margin-bottom: 0.5rem;
     display: block;
   }
@@ -1225,8 +1230,8 @@
   }
 
   .modal-card {
-    background: #0d111a;
-    border: 1px solid #1f283b;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     width: 100%;
     max-width: 480px;
@@ -1253,19 +1258,19 @@
 
   .modal-title-wrap i {
     font-size: 1.25rem;
-    color: #10b981;
+    color: var(--accent);
   }
 
   .modal-title-wrap h3 {
     font-size: 0.95rem;
-    color: #f1f5f9;
+    color: var(--text);
     margin: 0;
   }
 
   .btn-close {
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--text-subtle);
     font-size: 1.3rem;
     cursor: pointer;
   }
@@ -1273,16 +1278,16 @@
   input {
     width: 100%;
     padding: 0.5rem 0.75rem;
-    background: #080b11;
-    border: 1px solid #1c2434;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #f1f5f9;
+    color: var(--text);
     font-size: 0.8rem;
     outline: none;
   }
 
   input:focus {
-    border-color: #10b981;
+    border-color: var(--accent);
   }
 
   .log-tabs {
@@ -1292,9 +1297,9 @@
   }
 
   .log-tab {
-    background: #141924;
-    border: 1px solid #1f2736;
-    color: #94a3b8;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     padding: 0.35rem 0.75rem;
     border-radius: 6px;
     font-size: 0.75rem;
@@ -1302,14 +1307,14 @@
   }
 
   .log-tab.active {
-    background: #065f46;
-    border-color: #10b981;
-    color: #ffffff;
+    background: var(--accent-hover);
+    border-color: var(--accent);
+    color: var(--text);
   }
 
   .log-viewer {
-    background: #080b11;
-    border: 1px solid #1a2230;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.85rem;
     height: 260px;
@@ -1334,23 +1339,23 @@
   }
 
   .btn-primary {
-    background: #10b981;
-    color: #05130b;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #059669;
+    background: var(--accent-hover);
   }
 
   .btn-ghost {
-    background: #151a24;
-    border: 1px solid #20293a;
-    color: #cbd5e1;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
   }
 
   .btn-ghost:hover {
-    background: #1b2332;
-    color: #f1f5f9;
+    background: var(--bg-active);
+    color: var(--text);
   }
 
   .mono { font-family: 'Fira Code', monospace; }

@@ -377,8 +377,8 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    background: #0b0f17;
-    border: 1px solid #1e293b;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 6px;
     overflow: hidden;
     font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
@@ -394,8 +394,8 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     padding: 0.45rem 0.75rem;
-    background: #0f1521;
-    border-bottom: 1px solid #1e293b;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
   }
 
   .telemetry-status {
@@ -404,28 +404,28 @@
     gap: 0.45rem;
     font-size: 0.68rem;
     letter-spacing: 0.04em;
-    color: #64748b;
+    color: var(--text-subtle);
   }
 
   .pulse-indicator {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #10b981;
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    background: var(--accent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
   }
 
   .status-label {
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .status-window {
     padding: 0.1rem 0.35rem;
-    background: #161f30;
-    border: 1px solid #1e293b;
+    background: var(--bg-active);
+    border: 1px solid var(--border);
     border-radius: 3px;
-    color: #64748b;
+    color: var(--text-subtle);
     font-size: 0.64rem;
   }
 
@@ -441,8 +441,8 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.2rem 0.55rem;
-    background: #0b0f17;
-    border: 1px solid #1e293b;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
     font-size: 0.72rem;
   }
@@ -454,38 +454,38 @@
   }
 
   .accent-cpu {
-    background: #0ea5e9;
+    background: var(--info);
   }
 
   .accent-ram {
-    background: #6366f1;
+    background: var(--violet);
   }
 
   .metric-name {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-weight: 500;
   }
 
   .metric-val {
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text);
     min-width: 42px;
     text-align: right;
   }
 
   .val-warn {
-    color: #f59e0b;
+    color: var(--warning);
   }
 
   .val-crit {
-    color: #ef4444;
+    color: var(--danger-strong);
   }
 
   .metric-sub {
-    color: #64748b;
+    color: var(--text-subtle);
     font-size: 0.65rem;
     padding-left: 0.4rem;
-    border-left: 1px solid #1e293b;
+    border-left: 1px solid var(--border);
   }
 
   /* Chart Viewport */
@@ -494,7 +494,7 @@
     width: 100%;
     overflow: hidden;
     cursor: crosshair;
-    background: #0b0f17;
+    background: var(--bg-surface);
   }
 
   canvas {
@@ -516,7 +516,7 @@
     pointer-events: none;
     z-index: 2;
     font-size: 0.62rem;
-    color: rgba(148, 163, 184, 0.4);
+    color: color-mix(in srgb, var(--text-muted) 40%, transparent);
   }
 
   /* GPU-Accelerated Crosshair & Nodes */
@@ -526,7 +526,7 @@
     left: 0;
     bottom: 0;
     width: 1px;
-    background: rgba(226, 232, 240, 0.25);
+    background: color-mix(in srgb, var(--text) 25%, transparent);
     pointer-events: none;
     will-change: transform;
     z-index: 3;
@@ -539,18 +539,18 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    border: 1.5px solid #0b0f17;
+    border: 1.5px solid var(--border-subtle);
     pointer-events: none;
     will-change: transform;
     z-index: 4;
   }
 
   .node-cpu {
-    background: #0ea5e9;
+    background: var(--info);
   }
 
   .node-ram {
-    background: #6366f1;
+    background: var(--violet);
   }
 
   /* HUD Tooltip */
@@ -559,8 +559,8 @@
     top: 0;
     left: 0;
     min-width: 124px;
-    background: rgba(11, 15, 23, 0.94);
-    border: 1px solid #334155;
+    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     padding: 0.35rem 0.5rem;
     pointer-events: none;
@@ -573,15 +573,15 @@
   .hud-header {
     display: flex;
     justify-content: space-between;
-    color: #64748b;
+    color: var(--text-subtle);
     font-size: 0.62rem;
     padding-bottom: 0.2rem;
     margin-bottom: 0.2rem;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--border);
   }
 
   .hud-time {
-    color: #cbd5e1;
+    color: var(--text-secondary);
     font-weight: 600;
   }
 
@@ -599,13 +599,13 @@
   }
 
   .hud-key {
-    color: #94a3b8;
+    color: var(--text-muted);
   }
 
   .hud-num {
     margin-left: auto;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text);
   }
 
   /* Footer X-Axis */
@@ -613,9 +613,9 @@
     display: flex;
     justify-content: space-between;
     padding: 0.25rem 0.65rem;
-    background: #0d121c;
-    border-top: 1px solid #1e293b;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
     font-size: 0.62rem;
-    color: #475569;
+    color: var(--text-disabled);
   }
 </style>

@@ -30,8 +30,8 @@
         <p class="panel-sub">Buffer 60 detik terakhir &middot; Auto-scaling canvas render</p>
       </div>
       <div class="legend">
-        <span class="l-item"><span class="l-dot" style="background:#38bdf8;"></span> CPU %</span>
-        <span class="l-item"><span class="l-dot" style="background:#818cf8;"></span> RAM %</span>
+        <span class="l-item"><span class="l-dot" style="background: var(--info);"></span> CPU %</span>
+        <span class="l-item"><span class="l-dot" style="background: var(--violet);"></span> RAM %</span>
       </div>
     </div>
     <Chart {history} height={260} />
@@ -41,12 +41,12 @@
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="m-label">CPU Core Usage</div>
-      <div class="m-val" style="color: #38bdf8;">{currentMetric.cpu.toFixed(1)}%</div>
+      <div class="m-val" style="color: var(--info);">{currentMetric.cpu.toFixed(1)}%</div>
       <div class="m-sub">Load Avg: {currentMetric.load_avg.toFixed(2)}</div>
     </div>
     <div class="metric-card">
       <div class="m-label">Physical Memory (RAM)</div>
-      <div class="m-val" style="color: #818cf8;">
+      <div class="m-val" style="color: var(--violet);">
         {currentMetric.ram_total > 0
           ? ((currentMetric.ram_used / currentMetric.ram_total) * 100).toFixed(1)
           : 0}%
@@ -57,7 +57,7 @@
     </div>
     <div class="metric-card">
       <div class="m-label">Disk Storage (/)</div>
-      <div class="m-val" style="color: #10b981;">
+      <div class="m-val" style="color: var(--accent);">
         {currentMetric.disk_total > 0
           ? ((currentMetric.disk_used / currentMetric.disk_total) * 100).toFixed(1)
           : 0}%
@@ -68,7 +68,7 @@
     </div>
     <div class="metric-card">
       <div class="m-label">Network Throughput</div>
-      <div class="m-val" style="color: #f59e0b; font-size: 1.15rem;">
+      <div class="m-val" style="color: var(--warning); font-size: var(--text-xl);">
         ↓ {formatBytes(currentMetric.net_in)}/s
       </div>
       <div class="m-sub">
@@ -94,21 +94,21 @@
   .title {
     font-size: 1.15rem;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--text);
     letter-spacing: -0.01em;
   }
   .subtitle {
     font-size: 0.75rem;
-    color: #8b95a5;
+    color: var(--text-muted);
     margin-top: 0.15rem;
   }
   .badge-live {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    background: rgba(16, 185, 129, 0.08);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    color: #10b981;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
     font-size: 0.72rem;
     font-weight: 600;
     padding: 0.25rem 0.65rem;
@@ -118,11 +118,11 @@
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent);
   }
   .panel {
-    background: #10131b;
-    border: 1px solid #1c2230;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.25rem 1.35rem;
   }
@@ -137,18 +137,18 @@
   .panel-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--text);
   }
   .panel-sub {
     font-size: 0.73rem;
-    color: #8b95a5;
+    color: var(--text-muted);
     margin-top: 0.15rem;
   }
   .legend {
     display: flex;
     gap: 0.85rem;
     font-size: 0.75rem;
-    color: #cbd5e1;
+    color: var(--text-secondary);
   }
   .l-item {
     display: flex;
@@ -166,8 +166,8 @@
     gap: 0.85rem;
   }
   .metric-card {
-    background: #10131b;
-    border: 1px solid #1c2230;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.15rem 1.25rem;
   }
@@ -175,7 +175,7 @@
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
-    color: #8b95a5;
+    color: var(--text-muted);
     letter-spacing: 0.05em;
   }
   .m-val {
@@ -187,7 +187,7 @@
   }
   .m-sub {
     font-size: 0.72rem;
-    color: #64748b;
+    color: var(--text-subtle);
     font-family: 'Fira Code', monospace;
     font-variant-numeric: tabular-nums;
   }

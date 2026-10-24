@@ -1,0 +1,16 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   ENTRY STYLESHEET — urutan impor PENTING (token → reset → primitif → utilitas).
+   Font & ikon di-host sendiri (bukan CDN) agar lolos Content-Security-Policy
+   'self' dan tidak membocorkan IP admin panel ke pihak ketiga.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@import '@fontsource-variable/plus-jakarta-sans/index.css';
+@import '@fontsource/fira-code/400.css';
+@import '@fontsource/fira-code/500.css';
+@import '@fontsource/fira-code/600.css';
+@import 'remixicon/fonts/remixicon.css';
+
+@import './tokens.css';
+@import './base.css';
+@import './components.css';
+@import './utilities.css';

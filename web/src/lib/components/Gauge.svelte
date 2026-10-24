@@ -154,11 +154,11 @@
 <style>
   .gauge {
     /* Bisa dioverride dari parent: --gauge-surface, --gauge-border, dst. */
-    --g-surface: var(--gauge-surface, #0e131b);
-    --g-border: var(--gauge-border, #232d3b);
-    --g-track: var(--gauge-track, #1c2533);
-    --g-text: var(--gauge-text, #e8edf4);
-    --g-muted: var(--gauge-text-muted, #9aa6b8);
+    --g-surface: var(--gauge-surface, var(--bg-surface));
+    --g-border: var(--gauge-border, var(--bg-active));
+    --g-track: var(--gauge-track, var(--bg-active));
+    --g-text: var(--gauge-text, var(--text));
+    --g-muted: var(--gauge-text-muted, var(--text-secondary));
 
     display: flex;
     flex-direction: column;

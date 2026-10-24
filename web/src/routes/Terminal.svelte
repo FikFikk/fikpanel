@@ -134,11 +134,11 @@
   .title {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .subtitle {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-top: 0.2rem;
   }
   .quick-chips {
@@ -147,9 +147,9 @@
     flex-wrap: wrap;
   }
   .chip {
-    background: #11141e;
-    border: 1px solid #1c2230;
-    color: #8b95a5;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     font-family: 'Fira Code', monospace;
     font-size: 0.72rem;
     padding: 0.22rem 0.55rem;
@@ -158,13 +158,13 @@
     transition: all 0.15s ease;
   }
   .chip:hover {
-    background: #161925;
-    color: #f1f5f9;
-    border-color: #2b3448;
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
   }
   .terminal-box {
-    background: #090a0f;
-    border: 1px solid #1c2230;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
     font-family: 'Fira Code', monospace;
@@ -172,9 +172,9 @@
   .term-head {
     display: flex;
     align-items: center;
-    background: #0f121a;
+    background: var(--bg-surface);
     padding: 0.55rem 1rem;
-    border-bottom: 1px solid #1c2230;
+    border-bottom: 1px solid var(--border);
     position: relative;
   }
   .dots {
@@ -187,20 +187,20 @@
     border-radius: 50%;
   }
   .d-red {
-    background: #ef4444;
+    background: var(--danger-strong);
   }
   .d-yellow {
-    background: #f59e0b;
+    background: var(--warning);
   }
   .d-green {
-    background: #22c55e;
+    background: var(--accent);
   }
   .term-title {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
     font-size: 0.75rem;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
   .term-body {
     padding: 1.25rem;
@@ -213,21 +213,21 @@
     margin-bottom: 1rem;
   }
   .prompt-line {
-    color: #f3f4f6;
+    color: var(--text);
   }
   .prompt-user {
-    color: #22c55e;
+    color: var(--accent);
     font-weight: 600;
   }
   .prompt-path {
-    color: #818cf8;
+    color: var(--violet);
   }
   .prompt-cmd {
-    color: #f3f4f6;
+    color: var(--text);
     margin-left: 0.35rem;
   }
   .term-output {
-    color: #9ca3af;
+    color: var(--text-muted);
     white-space: pre-wrap;
     margin-top: 0.35rem;
     padding-left: 0.5rem;
@@ -242,7 +242,7 @@
     background: transparent;
     border: none;
     outline: none;
-    color: #f3f4f6;
+    color: var(--text);
     font-family: 'Fira Code', monospace;
     font-size: 0.85rem;
     margin-left: 0.5rem;

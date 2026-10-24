@@ -97,13 +97,13 @@
     background: none;
     border: none;
     padding: 0;
-    color: #34d399;
+    color: var(--accent-strong);
     font-size: inherit;
     cursor: pointer;
-    border-bottom: 1px dashed rgba(52, 211, 153, 0.4);
+    border-bottom: 1px dashed color-mix(in srgb, var(--accent-strong) 40%, transparent);
   }
   .unit-link:hover {
-    color: #6ee7b7;
+    color: var(--accent-strong);
     border-bottom-style: solid;
   }
   .services-container {
@@ -121,17 +121,17 @@
   .title {
     font-size: 1.15rem;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--text);
     letter-spacing: -0.01em;
   }
   .subtitle {
     font-size: 0.75rem;
-    color: #8b95a5;
+    color: var(--text-muted);
     margin-top: 0.15rem;
   }
   .panel {
-    background: #10131b;
-    border: 1px solid #1c2230;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.15rem 1.35rem;
   }
@@ -149,12 +149,12 @@
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #64748b;
-    border-bottom: 1px solid #1c2230;
+    color: var(--text-subtle);
+    border-bottom: 1px solid var(--border);
   }
   td {
     padding: 0.75rem;
-    border-bottom: 1px solid #161924;
+    border-bottom: 1px solid var(--border-subtle);
   }
   .mono {
     font-family: 'Fira Code', monospace;
@@ -165,9 +165,9 @@
     font-weight: 700;
     padding: 0.12rem 0.35rem;
     border-radius: 4px;
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
     margin-left: 0.4rem;
   }
   .badge {
@@ -180,14 +180,14 @@
     font-weight: 600;
   }
   .badge-ok {
-    background: rgba(16, 185, 129, 0.08);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .badge-fail {
-    background: rgba(244, 63, 94, 0.08);
-    color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.2);
+    background: color-mix(in srgb, var(--danger-strong) 8%, transparent);
+    color: var(--danger-strong);
+    border: 1px solid color-mix(in srgb, var(--danger-strong) 20%, transparent);
   }
   .dot-status {
     width: 5px;
@@ -195,10 +195,10 @@
     border-radius: 50%;
   }
   .dot-green {
-    background: #10b981;
+    background: var(--accent);
   }
   .dot-red {
-    background: #f43f5e;
+    background: var(--danger-strong);
   }
   .actions-cell {
     display: flex;
@@ -215,13 +215,13 @@
     transition: background 0.15s ease;
   }
   .btn-ghost {
-    background: #131622;
-    color: #cbd5e1;
-    border: 1px solid #1e2434;
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
   .btn-ghost:hover {
-    background: #181d2a;
-    color: #f1f5f9;
+    background: var(--bg-hover);
+    color: var(--text);
   }
   .btn-sm {
     padding: 0.25rem 0.55rem;
@@ -233,18 +233,18 @@
     transition: background 0.15s ease;
   }
   .btn-accent {
-    background: #10b981;
-    color: #05130b;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
   .btn-accent:hover {
-    background: #059669;
+    background: var(--accent-hover);
   }
   .btn-danger {
-    background: rgba(244, 63, 94, 0.1);
-    color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.25);
+    background: color-mix(in srgb, var(--danger-strong) 10%, transparent);
+    color: var(--danger-strong);
+    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
   }
   .btn-danger:hover {
-    background: rgba(244, 63, 94, 0.2);
+    background: color-mix(in srgb, var(--danger-strong) 20%, transparent);
   }
 </style>

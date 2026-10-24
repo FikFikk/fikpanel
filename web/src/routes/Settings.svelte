@@ -114,11 +114,11 @@
   .title {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .subtitle {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-top: 0.2rem;
   }
   .grid-layout {
@@ -127,20 +127,20 @@
     gap: 1.5rem;
   }
   .panel {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
     border-radius: 12px;
     padding: 1.5rem;
   }
   .panel-title {
     font-size: 1rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
     margin-bottom: 0.5rem;
   }
   .panel-desc {
     font-size: 0.75rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-bottom: 1.25rem;
     line-height: 1.4;
   }
@@ -154,14 +154,14 @@
     display: flex;
     justify-content: space-between;
     padding-bottom: 0.65rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
     font-size: 0.82rem;
   }
   .info-label {
-    color: #9ca3af;
+    color: var(--text-muted);
   }
   .info-val {
-    color: #f3f4f6;
+    color: var(--text);
     font-weight: 500;
   }
   .mono {
@@ -174,21 +174,21 @@
     display: block;
     font-size: 0.78rem;
     font-weight: 500;
-    color: #d1d5db;
+    color: var(--text-secondary);
     margin-bottom: 0.35rem;
   }
   input {
     width: 100%;
     padding: 0.6rem 0.75rem;
     background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
     border-radius: 8px;
-    color: #f3f4f6;
+    color: var(--text);
     font-size: 0.85rem;
     outline: none;
   }
   input:focus {
-    border-color: #22c55e;
+    border-color: var(--accent);
   }
   .btn {
     padding: 0.6rem 1.25rem;
@@ -200,7 +200,7 @@
     margin-top: 0.5rem;
   }
   .btn-primary {
-    background: #22c55e;
-    color: #0f172a;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
 </style>

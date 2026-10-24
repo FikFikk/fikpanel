@@ -170,14 +170,21 @@ func (s *Server) registerRoutes() {
 			return
 		}
 
+		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
+		setCSP := func() {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		}
+
 		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)
 		if stat, err := os.Stat(localDistDir); err == nil && stat.IsDir() {
+			setCSP()
 			localFileServer.ServeHTTP(w, r)
 			return
 		}
 
 		// 3. Fallback biner produksi (disematkan via embed.FS)
 		if embedFileServer != nil {
+			setCSP()
 			embedFileServer.ServeHTTP(w, r)
 			return
 		}

@@ -1,0 +1,141 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   BASE — reset, tipografi, aksesibilitas global
+   Standar: jangan override aturan di file ini dari komponen. Fokus keyboard
+   SELALU terlihat (:focus-visible); jangan pernah menulis outline: none tanpa
+   pengganti ring yang setara.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--info);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+}
+
+::placeholder {
+  color: var(--text-subtle);
+  opacity: 1;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text);
+}
+
+/* Ring fokus konsisten untuk seluruh elemen interaktif (hanya saat navigasi keyboard) */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Scrollbar tipis bertema */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Hormati preferensi pengguna yang sensitif terhadap gerakan */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Animasi bersama — gunakan nama ini, jangan mendefinisikan ulang keyframes serupa */
+@keyframes fp-fade {
+  from { opacity: 0; }
+}
+@keyframes fp-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+@keyframes fp-slide-in {
+  from { opacity: 0; transform: translateX(6px); }
+}
+@keyframes fp-slide-down {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes fp-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fp-pulse {
+  50% { opacity: 0.45; }
+}
+@keyframes fp-shimmer {
+  to { background-position: -200% 0; }
+}

@@ -479,6 +479,20 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "matches": [{"file": "...", "line": 10, "text": "..."}], "count": 1}` |
 | Notes | Memindai isi berkas teks di dalam direktori target untuk menemukan kata kunci dengan batas hasil 50 baris. |
 
+### 1.10 Header Keamanan HTTP Global (Security Headers)
+
+Setiap respon dari backend panel menyematkan serangkaian header pengamanan HTTP berlapis:
+
+| Header | Nilai | Penjelasan |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Mencegah MIME sniffing oleh peramban |
+| `X-Frame-Options` | `DENY` | Mencegah serangan clickjacking (halaman dilarang dimuat dalam iframe) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Mengurangi kebocoran data URL rujukan |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Menonaktifkan sensor perangkat sensitif di aplikasi |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Isolasi proses peramban untuk mencegah eksploitasi Spectre/meltdown |
+| `Cross-Origin-Resource-Policy` | `same-origin` | Mencegah aset dibaca oleh domain asing |
+| `Content-Security-Policy` *(statis)* | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'` | Menjamin hanya skrip, font, dan aset internal yang dapat dieksekusi |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

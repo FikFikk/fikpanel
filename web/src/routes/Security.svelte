@@ -35,25 +35,25 @@
   <!-- Security Mechanisms Cards -->
   <div class="cards-grid">
     <div class="sec-card">
-      <div class="s-icon" style="color: #22c55e;"><i class="ri-shield-check-line"></i></div>
+      <div class="s-icon" style="color: var(--accent);"><i class="ri-shield-check-line"></i></div>
       <div class="s-title">Argon2id Hashing</div>
       <div class="s-desc">Memory cost 19 MiB &middot; Proteksi brute-force GPU</div>
       <div class="s-status">AKTIF</div>
     </div>
     <div class="sec-card">
-      <div class="s-icon" style="color: #06b6d4;"><i class="ri-key-2-line"></i></div>
+      <div class="s-icon" style="color: var(--info);"><i class="ri-key-2-line"></i></div>
       <div class="s-title">Session Hardening</div>
       <div class="s-desc">32-byte crypto/rand &middot; Cookie HttpOnly; SameSite=Strict</div>
       <div class="s-status">AKTIF</div>
     </div>
     <div class="sec-card">
-      <div class="s-icon" style="color: #818cf8;"><i class="ri-lock-password-line"></i></div>
+      <div class="s-icon" style="color: var(--violet);"><i class="ri-lock-password-line"></i></div>
       <div class="s-title">CSRF Header Shield</div>
       <div class="s-desc">Wajib header X-Panel-Request: 1 pada seluruh request mutasi</div>
       <div class="s-status">AKTIF</div>
     </div>
     <div class="sec-card">
-      <div class="s-icon" style="color: #f59e0b;"><i class="ri-timer-flash-line"></i></div>
+      <div class="s-icon" style="color: var(--warning);"><i class="ri-timer-flash-line"></i></div>
       <div class="s-title">Login Rate Limiter</div>
       <div class="s-desc">Batas 5 kegagalan / 15 menit per alamat IP</div>
       <div class="s-status">AKTIF</div>
@@ -126,11 +126,11 @@
   .title {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .subtitle {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-top: 0.2rem;
   }
   .cards-grid {
@@ -139,8 +139,8 @@
     gap: 1.25rem;
   }
   .sec-card {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
     border-radius: 12px;
     padding: 1.25rem;
     position: relative;
@@ -152,11 +152,11 @@
   .s-title {
     font-size: 0.9rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .s-desc {
     font-size: 0.72rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin: 0.35rem 0 0.75rem;
     line-height: 1.4;
   }
@@ -166,13 +166,13 @@
     font-weight: 700;
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .panel {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
     border-radius: 12px;
     padding: 1.5rem;
   }
@@ -185,12 +185,12 @@
   .panel-title {
     font-size: 1rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .count-tag {
     font-size: 0.72rem;
     font-family: 'Fira Code', monospace;
-    color: #9ca3af;
+    color: var(--text-muted);
   }
   .table-wrap {
     overflow-x: auto;
@@ -205,12 +205,12 @@
     padding: 0.75rem;
     font-size: 0.7rem;
     text-transform: uppercase;
-    color: #9ca3af;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
   }
   td {
     padding: 0.85rem 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
   }
   .mono {
     font-family: 'Fira Code', monospace;
@@ -219,8 +219,8 @@
     font-size: 0.7rem;
     padding: 0.15rem 0.45rem;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #d1d5db;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text-secondary);
     text-transform: uppercase;
     font-weight: 600;
   }
@@ -231,12 +231,12 @@
     border-radius: 4px;
   }
   .res-ok {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
   }
   .res-fail {
-    background: rgba(244, 63, 94, 0.15);
-    color: #f43f5e;
+    background: color-mix(in srgb, var(--danger-strong) 15%, transparent);
+    color: var(--danger-strong);
   }
   .btn {
     padding: 0.45rem 0.9rem;
@@ -248,7 +248,7 @@
   }
   .btn-ghost {
     background: transparent;
-    color: #d1d5db;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   }
 </style>

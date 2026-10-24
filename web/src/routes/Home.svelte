@@ -310,8 +310,8 @@
 
   /* Bento Card Surface */
   .bento-panel {
-    background: #10131b;
-    border: 1px solid #1c2230;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.15rem 1.35rem;
     display: flex;
@@ -320,7 +320,7 @@
     transition: border-color 0.15s ease;
   }
   .bento-panel:hover {
-    border-color: #262e3e;
+    border-color: var(--border);
   }
 
   /* Header Row di Panel */
@@ -339,12 +339,12 @@
   .panel-heading {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--text);
     letter-spacing: -0.01em;
   }
   .panel-subtext {
     font-size: 0.73rem;
-    color: #8b95a5;
+    color: var(--text-muted);
     margin-top: 0.15rem;
     display: flex;
     align-items: center;
@@ -354,7 +354,7 @@
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent);
   }
 
   .badge-system {
@@ -363,9 +363,9 @@
     gap: 0.35rem;
     font-size: 0.68rem;
     font-weight: 600;
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.08);
-    border: 1px solid rgba(16, 185, 129, 0.2);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     padding: 0.15rem 0.55rem;
     border-radius: 999px;
   }
@@ -373,7 +373,7 @@
     width: 4px;
     height: 4px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent);
   }
 
   /* Quick Actions Buttons */
@@ -391,24 +391,24 @@
     font-size: 0.72rem;
     font-weight: 500;
     text-decoration: none;
-    background: #131622;
-    color: #cbd5e1;
-    border: 1px solid #1e2434;
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
     transition: all 0.15s ease;
   }
   .btn-action:hover {
-    background: #181d2a;
-    color: #f8fafc;
-    border-color: #2b3448;
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
   }
   .btn-action-primary {
-    background: rgba(16, 185, 129, 0.12);
-    color: #10b981;
-    border-color: rgba(16, 185, 129, 0.25);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .btn-action-primary:hover {
-    background: #10b981;
-    color: #06120c;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
 
   /* 4 Bento Sub-Cards */
@@ -421,16 +421,16 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: #0d0f16;
-    border: 1px solid #181c26;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 0.85rem 0.95rem;
     text-decoration: none;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   .subcard:hover {
-    border-color: #242c3d;
-    background: #11141e;
+    border-color: var(--border);
+    background: var(--bg-raised);
   }
   .subcard-top {
     display: flex;
@@ -446,34 +446,34 @@
     align-items: center;
     justify-content: center;
     font-size: 0.9rem;
-    background: #141824;
-    border: 1px solid #1e2334;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
   }
   .icon-emerald {
-    color: #10b981;
+    color: var(--accent);
   }
   .icon-indigo {
-    color: #818cf8;
+    color: var(--violet);
   }
   .icon-cyan {
-    color: #38bdf8;
+    color: var(--info);
   }
   .icon-green {
-    color: #10b981;
+    color: var(--accent);
   }
   .subcard-arrow {
-    color: #545e6f;
+    color: var(--text-subtle);
     font-size: 0.8rem;
     transition: transform 0.15s ease, color 0.15s ease;
   }
   .subcard:hover .subcard-arrow {
     transform: translateX(2px);
-    color: #cbd5e1;
+    color: var(--text-secondary);
   }
   .subcard-title {
     font-size: 0.75rem;
     font-weight: 500;
-    color: #8b95a5;
+    color: var(--text-muted);
     margin-bottom: 0.2rem;
   }
   .subcard-stats {
@@ -488,26 +488,26 @@
     font-weight: 600;
   }
   .stat-sep {
-    color: #334155;
+    color: var(--text-disabled);
   }
   .stat-muted {
-    color: #64748b;
+    color: var(--text-subtle);
     font-size: 0.73rem;
   }
   .text-emerald {
-    color: #10b981;
+    color: var(--accent);
   }
   .text-indigo {
-    color: #818cf8;
+    color: var(--violet);
   }
   .text-cyan {
-    color: #38bdf8;
+    color: var(--info);
   }
   .pulse-emerald {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--accent);
   }
 
   /* Traffic Pills */
@@ -528,14 +528,14 @@
     border: 1px solid transparent;
   }
   .pill-in {
-    background: rgba(16, 185, 129, 0.08);
-    color: #10b981;
-    border-color: rgba(16, 185, 129, 0.2);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .pill-out {
-    background: rgba(56, 189, 248, 0.08);
-    color: #38bdf8;
-    border-color: rgba(56, 189, 248, 0.2);
+    background: color-mix(in srgb, var(--info) 8%, transparent);
+    color: var(--info);
+    border-color: color-mix(in srgb, var(--info) 20%, transparent);
   }
 
   /* Layanan Prioritas Table */
@@ -545,12 +545,12 @@
     gap: 0.35rem;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #10b981;
+    color: var(--accent);
     text-decoration: none;
     transition: color 0.15s;
   }
   .link-manage:hover {
-    color: #34d399;
+    color: var(--accent-strong);
   }
   .table-wrap {
     overflow-x: auto;
@@ -566,12 +566,12 @@
     font-size: 0.68rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #64748b;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    color: var(--text-subtle);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
   }
   td {
     padding: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
   }
   .mono {
     font-family: 'Fira Code', monospace;
@@ -589,12 +589,12 @@
     font-weight: 600;
   }
   .badge-ok {
-    background: rgba(16, 185, 129, 0.12);
-    color: #10b981;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
   }
   .badge-fail {
-    background: rgba(239, 68, 68, 0.12);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--danger-strong) 12%, transparent);
+    color: var(--danger-strong);
   }
   .dot-status {
     width: 5px;
@@ -602,10 +602,10 @@
     border-radius: 50%;
   }
   .dot-green {
-    background: #10b981;
+    background: var(--accent);
   }
   .dot-red {
-    background: #ef4444;
+    background: var(--danger-strong);
   }
   .btn-sm {
     padding: 0.25rem 0.65rem;
@@ -618,20 +618,20 @@
   }
   .btn-ghost {
     background: transparent;
-    color: #cbd5e1;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   }
   .btn-ghost:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #f8fafc;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    color: var(--text);
   }
   .btn-accent {
-    background: #10b981;
-    color: #090d16;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
   .btn-danger {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: color-mix(in srgb, var(--danger-strong) 15%, transparent);
+    color: var(--danger-strong);
+    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
   }
 </style>

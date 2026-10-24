@@ -168,20 +168,20 @@
   .title {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #f3f4f6;
+    color: var(--text);
   }
   .subtitle {
     font-size: 0.8rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-top: 0.2rem;
   }
   .guard-pill {
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    background: rgba(99, 102, 241, 0.12);
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    color: #818cf8;
+    background: color-mix(in srgb, var(--violet) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--violet) 25%, transparent);
+    color: var(--violet);
     font-size: 0.72rem;
     font-weight: 600;
     padding: 0.3rem 0.75rem;
@@ -191,7 +191,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #818cf8;
+    background: var(--violet);
   }
   .suggestions {
     display: flex;
@@ -199,9 +199,9 @@
     flex-wrap: wrap;
   }
   .sug-chip {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #d1d5db;
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text-secondary);
     font-size: 0.75rem;
     padding: 0.35rem 0.75rem;
     border-radius: 20px;
@@ -209,13 +209,13 @@
     transition: all 0.15s;
   }
   .sug-chip:hover {
-    background: rgba(34, 197, 94, 0.12);
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.25);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .chat-box {
-    background: rgba(28, 29, 34, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
     border-radius: 12px;
     display: flex;
     flex-direction: column;
@@ -247,22 +247,22 @@
     line-height: 1.5;
   }
   .msg-user .msg-bubble {
-    background: #22c55e;
-    color: #0f172a;
+    background: var(--accent);
+    color: var(--text-on-accent);
     font-weight: 500;
   }
   .msg-ai .msg-bubble {
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #f3f4f6;
+    border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text);
   }
   .msg-author {
     font-size: 0.7rem;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-bottom: 0.35rem;
   }
   .msg-user .msg-author {
-    color: rgba(15, 23, 42, 0.7);
+    color: color-mix(in srgb, var(--text-on-accent) 70%, transparent);
   }
   .msg-content {
     white-space: pre-wrap;
@@ -270,12 +270,12 @@
   .actions-list {
     margin-top: 0.85rem;
     padding-top: 0.75rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
   }
   .action-title {
     font-size: 0.72rem;
     font-weight: 600;
-    color: #22c55e;
+    color: var(--accent);
     margin-bottom: 0.4rem;
   }
   .action-buttons {
@@ -284,9 +284,9 @@
     flex-wrap: wrap;
   }
   .act-btn {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #22c55e;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
     padding: 0.35rem 0.75rem;
     border-radius: 6px;
     font-size: 0.75rem;
@@ -295,32 +295,32 @@
     transition: all 0.15s;
   }
   .act-btn:hover {
-    background: #22c55e;
-    color: #0f172a;
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
   .chat-input-bar {
     display: flex;
     gap: 0.5rem;
     padding: 0.85rem 1.25rem;
-    background: #18191d;
-    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--bg-raised);
+    border-top: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
   }
   .chat-input-bar input {
     flex: 1;
     background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
     border-radius: 8px;
     padding: 0.6rem 0.85rem;
-    color: #f3f4f6;
+    color: var(--text);
     font-size: 0.85rem;
     outline: none;
   }
   .chat-input-bar input:focus {
-    border-color: #22c55e;
+    border-color: var(--accent);
   }
   .btn-send {
-    background: #22c55e;
-    color: #0f172a;
+    background: var(--accent);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 8px;
     padding: 0.6rem 1.25rem;
@@ -339,7 +339,7 @@
   .dot {
     width: 6px;
     height: 6px;
-    background: #818cf8;
+    background: var(--violet);
     border-radius: 50%;
     margin-right: 4px;
     animation: bounce 1.4s infinite ease-in-out both;
