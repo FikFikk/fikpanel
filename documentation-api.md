@@ -753,13 +753,13 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `GET /pma/` atau `GET /phpmyadmin/` |
+| Method + Endpoint | `ALL /pma/` atau `ALL /phpmyadmin/` atau `ALL /phpMyAdmin/` |
 | Auth Required | Yes (Session cookie atau parameter query `sso_token`) |
-| Headers | `Accept: text/html` |
-| Query Params | `route` (string, mis. `/database/structure`), `db` (string, nama database), `user` (string, username database), `sso_token` (string, token SSO) |
-| Request Body | Tidak ada |
-| Response | HTTP 200 Dokumen HTML antarmuka phpMyAdmin resmi jika sudah terpasang, atau HTTP 503 dengan tampilan peringatan belum terpasang jika paket phpMyAdmin belum diinstal. |
-| Notes | Jika belum dipasang di server, sistem mengembalikan panduan Quick Install phpMyAdmin via FikPanel. Jika sudah terpasang, menyajikan akses resmi phpMyAdmin. |
+| Headers | `Accept: text/html, application/json, text/css, */*` |
+| Query Params | `route` (string, mis. `/database/structure`), `db` (string, nama database), `user` (string, username database), `pma_username` (string), `sso_token` (string, token SSO) |
+| Request Body | Mendukung seluruh payload HTTP (GET, POST form submission login phpMyAdmin, AJAX query) |
+| Response | HTTP 200 Mengalirkan (proxying) dokumen HTML resmi, aset tema, CSS, skrip JavaScript, serta cookie sesi asli dari daemon phpMyAdmin fisik (`127.0.0.1:8885`). Mengembalikan HTTP 503 jika paket belum terpasang. |
+| Notes | Proxy transparan langsung ke daemon resmi phpMyAdmin tanpa mock/clone buatan. Menangani normalisasi casing folder Windows (`phpMyAdmin`) dan Linux (`phpmyadmin`), serta pemetaan cookie path otomatis. |
 
 | Field | Detail |
 |---|---|

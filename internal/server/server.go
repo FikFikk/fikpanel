@@ -163,8 +163,9 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/databases/webgui/toggle-public", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiTogglePublic)))
 
 	// Web Client Database Terintegrasi (Bebas Port 888 & Bebas Keterikatan Domain)
-	s.mux.HandleFunc("GET /pma/", s.handleBuiltinWebGuiClient)
-	s.mux.HandleFunc("GET /phpmyadmin/", s.handleBuiltinWebGuiClient)
+	s.mux.HandleFunc("/pma/", s.handleBuiltinWebGuiClient)
+	s.mux.HandleFunc("/phpmyadmin/", s.handleBuiltinWebGuiClient)
+	s.mux.HandleFunc("/phpMyAdmin/", s.handleBuiltinWebGuiClient)
 	s.mux.HandleFunc("GET /pma/api/tables", s.handleBuiltinWebGuiTables)
 	s.mux.HandleFunc("POST /pma/api/query", s.handleBuiltinWebGuiQuery)
 
