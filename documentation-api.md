@@ -293,15 +293,127 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 101 Switching Protocols |
 | Notes | Membutuhkan sudo mode aktif jika membuka shell root. Maksimal 3 sesi simultan per user. Idle timeout 15 menit. |
 
+### 1.7 AI Copilot & Manajemen Provider LLM
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/ai/providers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "providers": [{"id": 1, "name": "Omniroute", "kind": "openai_compat", "base_url": "https://...", "model": "gpt-4o", "api_key": "sk-••••••", "has_key": true, "is_default": true}]}` |
+| Notes | Seluruh kunci API disensor otomatis demi keamanan (hanya menampilkan 3 karakter awal dan 4 karakter akhir). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/ai/providers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `kind` (string, wajib: `openai_compat`/`anthropic`/`gemini`), `base_url` (string, wajib), `model` (string, wajib), `api_key` (string, opsional), `is_default` (bool) |
+| Response | HTTP 200 `{"ok": true, "provider": {...}}`; HTTP 400 validasi gagal |
+| Notes | Provider pertama yang didaftarkan otomatis berstatus default. Mendukung gateway kustom (Omniroute, 9router, OpenAI, Groq, Ollama). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/ai/providers/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string), `kind` (string), `base_url` (string), `model` (string), `api_key` (string, kosongkan jika tidak diubah), `is_default` (bool) |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Jika field `api_key` dikirim string kosong, kunci yang tersimpan sebelumnya tetap dipertahankan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/ai/providers/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus provider. Bila provider yang dihapus berstatus default, sistem otomatis mengalihkan status default ke provider lain yang tersisa. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/ai/providers/{id}/default` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menyetel provider sebagai provider aktif utama. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/ai/providers/test` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `id` (int, opsional), `kind` (string, wajib), `base_url` (string, wajib), `model` (string, wajib), `api_key` (string, opsional) |
+| Response | HTTP 200 `{"ok": true, "latency_ms": 142, "reply": "PONG"}`; HTTP 400 koneksi gagal |
+| Notes | Melakukan ping verifikasi konektivitas ke LLM sebelum konfigurasi disimpan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/ai/conversations` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "conversations": [{"id": 1, "title": "Cek Nginx", "updated_at": 1792896000, "message_count": 4}]}` |
+| Notes | Daftar percakapan terurut berdasarkan aktivitas waktu terbaru (`updated_at` descending). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/ai/conversations` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `title` (string, opsional, default: 'Percakapan Baru') |
+| Response | HTTP 200 `{"ok": true, "conversation": {...}}` |
+| Notes | Membuat sesi percakapan kosong baru secara manual. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/ai/conversations/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus sesi percakapan dan seluruh pesan di dalamnya (CASCADE). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/ai/conversations` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus seluruh riwayat percakapan milik pengguna aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/ai/conversations/{id}/messages` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "conversation": {...}, "messages": [{"id": 1, "role": "user", "content": "...", "ts": 1792896000}]}` |
+| Notes | Mengambil kronologi riwayat pesan dalam satu percakapan. |
+
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `POST /api/ai/chat` |
 | Auth Required | Yes (Cookie `panel_session`) |
-| Headers | `Content-Type: application/json`, `Accept: text/event-stream` |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `conversation_id` (int, opsional), `prompt` (string, wajib) |
-| Response | HTTP 200 SSE stream token jawaban, tool-call status, dan rekomendasi tombol aksi |
-| Notes | Tool read-only (maksimal 8 panggilan). Data log dan konfigurasi diredaksi otomatis sebelum dikirim ke penyedia LLM. |
+| Request Body | `conversation_id` (int, opsional), `message` (string, wajib), `provider_id` (int, opsional) |
+| Response | HTTP 200 `{"ok": true, "conversation_id": 1, "response": "...", "provider_name": "Omniroute", "model": "gpt-4o", "actions": [{"label": "Restart Nginx", "action": "service.restart", "target": "nginx.service"}]}` |
+| Notes | Jika `conversation_id` 0, otomatis membuat percakapan baru dengan judul dari 35 karakter awal pesan. Bila provider gagal/offline, otomatis fallback ke diagnostik lokal. Seluruh pesan diredaksi dari pola secret (BR-04). |
 
 ---
 

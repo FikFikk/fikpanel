@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"fikpanel/internal/ai"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/services"
@@ -28,6 +29,7 @@ type Server struct {
 	services *services.Manager
 	nginx    *nginx.Manager
 	sites    *sites.Manager
+	ai       *ai.Client
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -49,6 +51,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
 	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
+	srv.ai = ai.NewClient(s, m, srv.nginx)
 
 	srv.registerRoutes()
 
@@ -110,7 +113,20 @@ func (s *Server) registerRoutes() {
 	// Terminal Web Aman
 	s.mux.Handle("POST /api/terminal/exec", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExec)))
 
-	// AI Copilot Diagnostik
+	// AI Copilot & Manajemen Provider LLM
+	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))
+	s.mux.Handle("POST /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleCreateAIProvider)))
+	s.mux.Handle("PUT /api/ai/providers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateAIProvider)))
+	s.mux.Handle("DELETE /api/ai/providers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteAIProvider)))
+	s.mux.Handle("POST /api/ai/providers/{id}/default", s.AuthMiddleware(http.HandlerFunc(s.handleSetDefaultAIProvider)))
+	s.mux.Handle("POST /api/ai/providers/test", s.AuthMiddleware(http.HandlerFunc(s.handleTestAIProvider)))
+
+	// AI Riwayat Percakapan (Conversations & Messages)
+	s.mux.Handle("GET /api/ai/conversations", s.AuthMiddleware(http.HandlerFunc(s.handleListAIConversations)))
+	s.mux.Handle("POST /api/ai/conversations", s.AuthMiddleware(http.HandlerFunc(s.handleCreateAIConversation)))
+	s.mux.Handle("DELETE /api/ai/conversations/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteAIConversation)))
+	s.mux.Handle("DELETE /api/ai/conversations", s.AuthMiddleware(http.HandlerFunc(s.handleClearAIConversations)))
+	s.mux.Handle("GET /api/ai/conversations/{id}/messages", s.AuthMiddleware(http.HandlerFunc(s.handleGetAIMessages)))
 	s.mux.Handle("POST /api/ai/chat", s.AuthMiddleware(http.HandlerFunc(s.handleAIChat)))
 
 	// Manajemen Berkas (File Manager)

@@ -241,3 +241,37 @@ export interface NginxErrorLog {
   lines: number;
   content: string;
 }
+
+// AI Provider, Percakapan, dan Pesan Riwayat
+export type AIProviderKind = 'openai_compat' | 'anthropic' | 'gemini';
+
+export interface AIProvider {
+  id: number;
+  name: string;
+  kind: AIProviderKind;
+  base_url: string;
+  model: string;
+  api_key: string;
+  has_key?: boolean;
+  is_default: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AIConversation {
+  id: number;
+  user_id: number;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  message_count: number;
+}
+
+export interface AIMessage {
+  id: number;
+  conversation_id: number;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  tool_name?: string;
+  ts: number;
+}
