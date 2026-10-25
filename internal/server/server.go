@@ -153,11 +153,17 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/databases/{engine}/list", s.AuthMiddleware(http.HandlerFunc(s.handleListDatabases)))
 	s.mux.Handle("POST /api/databases/{engine}/create", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDatabase)))
 	s.mux.Handle("DELETE /api/databases/{engine}/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDatabase)))
+	s.mux.Handle("POST /api/databases/{engine}/service", s.AuthMiddleware(http.HandlerFunc(s.handleEngineService)))
+	s.mux.Handle("POST /api/databases/{engine}/switch-version", s.AuthMiddleware(http.HandlerFunc(s.handleEngineSwitchVersion)))
+	s.mux.Handle("GET /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineGetConfig)))
+	s.mux.Handle("POST /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineSaveConfig)))
+	s.mux.Handle("GET /api/databases/{engine}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleEngineLogs)))
 
 	// Antrean Tugas Sistem & Streaming Log Real-time
 	s.mux.Handle("GET /api/system/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListTasks)))
 	s.mux.Handle("GET /api/system/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetTask)))
 	s.mux.Handle("GET /api/system/tasks/{id}/stream", s.AuthMiddleware(http.HandlerFunc(s.handleStreamTask)))
+
 
 	// Nginx Manager (layanan, config, versi, beban, optimasi, log error)
 	nginxRoutes := map[string]http.HandlerFunc{

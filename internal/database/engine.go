@@ -55,6 +55,14 @@ func SetEngineInstalled(engine, version string, running bool) {
 	globalState.running[engine] = running
 }
 
+// SetEngineRunning mengubah status aktif layanan engine di runtime
+func SetEngineRunning(engine string, running bool) {
+	globalState.mu.Lock()
+	defer globalState.mu.Unlock()
+	globalState.running[engine] = running
+}
+
+
 // DetectEngines mendeteksi status ketersediaan seluruh engine database
 func DetectEngines(ctx context.Context, dbsCountMap map[string]int) []EngineInfo {
 	globalState.mu.RLock()

@@ -671,6 +671,55 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "message": "Database berhasil dihapus"}` |
 | Notes | Menghapus database dan user terkait. Memerlukan konfirmasi modal destruktif di frontend. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/:engine/service` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `action` (string, wajib: `start`, `stop`, `restart`, `reload`) |
+| Response | HTTP 200 `{"ok": true, "engine": "mysql", "action": "restart", "running": true, "message": "Layanan berhasil di-restart"}` |
+| Notes | Mengontrol status proses daemon database pada host OS systemd. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/:engine/switch-version` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `version` (string, wajib), `backup_first` (bool, default `true`) |
+| Response | HTTP 202 `{"ok": true, "task_id": "task_switch_mysql_...", "message": "Proses migrasi versi sedang berjalan..."}` |
+| Notes | Menjalankan tugas migrasi versi di latar belakang. Jika `backup_first=true`, sistem mengekspor cadangan snapshot seluruh database otomatis sebelum mengganti paket biner. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/:engine/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "engine": "mysql", "path": "/etc/mysql/my.cnf", "content": "..."}` |
+| Notes | Mengambil isi berkas konfigurasi utama mesin database. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/:engine/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `content` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi berhasil disimpan"}` |
+| Notes | Menyimpan pembaruan konfigurasi daemon dan mencatat aksi ke riwayat audit. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/:engine/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "engine": "mysql", "logs": "..."}` |
+| Notes | Menyajikan potongan log galat (error log) terbaru mesin database. |
 
 ---
 

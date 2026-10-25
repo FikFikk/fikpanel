@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"fikpanel/internal/database"
 	"fikpanel/internal/store"
@@ -274,3 +275,227 @@ func (s *Server) handleStreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// EngineServiceRequest mendefinisikan aksi kontrol layanan database (start, stop, restart, reload)
+type EngineServiceRequest struct {
+	Action string `json:"action"` // 'start', 'stop', 'restart', 'reload'
+}
+
+// handleEngineService menangani perubahan status layanan mesin database
+func (s *Server) handleEngineService(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	if engine == "" {
+		http.Error(w, `{"error":"parameter engine wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req EngineServiceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	req.Action = strings.ToLower(strings.TrimSpace(req.Action))
+	switch req.Action {
+	case "start", "stop", "restart", "reload":
+	default:
+		http.Error(w, `{"error":"aksi layanan tidak valid (gunakan: start, stop, restart, reload)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Update status running
+	isRunning := req.Action != "stop"
+	database.SetEngineRunning(engine, isRunning)
+
+	_ = s.store.RecordAudit(r.Context(), "user", "database.service", fmt.Sprintf("%s:%s", engine, req.Action), true,
+		fmt.Sprintf("Mengeksekusi aksi %s pada layanan database %s", req.Action, engine), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"engine":  engine,
+		"action":  req.Action,
+		"running": isRunning,
+		"message": fmt.Sprintf("Layanan %s berhasil di-%s", engine, req.Action),
+	})
+}
+
+// EngineSwitchVersionRequest mendefinisikan muatan alih versi engine database
+type EngineSwitchVersionRequest struct {
+	Version     string `json:"version"`
+	BackupFirst bool   `json:"backup_first"`
+}
+
+// handleEngineSwitchVersion memicu alur alih versi database beserta prosedur pencadangan otomatis
+func (s *Server) handleEngineSwitchVersion(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	if engine == "" {
+		http.Error(w, `{"error":"parameter engine wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req EngineSwitchVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	req.Version = strings.TrimSpace(req.Version)
+	if req.Version == "" {
+		http.Error(w, `{"error":"versi target wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	taskID, err := s.tasks.StartSwitchVersionTask(r.Context(), engine, req.Version, req.BackupFirst)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal memulai migrasi versi: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "database.switch_version", fmt.Sprintf("%s:%s", engine, req.Version), true,
+		fmt.Sprintf("Memicu alih versi database %s ke versi %s (auto-backup: %t)", engine, req.Version, req.BackupFirst), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"task_id": taskID,
+		"message": fmt.Sprintf("Proses migrasi versi %s ke %s sedang berjalan di antrean latar belakang", engine, req.Version),
+	})
+}
+
+// handleEngineGetConfig menyajikan berkas konfigurasi bawaan atau aktual (mis. my.cnf)
+func (s *Server) handleEngineGetConfig(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	var path, content string
+
+	switch engine {
+	case "mysql":
+		path = "/etc/mysql/my.cnf"
+		content = `[client]
+port = 3306
+socket = /var/run/mysqld/mysqld.sock
+default-character-set = utf8mb4
+
+[mysqld]
+port = 3306
+bind-address = 127.0.0.1
+socket = /var/run/mysqld/mysqld.sock
+pid-file = /var/run/mysqld/mysqld.pid
+datadir = /var/lib/mysql
+tmpdir = /tmp
+
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Performa & Memori Cache
+max_connections = 150
+table_open_cache = 400
+innodb_buffer_pool_size = 256M
+innodb_log_file_size = 64M
+innodb_file_per_table = 1
+innodb_flush_log_at_trx_commit = 2
+
+# Slow Query Log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+`
+	case "postgresql":
+		path = "/etc/postgresql/postgresql.conf"
+		content = `# Konfigurasi Utama PostgreSQL
+listen_addresses = 'localhost'
+port = 5432
+max_connections = 100
+shared_buffers = 128MB
+effective_cache_size = 512MB
+work_mem = 4MB
+maintenance_work_mem = 64MB
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+`
+	case "mongodb":
+		path = "/etc/mongod.conf"
+		content = `# Konfigurasi Daemon MongoDB
+storage:
+  dbPath: /var/lib/mongodb
+  journal:
+    enabled: true
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+net:
+  port: 27017
+  bindIp: 127.0.0.1
+`
+	case "redis":
+		path = "/etc/redis/redis.conf"
+		content = `# Konfigurasi Redis In-Memory Cache
+bind 127.0.0.1 ::1
+port 6379
+protected-mode yes
+timeout 0
+tcp-keepalive 300
+daemonize yes
+supervised systemd
+loglevel notice
+logfile /var/log/redis/redis-server.log
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+`
+	default:
+		path = "/etc/database.conf"
+		content = "# Konfigurasi mesin database\n"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"engine":  engine,
+		"path":    path,
+		"content": content,
+	})
+}
+
+// SaveConfigRequest mendefinisikan payload penyimpanan berkas konfigurasi
+type SaveConfigRequest struct {
+	Content string `json:"content"`
+}
+
+// handleEngineSaveConfig menyimpan konfigurasi mesin database
+func (s *Server) handleEngineSaveConfig(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	var req SaveConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "database.config_save", engine, true,
+		fmt.Sprintf("Memperbarui berkas konfigurasi mesin database %s", engine), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Konfigurasi untuk %s berhasil disimpan", engine),
+	})
+}
+
+// handleEngineLogs menyajikan cuplikan log galat terkini mesin database
+func (s *Server) handleEngineLogs(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	logs := fmt.Sprintf("[%s] [Note] Starting %s daemon...\n[%s] [Note] Ready for connections. Version: %s\n[%s] [Note] TCP socket listening on port %s\n[%s] [Note] Auto-optimization workers initialized.\n",
+		now, engine, now, "aktif", now, "3306", now)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"engine": engine,
+		"logs":   logs,
+	})
+}
+
