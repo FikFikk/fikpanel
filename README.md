@@ -26,6 +26,7 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 ## Fitur Unggulan
 
 ### 1. Dashboard Bento Realtime
+- **Penjadwal Tugas (Cron Jobs)**: Manajemen eksekusi skrip otomatis, pembersihan log berkala, trigger manual, dan riwayat terminal log per tugas.
 - **4 Circular Radial Gauges**: Visualisasi status beban (*Load Average*), utilisasi CPU, konsumsi RAM, dan sisa kapasitas penyimpanan Disk (`/`) dilengkapi *ambient glow* dan peringatan ambang batas otomatis (>= 85%).
 - **Streaming Metrik SSE (1 Detik)**: Data metrik dikirim via *Server-Sent Events* dengan penyimpanan riwayat *Ring Buffer* 300 titik tanpa membebani database.
 - **Canvas Realtime Wave Chart**: Grafik performa bergradasi warna dinamis, deteksi metrik puncak (*Peak Stats*), throughput jaringan (Download / Upload), serta crosshair interaktif.

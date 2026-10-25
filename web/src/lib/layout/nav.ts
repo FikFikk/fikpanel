@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'docker', label: 'Docker', icon: 'ri-box-3-line', group: 'utama' },
   { id: 'files', label: 'Files', icon: 'ri-folder-3-line', group: 'utama' },
   { id: 'services', label: 'Services', icon: 'ri-server-line', group: 'utama' },
+  { id: 'cron', label: 'Cron Jobs', icon: 'ri-time-line', group: 'utama' },
   { id: 'terminal', label: 'Terminal', icon: 'ri-terminal-box-line', group: 'utama' },
   { id: 'monitor', label: 'Monitor', icon: 'ri-line-chart-line', group: 'sistem' },
   { id: 'security', label: 'Security', icon: 'ri-shield-keyhole-line', group: 'sistem' },

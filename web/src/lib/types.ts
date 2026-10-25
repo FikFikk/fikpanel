@@ -319,6 +319,33 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── Cron Job Management ──────────────────────────────────────────────────
+export interface CronJob {
+  id: number;
+  name: string;
+  schedule_type: 'minute_n' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
+  spec: string;
+  command: string;
+  enabled: boolean;
+  save_log: boolean;
+  timeout_sec: number;
+  last_run_at: number;
+  last_status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CronLog {
+  id: number;
+  job_id: number;
+  status: 'success' | 'failed' | 'timeout';
+  output: string;
+  exit_code: number;
+  duration_ms: number;
+  started_at: number;
+  finished_at: number;
+}
+
 // ── Docker & Kontainerisasi (10 Modul) ──────────────────────────────────────
 export interface DockerContainerPort {
   ip: string;

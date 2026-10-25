@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fikpanel/internal/ai"
+	"fikpanel/internal/cron"
 	"fikpanel/internal/database"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
@@ -32,6 +33,7 @@ type Server struct {
 	sites    *sites.Manager
 	ai       *ai.Client
 	tasks    *database.TaskManager
+	cronMgr  *cron.Manager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -50,9 +52,11 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		services: svc,
 		nginx:    nginx.NewManager(nginx.DefaultPaths(), s, s),
 		tasks:    database.NewTaskManager(s),
+		cronMgr:  cron.NewManager(s),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
+	srv.cronMgr.Start(srv.bgCtx)
 	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
 	srv.ai = ai.NewClient(s, m, srv.nginx)
 
@@ -115,6 +119,14 @@ func (s *Server) registerRoutes() {
 
 	// Terminal Web Aman
 	s.mux.Handle("POST /api/terminal/exec", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExec)))
+
+	// Penjadwal Tugas (Cron Jobs)
+	s.mux.Handle("GET /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronJobs)))
+	s.mux.Handle("POST /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleCreateCronJob)))
+	s.mux.Handle("POST /api/cron/jobs/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCronJob)))
+	s.mux.Handle("DELETE /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteCronJob)))
+	s.mux.Handle("POST /api/cron/jobs/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunCronJobNow)))
+	s.mux.Handle("GET /api/cron/jobs/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronLogs)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))
