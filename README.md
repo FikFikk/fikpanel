@@ -30,6 +30,8 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 - **Pencadangan & Snapshot (Backup S3 / Lokal)**: Cadangkan database MySQL / direktori website ke MinIO / S3 Object Storage atau arsip lokal secara instan.
 - **Firewall Guard (UFW GUI)**: Monitoring dan kendali buka-tutup port TCP/UDP sistem operasi secara visual tanpa terminal SSH.
 - **Node.js & PM2 Process Manager**: Monitor utilisasi CPU/RAM per proses Node, status uptime, dan kontrol siklus hidup (start/stop/restart) aplikasi.
+- **Terminal Shell Nyata**: Eksekusi perintah bash/cmd sistem secara langsung dengan timeout guard dan limit output 64KB (menggantikan mode simulasi mock).
+- **SSL Let's Encrypt Auto-Renew Button**: Pemeriksaan masa aktif sertifikat SSL semua domain dan pemicu pembaruan massal secara 1-klik di panel situs.
 - **4 Circular Radial Gauges**: Visualisasi status beban (*Load Average*), utilisasi CPU, konsumsi RAM, dan sisa kapasitas penyimpanan Disk (`/`) dilengkapi *ambient glow* dan peringatan ambang batas otomatis (>= 85%).
 - **Streaming Metrik SSE (1 Detik)**: Data metrik dikirim via *Server-Sent Events* dengan penyimpanan riwayat *Ring Buffer* 300 titik tanpa membebani database.
 - **Canvas Realtime Wave Chart**: Grafik performa bergradasi warna dinamis, deteksi metrik puncak (*Peak Stats*), throughput jaringan (Download / Upload), serta crosshair interaktif.

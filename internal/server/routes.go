@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -304,25 +307,42 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmdClean := strings.TrimSpace(req.Command)
-	var output string
+	if cmdClean == "" {
+		http.Error(w, `{"error":"perintah kosong"}`, http.StatusBadRequest)
+		return
+	}
 
-	switch {
-	case cmdClean == "uptime":
-		output = fmt.Sprintf(" %s up 14 days, 3 users,  load average: 0.12, 0.08, 0.05", time.Now().Format("15:04:05"))
-	case cmdClean == "uname -a":
-		output = fmt.Sprintf("Linux fikpanel-node 6.8.0-45-generic #45-Ubuntu SMP PREEMPT_DYNAMIC %s x86_64 GNU/Linux", runtime.GOARCH)
-	case cmdClean == "free -m" || cmdClean == "free -h":
-		output = "               total        used        free      shared  buff/cache   available\nMem:            7982        2140        4310         120        1532        5522\nSwap:           2048           0        2048"
-	case cmdClean == "df -h":
-		output = "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       458G  112G  324G  26% /\ntmpfs           3.9G     0  3.9G   0% /dev/shm\n/dev/sda2       512M  6.2M  506M   2% /boot/efi"
-	case strings.HasPrefix(cmdClean, "systemctl status"):
-		output = "● nginx.service - A high performance web server and a reverse proxy server\n     Loaded: loaded (/lib/systemd/system/nginx.service; enabled)\n     Active: active (running) since Wed 2026-10-21 10:00:00 UTC\n   Main PID: 1024 (nginx)"
-	case cmdClean == "whoami":
-		output = "root"
-	case cmdClean == "date":
-		output = time.Now().Format(time.RFC1123)
-	default:
-		output = fmt.Sprintf("[fikpanel terminal] command '%s' dieksekusi dalam mode sandbox aman.\nGunakan 'uptime', 'uname -a', 'free -m', 'df -h', 'systemctl status', atau 'whoami'.", cmdClean)
+	// Real execution di Linux dengan timeout 10 detik
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/c", cmdClean)
+	} else {
+		cmd = exec.CommandContext(ctx, "bash", "-c", cmdClean)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		if len(output) > 0 {
+			output += "\n--- STDERR ---\n"
+		}
+		output += stderr.String()
+	}
+
+	if err != nil && len(output) == 0 {
+		output = fmt.Sprintf("Error: %v", err)
+	}
+
+	// Batasi ukuran output 64KB
+	if len(output) > 65536 {
+		output = output[:65536] + "\n... [output dipotong 64KB]"
 	}
 
 	w.Header().Set("Content-Type", "application/json")

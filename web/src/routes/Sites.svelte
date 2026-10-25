@@ -97,6 +97,35 @@
   });
 
   // Sisa hari masa berlaku sertifikat
+  async function renewAllSSL() {
+    const issuedSites = sites.filter((s) => s.ssl_mode === 'letsencrypt');
+    if (issuedSites.length === 0) {
+      notify('Tidak ada situs dengan SSL Let\'s Encrypt', 'info');
+      return;
+    }
+    notify(`Memeriksa dan memperbarui SSL untuk ${issuedSites.length} situs...`, 'info');
+    let count = 0;
+    for (const site of issuedSites) {
+      try {
+        await apiFetch(`/api/sites/${site.id}/ssl`, {
+          method: 'POST',
+          body: JSON.stringify({
+            enabled: true,
+            force_https: site.force_https === 1,
+            hsts: site.hsts === 1,
+            issue: true,
+            skip_dns: true,
+          }),
+        });
+        count++;
+      } catch {
+        // Lanjutkan
+      }
+    }
+    notify(`Pembaruan SSL selesai dipicu untuk ${count} situs`, 'success');
+    await loadSites();
+  }
+
   function sslDaysLeft(s: Site) {
     return Math.max(0, Math.floor((s.ssl_expires * 1000 - Date.now()) / 86400000));
   }
@@ -244,6 +273,11 @@
       <button class="btn btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
         <i class="ri-add-line"></i>
         <span>Tambah Situs</span>
+      </button>
+
+      <button class="btn btn-renew-ssl" title="Perbarui dan cek masa aktif semua SSL otomatis" onclick={renewAllSSL}>
+        <i class="ri-shield-keyhole-line"></i>
+        <span>Perbarui SSL Semua</span>
       </button>
 
       <!-- Badge Web Server Aktif (Nginx 1.24.0 ▶) -->
@@ -714,6 +748,28 @@
   .btn-add-site:hover {
     background: var(--accent-hover);
     box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .btn-renew-ssl {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.85rem;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-renew-ssl:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+  }
+  .btn-renew-ssl i {
+    color: var(--accent);
   }
 
   /* Badge Server Nginx */
