@@ -11,6 +11,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Dashboard', icon: 'ri-dashboard-3-line', group: 'utama' },
   { id: 'website', label: 'Website', icon: 'ri-global-line', group: 'utama' },
+  { id: 'appstore', label: 'App Store', icon: 'ri-apps-2-line', group: 'utama' },
   { id: 'dns', label: 'DNS Manager', icon: 'ri-node-tree', group: 'utama' },
   { id: 'php', label: 'PHP Manager', icon: 'ri-code-s-slash-line', group: 'utama' },
   { id: 'databases', label: 'Databases', icon: 'ri-database-2-line', group: 'utama' },

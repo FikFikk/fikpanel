@@ -27,6 +27,7 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 
 ### 1. Dashboard Bento Realtime
 - **Penjadwal Tugas (Cron Jobs)**: Manajemen eksekusi skrip otomatis, pembersihan log berkala, trigger manual, dan riwayat terminal log per tugas.
+- **Software App Store & Toolkit 1-Klik**: Katalog instalasi paket software esensial Linux otomatis (`Nginx`, `PHP 8.2/8.3 + FPM Suite`, `MariaDB/MySQL`, `Redis Cache`, `Node.js + NPM`, `Certbot`, `Git`) dilengkapi terminal viewer log proses instalasi live.
 - **Task Manager & Process Killer**: Pantau proses sistem paling berat (CPU/RAM teratas), tombol kill proses, dan audit port jaringan yang mendengarkan (*Listening Ports*).
 - **Pembersih Sistem & Optimasi RAM (Cleaner)**: Pindai dan bersihkan sampah paket APT, arsip log lama (`.gz`, `.old`), file temporary, serta flush buffer RAM (*drop caches*) dalam 1-klik.
 - **Pencadangan & Snapshot (Backup S3 / Lokal)**: Cadangkan database MySQL / direktori website ke MinIO / S3 Object Storage atau arsip lokal secara instan.

@@ -20,6 +20,7 @@
     cron: () => import('./routes/Cron.svelte'),
   backup: () => import('./routes/Backup.svelte'),
   node: () => import('./routes/NodeManager.svelte'),
+  appstore: () => import('./routes/AppStore.svelte'),
   dns: () => import('./routes/DNSManager.svelte'),
   php: () => import('./routes/PHPManager.svelte'),
   system: () => import('./routes/SystemManager.svelte'),

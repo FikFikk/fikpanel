@@ -319,6 +319,26 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── App Store & Toolkit Installer ─────────────────────────────────────────
+export interface AppPackage {
+  id: string;
+  name: string;
+  category: 'webserver' | 'runtime' | 'database' | 'tools';
+  version: string;
+  description: string;
+  icon: string;
+  installed: boolean;
+  status: 'running' | 'stopped' | 'not_installed';
+  apt_packages: string[];
+}
+
+export interface InstallTask {
+  app_id: string;
+  status: 'running' | 'success' | 'failed';
+  logs: string;
+  started_at: number;
+}
+
 // ── System Process & Cleaner ──────────────────────────────────────────────
 export interface SystemProcess {
   pid: number;

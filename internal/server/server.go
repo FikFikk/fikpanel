@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fikpanel/internal/ai"
+	"fikpanel/internal/appstore"
 	"fikpanel/internal/cron"
 	"fikpanel/internal/database"
 	"fikpanel/internal/metrics"
@@ -42,6 +43,7 @@ type Server struct {
 	pm2      *node.Manager
 	phpMgr   *php.Manager
 	systemMgr *system.Manager
+	appStore *appstore.Manager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -65,6 +67,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		pm2:      node.NewManager(),
 		phpMgr:   php.NewManager(),
 		systemMgr: system.NewManager(),
+		appStore:  appstore.NewManager(),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -183,6 +186,11 @@ func (s *Server) registerRoutes() {
 	// System Cleaner & Optimization
 	s.mux.Handle("GET /api/system/cleaner/scan", s.AuthMiddleware(http.HandlerFunc(s.handleScanSystemJunk)))
 	s.mux.Handle("POST /api/system/cleaner/clean", s.AuthMiddleware(http.HandlerFunc(s.handleCleanSystemJunk)))
+
+	// Software App Store & Toolkit Installer
+	s.mux.Handle("GET /api/appstore/catalog", s.AuthMiddleware(http.HandlerFunc(s.handleListAppStore)))
+	s.mux.Handle("POST /api/appstore/install/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleInstallApp)))
+	s.mux.Handle("GET /api/appstore/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetAppTask)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))
