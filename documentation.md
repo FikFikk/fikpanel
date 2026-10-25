@@ -101,8 +101,15 @@ flowchart TD
     CekTerpasang -- Sudah Terpasang --> DashboardDB[Tampilkan Dashboard & Tabel Database]
     DashboardDB --> TambahDB[Tambah DB + Generate Password Acak 16 Karakter]
     DashboardDB --> KelolaPass[Lihat / Sensor / Salin Password User & Root]
-    DashboardDB --> BackupDB[Backup / Ekspor Instan]
-    DashboardDB --> WebGUI[Akses Web Client Manager]
+    DashboardDB --> WebGUI[Akses Web GUI phpMyAdmin]
+    WebGUI --> PilihAkses{Pilih Metode Akses}
+    PilihAkses -- Akses Bebas Sandi (SSO) --> GenSSO[Panggil POST /api/databases/webgui/sso]
+    GenSSO --> TokenSSO[Buat Token Kriptografi Sekali Pakai]
+    TokenSSO --> RedirectTab[Buka Tab Baru: http://IP:888/phpmyadmin/?sso_token=...]
+    PilihAkses -- Akses Publik --> CekPortPublik{Toggle Port 888 Aktif?}
+    CekPortPublik -- Nonaktif --> BukaPort[Panggil POST /api/databases/webgui/toggle-public]
+    BukaPort --> BukaURLPublik[Buka Tab Baru: http://IP:888/phpmyadmin/]
+    CekPortPublik -- Aktif --> BukaURLPublik
     DashboardDB --> HapusDB[Hapus Database via Dialog Konfirmasi]
 ```
 

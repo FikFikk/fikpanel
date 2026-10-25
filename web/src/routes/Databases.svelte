@@ -41,6 +41,8 @@
 
   // State Web GUI Access (phpMyAdmin / Adminer)
   let publicAccessEnabled = $state(false);
+  let targetWebGuiDb = $state('');
+  let webGuiStatus = $state<{ installed: boolean; software: string; port: number; php_version: string; public_access: boolean } | null>(null);
 
   // State Kuota Database
   let quotaTargetDb = $state<DatabaseItem | null>(null);
@@ -481,6 +483,87 @@
     showQuotaModal = false;
   }
 
+  // Buka modal Web GUI dengan pemeriksaan status backend
+  async function openWebGuiModal(dbName: string = '') {
+    targetWebGuiDb = dbName;
+    showWebGuiModal = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; installed: boolean; software: string; port: number; php_version: string; public_access: boolean }>('/api/databases/webgui/status');
+      webGuiStatus = res;
+      publicAccessEnabled = res.public_access;
+    } catch {
+      // Abaikan bila backend merespons default
+    }
+  }
+
+  // Buka Web GUI dengan autentikasi SSO sekali klik dan redirect membuka tab baru
+  async function openWebGuiSso() {
+    // Siapkan referensi tab baru sebelum async untuk mencegah blokir popup oleh peramban
+    let newTab: Window | null = null;
+    try {
+      newTab = window.open('about:blank', '_blank');
+      if (newTab) {
+        newTab.opener = null;
+      }
+    } catch {
+      // Abaikan bila peramban membatasi pembuatan tab awal
+    }
+
+    try {
+      const res = await apiFetch<{ ok: boolean; url: string; installed: boolean; message?: string }>('/api/databases/webgui/sso', {
+        method: 'POST',
+        body: JSON.stringify({ database: targetWebGuiDb }),
+      });
+
+      if (!res.installed) {
+        if (newTab && !newTab.closed) newTab.close();
+        notify('Layanan phpMyAdmin belum terpasang di server. Pasang paket phpMyAdmin terlebih dahulu.', 'warning');
+        return;
+      }
+
+      notify('Membuka antarmuka phpMyAdmin (SSO) di tab baru...', 'success');
+      showWebGuiModal = false;
+
+      // Alihkan tab yang telah dibuka langsung ke URL target SSO
+      if (newTab && !newTab.closed) {
+        newTab.location.href = res.url;
+      } else {
+        window.open(res.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e: any) {
+      if (newTab && !newTab.closed) newTab.close();
+      notify(e.message || 'Gagal membuat sesi SSO Web GUI', 'error');
+    }
+  }
+
+  // Buka URL Publik phpMyAdmin langsung di tab baru
+  function openWebGuiPublic() {
+    const host = window.location.hostname || '127.0.0.1';
+    const port = webGuiStatus?.port || 888;
+    let publicUrl = `http://${host}:${port}/phpmyadmin/`;
+    if (targetWebGuiDb) {
+      publicUrl += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
+    }
+    notify('Membuka URL Publik phpMyAdmin di tab baru...', 'info');
+    showWebGuiModal = false;
+    window.open(publicUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  // Toggle pembukaan port publik phpMyAdmin
+  async function onToggleWebGuiPublic(enabled: boolean) {
+    publicAccessEnabled = enabled;
+    try {
+      const res = await apiFetch<{ ok: boolean; message: string }>('/api/databases/webgui/toggle-public', {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      });
+      notify(res.message, 'success');
+    } catch (e: any) {
+      notify(e.message || 'Gagal mengubah status akses publik', 'error');
+    }
+  }
+
+
   // Buka modal tambah database
   function openAddModal() {
     dbName = '';
@@ -728,7 +811,7 @@
           </button>
           <button
             class="btn btn-outline"
-            onclick={() => (showWebGuiModal = true)}
+            onclick={() => openWebGuiModal('')}
             title="Kelola akses web GUI database (phpMyAdmin / Adminer)"
           >
             <i class="ri-external-link-line" aria-hidden="true"></i>
@@ -849,7 +932,7 @@
                     </button>
                     <button
                       class="action-link"
-                      onclick={() => (showWebGuiModal = true)}
+                      onclick={() => openWebGuiModal(db.name)}
                       title="Buka phpMyAdmin Web GUI"
                     >
                       Web GUI
@@ -869,6 +952,7 @@
         </div>
       {/if}
     </div>
+
   {/if}
 </div>
 
@@ -1396,8 +1480,11 @@
       <div class="modal-body">
         <div class="webgui-info-card">
           <div class="webgui-badge-row">
-            <span class="badge-status-online">● Layanan Aktif (Port 888)</span>
-            <span class="badge-php-version">PHP 8.2 (FPM)</span>
+            <span class="badge-status-online">● Layanan Aktif (Port {webGuiStatus?.port || 888})</span>
+            <span class="badge-php-version">{webGuiStatus?.php_version || 'PHP 8.2 (FPM)'}</span>
+            {#if targetWebGuiDb}
+              <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
+            {/if}
           </div>
           <p class="webgui-desc">
             Pilih metode akses ke antarmuka web database Anda:
@@ -1417,13 +1504,10 @@
             </p>
             <button
               class="btn btn-primary mt-2"
-              onclick={() => {
-                notify('Membuka phpMyAdmin dengan Akses Bebas Sandi (SSO)...', 'success');
-                showWebGuiModal = false;
-              }}
+              onclick={openWebGuiSso}
             >
               <i class="ri-external-link-line" aria-hidden="true"></i>
-              <span>Buka Akses Bebas Sandi</span>
+              <span>Buka Akses Bebas Sandi (Redirect Tab Baru)</span>
             </button>
           </div>
 
@@ -1432,7 +1516,11 @@
             <div class="choice-card-header">
               <h4 class="choice-card-title">Akses Publik (Public Access)</h4>
               <label class="toggle-switch">
-                <input type="checkbox" bind:checked={publicAccessEnabled} />
+                <input
+                  type="checkbox"
+                  checked={publicAccessEnabled}
+                  onchange={(e) => onToggleWebGuiPublic((e.target as HTMLInputElement).checked)}
+                />
                 <span class="slider"></span>
               </label>
             </div>
@@ -1441,17 +1529,42 @@
               Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
             </p>
             {#if publicAccessEnabled}
+              <div class="webgui-public-url-box mt-2">
+                <div class="public-url-wrapper">
+                  <span class="public-url-label">URL Publik:</span>
+                  <code class="public-url-text">http://{window.location.hostname || '127.0.0.1'}:{webGuiStatus?.port || 888}/phpmyadmin/</code>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon"
+                  onclick={() => copyText(`http://${window.location.hostname || '127.0.0.1'}:${webGuiStatus?.port || 888}/phpmyadmin/`, 'URL Web GUI')}
+                  title="Salin URL Publik"
+                  aria-label="Salin URL Publik"
+                >
+                  <i class="ri-file-copy-line" aria-hidden="true"></i>
+                </button>
+              </div>
               <button
                 class="btn btn-outline mt-2"
-                onclick={() => {
-                  notify('Membuka URL Publik phpMyAdmin...', 'info');
-                  showWebGuiModal = false;
-                }}
+                onclick={openWebGuiPublic}
               >
                 <i class="ri-global-line" aria-hidden="true"></i>
-                <span>Buka URL Publik</span>
+                <span>Buka URL Publik (Tab Baru)</span>
               </button>
             {/if}
+          </div>
+        </div>
+
+        <!-- Informasi Arsitektur Live Server vs Lingkungan Dev -->
+        <div class="webgui-environment-hint mt-3">
+          <i class="ri-information-line hint-icon" aria-hidden="true"></i>
+          <div class="hint-content">
+            <span class="hint-title">Arsitektur Live Server:</span>
+            <p class="hint-text">
+              Di server VPS (Linux), phpMyAdmin berjalan sebagai daemon web internal di port <strong>{webGuiStatus?.port || 888}</strong>.
+              Tombol <em>Akses Bebas Sandi (SSO)</em> akan men-generate token login sekali pakai dan langsung membuka phpMyAdmin tanpa perlu memasukkan password root.
+              Di mode development lokal Windows, tab baru akan diarahkan ke port 888 (pastikan port/service phpMyAdmin lokal tersedia).
+            </p>
           </div>
         </div>
       </div>
@@ -2833,6 +2946,16 @@
     border-radius: 999px;
   }
 
+  .badge-target-db {
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+  }
+
+
   .webgui-desc {
     font-size: 0.875rem;
     color: var(--text-muted);
@@ -2887,6 +3010,75 @@
   .choice-card-desc {
     margin: 0;
     font-size: 0.8125rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .webgui-public-url-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .public-url-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow: hidden;
+  }
+
+  .public-url-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .public-url-text {
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .webgui-environment-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+  }
+
+  .hint-icon {
+    font-size: 1.125rem;
+    color: var(--accent);
+    margin-top: 0.125rem;
+    flex-shrink: 0;
+  }
+
+  .hint-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .hint-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .hint-text {
+    margin: 0;
+    font-size: 0.75rem;
     color: var(--text-muted);
     line-height: 1.4;
   }

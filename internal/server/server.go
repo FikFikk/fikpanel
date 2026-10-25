@@ -158,6 +158,9 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineGetConfig)))
 	s.mux.Handle("POST /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineSaveConfig)))
 	s.mux.Handle("GET /api/databases/{engine}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleEngineLogs)))
+	s.mux.Handle("GET /api/databases/webgui/status", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiStatus)))
+	s.mux.Handle("POST /api/databases/webgui/sso", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiSSO)))
+	s.mux.Handle("POST /api/databases/webgui/toggle-public", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiTogglePublic)))
 
 	// Antrean Tugas Sistem & Streaming Log Real-time
 	s.mux.Handle("GET /api/system/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListTasks)))

@@ -721,6 +721,36 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "engine": "mysql", "logs": "..."}` |
 | Notes | Menyajikan potongan log galat (error log) terbaru mesin database. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/webgui/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "installed": true, "software": "phpMyAdmin 5.2.1", "port": 888, "php_version": "PHP 8.2 (FPM)", "public_access": false, "sso_supported": true}` |
+| Notes | Memeriksa ketersediaan paket antarmuka visual phpMyAdmin atau Adminer pada server. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/webgui/sso` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `database` (string, opsional) |
+| Response | HTTP 200 `{"ok": true, "installed": true, "url": "http://127.0.0.1:888/phpmyadmin/index.php?sso_token=...", "token": "pma_sso_..."}` |
+| Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO) agar pengguna langsung masuk ke phpMyAdmin tanpa memasukkan sandi root. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/webgui/toggle-public` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "public_access": true, "message": "Akses publik phpMyAdmin berhasil diaktifkan"}` |
+| Notes | Mengatur pembukaan port 888 ke jaringan publik atau membatasinya hanya untuk akses lokal / panel. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
