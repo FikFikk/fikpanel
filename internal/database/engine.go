@@ -9,18 +9,26 @@ import (
 	"sync"
 )
 
+// EngineVersion mendefinisikan opsi versi terverifikasi untuk Quick Install
+type EngineVersion struct {
+	Version       string `json:"version"`
+	Label         string `json:"label"`
+	IsRecommended bool   `json:"is_recommended"`
+}
+
 // EngineInfo merepresentasikan informasi lengkap tentang mesin database
 type EngineInfo struct {
-	Name              string   `json:"name"`               // 'mysql', 'postgresql', 'mongodb', 'redis'
-	DisplayName       string   `json:"display_name"`
-	Installed         bool     `json:"installed"`
-	Version           string   `json:"version"`
-	Running           bool     `json:"running"`
-	Port              int      `json:"port"`
-	DatabasesCount    int      `json:"databases_count"`
-	ServiceUnit       string   `json:"service_unit"`
-	SupportedVersions []string `json:"supported_versions"` // Opsi versi untuk Quick Install
-	Description       string   `json:"description"`
+	Name              string          `json:"name"`               // 'mysql', 'postgresql', 'mongodb', 'redis'
+	DisplayName       string          `json:"display_name"`
+	Installed         bool            `json:"installed"`
+	Version           string          `json:"version"`
+	Running           bool            `json:"running"`
+	Port              int             `json:"port"`
+	DatabasesCount    int             `json:"databases_count"`
+	ServiceUnit       string          `json:"service_unit"`
+	SupportedVersions []string        `json:"supported_versions"` // Opsi versi string
+	Versions          []EngineVersion `json:"versions"`           // Opsi versi lengkap dengan label & info rekomendasi
+	Description       string          `json:"description"`
 }
 
 // EngineState menyimpan override dinamis (misal setelah Quick Install selesai)
@@ -58,32 +66,55 @@ func DetectEngines(ctx context.Context, dbsCountMap map[string]int) []EngineInfo
 			DisplayName:       "MySQL / MariaDB",
 			Port:              3306,
 			ServiceUnit:       "mariadb.service",
-			SupportedVersions: []string{"10.11", "11.4", "8.0"},
-			Description:       "Relational database standar untuk aplikasi web PHP, WordPress, dan CMS.",
+			SupportedVersions: []string{"10.11", "11.4", "8.0", "8.4"},
+			Versions: []EngineVersion{
+				{Version: "10.11", Label: "MariaDB 10.11 LTS (Rekomendasi Hosting)", IsRecommended: true},
+				{Version: "11.4", Label: "MariaDB 11.4 LTS (Fitur Terbaru)", IsRecommended: false},
+				{Version: "8.0", Label: "MySQL 8.0 LTS (Oracle Standar)", IsRecommended: false},
+				{Version: "8.4", Label: "MySQL 8.4 LTS (Enterprise)", IsRecommended: false},
+			},
+			Description: "Relational database standar untuk aplikasi web PHP, WordPress, dan CMS.",
 		},
 		{
 			Name:              "postgresql",
 			DisplayName:       "PostgreSQL",
 			Port:              5432,
 			ServiceUnit:       "postgresql.service",
-			SupportedVersions: []string{"16", "15", "14"},
-			Description:       "Database relasional canggih berorientasi objek dengan performa query analitik tinggi.",
+			SupportedVersions: []string{"16", "15", "17", "14"},
+			Versions: []EngineVersion{
+				{Version: "16", Label: "PostgreSQL 16 (Rekomendasi Stabil)", IsRecommended: true},
+				{Version: "15", Label: "PostgreSQL 15 LTS", IsRecommended: false},
+				{Version: "17", Label: "PostgreSQL 17 (Fitur Terbaru)", IsRecommended: false},
+				{Version: "14", Label: "PostgreSQL 14 LTS", IsRecommended: false},
+			},
+			Description: "Database relasional canggih berorientasi objek dengan performa query analitik tinggi.",
 		},
 		{
 			Name:              "mongodb",
 			DisplayName:       "MongoDB",
 			Port:              27017,
 			ServiceUnit:       "mongod.service",
-			SupportedVersions: []string{"6.0", "7.0", "8.0", "8.2", "8.3"},
-			Description:       "Database dokumen NoSQL terdistribusi untuk struktur data JSON / BSON fleksibel.",
+			SupportedVersions: []string{"7.0", "6.0", "8.0", "5.0"},
+			Versions: []EngineVersion{
+				{Version: "7.0", Label: "MongoDB 7.0 LTS (Rekomendasi Stabil)", IsRecommended: true},
+				{Version: "6.0", Label: "MongoDB 6.0 LTS (Kompatibilitas Luas)", IsRecommended: false},
+				{Version: "8.0", Label: "MongoDB 8.0 (Modern Engine)", IsRecommended: false},
+				{Version: "5.0", Label: "MongoDB 5.0 (Legacy)", IsRecommended: false},
+			},
+			Description: "Database dokumen NoSQL terdistribusi untuk struktur data JSON / BSON fleksibel.",
 		},
 		{
 			Name:              "redis",
 			DisplayName:       "Redis",
 			Port:              6379,
 			ServiceUnit:       "redis-server.service",
-			SupportedVersions: []string{"7.0", "7.2"},
-			Description:       "In-memory data structure store untuk caching berkecepatan ultra-tinggi dan sesi.",
+			SupportedVersions: []string{"7.2", "7.0", "6.2"},
+			Versions: []EngineVersion{
+				{Version: "7.2", Label: "Redis 7.2 (Rekomendasi Performa)", IsRecommended: true},
+				{Version: "7.0", Label: "Redis 7.0 LTS", IsRecommended: false},
+				{Version: "6.2", Label: "Redis 6.2 LTS (Stabil)", IsRecommended: false},
+			},
+			Description: "In-memory data structure store untuk caching berkecepatan ultra-tinggi dan sesi.",
 		},
 	}
 

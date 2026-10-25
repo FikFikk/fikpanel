@@ -204,9 +204,27 @@ textarea.input {
   resize: vertical;
   line-height: 1.55;
 }
+select,
 select.input {
   cursor: pointer;
+  color-scheme: dark;
+  background-color: var(--bg-inset);
+  color: var(--text);
 }
+
+select option,
+select optgroup {
+  color-scheme: dark;
+  background-color: var(--bg-surface);
+  color: var(--text);
+  padding: var(--space-2) var(--space-3);
+}
+
+select option:checked {
+  background-color: var(--bg-active);
+  color: var(--accent);
+}
+
 .input--mono {
   font-family: var(--font-mono);
 }

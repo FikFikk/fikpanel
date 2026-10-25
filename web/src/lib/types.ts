@@ -276,6 +276,12 @@ export interface AIMessage {
   ts: number;
 }
 
+export interface EngineVersion {
+  version: string;
+  label: string;
+  is_recommended: boolean;
+}
+
 export interface DatabaseEngineInfo {
   name: 'mysql' | 'postgresql' | 'mongodb' | 'redis';
   display_name: string;
@@ -286,6 +292,7 @@ export interface DatabaseEngineInfo {
   databases_count: number;
   service_unit: string;
   supported_versions: string[];
+  versions?: EngineVersion[];
   description: string;
 }
 

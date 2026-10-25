@@ -47,20 +47,101 @@
   let eventSource: EventSource | null = null;
   let terminalEl = $state<HTMLDivElement | null>(null);
 
+  // Ikon resmi per engine
+  function getEngineIcon(eng: string): string {
+    switch (eng) {
+      case 'mysql': return 'ri-database-2-line';
+      case 'postgresql': return 'ri-server-line';
+      case 'mongodb': return 'ri-leaf-line';
+      case 'redis': return 'ri-flashlight-line';
+      default: return 'ri-database-2-line';
+    }
+  }
+
+  // Data default per engine untuk mencegah race condition atau nilai kosong
+  function getDefaultEngine(eng: 'mysql' | 'postgresql' | 'mongodb' | 'redis'): DatabaseEngineInfo {
+    switch (eng) {
+      case 'mysql':
+        return {
+          name: 'mysql',
+          display_name: 'MySQL / MariaDB',
+          installed: true,
+          version: '10.11.6-MariaDB',
+          running: true,
+          port: 3306,
+          databases_count: 0,
+          service_unit: 'mariadb.service',
+          supported_versions: ['10.11', '11.4', '8.0', '8.4'],
+          versions: [
+            { version: '10.11', label: 'MariaDB 10.11 LTS (Rekomendasi Hosting)', is_recommended: true },
+            { version: '11.4', label: 'MariaDB 11.4 LTS (Fitur Terbaru)', is_recommended: false },
+            { version: '8.0', label: 'MySQL 8.0 LTS (Oracle Standar)', is_recommended: false },
+            { version: '8.4', label: 'MySQL 8.4 LTS (Enterprise)', is_recommended: false },
+          ],
+          description: 'Relational database standar untuk aplikasi web PHP, WordPress, dan CMS.',
+        };
+      case 'postgresql':
+        return {
+          name: 'postgresql',
+          display_name: 'PostgreSQL',
+          installed: true,
+          version: '16.2',
+          running: true,
+          port: 5432,
+          databases_count: 0,
+          service_unit: 'postgresql.service',
+          supported_versions: ['16', '15', '17', '14'],
+          versions: [
+            { version: '16', label: 'PostgreSQL 16 (Rekomendasi Stabil)', is_recommended: true },
+            { version: '15', label: 'PostgreSQL 15 LTS', is_recommended: false },
+            { version: '17', label: 'PostgreSQL 17 (Fitur Terbaru)', is_recommended: false },
+            { version: '14', label: 'PostgreSQL 14 LTS', is_recommended: false },
+          ],
+          description: 'Database relasional canggih berorientasi objek dengan performa query analitik tinggi.',
+        };
+      case 'mongodb':
+        return {
+          name: 'mongodb',
+          display_name: 'MongoDB',
+          installed: false,
+          version: '',
+          running: false,
+          port: 27017,
+          databases_count: 0,
+          service_unit: 'mongod.service',
+          supported_versions: ['7.0', '6.0', '8.0', '5.0'],
+          versions: [
+            { version: '7.0', label: 'MongoDB 7.0 LTS (Rekomendasi Stabil)', is_recommended: true },
+            { version: '6.0', label: 'MongoDB 6.0 LTS (Kompatibilitas Luas)', is_recommended: false },
+            { version: '8.0', label: 'MongoDB 8.0 (Modern Engine)', is_recommended: false },
+            { version: '5.0', label: 'MongoDB 5.0 (Legacy)', is_recommended: false },
+          ],
+          description: 'Database dokumen NoSQL terdistribusi untuk struktur data JSON / BSON fleksibel.',
+        };
+      case 'redis':
+        return {
+          name: 'redis',
+          display_name: 'Redis',
+          installed: true,
+          version: '7.0.15',
+          running: true,
+          port: 6379,
+          databases_count: 0,
+          service_unit: 'redis-server.service',
+          supported_versions: ['7.2', '7.0', '6.2'],
+          versions: [
+            { version: '7.2', label: 'Redis 7.2 (Rekomendasi Performa)', is_recommended: true },
+            { version: '7.0', label: 'Redis 7.0 LTS', is_recommended: false },
+            { version: '6.2', label: 'Redis 6.2 LTS (Stabil)', is_recommended: false },
+          ],
+          description: 'In-memory data structure store untuk caching berkecepatan ultra-tinggi dan sesi.',
+        };
+    }
+  }
+
   // Engine aktif terpilih
   let currentEngine = $derived(
-    engines.find((e) => e.name === activeEngine) || {
-      name: activeEngine,
-      display_name: activeEngine.toUpperCase(),
-      installed: false,
-      version: '',
-      running: false,
-      port: 3306,
-      databases_count: 0,
-      service_unit: '',
-      supported_versions: ['7.0'],
-      description: '',
-    }
+    engines.find((e) => e.name === activeEngine) || getDefaultEngine(activeEngine)
   );
 
   // Filter daftar database berdasarkan pencarian
@@ -125,8 +206,11 @@
   // Ganti tab engine
   async function switchEngine(eng: 'mysql' | 'postgresql' | 'mongodb' | 'redis') {
     activeEngine = eng;
-    const curr = engines.find((e) => e.name === eng);
-    if (curr && curr.supported_versions?.length > 0) {
+    const curr = engines.find((e) => e.name === eng) || getDefaultEngine(eng);
+    if (curr.versions && curr.versions.length > 0) {
+      const rec = curr.versions.find((v) => v.is_recommended);
+      installVersion = rec ? rec.version : curr.versions[0].version;
+    } else if (curr.supported_versions?.length > 0) {
       installVersion = curr.supported_versions[0];
     }
     await fetchDatabases(eng);
@@ -135,7 +219,10 @@
   // Buka modal Quick Install
   function openInstallModal() {
     const curr = currentEngine;
-    if (curr.supported_versions?.length > 0) {
+    if (curr.versions && curr.versions.length > 0) {
+      const rec = curr.versions.find((v) => v.is_recommended);
+      installVersion = rec ? rec.version : curr.versions[0].version;
+    } else if (curr.supported_versions?.length > 0) {
       installVersion = curr.supported_versions[0];
     }
     showInstallModal = true;
@@ -651,7 +738,7 @@
     <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
       <div class="modal-header">
         <div class="modal-title-with-icon">
-          <i class="ri-leaf-line engine-install-icon" aria-hidden="true"></i>
+          <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
           <div>
             <h3 class="modal-title">Instalasi {currentEngine.display_name}</h3>
             <p class="modal-subtitle">Pasang paket engine database ke server</p>
@@ -671,9 +758,15 @@
         <div class="form-group">
           <label for="install-ver" class="form-label">Pilih Versi</label>
           <select id="install-ver" class="form-select" bind:value={installVersion} disabled={installing}>
-            {#each currentEngine.supported_versions as ver}
-              <option value={ver}>{ver} {ver === '7.0' ? '(Rekomendasi LTS)' : ''}</option>
-            {/each}
+            {#if currentEngine.versions && currentEngine.versions.length > 0}
+              {#each currentEngine.versions as v}
+                <option value={v.version}>{v.label}</option>
+              {/each}
+            {:else}
+              {#each currentEngine.supported_versions as ver}
+                <option value={ver}>{ver}</option>
+              {/each}
+            {/if}
           </select>
         </div>
 
@@ -1502,12 +1595,25 @@
 
   .form-input,
   .form-select {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 0.5rem 0.75rem;
-    color: var(--text-primary);
+    color: var(--text);
     font-size: 0.875rem;
+    color-scheme: dark;
+  }
+
+  .form-select option {
+    color-scheme: dark;
+    background-color: var(--bg-surface);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .form-select option:checked {
+    background-color: var(--bg-active);
+    color: var(--accent);
   }
 
   .form-input:focus,

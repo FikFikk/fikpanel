@@ -55,6 +55,12 @@ button, input, select, textarea {
   color: inherit;
 }
 
+select, option, optgroup {
+  color-scheme: dark;
+  background-color: var(--bg-surface);
+  color: var(--text);
+}
+
 button {
   cursor: pointer;
   background: none;
