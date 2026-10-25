@@ -101,16 +101,21 @@ flowchart TD
     CekTerpasang -- Sudah Terpasang --> DashboardDB[Tampilkan Dashboard & Tabel Database]
     DashboardDB --> TambahDB[Tambah DB + Generate Password Acak 16 Karakter]
     DashboardDB --> KelolaPass[Lihat / Sensor / Salin Password User & Root]
-    DashboardDB --> WebGUI[Akses Web GUI phpMyAdmin 5]
-    WebGUI --> TampilKredensial[Tampilkan Kredensial Database: Username & Password dengan Tombol Salin]
+    DashboardDB --> WebGUI[Akses Web GUI phpMyAdmin]
+    WebGUI --> CekPmaInstalled{phpMyAdmin Terpasang di Server?}
+    CekPmaInstalled -- Belum Terpasang --> PmaNotInstalled[Tampilkan Banner Peringatan Belum Terpasang]
+    PmaNotInstalled --> QuickInstallPMA[Klik Quick Install phpMyAdmin: Pilih Versi 5.2.1 & PHP Runtime]
+    QuickInstallPMA --> AntreanPMA[POST /api/databases/install engine=phpmyadmin & Alirkan Log di Messages Box]
+    AntreanPMA --> SelesaiPMA[Unduh Arsip Resmi, Setup Blowfish Secret, Konfigurasi Nginx FastCGI]
+    SelesaiPMA --> CekPmaInstalled
+    CekPmaInstalled -- Sudah Terpasang --> TampilKredensial[Tampilkan Kredensial Database & Pilihan Jalur Akses]
     TampilKredensial --> PilihAkses{Pilih Metode Akses}
     PilihAkses -- Akses Mandiri FikPanel (Rekomendasi) --> AksesPanel[Buka via Port Panel: /phpmyadmin/index.php]
     PilihAkses -- Melalui Domain Situs --> AksesDomain[Buka via Domain Situs Terpasang mis. domain.com/phpmyadmin/index.php]
     PilihAkses -- Port Khusus (Standalone) --> AksesPort[Buka via Port Standalone mis. 888]
-    AksesPanel --> RuteResmi[Format Rute Resmi phpMyAdmin 5: ?route=/database/structure&db=...&user=...]
+    AksesPanel --> RuteResmi[Buka Layanan Resmi phpMyAdmin]
     AksesDomain --> RuteResmi
     AksesPort --> RuteResmi
-    RuteResmi --> TampilanPMA[Tampilan Resmi phpMyAdmin 5: Logo Sailboat, Language Selector, Form Log in Terisi Username]
     DashboardDB --> HapusDB[Hapus Database via Dialog Konfirmasi]
 ```
 

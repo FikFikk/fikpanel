@@ -758,8 +758,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Accept: text/html` |
 | Query Params | `route` (string, mis. `/database/structure`), `db` (string, nama database), `user` (string, username database), `sso_token` (string, token SSO) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 Dokumen HTML antarmuka phpMyAdmin resmi (logo sailboat, Language selector, kartu Log in dengan prefilled username, dan workspace tabel setelah login). |
-| Notes | Berfungsi sebagai fallback lokal maupun antarmuka phpMyAdmin bawaan di port panel, sehingga tidak terjadi `ERR_CONNECTION_REFUSED` dan konsisten dengan phpMyAdmin resmi. |
+| Response | HTTP 200 Dokumen HTML antarmuka phpMyAdmin resmi jika sudah terpasang, atau HTTP 503 dengan tampilan peringatan belum terpasang jika paket phpMyAdmin belum diinstal. |
+| Notes | Jika belum dipasang di server, sistem mengembalikan panduan Quick Install phpMyAdmin via FikPanel. Jika sudah terpasang, menyajikan akses resmi phpMyAdmin. |
 
 | Field | Detail |
 |---|---|

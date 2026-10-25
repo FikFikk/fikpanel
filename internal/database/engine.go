@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -60,6 +61,37 @@ func SetEngineRunning(engine string, running bool) {
 	globalState.mu.Lock()
 	defer globalState.mu.Unlock()
 	globalState.running[engine] = running
+}
+
+// IsPhpMyAdminInstalled memeriksa apakah paket resmi phpMyAdmin telah terpasang
+func IsPhpMyAdminInstalled() (bool, string) {
+	globalState.mu.RLock()
+	defer globalState.mu.RUnlock()
+
+	// 1. Periksa override state in-memory (setelah Quick Install selesai di FikPanel)
+	if inst, ok := globalState.installed["phpmyadmin"]; ok && inst {
+		ver := globalState.versions["phpmyadmin"]
+		if ver == "" {
+			ver = "5.2.1"
+		}
+		return true, ver
+	}
+
+	// 2. Di Linux: periksa path biner / berkas fisik instalasi phpMyAdmin resmi
+	if runtime.GOOS == "linux" {
+		candidates := []string{
+			"/usr/share/phpmyadmin/index.php",
+			"/www/server/phpmyadmin/index.php",
+			"/var/www/html/phpmyadmin/index.php",
+		}
+		for _, path := range candidates {
+			if _, err := os.Stat(path); err == nil {
+				return true, "5.2.1"
+			}
+		}
+	}
+
+	return false, ""
 }
 
 

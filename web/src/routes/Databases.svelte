@@ -19,6 +19,7 @@
 
   // Modal State
   let showInstallModal = $state(false);
+  let showPmaInstallModal = $state(false);
   let showAddModal = $state(false);
   let showRootPassModal = $state(false);
   let showTasksDrawer = $state(false);
@@ -68,6 +69,12 @@
   let installVersion = $state('7.0');
   let installMode = $state<'native' | 'docker'>('native');
   let installing = $state(false);
+
+  // State Form Quick Install phpMyAdmin Resmi
+  let installPmaVersion = $state('5.2.1');
+  let installPmaPhp = $state('8.2');
+  let installPmaMode = $state<'native' | 'docker'>('native');
+  let installingPma = $state(false);
 
   // State Form Tambah Database (mengadopsi aaPanel)
   let dbName = $state('');
@@ -292,6 +299,40 @@
     }
   }
 
+  // Buka modal Quick Install phpMyAdmin resmi
+  function openPmaInstallModal() {
+    showWebGuiModal = false;
+    showPmaInstallModal = true;
+  }
+
+  // Jalankan Quick Install paket resmi phpMyAdmin ke server
+  async function submitPmaInstall() {
+    installingPma = true;
+    try {
+      const data = await apiFetch<{ ok: boolean; task_id: string; message: string }>('/api/databases/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          engine: 'phpmyadmin',
+          version: installPmaVersion,
+          mode: installPmaMode,
+          php_version: installPmaPhp,
+        }),
+      });
+
+      showPmaInstallModal = false;
+      notify(data.message || 'Instalasi resmi phpMyAdmin dimulai', 'success');
+
+      // Buka Messages Box drawer dan alirkan log terminal
+      await fetchTasks();
+      openTaskStream(data.task_id);
+    } catch (e: any) {
+      notify(e.message || 'Terjadi kesalahan saat memulai instalasi phpMyAdmin', 'error');
+    } finally {
+      installingPma = false;
+    }
+  }
+
   // Ambil daftar riwayat tugas sistem
   async function fetchTasks() {
     try {
@@ -338,10 +379,16 @@
       if (activeTask) {
         activeTask = { ...activeTask, status: 'success' };
       }
-      notify(`Instalasi ${currentEngine.display_name} selesai!`, 'success');
+      notify(`Pekerjaan ${activeTask?.target || 'instalasi'} selesai!`, 'success');
       await fetchEngines();
       await fetchDatabases(activeEngine);
       await fetchTasks();
+      try {
+        const st = await apiFetch<any>('/api/databases/webgui/status');
+        webGuiStatus = st;
+      } catch {
+        // Abaikan
+      }
     });
 
     eventSource.onerror = () => {
@@ -1097,6 +1144,122 @@
   </div>
 {/if}
 
+<!-- Modal Quick Install phpMyAdmin Resmi (ala aaPanel App Store) -->
+{#if showPmaInstallModal}
+  <div
+    class="modal-backdrop"
+    role="presentation"
+    onclick={(e) => { if (e.target === e.currentTarget && !installingPma) showPmaInstallModal = false; }}
+  >
+    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <i class="ri-database-2-line engine-install-icon" aria-hidden="true"></i>
+          <div>
+            <h3 class="modal-title">Quick Install phpMyAdmin Resmi</h3>
+            <p class="modal-subtitle">Pasang paket resmi phpMyAdmin dari repositori ke server</p>
+          </div>
+        </div>
+        <button
+          class="modal-close-btn"
+          disabled={installingPma}
+          onclick={() => (showPmaInstallModal = false)}
+          aria-label="Tutup"
+        >
+          <i class="ri-close-line" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="pma-install-ver" class="form-label">Pilih Versi phpMyAdmin</label>
+          <select id="pma-install-ver" class="form-select" bind:value={installPmaVersion} disabled={installingPma}>
+            <option value="5.2.1">phpMyAdmin 5.2.1 (Rekomendasi Stabil - PHP 7.2 - 8.3)</option>
+            <option value="5.1.4">phpMyAdmin 5.1.4 (LTS Kompatibilitas Luas)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="pma-install-php" class="form-label">Versi PHP Runtime</label>
+          <select id="pma-install-php" class="form-select" bind:value={installPmaPhp} disabled={installingPma}>
+            <option value="8.2">PHP 8.2 (FPM - Rekomendasi Keamanan)</option>
+            <option value="8.1">PHP 8.1 (FPM - Standar Stabil)</option>
+            <option value="8.0">PHP 8.0 (FPM - Legacy)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <span class="form-label">Metode Pemasangan</span>
+          <div class="install-mode-cards">
+            <label class="mode-card" class:selected={installPmaMode === 'native'}>
+              <input
+                type="radio"
+                name="pma-install-mode"
+                value="native"
+                bind:group={installPmaMode}
+                disabled={installingPma}
+              />
+              <div class="mode-card-content">
+                <div class="mode-card-title">
+                  <i class="ri-download-cloud-line" aria-hidden="true"></i>
+                  <span>Fast Install (Rekomendasi)</span>
+                </div>
+                <p class="mode-card-desc">
+                  Mengunduh paket resmi phpMyAdmin dari situs resmi dan mengonfigurasi FastCGI Nginx secara otomatis.
+                </p>
+              </div>
+            </label>
+            <label class="mode-card" class:selected={installPmaMode === 'docker'}>
+              <input
+                type="radio"
+                name="pma-install-mode"
+                value="docker"
+                bind:group={installPmaMode}
+                disabled={installingPma}
+              />
+              <div class="mode-card-content">
+                <div class="mode-card-title">
+                  <i class="ri-ubuntu-line" aria-hidden="true"></i>
+                  <span>Container (Docker)</span>
+                </div>
+                <p class="mode-card-desc">
+                  Menjalankan instance image phpmyadmin/phpmyadmin terisolasi dalam container Docker.
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="install-notice">
+          <i class="ri-information-line" aria-hidden="true"></i>
+          <span>
+            Instalasi berlangsung di latar belakang melalui Antrean Tugas (Messages Box). Anda dapat terus menggunakan panel saat proses berjalan.
+          </span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button
+          class="btn btn-outline"
+          disabled={installingPma}
+          onclick={() => (showPmaInstallModal = false)}
+        >
+          Batal
+        </button>
+        <button class="btn btn-primary" disabled={installingPma} onclick={submitPmaInstall}>
+          {#if installingPma}
+            <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+            <span>Memulai...</span>
+          {:else}
+            <i class="ri-play-fill" aria-hidden="true"></i>
+            <span>Mulai Instalasi (Install Now)</span>
+          {/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Modal Tambah Database -->
 {#if showAddModal}
   <div
@@ -1539,235 +1702,264 @@
       <div class="modal-body">
         <div class="webgui-info-card">
           <div class="webgui-badge-row">
-            <span class="badge-status-online">● Layanan Aktif</span>
-            <span class="badge-php-version">{webGuiStatus?.software || 'FikPanel Database Client'}</span>
+            {#if webGuiStatus?.installed}
+              <span class="badge-status-online">● Layanan Aktif</span>
+              <span class="badge-php-version">{webGuiStatus?.software || 'phpMyAdmin 5.2.1'}</span>
+            {:else}
+              <span class="badge-status-not-installed">● Belum Terpasang</span>
+              <span class="badge-php-version">phpMyAdmin Resmi</span>
+            {/if}
             {#if targetWebGuiDb}
               <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
             {/if}
           </div>
 
-          {#if targetWebGuiUser || targetWebGuiPass}
-            <div class="webgui-credentials-box">
-              <div class="credentials-box-header">
-                <i class="ri-key-2-line" aria-hidden="true"></i>
-                <span class="credentials-box-title">Kredensial Login phpMyAdmin</span>
-              </div>
-              <div class="credentials-box-body">
-                <div class="credential-row">
-                  <span class="credential-label">Username:</span>
-                  <code class="credential-value">{targetWebGuiUser || targetWebGuiDb}</code>
-                  <button
-                    type="button"
-                    class="btn-icon"
-                    onclick={() => copyText(targetWebGuiUser || targetWebGuiDb, 'Username')}
-                    title="Salin Username"
-                    aria-label="Salin Username"
-                  >
-                    <i class="ri-file-copy-line" aria-hidden="true"></i>
-                  </button>
+          {#if !webGuiStatus?.installed}
+            <div class="webgui-not-installed-box mt-3">
+              <div class="not-installed-content">
+                <i class="ri-alert-line not-installed-icon" aria-hidden="true"></i>
+                <div class="not-installed-info">
+                  <h4 class="not-installed-title">Layanan phpMyAdmin Belum Terpasang</h4>
+                  <p class="not-installed-desc">
+                    Paket resmi phpMyAdmin belum dipasang pada server ini. Silakan pasang paket phpMyAdmin terlebih dahulu melalui Quick Install agar dapat mengelola basis data secara visual.
+                  </p>
                 </div>
-                {#if targetWebGuiPass}
+              </div>
+              <div class="not-installed-actions mt-3">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  onclick={openPmaInstallModal}
+                >
+                  <i class="ri-download-cloud-line" aria-hidden="true"></i>
+                  <span>Quick Install phpMyAdmin Sekarang</span>
+                </button>
+              </div>
+            </div>
+          {:else}
+            {#if targetWebGuiUser || targetWebGuiPass}
+              <div class="webgui-credentials-box">
+                <div class="credentials-box-header">
+                  <i class="ri-key-2-line" aria-hidden="true"></i>
+                  <span class="credentials-box-title">Kredensial Login phpMyAdmin</span>
+                </div>
+                <div class="credentials-box-body">
                   <div class="credential-row">
-                    <span class="credential-label">Password:</span>
-                    <code class="credential-value">
-                      {showWebGuiPassword ? targetWebGuiPass : '••••••••••••'}
-                    </code>
+                    <span class="credential-label">Username:</span>
+                    <code class="credential-value">{targetWebGuiUser || targetWebGuiDb}</code>
                     <button
                       type="button"
                       class="btn-icon"
-                      onclick={() => (showWebGuiPassword = !showWebGuiPassword)}
-                      title={showWebGuiPassword ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}
-                      aria-label="Toggle Tampilan Sandi"
-                    >
-                      <i class={showWebGuiPassword ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-icon"
-                      onclick={() => copyText(targetWebGuiPass, 'Password')}
-                      title="Salin Password"
-                      aria-label="Salin Password"
+                      onclick={() => copyText(targetWebGuiUser || targetWebGuiDb, 'Username')}
+                      title="Salin Username"
+                      aria-label="Salin Username"
                     >
                       <i class="ri-file-copy-line" aria-hidden="true"></i>
                     </button>
                   </div>
-                {/if}
-              </div>
-              <p class="credential-hint">
-                <i class="ri-information-line" aria-hidden="true"></i>
-                <span>Formulir <strong>Log in</strong> phpMyAdmin otomatis terisi dengan Username di atas. Masukkan Password jika diminta.</span>
-              </p>
-            </div>
-          {/if}
-
-          <p class="webgui-desc">
-            Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
-          </p>
-
-          <!-- Pilihan Jalur Akses (Access Mode Selector) -->
-          <div class="webgui-mode-selector mt-2">
-            <button
-              type="button"
-              class="mode-tab-btn"
-              class:active={webGuiAccessMode === 'panel'}
-              onclick={() => (webGuiAccessMode = 'panel')}
-            >
-              <i class="ri-dashboard-line" aria-hidden="true"></i>
-              <span>Melalui FikPanel (Independen)</span>
-            </button>
-            <button
-              type="button"
-              class="mode-tab-btn"
-              class:active={webGuiAccessMode === 'domain'}
-              onclick={() => (webGuiAccessMode = 'domain')}
-            >
-              <i class="ri-global-line" aria-hidden="true"></i>
-              <span>Melalui Domain Situs</span>
-            </button>
-            <button
-              type="button"
-              class="mode-tab-btn"
-              class:active={webGuiAccessMode === 'custom_port'}
-              onclick={() => (webGuiAccessMode = 'custom_port')}
-            >
-              <i class="ri-terminal-box-line" aria-hidden="true"></i>
-              <span>Port Standalone Khusus</span>
-            </button>
-          </div>
-
-          <!-- Konfigurasi sesuai Mode Terpilih -->
-          {#if webGuiAccessMode === 'domain'}
-            <div class="mode-config-box mt-3">
-              {#if webGuiStatus?.available_domains && webGuiStatus.available_domains.length > 0}
-                <label for="webgui-domain-select" class="form-label">Pilih Domain Situs yang Terpasang:</label>
-                <select id="webgui-domain-select" class="form-input" bind:value={selectedWebGuiDomain}>
-                  {#each webGuiStatus.available_domains as d}
-                    <option value={d.domain}>{d.domain} ({d.ssl ? 'HTTPS:443' : 'HTTP:80'})</option>
-                  {/each}
-                </select>
-                <p class="mode-help-text">
-                  Mengakses phpMyAdmin via subpath domain <code>/{selectedWebGuiDomain}/phpmyadmin</code> pada port standar web (80/443).
+                  {#if targetWebGuiPass}
+                    <div class="credential-row">
+                      <span class="credential-label">Password:</span>
+                      <code class="credential-value">
+                        {showWebGuiPassword ? targetWebGuiPass : '••••••••••••'}
+                      </code>
+                      <button
+                        type="button"
+                        class="btn-icon"
+                        onclick={() => (showWebGuiPassword = !showWebGuiPassword)}
+                        title={showWebGuiPassword ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}
+                        aria-label="Toggle Tampilan Sandi"
+                      >
+                        <i class={showWebGuiPassword ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn-icon"
+                        onclick={() => copyText(targetWebGuiPass, 'Password')}
+                        title="Salin Password"
+                        aria-label="Salin Password"
+                      >
+                        <i class="ri-file-copy-line" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+                <p class="credential-hint">
+                  <i class="ri-information-line" aria-hidden="true"></i>
+                  <span>Formulir <strong>Log in</strong> phpMyAdmin otomatis terisi dengan Username di atas. Masukkan Password jika diminta.</span>
                 </p>
-              {:else}
-                <div class="mode-alert-box">
-                  <i class="ri-alert-line" aria-hidden="true"></i>
-                  <span>Belum ada situs terdaftar di menu Sites. Mengalihkan ke mode FikPanel Independen yang langsung aktif.</span>
-                </div>
-              {/if}
-            </div>
-          {:else if webGuiAccessMode === 'custom_port'}
-            <div class="mode-config-box mt-3">
-              <label for="webgui-port-input" class="form-label">Nomor Port Khusus phpMyAdmin:</label>
-              <div class="input-with-unit">
-                <input
-                  id="webgui-port-input"
-                  type="number"
-                  class="form-input"
-                  bind:value={customWebGuiPort}
-                  placeholder="888"
-                  min="1"
-                  max="65535"
-                />
-                <span class="unit-badge">TCP</span>
               </div>
-              <p class="mode-help-text">
-                Gunakan mode ini jika Anda menjalankan daemon phpMyAdmin pada port standalone (mis. 888 atau 8080). Pastikan port telah dibuka di firewall VPS.
-              </p>
-            </div>
-          {:else}
-            <div class="mode-config-box mt-3">
-              <div class="mode-panel-info">
-                <i class="ri-shield-check-line mode-panel-icon" aria-hidden="true"></i>
-                <div>
-                  <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
-                  <p class="mode-help-text">
-                    Berjalan langsung di port panel (<code>{window.location.origin}/phpmyadmin/index.php</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
-                  </p>
-                </div>
-              </div>
-            </div>
-          {/if}
-        </div>
+            {/if}
 
-        <div class="webgui-cards-container mt-3">
-          <!-- Opsi 1: Akses Bebas Sandi (Password-Free Access / SSO) -->
-          <div class="webgui-choice-card highlight">
-            <div class="choice-card-header">
-              <span class="badge-new-sso">FITUR UTAMA</span>
-              <h4 class="choice-card-title">Akses Bebas Sandi (One-Click SSO)</h4>
-            </div>
-            <p class="choice-card-desc">
-              Masuk langsung ke antarmuka web database tanpa perlu mengetik ulang root password secara manual.
-              Menggunakan token sesi panel yang aman dan otomatis kedaluwarsa.
+            <p class="webgui-desc">
+              Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
             </p>
-            <div class="webgui-public-url-box mt-2">
-              <div class="public-url-wrapper">
-                <span class="public-url-label">Target URL:</span>
-                <code class="public-url-text">{getComputedPublicUrl()}</code>
-              </div>
-            </div>
-            <button
-              class="btn btn-primary mt-2"
-              onclick={openWebGuiSso}
-            >
-              <i class="ri-external-link-line" aria-hidden="true"></i>
-              <span>Buka Akses Bebas Sandi (Tab Baru)</span>
-            </button>
-          </div>
 
-          <!-- Opsi 2: Akses Publik (Public Access) -->
-          <div class="webgui-choice-card">
-            <div class="choice-card-header">
-              <h4 class="choice-card-title">Akses Publik (Public Access)</h4>
-              <label class="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={publicAccessEnabled}
-                  onchange={(e) => onToggleWebGuiPublic((e.target as HTMLInputElement).checked)}
-                />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <p class="choice-card-desc">
-              Membuka port / URL antarmuka web database ke internet publik untuk diakses via URL domain/IP.
-              Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
-            </p>
-            {#if publicAccessEnabled}
-              <div class="webgui-public-url-box mt-2">
-                <div class="public-url-wrapper">
-                  <span class="public-url-label">URL Publik:</span>
-                  <code class="public-url-text">{getComputedPublicUrl()}</code>
-                </div>
-                <button
-                  type="button"
-                  class="btn-icon"
-                  onclick={() => copyText(getComputedPublicUrl(), 'URL Web GUI')}
-                  title="Salin URL Publik"
-                  aria-label="Salin URL Publik"
-                >
-                  <i class="ri-file-copy-line" aria-hidden="true"></i>
-                </button>
-              </div>
+            <!-- Pilihan Jalur Akses (Access Mode Selector) -->
+            <div class="webgui-mode-selector mt-2">
               <button
-                class="btn btn-outline mt-2"
-                onclick={openWebGuiPublic}
+                type="button"
+                class="mode-tab-btn"
+                class:active={webGuiAccessMode === 'panel'}
+                onclick={() => (webGuiAccessMode = 'panel')}
+              >
+                <i class="ri-dashboard-line" aria-hidden="true"></i>
+                <span>Melalui FikPanel (Independen)</span>
+              </button>
+              <button
+                type="button"
+                class="mode-tab-btn"
+                class:active={webGuiAccessMode === 'domain'}
+                onclick={() => (webGuiAccessMode = 'domain')}
               >
                 <i class="ri-global-line" aria-hidden="true"></i>
-                <span>Buka URL Publik (Tab Baru)</span>
+                <span>Melalui Domain Situs</span>
               </button>
-            {/if}
-          </div>
-        </div>
+              <button
+                type="button"
+                class="mode-tab-btn"
+                class:active={webGuiAccessMode === 'custom_port'}
+                onclick={() => (webGuiAccessMode = 'custom_port')}
+              >
+                <i class="ri-terminal-box-line" aria-hidden="true"></i>
+                <span>Port Standalone Khusus</span>
+              </button>
+            </div>
 
-        <!-- Penjelasan Komprehensif Port 888 vs Domain vs Panel -->
-        <div class="webgui-environment-hint mt-3">
-          <i class="ri-information-line hint-icon" aria-hidden="true"></i>
-          <div class="hint-content">
-            <span class="hint-title">Mengapa phpMyAdmin Tidak Wajib Port 888?</span>
-            <p class="hint-text">
-              Di industri hosting (seperti cPanel, DirectAdmin, atau CloudPanel), phpMyAdmin umumnya diakses melalui domain situs (mis. <code>kostash.my.id/phpmyadmin</code>) pada port standar 80/443 dengan SSL HTTPS, atau disajikan langsung melalui port panel itu sendiri. Port 888 adalah default warisan aaPanel yang sering terblokir firewall cloud. FikPanel memberikan fleksibilitas penuh: Anda bisa mengakses via domain situs, port khusus, atau langsung melalui FikPanel Built-in Client tanpa hambatan port!
-            </p>
-          </div>
+            <!-- Konfigurasi sesuai Mode Terpilih -->
+            {#if webGuiAccessMode === 'domain'}
+              <div class="mode-config-box mt-3">
+                {#if webGuiStatus?.available_domains && webGuiStatus.available_domains.length > 0}
+                  <label for="webgui-domain-select" class="form-label">Pilih Domain Situs yang Terpasang:</label>
+                  <select id="webgui-domain-select" class="form-input" bind:value={selectedWebGuiDomain}>
+                    {#each webGuiStatus.available_domains as d}
+                      <option value={d.domain}>{d.domain} ({d.ssl ? 'HTTPS:443' : 'HTTP:80'})</option>
+                    {/each}
+                  </select>
+                  <p class="mode-help-text">
+                    Mengakses phpMyAdmin via subpath domain <code>/{selectedWebGuiDomain}/phpmyadmin</code> pada port standar web (80/443).
+                  </p>
+                {:else}
+                  <div class="mode-alert-box">
+                    <i class="ri-alert-line" aria-hidden="true"></i>
+                    <span>Belum ada situs terdaftar di menu Sites. Mengalihkan ke mode FikPanel Independen yang langsung aktif.</span>
+                  </div>
+                {/if}
+              </div>
+            {:else if webGuiAccessMode === 'custom_port'}
+              <div class="mode-config-box mt-3">
+                <label for="webgui-port-input" class="form-label">Nomor Port Khusus phpMyAdmin:</label>
+                <div class="input-with-unit">
+                  <input
+                    id="webgui-port-input"
+                    type="number"
+                    class="form-input"
+                    bind:value={customWebGuiPort}
+                    placeholder="888"
+                    min="1"
+                    max="65535"
+                  />
+                  <span class="unit-badge">TCP</span>
+                </div>
+                <p class="mode-help-text">
+                  Gunakan mode ini jika Anda menjalankan daemon phpMyAdmin pada port standalone (mis. 888 atau 8080). Pastikan port telah dibuka di firewall VPS.
+                </p>
+              </div>
+            {:else}
+              <div class="mode-config-box mt-3">
+                <div class="mode-panel-info">
+                  <i class="ri-shield-check-line mode-panel-icon" aria-hidden="true"></i>
+                  <div>
+                    <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
+                    <p class="mode-help-text">
+                      Berjalan langsung di port panel (<code>{window.location.origin}/phpmyadmin/index.php</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            {/if}
+
+            <div class="webgui-cards-container mt-3">
+              <!-- Opsi 1: Akses Bebas Sandi (Password-Free Access / SSO) -->
+              <div class="webgui-choice-card highlight">
+                <div class="choice-card-header">
+                  <span class="badge-new-sso">FITUR UTAMA</span>
+                  <h4 class="choice-card-title">Akses Bebas Sandi (One-Click SSO)</h4>
+                </div>
+                <p class="choice-card-desc">
+                  Masuk langsung ke antarmuka web database tanpa perlu mengetik ulang root password secara manual.
+                  Menggunakan token sesi panel yang aman dan otomatis kedaluwarsa.
+                </p>
+                <div class="webgui-public-url-box mt-2">
+                  <div class="public-url-wrapper">
+                    <span class="public-url-label">Target URL:</span>
+                    <code class="public-url-text">{getComputedPublicUrl()}</code>
+                  </div>
+                </div>
+                <button
+                  class="btn btn-primary mt-2"
+                  onclick={openWebGuiSso}
+                >
+                  <i class="ri-external-link-line" aria-hidden="true"></i>
+                  <span>Buka Akses Bebas Sandi (Tab Baru)</span>
+                </button>
+              </div>
+
+              <!-- Opsi 2: Akses Publik (Public Access) -->
+              <div class="webgui-choice-card">
+                <div class="choice-card-header">
+                  <h4 class="choice-card-title">Akses Publik (Public Access)</h4>
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={publicAccessEnabled}
+                      onchange={(e) => onToggleWebGuiPublic((e.target as HTMLInputElement).checked)}
+                    />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <p class="choice-card-desc">
+                  Membuka port / URL antarmuka web database ke internet publik untuk diakses via URL domain/IP.
+                  Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
+                </p>
+                {#if publicAccessEnabled}
+                  <div class="webgui-public-url-box mt-2">
+                    <div class="public-url-wrapper">
+                      <span class="public-url-label">URL Publik:</span>
+                      <code class="public-url-text">{getComputedPublicUrl()}</code>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-icon"
+                      onclick={() => copyText(getComputedPublicUrl(), 'URL Web GUI')}
+                      title="Salin URL Publik"
+                      aria-label="Salin URL Publik"
+                    >
+                      <i class="ri-file-copy-line" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                  <button
+                    class="btn btn-outline mt-2"
+                    onclick={openWebGuiPublic}
+                  >
+                    <i class="ri-global-line" aria-hidden="true"></i>
+                    <span>Buka URL Publik (Tab Baru)</span>
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Penjelasan Komprehensif Port 888 vs Domain vs Panel -->
+            <div class="webgui-environment-hint mt-3">
+              <i class="ri-information-line hint-icon" aria-hidden="true"></i>
+              <div class="hint-content">
+                <span class="hint-title">Mengapa phpMyAdmin Tidak Wajib Port 888?</span>
+                <p class="hint-text">
+                  Di industri hosting (seperti cPanel, DirectAdmin, atau CloudPanel), phpMyAdmin umumnya diakses melalui domain situs (mis. <code>kostash.my.id/phpmyadmin</code>) pada port standar 80/443 dengan SSL HTTPS, atau disajikan langsung melalui port panel itu sendiri. Port 888 adalah default warisan aaPanel yang sering terblokir firewall cloud. FikPanel memberikan fleksibilitas penuh: Anda bisa mengakses via domain situs, port khusus, atau langsung melalui FikPanel Built-in Client tanpa hambatan port!
+                </p>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -3137,6 +3329,62 @@
     font-weight: 600;
     padding: 0.25rem 0.625rem;
     border-radius: 999px;
+  }
+
+  .badge-status-not-installed {
+    background: var(--tint-warning);
+    color: var(--warning);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+  }
+
+  .webgui-not-installed-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .not-installed-content {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .not-installed-icon {
+    font-size: 2rem;
+    color: var(--warning);
+    flex-shrink: 0;
+  }
+
+  .not-installed-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .not-installed-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .not-installed-desc {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .not-installed-actions {
+    display: flex;
+    justify-content: flex-start;
   }
 
   .badge-php-version {

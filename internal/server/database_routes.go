@@ -51,7 +51,11 @@ func (s *Server) handleInstallDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Version == "" {
-		req.Version = "7.0"
+		if engine == "phpmyadmin" {
+			req.Version = "5.2.1"
+		} else {
+			req.Version = "7.0"
+		}
 	}
 	if req.Mode == "" {
 		req.Mode = "native"
@@ -537,16 +541,22 @@ func (s *Server) handleWebGuiStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	isInstalled, version := database.IsPhpMyAdminInstalled()
+	if version == "" {
+		version = "5.2.1"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":                true,
-		"installed":         true,
-		"software":          "phpMyAdmin 5.2.1",
+		"installed":         isInstalled,
+		"software":          fmt.Sprintf("phpMyAdmin %s", version),
+		"version":           version,
 		"port":              888,
 		"panel_host":        r.Host,
 		"php_version":       "PHP 8.2 (FPM)",
 		"public_access":     false,
-		"sso_supported":     true,
+		"sso_supported":     isInstalled,
 		"available_domains": domains,
 		"has_domains":       len(domains) > 0,
 	})
@@ -554,6 +564,18 @@ func (s *Server) handleWebGuiStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleWebGuiSSO membuat token sesi SSO instan dan menghasilkan URL target redirect
 func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
+	isInstalled, _ := database.IsPhpMyAdminInstalled()
+	if !isInstalled {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":        false,
+			"installed": false,
+			"message":   "Layanan phpMyAdmin belum terpasang di server. Silakan pasang paket phpMyAdmin terlebih dahulu melalui Quick Install.",
+		})
+		return
+	}
+
 	var req WebGuiSSORequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
@@ -759,6 +781,90 @@ func (s *Server) handleBuiltinWebGuiQuery(w http.ResponseWriter, r *http.Request
 
 // handleBuiltinWebGuiClient menyajikan antarmuka visual phpMyAdmin resmi bawaan FikPanel
 func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Request) {
+	isInstalled, _ := database.IsPhpMyAdminInstalled()
+	if !isInstalled {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		notInstalledPage := `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>phpMyAdmin Belum Terpasang - FikPanel</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #090a0f;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1.5rem;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #0e1119;
+      border: 1px solid #1f2738;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin: 0 0 0.75rem;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      margin-bottom: 1.75rem;
+    }
+    .btn {
+      display: inline-block;
+      background: #10b981;
+      color: #04130d;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #059669;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">&#9888; Paket Belum Terpasang</div>
+    <h1>Layanan phpMyAdmin Belum Terpasang</h1>
+    <p>Paket resmi phpMyAdmin belum dipasang pada server ini. Silakan buka dashboard <strong>FikPanel &gt; Databases</strong> dan jalankan <strong>Quick Install phpMyAdmin</strong> untuk memasangnya.</p>
+    <a href="/" class="btn">Kembali ke Panel FikPanel</a>
+  </div>
+</body>
+</html>`
+		w.Write([]byte(notInstalledPage))
+		return
+	}
+
 	dbName := strings.TrimSpace(r.URL.Query().Get("db"))
 	userName := strings.TrimSpace(r.URL.Query().Get("user"))
 	if userName == "" {
