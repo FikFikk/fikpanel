@@ -607,6 +607,73 @@ Setiap respon dari backend panel menyematkan serangkaian header pengamanan HTTP 
 
 ---
 
+### 1.11 Manajemen Database & Antrean Tugas (Databases & Task Queue)
+
+Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi wajib menyertakan header `Content-Type: application/json` dan `X-Panel-Request: 1`.
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/engines` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | `mock_db` (string, opsional, `1` / `0` untuk simulasi dev) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"engines": [{"name": "mysql", "display_name": "MySQL / MariaDB", "installed": true, "version": "10.11.6", "running": true, "port": 3306}, {"name": "mongodb", "installed": false, ...}]}` |
+| Notes | Digunakan oleh frontend untuk merender status badge dan menentukan apakah antarmuka menampilkan state "Belum Terkonfigurasi" atau tabel database. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `engine` (string, wajib: `mongodb` / `mysql` / `postgresql` / `redis`), `version` (string, wajib: `6.0` / `7.0` / `8.0` dll), `mode` (string: `native` / `docker`) |
+| Response | HTTP 202 `{"ok": true, "task_id": "task_abc123", "message": "Proses instalasi dimulai"}` |
+| Notes | Mendaftarkan pekerjaan instalasi ke `task_queue` SQLite dan mengeksekusi worker di latar belakang. Mengembalikan `task_id` untuk streaming log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/tasks/:id/stream` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Accept: text/event-stream` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 SSE `data: {"type": "log", "chunk": "..."}\n\ndata: {"type": "status", "status": "success"}\n\n` |
+| Notes | Mengalirkan output terminal eksekusi instalasi secara real-time ke modal Task Manager / Messages Box di browser. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/:engine/list` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | `search` (string, opsional) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"databases": [{"name": "app_db", "user": "app_user", "size_bytes": 10485760, "backup_count": 2, "location": "localhost", "note": "Production DB"}]}` |
+| Notes | Menghasilkan daftar database aktif dari engine terkait. Menolak jika engine belum terpasang dengan HTTP 412 Precondition Failed. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/:engine/create` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `username` (string, wajib), `password` (string, wajib), `access_host` (string, default `localhost`), `note` (string, opsional) |
+| Response | HTTP 201 `{"ok": true, "database": "app_db", "user": "app_user"}` |
+| Notes | Membuat database, akun user, dan memberikan hak akses grant secara otomatis. Dicatat ke audit log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/databases/:engine/:name` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Database berhasil dihapus"}` |
+| Notes | Menghapus database dan user terkait. Memerlukan konfirmasi modal destruktif di frontend. |
+
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Fungsi | Frekuensi | Tujuan | Efek Samping |
