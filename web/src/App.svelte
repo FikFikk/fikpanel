@@ -16,6 +16,7 @@
   const loaders: Record<string, () => Promise<{ default: Component<any> }>> = {
     website: () => import('./routes/Sites.svelte'),
     databases: () => import('./routes/Databases.svelte'),
+    docker: () => import('./routes/Docker.svelte'),
     services: () => import('./routes/Services.svelte'),
     terminal: () => import('./routes/Terminal.svelte'),
     monitor: () => import('./routes/Monitor.svelte'),

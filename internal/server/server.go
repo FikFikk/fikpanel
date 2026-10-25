@@ -169,6 +169,51 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /pma/api/tables", s.handleBuiltinWebGuiTables)
 	s.mux.HandleFunc("POST /pma/api/query", s.handleBuiltinWebGuiQuery)
 
+	// Manajemen Docker & Kontainerisasi Lengkap (10 Modul aaPanel Style)
+	s.mux.Handle("GET /api/docker/status", s.AuthMiddleware(http.HandlerFunc(s.handleDockerStatus)))
+	s.mux.Handle("GET /api/docker/system-info", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSystemInfo)))
+	s.mux.Handle("GET /api/docker/config", s.AuthMiddleware(http.HandlerFunc(s.handleDockerGetConfig)))
+	s.mux.Handle("POST /api/docker/config", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSaveConfig)))
+	s.mux.Handle("POST /api/docker/service/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerServiceControl)))
+	s.mux.Handle("POST /api/docker/install", s.AuthMiddleware(http.HandlerFunc(s.handleDockerInstall)))
+
+	// Kontainer
+	s.mux.Handle("GET /api/docker/containers", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListContainers)))
+	s.mux.Handle("POST /api/docker/containers", s.AuthMiddleware(http.HandlerFunc(s.handleDockerCreateContainer)))
+	s.mux.Handle("POST /api/docker/containers/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerControlContainer)))
+	s.mux.Handle("GET /api/docker/containers/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleDockerContainerLogs)))
+
+	// Citra (Images)
+	s.mux.Handle("GET /api/docker/images", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListImages)))
+	s.mux.Handle("POST /api/docker/images/pull", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPullImage)))
+	s.mux.Handle("DELETE /api/docker/images/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveImage)))
+	s.mux.Handle("GET /api/docker/images/search", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSearchImages)))
+
+	// Volume
+	s.mux.Handle("GET /api/docker/volumes", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListVolumes)))
+	s.mux.Handle("POST /api/docker/volumes", s.AuthMiddleware(http.HandlerFunc(s.handleDockerCreateVolume)))
+	s.mux.Handle("DELETE /api/docker/volumes/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveVolume)))
+	s.mux.Handle("POST /api/docker/volumes/prune", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPruneVolumes)))
+
+	// Jaringan (Networks)
+	s.mux.Handle("GET /api/docker/networks", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListNetworks)))
+	s.mux.Handle("POST /api/docker/networks", s.AuthMiddleware(http.HandlerFunc(s.handleDockerCreateNetwork)))
+	s.mux.Handle("DELETE /api/docker/networks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveNetwork)))
+
+	// Docker Compose
+	s.mux.Handle("GET /api/docker/compose", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListCompose)))
+	s.mux.Handle("POST /api/docker/compose/up", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeUp)))
+	s.mux.Handle("POST /api/docker/compose/down", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeDown)))
+
+	// One-Click Template
+	s.mux.Handle("GET /api/docker/templates", s.AuthMiddleware(http.HandlerFunc(s.handleDockerGetTemplates)))
+	s.mux.Handle("POST /api/docker/templates/deploy", s.AuthMiddleware(http.HandlerFunc(s.handleDockerDeployTemplate)))
+
+	// Registri Privat
+	s.mux.Handle("GET /api/docker/registries", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListRegistries)))
+	s.mux.Handle("POST /api/docker/registries", s.AuthMiddleware(http.HandlerFunc(s.handleDockerAddRegistry)))
+	s.mux.Handle("DELETE /api/docker/registries/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveRegistry)))
+
 	// Antrean Tugas Sistem & Streaming Log Real-time
 	s.mux.Handle("GET /api/system/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListTasks)))
 	s.mux.Handle("GET /api/system/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetTask)))

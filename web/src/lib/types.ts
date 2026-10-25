@@ -318,3 +318,134 @@ export interface SystemTask {
   created_at: number;
   updated_at: number;
 }
+
+// ── Docker & Kontainerisasi (10 Modul) ──────────────────────────────────────
+export interface DockerContainerPort {
+  ip: string;
+  private_port: number;
+  public_port: number;
+  type: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  names: string[];
+  image: string;
+  command: string;
+  created: number;
+  state: string;
+  status: string;
+  ports: DockerContainerPort[];
+  cpu_percent: number;
+  mem_usage: string;
+  size_rw: string;
+}
+
+export interface DockerImage {
+  id: string;
+  repository: string;
+  tag: string;
+  digest: string;
+  created: number;
+  size: number;
+  size_human: string;
+  containers: number;
+}
+
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  scope: string;
+  mountpoint: string;
+  created_at: string;
+  size_human: string;
+  ref_count: number;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  subnet: string;
+  gateway: string;
+  internal: boolean;
+  containers_count: number;
+}
+
+export interface DockerComposeProject {
+  name: string;
+  status: string;
+  config_path: string;
+  containers_count: number;
+  yaml_content: string;
+}
+
+export interface OneClickTemplate {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  image: string;
+  default_port: number;
+  env_params: Array<{ key: string; label: string; default: string; type: string }>;
+  volume_mount: string;
+  readme: string;
+}
+
+export interface DockerRegistry {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  is_default: boolean;
+}
+
+export interface DockerStatus {
+  installed: boolean;
+  compose_installed: boolean;
+  running: boolean;
+  version: string;
+  compose_version: string;
+  containers_total: number;
+  containers_running: number;
+  containers_paused: number;
+  containers_stopped: number;
+  images_total: number;
+  volumes_total: number;
+  networks_total: number;
+  server_version: string;
+  storage_driver: string;
+  memory_limit: boolean;
+  swap_limit: boolean;
+  root_dir: string;
+}
+
+export interface DockerSystemInfo {
+  hostname: string;
+  os_version: string;
+  architecture: string;
+  kernel_version: string;
+  cpu_cores: number;
+  memory_size: string;
+  docker_version: string;
+  compose_version: string;
+  unix_address: string;
+  data_directory: string;
+}
+
+export interface DockerDaemonConfig {
+  registry_mirrors: string[];
+  compose_path: string;
+  private_registry: string;
+  log_rotation: boolean;
+  log_max_size: string;
+  log_max_file: string;
+  ipv6: boolean;
+  ipv6_subnet: string;
+  iptables: boolean;
+  live_restore: boolean;
+  one_click_dir: string;
+  raw_json: string;
+}

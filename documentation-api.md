@@ -783,6 +783,300 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.9 Manajemen Docker & Kontainerisasi (10 Modul Lengkap)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"installed": true, "compose_installed": true, "running": true, "version": "26.1.4", "compose_version": "v2.27.1", "containers_total": 4, "containers_running": 3, "images_total": 6, "volumes_total": 5, "networks_total": 3}` |
+| Notes | Mengembalikan status kesehatan daemon Docker, versi biner, dan agregasi kuantitas resource. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/system-info` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"hostname": "node-01", "os_version": "Ubuntu 24.04 LTS", "architecture": "x86_64", "kernel_version": "6.8.0-31", "cpu_cores": 8, "memory_size": "16 GB", "unix_address": "unix:///var/run/docker.sock", "data_directory": "/var/lib/docker"}` |
+| Notes | Mengambil spesifikasi lengkap host sistem untuk tab Overview dan Settings. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"registry_mirrors": ["https://hub-mirror.c.163.com"], "compose_path": "/usr/local/bin/docker-compose", "log_rotation": true, "log_max_size": "10m", "log_max_file": "3", "raw_json": "{\n  \"log-driver\": \"json-file\"\n}"}` |
+| Notes | Membaca berkas konfigurasi daemon resmi `/etc/docker/daemon.json`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `DockerDaemonConfig` (objek konfigurasi daemon.json lengkap atau `raw_json`) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi Docker berhasil disimpan"}` |
+| Notes | Menyimpan dan menerapkan konfigurasi daemon ke disk serta mencatat audit log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/service/{action}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{action}`: `start`, `stop`, `restart`, `repair` |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Layanan Docker berhasil di-restart"}` |
+| Notes | Mengontrol unit systemd daemon Docker host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task_id": "task_docker_install_1771747900", "message": "Tugas instalasi Docker telah dikirim ke antrean tugas (Messages Box)"}` |
+| Notes | Mengotomatisasi instalasi paket Docker CE dan Docker Compose melalui background task worker. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/containers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "containers": [{"id": "a1b2c3d4", "names": ["/web"], "image": "nginx:alpine", "state": "running", "ports": [{"public_port": 8080, "private_port": 80}], "cpu_percent": 0.5, "mem_usage": "24.5 MB"}]}` |
+| Notes | Mengambil daftar seluruh kontainer aktif maupun berhenti beserta metrik utilisasinya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/containers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string), `image` (string), `ports` (array string), `volumes` (array string), `environment` (array string), `restart_policy` (string), `command` (string) |
+| Response | HTTP 200 `{"ok": true, "message": "Kontainer berhasil dibuat dan dijalankan"}` |
+| Notes | Membuat kontainer baru dan langsung menjalankannya dengan opsi port mapping dan volume persisten. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/containers/{id}/{action}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}`: ID kontainer; `{action}`: `start`, `stop`, `restart`, `pause`, `unpause`, `delete` |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Aksi restart pada kontainer berhasil"}` |
+| Notes | Mengontrol siklus hidup kontainer; aksi delete memerlukan konfirmasi modal pengguna. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/containers/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `lines` (int, default: 200) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "logs": "[2026-10-25 20:00:00] Starting service..."}` |
+| Notes | Mengambil cuplikan log kontainer dari driver log daemon. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/images` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "images": [{"id": "sha256:...", "repository": "nginx", "tag": "alpine", "size_human": "45.2 MB", "containers": 1}]}` |
+| Notes | Menampilkan seluruh citra yang telah tersimpan di repositori lokal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/images/pull` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `image` (string, misal: `"redis:7-alpine"`) |
+| Response | HTTP 200 `{"ok": true, "message": "Citra redis:7-alpine berhasil diunduh"}` |
+| Notes | Menarik citra resmi dari registri Docker Hub atau registri privat aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/docker/images/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | `force` (bool, opsional) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Citra berhasil dihapus"}` |
+| Notes | Menghapus citra dari penyimpanan lokal host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/images/search` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `q` (string kata kunci pencarian) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "results": [{"name": "postgres", "description": "The PostgreSQL object-relational database...", "stars": 14000, "is_official": true}]}` |
+| Notes | Melakukan kueri langsung ke Docker Hub Registry API untuk menemukan citra komunitas dan resmi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/volumes` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "volumes": [{"name": "db_data", "driver": "local", "mountpoint": "/var/lib/docker/volumes/db_data/_data", "size_human": "240 MB", "ref_count": 1}]}` |
+| Notes | Mengembalikan daftar volume persisten host beserta referensi keterikatannya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/volumes` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `driver` (string, default: `"local"`) |
+| Response | HTTP 200 `{"ok": true, "message": "Volume berhasil dibuat"}` |
+| Notes | Menginisialisasi volume baru pada sistem berkas host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/docker/volumes/{name}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Volume berhasil dihapus"}` |
+| Notes | Menghapus volume persisten dari sistem berkas host setelah konfirmasi pengguna. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/volumes/prune` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Volume tak terpakai berhasil dibersihkan"}` |
+| Notes | Menjalankan perintah prune untuk mengosongkan seluruh volume yang tidak lagi digunakan kontainer. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/networks` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "networks": [{"id": "net1", "name": "app-net", "driver": "bridge", "subnet": "172.28.0.0/16", "gateway": "172.28.0.1", "containers_count": 2}]}` |
+| Notes | Menampilkan seluruh jaringan virtual Docker aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/networks` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `driver` (string), `subnet` (string), `gateway` (string) |
+| Response | HTTP 200 `{"ok": true, "message": "Network berhasil dibuat"}` |
+| Notes | Membuat jaringan virtual baru dengan isolasi subnet khusus. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/docker/networks/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Network berhasil dihapus"}` |
+| Notes | Menghapus jaringan virtual non-bawaan dari host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/compose` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "projects": [{"name": "web-stack", "status": "running", "config_path": "/www/dk_project/web-stack/docker-compose.yml", "containers_count": 2}]}` |
+| Notes | Mengembalikan seluruh direktori proyek Docker Compose terdaftar di `/www/dk_project`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/compose/up` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `yaml` (string YAML, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Stack Compose berhasil dijalankan"}` |
+| Notes | Menyimpan berkas `docker-compose.yml` ke direktori proyek dan mengeksekusi `docker compose up -d`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/compose/down` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Stack Compose berhasil dihentikan"}` |
+| Notes | Mengeksekusi `docker compose down` pada direktori proyek. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/templates` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "templates": [{"id": "wordpress", "name": "WordPress + MariaDB", "category": "cms", "default_port": 8080, "env_params": [...]}]}` |
+| Notes | Mengambil katalog template aplikasi 1-klik terisolasi (WordPress, Redis, Postgres, MySQL, Nginx, Portainer, Uptime Kuma, dll.). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/templates/deploy` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `template_id` (string), `name` (string), `port` (int), `volume_path` (string), `env_values` (object) |
+| Response | HTTP 200 `{"ok": true, "message": "Aplikasi berhasil dipasang dan berjalan"}` |
+| Notes | Memasang dan menyalakan aplikasi instan dengan parameter port dan volume yang dikonfigurasi pengguna. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/registries` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "registries": [{"id": "reg_default", "name": "Docker Hub Official", "url": "https://index.docker.io/v1/", "is_default": true}]}` |
+| Notes | Mengembalikan daftar kredensial registri privat yang telah didaftarkan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/registries` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `url` (string, wajib), `username` (string), `password` (string) |
+| Response | HTTP 200 `{"ok": true, "message": "Registri berhasil ditambahkan"}` |
+| Notes | Mendaftarkan akun autentikasi registri kontainer privat baru. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/docker/registries/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Registri berhasil dihapus"}` |
+| Notes | Menghapus registri privat terdaftar. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Fungsi | Frekuensi | Tujuan | Efek Samping |

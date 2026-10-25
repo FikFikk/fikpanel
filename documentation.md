@@ -119,6 +119,39 @@ flowchart TD
     DashboardDB --> HapusDB[Hapus Database via Dialog Konfirmasi]
 ```
 
+### 1.5 Siklus Hidup Kontainer & Stack Docker
+
+```mermaid
+flowchart TD
+    BukaMenuDocker[Buka Menu Docker] --> DeteksiEngine{Engine Docker & Compose Terpasang?}
+    
+    DeteksiEngine -- Belum Terpasang --> TampilBanner[Tampilkan Floating Banner: Docker or Compose not installed]
+    TampilBanner --> KlikInstallEngine[Klik Install Docker Suite]
+    KlikInstallEngine --> AntreanDocker[Kirim Tugas docker_install ke Messages Box]
+    AntreanDocker --> EksekusiInstall[Unduh GPG, Setup Repo, Pasang docker-ce & compose-plugin]
+    EksekusiInstall --> SelesaiEngine[Status Engine Berubah Aktif / Running]
+    SelesaiEngine --> TampilSuite
+    
+    DeteksiEngine -- Sudah Terpasang --> TampilSuite[Tampilkan 10 Tab Manajemen Kontainerisasi]
+    TampilSuite --> PilihAksi{Pilih Operasi Kontainer}
+    
+    PilihAksi -- Template 1-Klik --> PilihAplikasi[Pilih WordPress, Redis, Postgres, Nginx, Portainer, dll.]
+    PilihAplikasi --> KonfigurasiForm[Isi Port Host, Path Mount, Variabel Lingkungan]
+    KonfigurasiForm --> DeployTemplate[POST /api/docker/templates/deploy]
+    DeployTemplate --> KontainerBerjalan[Kontainer Aktif & Port Terpetakan]
+    
+    PilihAksi -- Docker Compose --> TulisYAML[Definisikan Stack pada Editor YAML]
+    TulisYAML --> ComposeUp[POST /api/docker/compose/up]
+    ComposeUp --> MultiKontainer[Seluruh Service Stack Berjalan Bersama]
+    
+    PilihAksi -- Cloud Hub Image --> CariHub[Cari Citra Resmi di Docker Hub]
+    CariHub --> TarikCitra[Tarik Citra dengan Tag Tertentu]
+    TarikCitra --> SimpanLokal[Tersimpan di Daftar Citra Lokal]
+    
+    KontainerBerjalan --> Kontrol{Start / Stop / Restart / Pause / Delete}
+    Kontrol --> UpdateKontainer[Eksekusi via Socket Docker / CLI]
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -188,6 +221,17 @@ flowchart TD
 | `ok` | Boolean (0 atau 1) | Hasil status keberhasilan aksi |
 | `detail` | String teks maks 4096 byte | Rangkuman output atau pesan galat |
 
+### 2.6 Entitas Docker & Kontainerisasi
+
+| Entitas | Parameter Wajib | Catatan Bisnis |
+|---|---|---|
+| `Container` | `name`, `image`, `ports`, `volumes`, `restart_policy` | Kontainer wajib memiliki nama unik; pemetaan port divalidasi agar tidak bentrok dengan port servis host |
+| `Image` | `repository`, `tag` | Citra ditarik dari Docker Hub atau registri privat terdaftar; penghapusan citra yang sedang dipakai kontainer wajib konfirmasi force |
+| `Volume` | `name`, `driver` | Volume persisten lokal di `/var/lib/docker/volumes`; pembersihan massal (prune) hanya menghapus volume tak terikat |
+| `Network` | `name`, `driver`, `subnet`, `gateway` | Jaringan terisolasi untuk komunikasi antarkontainer; jaringan bawaan host (`bridge`, `host`, `none`) diproteksi dari penghapusan |
+| `Compose Stack`| `name`, `yaml` | Berkas disimpan di `/www/dk_project/<name>/docker-compose.yml`; mendukung kontrol siklus hidup up/down terpadu |
+| `Daemon Config`| `registry_mirrors`, `log-opts`, `live-restore` | Konfigurasi disimpan di `/etc/docker/daemon.json`; perubahan memerlukan reload atau restart daemon Docker |
+
 ---
 
 ## 3. Matriks Transisi Status Entitas
@@ -240,6 +284,19 @@ flowchart TD
 
 ---
 
+### 3.5 Transisi Status Kontainer Docker
+
+| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
+|---|---|---|---|
+| `created` | Eksekusi start kontainer | `running` | Alokasi port, isolasi cgroup, dan proses utama kontainer dijalankan |
+| `running` | Permintaan stop (`POST .../stop`) | `exited` | Mengirim sinyal `SIGTERM` lalu `SIGKILL` setelah grace period (10 detik) |
+| `running` | Permintaan pause (`POST .../pause`) | `paused` | Proses dibekukan menggunakan cgroups freezer tanpa melepas alokasi memori |
+| `paused` | Permintaan unpause (`POST .../unpause`)| `running` | Proses dicairkan kembali dan melanjutkan eksekusi |
+| `running` | Kontainer mengalami crash / OOM | `exited` | Jika kebijakan restart `always` atau `unless-stopped`, daemon akan menyalakan ulang otomatis |
+| `exited` / `created` | Permintaan hapus kontainer | `deleted` | Kontainer dihapus; volume persisten yang di-mount tetap aman di host |
+
+---
+
 ## 4. Batasan Bisnis & Pemicu Otomatis (Triggers)
 
 | Kode Aturan | Pemicu | Batasan Bisnis | Tindakan Sistem |
@@ -276,6 +333,11 @@ flowchart TD
 | **BR-30** | Akses Web GUI Multi-Jalur (phpMyAdmin / FikPanel Client) | Manajemen visual tabel dan eksekusi query SQL | Menyediakan 3 jalur akses: (1) Melalui Domain Situs Terpasang (`domain/phpmyadmin` pada port standar 80/443 ber-SSL), (2) Melalui FikPanel Independen (`/pma/` pada port panel aktif tanpa keterikatan domain atau port 888), dan (3) Port Khusus Standalone (mis. 888) dengan One-Click SSO dan toggle akses publik. |
 | **BR-31** | Batasan Kuota Kapasitas Database | Penetapan kuota ukuran pada database tertentu | Menggunakan kuota sistem berkas OS (XFS/ext4 project quota); pengisian nilai 0 menandakan kapasitas penyimpanan tanpa batas (unlimited). |
 | **BR-32** | Integrasi Resmi phpMyAdmin via Reverse Proxy Daemon & Auto-Fill Form | Akses Web GUI phpMyAdmin (`/phpmyadmin/`, `/pma/`, `/phpMyAdmin/`) | FikPanel meneruskan permintaan secara transparan ke instance resmi phpMyAdmin fisik via daemon lokal (`127.0.0.1:8885`) tanpa mock/clone tiruan. Proxy secara otomatis menginjeksi auto-fill username, password (dari sesi SSO), target rute database (`route=/database/structure&db=...`), serta badge visual database pada formulir login resmi phpMyAdmin. |
+| **BR-33** | Deteksi & Peringatan Otomatis Engine Docker | Pengguna membuka modul Docker tanpa engine Docker/Compose terpasang | Menampilkan floating alert banner persistens dan menyediakan tombol 1-klik instalasi otomatis ke Messages Box |
+| **BR-34** | Manajemen Konfigurasi Atomik `daemon.json` | Pengguna mengubah pengaturan Accelerate URL, Log Rotation, atau konfigurasi JSON | Memvalidasi sintaks JSON sebelum disimpan, mencatat audit log, dan mengizinkan modifikasi langsung via editor modal |
+| **BR-35** | Proteksi Jaringan Inti Sistem Docker | Pengguna mencoba menghapus jaringan `bridge`, `host`, atau `none` | Sistem menolak aksi penghapusan demi menjaga integritas konektivitas jaringan kontainer host |
+| **BR-36** | Katalog Aplikasi 1-Klik Terisolasi | Pemasangan aplikasi populer (WordPress, Redis, Postgres, MySQL, Portainer, dll.) | Mempersiapkan direktori data persisten `/www/dk_project/<app>/data`, menyuntikkan variabel lingkungan aman, dan memetakan port host default |
+
 
 
 
