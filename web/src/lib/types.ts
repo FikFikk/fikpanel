@@ -319,6 +319,49 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── DNS Management ────────────────────────────────────────────────────────
+export interface DNSZone {
+  id: number;
+  name: string;
+  ttl: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DNSRecord {
+  id: number;
+  zone_id: number;
+  type: string;
+  name: string;
+  content: string;
+  priority: number;
+  ttl: number;
+  created_at: number;
+}
+
+// ── PHP Versions ──────────────────────────────────────────────────────────
+export interface PHPVersionInfo {
+  version: string;
+  installed: boolean;
+  running: boolean;
+  fpm_socket: string;
+  ini_path: string;
+  settings: Record<string, string>;
+}
+
+// ── Webhooks & Alerts ─────────────────────────────────────────────────────
+export interface SystemWebhook {
+  id: number;
+  name: string;
+  channel: string;
+  webhook_url: string;
+  notify_on_high_cpu: boolean;
+  notify_on_high_ram: boolean;
+  notify_on_backup: boolean;
+  notify_on_ssl_expiry: boolean;
+  created_at: number;
+}
+
 // ── Backup & Arsip ───────────────────────────────────────────────────────
 export interface BackupConfig {
   id: number;

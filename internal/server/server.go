@@ -17,6 +17,7 @@ import (
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/node"
+	"fikpanel/internal/php"
 	"fikpanel/internal/security"
 	"fikpanel/internal/services"
 	"fikpanel/internal/sites"
@@ -38,6 +39,7 @@ type Server struct {
 	cronMgr  *cron.Manager
 	firewall *security.Manager
 	pm2      *node.Manager
+	phpMgr   *php.Manager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -59,6 +61,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		cronMgr:  cron.NewManager(s),
 		firewall: security.NewManager(),
 		pm2:      node.NewManager(),
+		phpMgr:   php.NewManager(),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -150,6 +153,24 @@ func (s *Server) registerRoutes() {
 	// Node.js & PM2 Management
 	s.mux.Handle("GET /api/node/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListNodeProcesses)))
 	s.mux.Handle("POST /api/node/processes/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleControlNodeProcess)))
+
+	// DNS Management
+	s.mux.Handle("GET /api/dns/zones", s.AuthMiddleware(http.HandlerFunc(s.handleListDNSZones)))
+	s.mux.Handle("POST /api/dns/zones", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDNSZone)))
+	s.mux.Handle("DELETE /api/dns/zones/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDNSZone)))
+	s.mux.Handle("GET /api/dns/zones/{id}/records", s.AuthMiddleware(http.HandlerFunc(s.handleListDNSRecords)))
+	s.mux.Handle("POST /api/dns/records", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDNSRecord)))
+	s.mux.Handle("DELETE /api/dns/records/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDNSRecord)))
+
+	// PHP Multi-version & FPM
+	s.mux.Handle("GET /api/php/versions", s.AuthMiddleware(http.HandlerFunc(s.handleListPHPVersions)))
+	s.mux.Handle("POST /api/php/versions/{version}/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartPHPFPM)))
+	s.mux.Handle("POST /api/php/versions/{version}/settings", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePHPSetting)))
+
+	// Webhooks & Alerts
+	s.mux.Handle("GET /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleListWebhooks)))
+	s.mux.Handle("POST /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleCreateWebhook)))
+	s.mux.Handle("DELETE /api/webhooks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWebhook)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))

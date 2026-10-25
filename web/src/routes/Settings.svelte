@@ -1,5 +1,7 @@
 <script lang="ts">
-  import type { OverviewData } from '../lib/types';
+  import { onMount } from 'svelte';
+  import { apiFetch } from '../lib/api';
+  import type { OverviewData, SystemWebhook } from '../lib/types';
 
   interface Props {
     overview: OverviewData | null;
@@ -12,6 +14,63 @@
   let newPassword = $state('');
   let confirmPassword = $state('');
   let updating = $state(false);
+
+  let webhooks = $state<SystemWebhook[]>([]);
+  let showAddWebhook = $state(false);
+  let hookName = $state('');
+  let hookChannel = $state('telegram');
+  let hookUrl = $state('');
+
+  async function loadWebhooks() {
+    try {
+      const res = await apiFetch<{ ok: boolean; webhooks: SystemWebhook[] }>('/api/webhooks');
+      webhooks = res?.webhooks || [];
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleCreateWebhook() {
+    if (!hookName.trim() || !hookUrl.trim()) {
+      onNotify('Nama dan URL webhook wajib diisi');
+      return;
+    }
+    try {
+      await apiFetch('/api/webhooks', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: hookName,
+          channel: hookChannel,
+          webhook_url: hookUrl,
+          notify_on_high_cpu: true,
+          notify_on_high_ram: true,
+          notify_on_backup: true,
+          notify_on_ssl_expiry: true,
+        }),
+      });
+      onNotify('Webhook notifikasi berhasil disimpan');
+      showAddWebhook = false;
+      hookName = '';
+      hookUrl = '';
+      await loadWebhooks();
+    } catch (err: any) {
+      onNotify(err.message || 'Gagal menyimpan webhook');
+    }
+  }
+
+  async function handleDeleteWebhook(id: number) {
+    try {
+      await apiFetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+      onNotify('Webhook dihapus');
+      await loadWebhooks();
+    } catch (err: any) {
+      onNotify(err.message || 'Gagal menghapus webhook');
+    }
+  }
+
+  onMount(() => {
+    loadWebhooks();
+  });
 
   async function handlePasswordChange(e: Event) {
     e.preventDefault();
@@ -71,6 +130,66 @@
           <span class="info-label">Backup Otomatis</span>
           <span class="info-val">VACUUM INTO /var/lib/panel/backups/</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Webhook Notification Integrations -->
+    <div class="panel">
+      <div class="flex justify-between items-center mb-3">
+        <div>
+          <h3 class="panel-title flex items-center gap-2">
+            <i class="ri-notification-3-line"></i> Webhook Alert & Notifikasi Sistem
+          </h3>
+          <p class="panel-desc">Kirim notifikasi otomatis ke bot Telegram, Discord, atau custom HTTP endpoint saat CPU/RAM tinggi atau backup selesai.</p>
+        </div>
+        <button class="btn btn-primary" onclick={() => (showAddWebhook = !showAddWebhook)}>
+          + Tambah Webhook
+        </button>
+      </div>
+
+      {#if showAddWebhook}
+        <div class="webhook-form">
+          <div class="form-row">
+            <div class="flex-1">
+              <label for="hk-n" class="form-label">Nama Webhook</label>
+              <input id="hk-n" type="text" class="form-input" bind:value={hookName} placeholder="Misal: Telegram Alert Server" />
+            </div>
+            <div class="flex-1">
+              <label for="hk-ch" class="form-label">Saluran</label>
+              <select id="hk-ch" class="form-input" bind:value={hookChannel}>
+                <option value="telegram">Telegram Bot</option>
+                <option value="discord">Discord Channel</option>
+                <option value="generic">Custom Webhook (JSON POST)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label for="hk-u" class="form-label">Webhook URL / API Endpoint</label>
+            <input id="hk-u" type="text" class="form-input mono" bind:value={hookUrl} placeholder="https://api.telegram.org/bot... atau https://discord.com/api/webhooks/..." />
+          </div>
+          <div class="flex justify-end gap-2 mt-3">
+            <button class="btn btn-ghost" onclick={() => (showAddWebhook = false)}>Batal</button>
+            <button class="btn btn-primary" onclick={handleCreateWebhook}>Simpan Webhook</button>
+          </div>
+        </div>
+      {/if}
+
+      <div class="webhook-list">
+        {#if webhooks.length === 0}
+          <div class="text-subtle text-xs py-2">Belum ada webhook yang terpasang.</div>
+        {:else}
+          {#each webhooks as hk (hk.id)}
+            <div class="webhook-item">
+              <div class="hk-info">
+                <span class="hk-name font-bold">{hk.name}</span>
+                <span class="hk-url mono text-xs text-subtle truncate" title={hk.webhook_url}>{hk.webhook_url}</span>
+              </div>
+              <button class="btn-icon danger" onclick={() => handleDeleteWebhook(hk.id)}>
+                <i class="ri-delete-bin-line"></i>
+              </button>
+            </div>
+          {/each}
+        {/if}
       </div>
     </div>
 
@@ -203,4 +322,79 @@
     background: var(--accent);
     color: var(--text-on-accent);
   }
+
+  .webhook-form {
+    background: var(--bg-surface-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .form-row {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .form-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.3rem;
+  }
+  .form-input {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font-size: 0.8rem;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .webhook-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .webhook-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.85rem;
+  }
+  .hk-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .hk-name {
+    font-size: 0.82rem;
+    color: var(--text);
+  }
+  .btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.3rem;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+  }
+  .btn-icon.danger:hover {
+    background: var(--tint-danger);
+    color: var(--danger);
+  }
+  .flex { display: flex; }
+  .justify-between { justify-content: space-between; }
+  .items-center { align-items: center; }
+  .flex-1 { flex: 1; }
+  .gap-2 { gap: 0.5rem; }
+  .mt-3 { margin-top: 0.75rem; }
+  .mb-3 { margin-bottom: 0.75rem; }
 </style>
