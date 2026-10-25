@@ -42,6 +42,9 @@
   // State Web GUI Access (phpMyAdmin / FikPanel Client)
   let publicAccessEnabled = $state(false);
   let targetWebGuiDb = $state('');
+  let targetWebGuiUser = $state('');
+  let targetWebGuiPass = $state('');
+  let showWebGuiPassword = $state(false);
   let webGuiStatus = $state<{
     installed: boolean;
     software: string;
@@ -496,8 +499,17 @@
   }
 
   // Buka modal Web GUI dengan pemeriksaan status backend
-  async function openWebGuiModal(dbName: string = '') {
-    targetWebGuiDb = dbName;
+  async function openWebGuiModal(db: DatabaseItem | string = '') {
+    if (typeof db === 'object' && db !== null) {
+      targetWebGuiDb = db.name;
+      targetWebGuiUser = db.username || db.name;
+      targetWebGuiPass = db.password || '';
+    } else {
+      targetWebGuiDb = db || '';
+      targetWebGuiUser = db || 'root';
+      targetWebGuiPass = '';
+    }
+    showWebGuiPassword = false;
     showWebGuiModal = true;
     try {
       const res = await apiFetch<any>('/api/databases/webgui/status');
@@ -513,24 +525,31 @@
     }
   }
 
-  // Hitung URL Publik Web GUI secara dinamis berdasarkan jalur akses yang dipilih
+  // Hitung URL Publik Web GUI secara dinamis berdasarkan jalur akses yang dipilih (Format resmi phpMyAdmin 5)
   function getComputedPublicUrl(): string {
+    const userParam = targetWebGuiUser ? `&user=${encodeURIComponent(targetWebGuiUser)}` : '';
     if (webGuiAccessMode === 'domain' && selectedWebGuiDomain) {
       const targetObj = webGuiStatus?.available_domains?.find((d) => d.domain === selectedWebGuiDomain);
       const scheme = targetObj?.ssl ? 'https' : 'http';
-      let url = `${scheme}://${selectedWebGuiDomain}/phpmyadmin/`;
-      if (targetWebGuiDb) url += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
+      let url = `${scheme}://${selectedWebGuiDomain}/phpmyadmin/index.php`;
+      if (targetWebGuiDb) {
+        url += `?route=/database/structure&db=${encodeURIComponent(targetWebGuiDb)}${userParam}`;
+      }
       return url;
     }
     if (webGuiAccessMode === 'custom_port') {
       const host = window.location.hostname || '127.0.0.1';
-      let url = `http://${host}:${customWebGuiPort}/phpmyadmin/`;
-      if (targetWebGuiDb) url += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
+      let url = `http://${host}:${customWebGuiPort}/phpmyadmin/index.php`;
+      if (targetWebGuiDb) {
+        url += `?route=/database/structure&db=${encodeURIComponent(targetWebGuiDb)}${userParam}`;
+      }
       return url;
     }
     // Default: 'panel' (Akses mandiri via FikPanel port saat ini)
-    let url = `${window.location.origin}/pma/`;
-    if (targetWebGuiDb) url += `?db=${encodeURIComponent(targetWebGuiDb)}`;
+    let url = `${window.location.origin}/phpmyadmin/index.php`;
+    if (targetWebGuiDb) {
+      url += `?route=/database/structure&db=${encodeURIComponent(targetWebGuiDb)}${userParam}`;
+    }
     return url;
   }
 
@@ -552,6 +571,8 @@
         method: 'POST',
         body: JSON.stringify({
           database: targetWebGuiDb,
+          username: targetWebGuiUser,
+          password: targetWebGuiPass,
           access_mode: webGuiAccessMode,
           target_domain: selectedWebGuiDomain,
           custom_port: customWebGuiPort,
@@ -970,7 +991,7 @@
                     </button>
                     <button
                       class="action-link"
-                      onclick={() => openWebGuiModal(db.name)}
+                      onclick={() => openWebGuiModal(db)}
                       title="Buka phpMyAdmin Web GUI"
                     >
                       Web GUI
@@ -1524,6 +1545,61 @@
               <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
             {/if}
           </div>
+
+          {#if targetWebGuiUser || targetWebGuiPass}
+            <div class="webgui-credentials-box">
+              <div class="credentials-box-header">
+                <i class="ri-key-2-line" aria-hidden="true"></i>
+                <span class="credentials-box-title">Kredensial Login phpMyAdmin</span>
+              </div>
+              <div class="credentials-box-body">
+                <div class="credential-row">
+                  <span class="credential-label">Username:</span>
+                  <code class="credential-value">{targetWebGuiUser || targetWebGuiDb}</code>
+                  <button
+                    type="button"
+                    class="btn-icon"
+                    onclick={() => copyText(targetWebGuiUser || targetWebGuiDb, 'Username')}
+                    title="Salin Username"
+                    aria-label="Salin Username"
+                  >
+                    <i class="ri-file-copy-line" aria-hidden="true"></i>
+                  </button>
+                </div>
+                {#if targetWebGuiPass}
+                  <div class="credential-row">
+                    <span class="credential-label">Password:</span>
+                    <code class="credential-value">
+                      {showWebGuiPassword ? targetWebGuiPass : '••••••••••••'}
+                    </code>
+                    <button
+                      type="button"
+                      class="btn-icon"
+                      onclick={() => (showWebGuiPassword = !showWebGuiPassword)}
+                      title={showWebGuiPassword ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}
+                      aria-label="Toggle Tampilan Sandi"
+                    >
+                      <i class={showWebGuiPassword ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-icon"
+                      onclick={() => copyText(targetWebGuiPass, 'Password')}
+                      title="Salin Password"
+                      aria-label="Salin Password"
+                    >
+                      <i class="ri-file-copy-line" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                {/if}
+              </div>
+              <p class="credential-hint">
+                <i class="ri-information-line" aria-hidden="true"></i>
+                <span>Formulir <strong>Log in</strong> phpMyAdmin otomatis terisi dengan Username di atas. Masukkan Password jika diminta.</span>
+              </p>
+            </div>
+          {/if}
+
           <p class="webgui-desc">
             Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
           </p>
@@ -1605,7 +1681,7 @@
                 <div>
                   <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
                   <p class="mode-help-text">
-                    Berjalan langsung di port panel (<code>{window.location.origin}/pma/</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
+                    Berjalan langsung di port panel (<code>{window.location.origin}/phpmyadmin/index.php</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
                   </p>
                 </div>
               </div>
@@ -3081,6 +3157,67 @@
     border-radius: 999px;
   }
 
+  .webgui-credentials-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .credentials-box-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .credentials-box-title {
+    color: var(--text);
+  }
+
+  .credentials-box-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .credential-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.375rem 0.625rem;
+  }
+
+  .credential-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 70px;
+  }
+
+  .credential-value {
+    font-size: 0.8125rem;
+    color: var(--text);
+    font-family: var(--font-mono, monospace);
+    flex: 1;
+  }
+
+  .credential-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.375rem;
+    line-height: 1.4;
+  }
 
   .webgui-desc {
     font-size: 0.875rem;

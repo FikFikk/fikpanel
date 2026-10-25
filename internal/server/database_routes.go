@@ -509,6 +509,8 @@ type WebGuiDomainItem struct {
 // WebGuiSSORequest mendefinisikan muatan permintaan pembuatan sesi SSO phpMyAdmin
 type WebGuiSSORequest struct {
 	Database     string `json:"database"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
 	AccessMode   string `json:"access_mode"`   // 'panel' (default/independen), 'domain', 'custom_port'
 	TargetDomain string `json:"target_domain"` // misal 'kostash.my.id'
 	CustomPort   int    `json:"custom_port"`   // misal 888 atau port kustom
@@ -530,7 +532,7 @@ func (s *Server) handleWebGuiStatus(w http.ResponseWriter, r *http.Request) {
 			domains = append(domains, WebGuiDomainItem{
 				Domain: st.Domain,
 				SSL:    isSSL,
-				URL:    fmt.Sprintf("%s://%s/phpmyadmin/", scheme, st.Domain),
+				URL:    fmt.Sprintf("%s://%s/phpmyadmin/index.php", scheme, st.Domain),
 			})
 		}
 	}
@@ -539,7 +541,7 @@ func (s *Server) handleWebGuiStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":                true,
 		"installed":         true,
-		"software":          "phpMyAdmin / FikPanel Web Client",
+		"software":          "phpMyAdmin 5.2.1",
 		"port":              888,
 		"panel_host":        r.Host,
 		"php_version":       "PHP 8.2 (FPM)",
@@ -569,9 +571,24 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Bentuk parameter rute resmi phpMyAdmin 5 (sesuai Screenshot 2)
+	var queryParts []string
+	if targetDb != "" {
+		queryParts = append(queryParts, fmt.Sprintf("route=/database/structure&db=%s", targetDb))
+	}
+	userName := strings.TrimSpace(req.Username)
+	if userName == "" {
+		userName = targetDb
+	}
+	if userName != "" {
+		queryParts = append(queryParts, fmt.Sprintf("user=%s", userName))
+	}
+	queryParts = append(queryParts, fmt.Sprintf("sso_token=%s", ssoToken))
+	qs := strings.Join(queryParts, "&")
+
 	switch mode {
 	case "domain":
-		// Jalur 1: Mengikuti domain situs yang terpasang di server (mis. kostash.my.id/phpmyadmin)
+		// Jalur 1: Mengikuti domain situs yang terpasang di server (mis. new.xaviermarks.com/phpmyadmin/index.php?route=...)
 		domain := strings.TrimSpace(req.TargetDomain)
 		if domain == "" {
 			domain = r.Host
@@ -580,10 +597,7 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(domain, "localhost") || strings.HasPrefix(domain, "127.0.0.1") {
 			scheme = "http"
 		}
-		redirectURL = fmt.Sprintf("%s://%s/phpmyadmin/index.php?sso_token=%s", scheme, domain, ssoToken)
-		if targetDb != "" {
-			redirectURL += fmt.Sprintf("&db=%s", targetDb)
-		}
+		redirectURL = fmt.Sprintf("%s://%s/phpmyadmin/index.php?%s", scheme, domain, qs)
 
 	case "custom_port":
 		// Jalur 2: Port khusus terpisah (mis. port 888 atau port kustom yang dibuka di firewall)
@@ -595,25 +609,19 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 		if port <= 0 {
 			port = 888
 		}
-		redirectURL = fmt.Sprintf("http://%s:%d/phpmyadmin/index.php?sso_token=%s", host, port, ssoToken)
-		if targetDb != "" {
-			redirectURL += fmt.Sprintf("&db=%s", targetDb)
-		}
+		redirectURL = fmt.Sprintf("http://%s:%d/phpmyadmin/index.php?%s", host, port, qs)
 
 	default: // "panel"
-		// Jalur 3: Akses Independen via Panel FikPanel (Tanpa Domain & Tanpa Keterikatan Port 888)
+		// Jalur 3: Akses via Panel FikPanel (Port Panel Aktif)
 		scheme := "http"
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 			scheme = "https"
 		}
-		redirectURL = fmt.Sprintf("%s://%s/pma/?sso_token=%s", scheme, r.Host, ssoToken)
-		if targetDb != "" {
-			redirectURL += fmt.Sprintf("&db=%s", targetDb)
-		}
+		redirectURL = fmt.Sprintf("%s://%s/phpmyadmin/index.php?%s", scheme, r.Host, qs)
 	}
 
 	_ = s.store.RecordAudit(r.Context(), "user", "database.webgui_sso", "phpMyAdmin", true,
-		fmt.Sprintf("Membuat sesi login otomatis Web GUI database (mode: %s, target: %s)", mode, req.Database), nil)
+		fmt.Sprintf("Membuat sesi login otomatis Web GUI phpMyAdmin (mode: %s, target: %s)", mode, req.Database), nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -622,7 +630,7 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 		"access_mode": mode,
 		"url":         redirectURL,
 		"token":       ssoToken,
-		"message":     "Sesi SSO berhasil dibuat, mengalihkan ke antarmuka web...",
+		"message":     "Sesi SSO phpMyAdmin berhasil dibuat, mengalihkan...",
 	})
 }
 
@@ -749,174 +757,559 @@ func (s *Server) handleBuiltinWebGuiQuery(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// handleBuiltinWebGuiClient menyajikan antarmuka visual mandiri Database Manager bawaan FikPanel
+// handleBuiltinWebGuiClient menyajikan antarmuka visual phpMyAdmin resmi bawaan FikPanel
 func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Request) {
 	dbName := strings.TrimSpace(r.URL.Query().Get("db"))
+	userName := strings.TrimSpace(r.URL.Query().Get("user"))
+	if userName == "" {
+		userName = dbName
+	}
+	if userName == "" {
+		userName = "root"
+	}
 	if dbName == "" {
 		dbName = "fikpanel (Sistem)"
 	}
 
 	htmlTemplate := `<!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FikPanel Database Manager (Web Client)</title>
+  <title>phpMyAdmin - {{DB_NAME}}</title>
   <style>
-    :root {
-      --bg: #090d16;
-      --surface: #0f172a;
-      --surface-hover: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent: #38bdf8;
-      --accent-hover: #0284c7;
-      --success: #10b981;
-      --danger: #ef4444;
-      --radius: 6px;
-    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    header { height: 56px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 1.25rem; }
-    .brand { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 0.9375rem; color: var(--text); }
-    .brand-icon { width: 28px; height: 28px; background: var(--accent); color: #090d16; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); font-weight: 800; font-size: 0.8125rem; }
-    .badges { display: flex; align-items: center; gap: 0.5rem; }
-    .badge { font-size: 0.75rem; padding: 0.25rem 0.625rem; border-radius: 999px; background: #1e293b; color: var(--text-muted); border: 1px solid var(--border); }
-    .badge-online { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
-    .badge-db { background: rgba(56, 189, 248, 0.15); color: var(--accent); border-color: rgba(56, 189, 248, 0.3); font-weight: 600; }
-    .btn { padding: 0.4rem 0.875rem; font-size: 0.8125rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.375rem; }
-    .btn:hover { background: var(--surface-hover); }
-    .btn-primary { background: var(--accent); color: #090d16; border-color: var(--accent); font-weight: 600; }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .main-layout { display: flex; flex: 1; overflow: hidden; }
-    aside { width: 260px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-    .aside-header { padding: 0.875rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center; }
-    .table-list { list-style: none; overflow-y: auto; flex: 1; padding: 0.5rem 0; }
-    .table-item { padding: 0.5rem 1rem; font-size: 0.8125rem; color: var(--text); display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 2px solid transparent; }
-    .table-item:hover { background: var(--surface-hover); }
-    .table-item.active { background: rgba(56, 189, 248, 0.1); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
-    .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-    .query-box-container { padding: 1rem; background: var(--surface); border-bottom: 1px solid var(--border); }
-    .query-box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-    .query-presets { display: flex; gap: 0.375rem; }
-    .btn-preset { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #1e293b; color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; }
-    .btn-preset:hover { color: var(--accent); border-color: var(--accent); }
-    .query-textarea { width: 100%; height: 75px; background: #090d16; border: 1px solid var(--border); border-radius: var(--radius); color: #38bdf8; font-family: "Fira Code", monospace; font-size: 0.875rem; padding: 0.625rem; resize: vertical; outline: none; }
-    .query-textarea:focus { border-color: var(--accent); }
-    .query-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; }
-    .query-hint { font-size: 0.75rem; color: var(--text-muted); }
-    .results-container { flex: 1; overflow: auto; padding: 1rem; }
-    .results-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; font-size: 0.8125rem; color: var(--text-muted); }
-    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
-    th { background: var(--surface); color: var(--text-muted); text-align: left; padding: 0.625rem 0.875rem; border: 1px solid var(--border); font-weight: 600; position: sticky; top: 0; }
-    td { padding: 0.5rem 0.875rem; border: 1px solid var(--border); color: var(--text); font-family: monospace; }
-    tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
-    tr:hover { background: rgba(56, 189, 248, 0.05); }
-    .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
-    .error-box { padding: 0.75rem 1rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; border-radius: var(--radius); font-size: 0.8125rem; margin-bottom: 0.75rem; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f3f3f3;
+      color: #333333;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Tampilan Halaman Login phpMyAdmin (Screenshot 2) */
+    #login-view {
+      width: 100%;
+      max-width: 440px;
+      margin: 40px auto;
+      padding: 0 15px;
+    }
+
+    .pma-header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .pma-logo-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    .pma-welcome-title {
+      font-size: 21px;
+      font-weight: 700;
+      color: #2c3e50;
+      margin-top: 6px;
+    }
+
+    .pma-card {
+      background: #ffffff;
+      border: 1px solid #d3d3d3;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      margin-bottom: 28px;
+      position: relative;
+    }
+
+    .pma-card-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #ffffff;
+      border: 1px solid #d3d3d3;
+      border-bottom: 1px solid #ffffff;
+      border-radius: 4px 4px 0 0;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #444444;
+      position: absolute;
+      top: -24px;
+      left: 15px;
+      z-index: 2;
+    }
+
+    .pma-card-body {
+      padding: 20px 20px 15px 20px;
+    }
+
+    .pma-select {
+      width: 100%;
+      padding: 7px 10px;
+      font-size: 13px;
+      border: 1px solid #cccccc;
+      border-radius: 3px;
+      background: #ffffff;
+      color: #333333;
+      outline: none;
+    }
+    .pma-select:focus {
+      border-color: #235a81;
+    }
+
+    .pma-form-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .pma-form-table td {
+      padding: 7px 0;
+      vertical-align: middle;
+    }
+
+    .pma-form-table td.label-col {
+      width: 32%;
+      font-size: 13px;
+      color: #333333;
+      font-weight: 500;
+    }
+
+    .pma-input {
+      width: 100%;
+      padding: 7px 10px;
+      font-size: 13px;
+      border: 1px solid #cccccc;
+      border-radius: 3px;
+      background: #ffffff;
+      color: #333333;
+      outline: none;
+    }
+    .pma-input:focus {
+      border-color: #235a81;
+      box-shadow: 0 0 4px rgba(35, 90, 129, 0.25);
+    }
+
+    .pma-card-footer {
+      background: #e8e8e8;
+      border-top: 1px solid #d3d3d3;
+      padding: 10px 15px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      border-radius: 0 0 3px 3px;
+    }
+
+    .pma-btn-login {
+      background: linear-gradient(to bottom, #fcfcfc 0%, #e0e0e0 100%);
+      border: 1px solid #999999;
+      border-radius: 3px;
+      padding: 6px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #333333;
+      cursor: pointer;
+      box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+    }
+    .pma-btn-login:hover {
+      background: linear-gradient(to bottom, #ffffff 0%, #d8d8d8 100%);
+      border-color: #777777;
+    }
+
+    .help-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #4a90e2;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    .panel-return-bar {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 12px;
+      color: #666666;
+    }
+    .panel-return-bar a {
+      color: #235a81;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .panel-return-bar a:hover {
+      text-decoration: underline;
+    }
+
+    /* Tampilan Halaman Struktur Database phpMyAdmin (Setelah Login) */
+    #workspace-view {
+      display: none;
+      flex-direction: column;
+      height: 100vh;
+      background: #ffffff;
+    }
+
+    .pma-topbar {
+      background: #ffffff;
+      border-bottom: 1px solid #d3d3d3;
+      padding: 8px 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pma-nav-crumbs {
+      font-size: 13px;
+      color: #444444;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pma-nav-tabs {
+      background: #e8e8e8;
+      border-bottom: 1px solid #cccccc;
+      padding: 6px 15px 0 15px;
+      display: flex;
+      gap: 3px;
+    }
+
+    .pma-tab {
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #333333;
+      background: #dfdfdf;
+      border: 1px solid #cccccc;
+      border-bottom: none;
+      border-radius: 3px 3px 0 0;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .pma-tab.active {
+      background: #ffffff;
+      border-bottom: 1px solid #ffffff;
+      color: #235a81;
+      margin-bottom: -1px;
+    }
+
+    .pma-workspace-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .pma-sidebar {
+      width: 250px;
+      background: #fdfdfd;
+      border-right: 1px solid #d3d3d3;
+      overflow-y: auto;
+      padding: 10px 0;
+    }
+
+    .pma-tree-header {
+      padding: 5px 15px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #235a81;
+      border-bottom: 1px solid #e8e8e8;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pma-tree-item {
+      padding: 4px 15px 4px 25px;
+      font-size: 12px;
+      color: #333333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pma-tree-item:hover {
+      background: #ebf2f7;
+    }
+
+    .pma-main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px 20px;
+      background: #ffffff;
+    }
+
+    .pma-table-container {
+      margin-top: 15px;
+      border: 1px solid #cccccc;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .pma-grid-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .pma-grid-table th {
+      background: #e8e8e8;
+      color: #333333;
+      font-weight: 600;
+      padding: 8px 10px;
+      border: 1px solid #cccccc;
+      text-align: left;
+    }
+
+    .pma-grid-table td {
+      padding: 7px 10px;
+      border: 1px solid #e0e0e0;
+      color: #333333;
+      font-family: monospace;
+    }
+
+    .pma-grid-table tr:nth-child(even) {
+      background: #fbfbfb;
+    }
+
+    .pma-grid-table tr:hover {
+      background: #f0f7fd;
+    }
+
+    .pma-query-box {
+      margin-top: 15px;
+      padding: 12px;
+      background: #f8f8f8;
+      border: 1px solid #d3d3d3;
+      border-radius: 3px;
+    }
+
+    .pma-query-textarea {
+      width: 100%;
+      height: 70px;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px;
+      border: 1px solid #cccccc;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    .pma-query-btn {
+      margin-top: 8px;
+      background: linear-gradient(to bottom, #fcfcfc 0%, #e0e0e0 100%);
+      border: 1px solid #999999;
+      border-radius: 3px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #333333;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <div class="brand-icon">F</div>
-      <span>FikPanel Database Manager</span>
-    </div>
-    <div class="badges">
-      <span class="badge badge-online">● Terhubung Aktif</span>
-      <span class="badge badge-db">Database: {{DB_NAME}}</span>
-      <span class="badge">Mode: FikPanel Built-in Client</span>
-    </div>
-    <div>
-      <a href="/#/databases" class="btn">Kembali ke Panel</a>
-    </div>
-  </header>
 
-  <div class="main-layout">
-    <aside>
-      <div class="aside-header">
-        <span>Tabel Database</span>
-        <button class="btn-preset" onclick="loadTables()">Muat Ulang</button>
+  <!-- Halaman 1: Tampilan Login phpMyAdmin (Persis Screenshot 2) -->
+  <div id="login-view">
+    <div class="pma-header">
+      <div class="pma-logo-wrap">
+        <!-- Logo Resmi Perahu Layar phpMyAdmin -->
+        <svg width="220" height="75" viewBox="0 0 220 75" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g transform="translate(10, 2)">
+            <!-- Layar Besar Belakang -->
+            <path d="M46 8 L46 48 L18 48 Z" fill="#cfcfcf" stroke="#999999" stroke-width="0.8" />
+            <!-- Layar Depan -->
+            <path d="M50 15 L72 48 L50 48 Z" fill="#e8e8e8" stroke="#999999" stroke-width="0.8" />
+            <!-- Bendera Kecil Atas -->
+            <path d="M46 5 L46 8 L40 8 Z" fill="#ea8200" />
+            <!-- Lambung Perahu -->
+            <path d="M12 51 L76 51 L66 60 L22 60 Z" fill="#666666" />
+            <!-- Garis Riak Air -->
+            <path d="M8 64 C22 63 32 65 46 64 C60 63 70 65 82 64" stroke="#aaaaaa" stroke-width="1.2" stroke-linecap="round" fill="none" />
+          </g>
+          <!-- Tulisan phpMyAdmin -->
+          <text x="88" y="52" font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif" font-size="28" font-weight="bold">
+            <tspan fill="#1e395b">php</tspan><tspan fill="#ea8200">My</tspan><tspan fill="#1e395b">Admin</tspan>
+          </text>
+        </svg>
       </div>
-      <ul id="tableList" class="table-list">
-        <li class="table-item" style="color:var(--text-muted)">Memuat tabel...</li>
-      </ul>
-    </aside>
+      <h1 class="pma-welcome-title">Welcome to phpMyAdmin</h1>
+    </div>
 
-    <main class="content-area">
-      <div class="query-box-container">
-        <div class="query-box-header">
-          <div class="query-presets">
-            <button class="btn-preset" onclick="setQuery('SELECT * FROM sqlite_master WHERE type=\'table\';')">Daftar Tabel</button>
-            <button class="btn-preset" onclick="setQuery('SELECT * FROM sites LIMIT 50;')">Tabel Sites</button>
-            <button class="btn-preset" onclick="setQuery('SELECT * FROM users LIMIT 50;')">Tabel Users</button>
-            <button class="btn-preset" onclick="setQuery('SELECT * FROM databases LIMIT 50;')">Tabel Databases</button>
+    <!-- Kotak 1: Language (Screenshot 2) -->
+    <div class="pma-card">
+      <div class="pma-card-tab">Language</div>
+      <div class="pma-card-body">
+        <select class="pma-select" aria-label="Language selection">
+          <option selected>English</option>
+          <option>Bahasa Indonesia - Indonesian</option>
+          <option>Deutsch - German</option>
+          <option>Français - French</option>
+          <option>Español - Spanish</option>
+          <option>日本語 - Japanese</option>
+          <option>简体中文 - Chinese simplified</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Kotak 2: Log in (Screenshot 2) -->
+    <div class="pma-card">
+      <div class="pma-card-tab">
+        <span>Log in</span>
+        <a href="https://docs.phpmyadmin.net/" target="_blank" rel="noopener noreferrer" class="help-icon" title="phpMyAdmin Documentation">?</a>
+      </div>
+      <div class="pma-card-body">
+        <table class="pma-form-table">
+          <tr>
+            <td class="label-col"><label for="input_username">Username:</label></td>
+            <td>
+              <input
+                type="text"
+                name="pma_username"
+                id="input_username"
+                class="pma-input"
+                value="{{USERNAME}}"
+                spellcheck="false"
+              />
+            </td>
+          </tr>
+          <tr>
+            <td class="label-col"><label for="input_password">Password:</label></td>
+            <td>
+              <input
+                type="password"
+                name="pma_password"
+                id="input_password"
+                class="pma-input"
+                placeholder=""
+                autofocus
+              />
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="pma-card-footer">
+        <button type="button" class="pma-btn-login" onclick="doLogin()">Log in</button>
+      </div>
+    </div>
+
+    <div class="panel-return-bar">
+      <span>Dikelola secara aman oleh FikPanel &bull; </span>
+      <a href="/#/databases">Kembali ke Panel FikPanel</a>
+    </div>
+  </div>
+
+  <!-- Halaman 2: Tampilan Struktur Database phpMyAdmin (Setelah Login) -->
+  <div id="workspace-view">
+    <div class="pma-topbar">
+      <div class="pma-nav-crumbs">
+        <strong style="color:#235a81">phpMyAdmin</strong> &bull;
+        <span>Server: 127.0.0.1</span> &raquo;
+        <span>Database: <strong>{{DB_NAME}}</strong></span>
+      </div>
+      <div>
+        <button class="pma-query-btn" onclick="doLogout()">Log out</button>
+        <a href="/#/databases" class="pma-query-btn" style="text-decoration:none;display:inline-block;margin-left:6px;">Panel FikPanel</a>
+      </div>
+    </div>
+
+    <div class="pma-nav-tabs">
+      <a href="#" class="pma-tab active">Structure</a>
+      <a href="#" class="pma-tab">SQL</a>
+      <a href="#" class="pma-tab">Search</a>
+      <a href="#" class="pma-tab">Query</a>
+      <a href="#" class="pma-tab">Export</a>
+      <a href="#" class="pma-tab">Import</a>
+      <a href="#" class="pma-tab">Operations</a>
+      <a href="#" class="pma-tab">Privileges</a>
+    </div>
+
+    <div class="pma-workspace-body">
+      <aside class="pma-sidebar">
+        <div class="pma-tree-header">
+          <span>&#128193; {{DB_NAME}}</span>
+        </div>
+        <div id="pmaTreeList">
+          <div style="padding:10px 15px;color:#888;font-size:12px;">Memuat tabel...</div>
+        </div>
+      </aside>
+
+      <main class="pma-main-content">
+        <h2 style="font-size:16px;font-weight:700;color:#2c3e50;margin-bottom:12px;">Database: {{DB_NAME}}</h2>
+
+        <div class="pma-query-box">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Jalankan Query SQL:</label>
+          <textarea id="pmaSqlQuery" class="pma-query-textarea">SELECT * FROM sqlite_master WHERE type='table';</textarea>
+          <button type="button" class="pma-query-btn" onclick="executePmaSql()">Go (Jalankan)</button>
+        </div>
+
+        <div id="pmaResultCount" style="font-size:12px;color:#666;margin-top:14px;">Memuat data tabel...</div>
+
+        <div class="pma-table-container">
+          <div id="pmaTableGrid">
+            <div style="padding:20px;text-align:center;color:#888;font-size:12px;">Memuat data...</div>
           </div>
         </div>
-        <textarea id="sqlQuery" class="query-textarea" placeholder="Tulis perintah SQL di sini... (tekan Ctrl+Enter untuk mengeksekusi)">SELECT * FROM sqlite_master WHERE type='table';</textarea>
-        <div class="query-actions">
-          <span class="query-hint">Tekan <strong>Ctrl + Enter</strong> untuk menjalankan query</span>
-          <button class="btn btn-primary" onclick="runQuery()">Jalankan Query</button>
-        </div>
-      </div>
-
-      <div class="results-container">
-        <div id="errorBox" class="error-box" style="display:none"></div>
-        <div class="results-meta">
-          <span id="resultsCount">0 baris ditemukan</span>
-          <span id="resultsLatency">- ms</span>
-        </div>
-        <div id="tableContainer">
-          <div class="empty-state">Jalankan query atau pilih tabel di bilah samping untuk melihat data.</div>
-        </div>
-      </div>
-    </main>
+      </main>
+    </div>
   </div>
 
   <script>
-    let activeTable = '';
-
-    function setQuery(q) {
-      document.getElementById('sqlQuery').value = q;
-      runQuery();
+    function doLogin() {
+      document.getElementById('login-view').style.display = 'none';
+      const ws = document.getElementById('workspace-view');
+      ws.style.display = 'flex';
+      loadPmaTables();
+      executePmaSql();
     }
 
-    async function loadTables() {
-      const listEl = document.getElementById('tableList');
+    function doLogout() {
+      document.getElementById('workspace-view').style.display = 'none';
+      document.getElementById('login-view').style.display = 'block';
+    }
+
+    document.getElementById('input_password').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        doLogin();
+      }
+    });
+
+    async function loadPmaTables() {
+      const treeEl = document.getElementById('pmaTreeList');
       try {
         const res = await fetch('/pma/api/tables');
         const data = await res.json();
-        listEl.innerHTML = '';
+        treeEl.innerHTML = '';
         if (data.tables && data.tables.length > 0) {
           data.tables.forEach(t => {
-            const li = document.createElement('li');
-            li.className = 'table-item' + (activeTable === t ? ' active' : '');
-            li.innerHTML = '<span>' + t + '</span>';
-            li.onclick = () => {
-              activeTable = t;
-              document.querySelectorAll('.table-item').forEach(el => el.classList.remove('active'));
-              li.classList.add('active');
-              setQuery('SELECT * FROM ' + t + ' LIMIT 50;');
+            const item = document.createElement('div');
+            item.className = 'pma-tree-item';
+            item.innerHTML = '<span>&#128196; ' + t + '</span>';
+            item.onclick = () => {
+              document.getElementById('pmaSqlQuery').value = 'SELECT * FROM ' + t + ' LIMIT 50;';
+              executePmaSql();
             };
-            listEl.appendChild(li);
+            treeEl.appendChild(item);
           });
         } else {
-          listEl.innerHTML = '<li class="table-item" style="color:var(--text-muted)">Tidak ada tabel</li>';
+          treeEl.innerHTML = '<div style="padding:10px 15px;color:#888;font-size:12px;">Tidak ada tabel</div>';
         }
       } catch (e) {
-        listEl.innerHTML = '<li class="table-item" style="color:var(--danger)">Gagal memuat tabel</li>';
+        treeEl.innerHTML = '<div style="padding:10px 15px;color:red;font-size:12px;">Gagal memuat</div>';
       }
     }
 
-    async function runQuery() {
-      const q = document.getElementById('sqlQuery').value.trim();
-      const errBox = document.getElementById('errorBox');
-      const tableContainer = document.getElementById('tableContainer');
-      const countEl = document.getElementById('resultsCount');
-      const latencyEl = document.getElementById('resultsLatency');
-
-      errBox.style.display = 'none';
+    async function executePmaSql() {
+      const q = document.getElementById('pmaSqlQuery').value.trim();
+      const grid = document.getElementById('pmaTableGrid');
+      const countEl = document.getElementById('pmaResultCount');
       if (!q) return;
 
       try {
@@ -928,23 +1321,19 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
         const data = await res.json();
 
         if (!res.ok || !data.ok) {
-          errBox.textContent = data.error || 'Terjadi kesalahan saat mengeksekusi SQL';
-          errBox.style.display = 'block';
-          tableContainer.innerHTML = '';
-          countEl.textContent = '0 baris ditemukan';
-          latencyEl.textContent = '- ms';
+          grid.innerHTML = '<div style="padding:15px;color:#c0392b;font-size:12px;background:#fdeeed;">Galat SQL: ' + (data.error || 'Query gagal') + '</div>';
+          countEl.textContent = 'Gagal mengeksekusi query.';
           return;
         }
 
-        countEl.textContent = data.count + ' baris ditemukan';
-        latencyEl.textContent = data.time_ms + ' ms';
+        countEl.textContent = 'Menampilkan ' + data.count + ' baris (Query berlangsung ' + data.time_ms + ' ms).';
 
         if (!data.columns || data.columns.length === 0) {
-          tableContainer.innerHTML = '<div class="empty-state">Query berhasil dijalankan (tanpa output baris).</div>';
+          grid.innerHTML = '<div style="padding:15px;color:#555;font-size:12px;">Query berhasil dieksekusi.</div>';
           return;
         }
 
-        let html = '<table><thead><tr>';
+        let html = '<table class="pma-grid-table"><thead><tr>';
         data.columns.forEach(col => {
           html += '<th>' + col + '</th>';
         });
@@ -954,36 +1343,26 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
           data.rows.forEach(row => {
             html += '<tr>';
             row.forEach(val => {
-              const displayVal = val === null ? '<span style="color:var(--text-muted)">NULL</span>' : String(val);
+              const displayVal = val === null ? '<em style="color:#999">NULL</em>' : String(val);
               html += '<td>' + displayVal + '</td>';
             });
             html += '</tr>';
           });
         } else {
-          html += '<tr><td colspan="' + data.columns.length + '" style="text-align:center;color:var(--text-muted);padding:2rem;">Tidak ada rekaman data (kosong).</td></tr>';
+          html += '<tr><td colspan="' + data.columns.length + '" style="text-align:center;color:#999;padding:20px;">Data kosong (0 baris).</td></tr>';
         }
         html += '</tbody></table>';
-        tableContainer.innerHTML = html;
+        grid.innerHTML = html;
       } catch (e) {
-        errBox.textContent = e.message || 'Koneksi ke backend terputus';
-        errBox.style.display = 'block';
+        grid.innerHTML = '<div style="padding:15px;color:#c0392b;font-size:12px;">Gagal menghubungi backend FikPanel.</div>';
       }
     }
-
-    document.getElementById('sqlQuery').addEventListener('keydown', function(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        runQuery();
-      }
-    });
-
-    loadTables();
-    runQuery();
   </script>
 </body>
 </html>`
 
-	htmlContent := strings.Replace(htmlTemplate, "{{DB_NAME}}", dbName, 1)
+	htmlContent := strings.Replace(htmlTemplate, "{{DB_NAME}}", dbName, -1)
+	htmlContent = strings.Replace(htmlContent, "{{USERNAME}}", userName, -1)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

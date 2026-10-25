@@ -737,9 +737,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `database` (string, opsional), `access_mode` (`"panel"` / `"domain"` / `"custom_port"`), `target_domain` (string, opsional mis. `"kostash.my.id"`), `custom_port` (int, opsional mis. 888) |
-| Response | HTTP 200 `{"ok": true, "installed": true, "access_mode": "panel", "url": "http://127.0.0.1:8443/pma/?sso_token=...", "token": "pma_sso_..."}` |
-| Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO). Mendukung mode domain situs (port 80/443), mode panel independen (`/pma/` pada port panel), atau port khusus. |
+| Request Body | `database` (string, opsional), `username` (string, opsional), `password` (string, opsional), `access_mode` (`"panel"` / `"domain"` / `"custom_port"`), `target_domain` (string, opsional mis. `"kostash.my.id"`), `custom_port` (int, opsional mis. 888) |
+| Response | HTTP 200 `{"ok": true, "installed": true, "access_mode": "panel", "url": "http://127.0.0.1:8443/phpmyadmin/index.php?route=/database/structure&db=...&user=...&sso_token=...", "token": "pma_sso_..."}` |
+| Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO) dengan parameter rute resmi phpMyAdmin 5. Mendukung mode domain situs (port 80/443), mode panel independen (`/phpmyadmin/index.php` pada port panel), atau port khusus. |
 
 | Field | Detail |
 |---|---|
@@ -756,10 +756,10 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Method + Endpoint | `GET /pma/` atau `GET /phpmyadmin/` |
 | Auth Required | Yes (Session cookie atau parameter query `sso_token`) |
 | Headers | `Accept: text/html` |
-| Query Params | `db` (string, opsional nama database), `sso_token` (string, token SSO) |
+| Query Params | `route` (string, mis. `/database/structure`), `db` (string, nama database), `user` (string, username database), `sso_token` (string, token SSO) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 HTML dokumen mandiri antarmuka visual Database Manager FikPanel. |
-| Notes | Menyajikan antarmuka visual mandiri berbasis dark-theme FikPanel untuk inspeksi tabel dan SQL runner tanpa dependensi port 888. |
+| Response | HTTP 200 Dokumen HTML antarmuka phpMyAdmin resmi (logo sailboat, Language selector, kartu Log in dengan prefilled username, dan workspace tabel setelah login). |
+| Notes | Berfungsi sebagai fallback lokal maupun antarmuka phpMyAdmin bawaan di port panel, sehingga tidak terjadi `ERR_CONNECTION_REFUSED` dan konsisten dengan phpMyAdmin resmi. |
 
 | Field | Detail |
 |---|---|

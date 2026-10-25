@@ -101,15 +101,16 @@ flowchart TD
     CekTerpasang -- Sudah Terpasang --> DashboardDB[Tampilkan Dashboard & Tabel Database]
     DashboardDB --> TambahDB[Tambah DB + Generate Password Acak 16 Karakter]
     DashboardDB --> KelolaPass[Lihat / Sensor / Salin Password User & Root]
-    DashboardDB --> WebGUI[Akses Web GUI phpMyAdmin]
-    WebGUI --> PilihAkses{Pilih Metode Akses}
-    PilihAkses -- Akses Bebas Sandi (SSO) --> GenSSO[Panggil POST /api/databases/webgui/sso]
-    GenSSO --> TokenSSO[Buat Token Kriptografi Sekali Pakai]
-    TokenSSO --> RedirectTab[Buka Tab Baru: http://IP:888/phpmyadmin/?sso_token=...]
-    PilihAkses -- Akses Publik --> CekPortPublik{Toggle Port 888 Aktif?}
-    CekPortPublik -- Nonaktif --> BukaPort[Panggil POST /api/databases/webgui/toggle-public]
-    BukaPort --> BukaURLPublik[Buka Tab Baru: http://IP:888/phpmyadmin/]
-    CekPortPublik -- Aktif --> BukaURLPublik
+    DashboardDB --> WebGUI[Akses Web GUI phpMyAdmin 5]
+    WebGUI --> TampilKredensial[Tampilkan Kredensial Database: Username & Password dengan Tombol Salin]
+    TampilKredensial --> PilihAkses{Pilih Metode Akses}
+    PilihAkses -- Akses Mandiri FikPanel (Rekomendasi) --> AksesPanel[Buka via Port Panel: /phpmyadmin/index.php]
+    PilihAkses -- Melalui Domain Situs --> AksesDomain[Buka via Domain Situs Terpasang mis. domain.com/phpmyadmin/index.php]
+    PilihAkses -- Port Khusus (Standalone) --> AksesPort[Buka via Port Standalone mis. 888]
+    AksesPanel --> RuteResmi[Format Rute Resmi phpMyAdmin 5: ?route=/database/structure&db=...&user=...]
+    AksesDomain --> RuteResmi
+    AksesPort --> RuteResmi
+    RuteResmi --> TampilanPMA[Tampilan Resmi phpMyAdmin 5: Logo Sailboat, Language Selector, Form Log in Terisi Username]
     DashboardDB --> HapusDB[Hapus Database via Dialog Konfirmasi]
 ```
 
