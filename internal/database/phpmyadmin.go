@@ -51,11 +51,14 @@ func StorePmaSSOSession(token, db, username, password string) {
 	}
 }
 
-// GetPmaSSOSession mengambil sesi SSO berdasarkan token
-func GetPmaSSOSession(token string) (PmaSSOSession, bool) {
-	ssoMu.RLock()
-	defer ssoMu.RUnlock()
+// ConsumePmaSSOSession mengambil dan langsung memusnahkan sesi SSO dari RAM (burn-after-reading / single-use)
+func ConsumePmaSSOSession(token string) (PmaSSOSession, bool) {
+	ssoMu.Lock()
+	defer ssoMu.Unlock()
 	s, found := ssoSessions[token]
+	if found {
+		delete(ssoSessions, token)
+	}
 	return s, found
 }
 
@@ -274,7 +277,7 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 						targetRoute := q.Get("route")
 
 						if ssoToken != "" {
-							if sso, ok := GetPmaSSOSession(ssoToken); ok {
+							if sso, ok := ConsumePmaSSOSession(ssoToken); ok {
 								if targetDb == "" {
 									targetDb = sso.Database
 								}
@@ -361,6 +364,17 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
         }
       }
     }
+    // Bersihkan parameter sso_token dari URL address bar agar tidak tersisa di history peramban
+    try {
+      if (window.history && window.history.replaceState) {
+        var uObj = new URL(window.location.href);
+        if (uObj.searchParams.has('sso_token')) {
+          uObj.searchParams.delete('sso_token');
+          uObj.searchParams.delete('pma_username');
+          window.history.replaceState({}, document.title, uObj.pathname + uObj.search);
+        }
+      }
+    } catch (e) {}
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', syncPma);
