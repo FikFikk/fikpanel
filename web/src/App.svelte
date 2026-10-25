@@ -22,6 +22,7 @@
   node: () => import('./routes/NodeManager.svelte'),
   dns: () => import('./routes/DNSManager.svelte'),
   php: () => import('./routes/PHPManager.svelte'),
+  system: () => import('./routes/SystemManager.svelte'),
   services: () => import('./routes/Services.svelte'),
     terminal: () => import('./routes/Terminal.svelte'),
     monitor: () => import('./routes/Monitor.svelte'),

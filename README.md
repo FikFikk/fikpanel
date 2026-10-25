@@ -27,6 +27,8 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 
 ### 1. Dashboard Bento Realtime
 - **Penjadwal Tugas (Cron Jobs)**: Manajemen eksekusi skrip otomatis, pembersihan log berkala, trigger manual, dan riwayat terminal log per tugas.
+- **Task Manager & Process Killer**: Pantau proses sistem paling berat (CPU/RAM teratas), tombol kill proses, dan audit port jaringan yang mendengarkan (*Listening Ports*).
+- **Pembersih Sistem & Optimasi RAM (Cleaner)**: Pindai dan bersihkan sampah paket APT, arsip log lama (`.gz`, `.old`), file temporary, serta flush buffer RAM (*drop caches*) dalam 1-klik.
 - **Pencadangan & Snapshot (Backup S3 / Lokal)**: Cadangkan database MySQL / direktori website ke MinIO / S3 Object Storage atau arsip lokal secara instan.
 - **DNS Zone & Record Manager**: Manajemen authoritative DNS records (A/AAAA, CNAME, TXT, MX) visual per domain.
 - **PHP Multi-Version & FPM Tuning**: Deteksi versi PHP aktif (8.3, 8.2, 8.1, 7.4), kontrol daemon FPM, dan form penyesuaian parameter `php.ini` (memory limit, upload size).

@@ -319,6 +319,31 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── System Process & Cleaner ──────────────────────────────────────────────
+export interface SystemProcess {
+  pid: number;
+  user: string;
+  cpu: number;
+  memory: number;
+  command: string;
+}
+
+export interface PortListening {
+  proto: string;
+  port: string;
+  address: string;
+  program: string;
+  pid: number;
+}
+
+export interface CleanerScanResult {
+  apt_cache_bytes: number;
+  system_log_bytes: number;
+  tmp_bytes: number;
+  docker_reclaim_bytes: number;
+  total_bytes: number;
+}
+
 // ── DNS Management ────────────────────────────────────────────────────────
 export interface DNSZone {
   id: number;

@@ -22,7 +22,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'cron', label: 'Cron Jobs', icon: 'ri-time-line', group: 'utama' },
   { id: 'terminal', label: 'Terminal', icon: 'ri-terminal-box-line', group: 'utama' },
   { id: 'monitor', label: 'Monitor', icon: 'ri-line-chart-line', group: 'sistem' },
-  { id: 'security', label: 'Security', icon: 'ri-shield-keyhole-line', group: 'sistem' },
+  { id: 'system', label: 'Task & Cleaner', icon: 'ri-speed-up-line', group: 'sistem' },
+  { id: 'security', label: 'Security', icon: 'ri-shield-check-line', group: 'sistem' },
   { id: 'assistant', label: 'AI Assistant', icon: 'ri-sparkling-line', group: 'sistem' },
   { id: 'settings', label: 'Settings', icon: 'ri-settings-4-line', group: 'sistem' },
 ];

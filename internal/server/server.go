@@ -22,6 +22,7 @@ import (
 	"fikpanel/internal/services"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
+	"fikpanel/internal/system"
 	"fikpanel/web"
 )
 
@@ -40,6 +41,7 @@ type Server struct {
 	firewall *security.Manager
 	pm2      *node.Manager
 	phpMgr   *php.Manager
+	systemMgr *system.Manager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -62,6 +64,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		firewall: security.NewManager(),
 		pm2:      node.NewManager(),
 		phpMgr:   php.NewManager(),
+		systemMgr: system.NewManager(),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -171,6 +174,15 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleListWebhooks)))
 	s.mux.Handle("POST /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleCreateWebhook)))
 	s.mux.Handle("DELETE /api/webhooks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWebhook)))
+
+	// System Process & Task Manager
+	s.mux.Handle("GET /api/system/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListSystemProcesses)))
+	s.mux.Handle("POST /api/system/processes/{pid}/kill", s.AuthMiddleware(http.HandlerFunc(s.handleKillSystemProcess)))
+	s.mux.Handle("GET /api/system/ports", s.AuthMiddleware(http.HandlerFunc(s.handleListListeningPorts)))
+
+	// System Cleaner & Optimization
+	s.mux.Handle("GET /api/system/cleaner/scan", s.AuthMiddleware(http.HandlerFunc(s.handleScanSystemJunk)))
+	s.mux.Handle("POST /api/system/cleaner/clean", s.AuthMiddleware(http.HandlerFunc(s.handleCleanSystemJunk)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))
