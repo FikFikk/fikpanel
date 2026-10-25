@@ -18,6 +18,8 @@
     databases: () => import('./routes/Databases.svelte'),
     docker: () => import('./routes/Docker.svelte'),
     cron: () => import('./routes/Cron.svelte'),
+  backup: () => import('./routes/Backup.svelte'),
+  node: () => import('./routes/NodeManager.svelte'),
   services: () => import('./routes/Services.svelte'),
     terminal: () => import('./routes/Terminal.svelte'),
     monitor: () => import('./routes/Monitor.svelte'),

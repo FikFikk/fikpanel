@@ -16,6 +16,8 @@ import (
 	"fikpanel/internal/database"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
+	"fikpanel/internal/node"
+	"fikpanel/internal/security"
 	"fikpanel/internal/services"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
@@ -34,6 +36,8 @@ type Server struct {
 	ai       *ai.Client
 	tasks    *database.TaskManager
 	cronMgr  *cron.Manager
+	firewall *security.Manager
+	pm2      *node.Manager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -53,6 +57,8 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		nginx:    nginx.NewManager(nginx.DefaultPaths(), s, s),
 		tasks:    database.NewTaskManager(s),
 		cronMgr:  cron.NewManager(s),
+		firewall: security.NewManager(),
+		pm2:      node.NewManager(),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -127,6 +133,23 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("DELETE /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunCronJobNow)))
 	s.mux.Handle("GET /api/cron/jobs/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronLogs)))
+
+	// Backup & Arsip (S3 & Lokal)
+	s.mux.Handle("GET /api/backups", s.AuthMiddleware(http.HandlerFunc(s.handleListBackups)))
+	s.mux.Handle("POST /api/backups", s.AuthMiddleware(http.HandlerFunc(s.handleCreateBackupConfig)))
+	s.mux.Handle("DELETE /api/backups/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteBackupConfig)))
+	s.mux.Handle("POST /api/backups/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunBackupNow)))
+	s.mux.Handle("GET /api/backups/{id}/records", s.AuthMiddleware(http.HandlerFunc(s.handleListBackupRecords)))
+
+	// Firewall UFW
+	s.mux.Handle("GET /api/firewall/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetFirewallStatus)))
+	s.mux.Handle("POST /api/firewall/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleFirewall)))
+	s.mux.Handle("POST /api/firewall/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddFirewallRule)))
+	s.mux.Handle("DELETE /api/firewall/rules/{number}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFirewallRule)))
+
+	// Node.js & PM2 Management
+	s.mux.Handle("GET /api/node/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListNodeProcesses)))
+	s.mux.Handle("POST /api/node/processes/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleControlNodeProcess)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))

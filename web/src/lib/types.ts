@@ -319,6 +319,67 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── Backup & Arsip ───────────────────────────────────────────────────────
+export interface BackupConfig {
+  id: number;
+  name: string;
+  target_type: 'database' | 'site' | 'directory';
+  target_name: string;
+  storage_type: 'local' | 's3';
+  s3_endpoint: string;
+  s3_bucket: string;
+  s3_access_key: string;
+  s3_secret_key: string;
+  s3_region: string;
+  keep_copies: number;
+  auto_cron: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface BackupRecord {
+  id: number;
+  config_id: number;
+  file_name: string;
+  file_size_bytes: number;
+  storage_type: string;
+  storage_path: string;
+  status: 'success' | 'failed' | 'running';
+  error_message: string;
+  created_at: number;
+}
+
+// ── Firewall & UFW ────────────────────────────────────────────────────────
+export interface FirewallRule {
+  number: number;
+  to: string;
+  action: string;
+  from: string;
+  proto: string;
+}
+
+export interface FirewallStatus {
+  enabled: boolean;
+  rules: FirewallRule[];
+  raw: string;
+}
+
+// ── Node & PM2 Management ─────────────────────────────────────────────────
+export interface PM2Process {
+  id: number;
+  name: string;
+  namespace?: string;
+  version?: string;
+  mode?: string;
+  pid: number;
+  uptime?: number;
+  restart_count?: number;
+  status: 'online' | 'stopped' | 'errored';
+  cpu: number;
+  memory: number;
+  user: string;
+}
+
 // ── Cron Job Management ──────────────────────────────────────────────────
 export interface CronJob {
   id: number;

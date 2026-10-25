@@ -13,6 +13,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'website', label: 'Website', icon: 'ri-global-line', group: 'utama' },
   { id: 'databases', label: 'Databases', icon: 'ri-database-2-line', group: 'utama' },
   { id: 'docker', label: 'Docker', icon: 'ri-box-3-line', group: 'utama' },
+  { id: 'node', label: 'Node / PM2', icon: 'ri-nodejs-line', group: 'utama' },
+  { id: 'backup', label: 'Backup S3', icon: 'ri-inbox-archive-line', group: 'utama' },
   { id: 'files', label: 'Files', icon: 'ri-folder-3-line', group: 'utama' },
   { id: 'services', label: 'Services', icon: 'ri-server-line', group: 'utama' },
   { id: 'cron', label: 'Cron Jobs', icon: 'ri-time-line', group: 'utama' },
