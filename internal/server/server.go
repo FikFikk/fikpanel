@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fikpanel/internal/ai"
+	"fikpanel/internal/database"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/services"
@@ -30,6 +31,7 @@ type Server struct {
 	nginx    *nginx.Manager
 	sites    *sites.Manager
 	ai       *ai.Client
+	tasks    *database.TaskManager
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -47,6 +49,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		metrics:  m,
 		services: svc,
 		nginx:    nginx.NewManager(nginx.DefaultPaths(), s, s),
+		tasks:    database.NewTaskManager(s),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -143,6 +146,18 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/files/remote-download", s.AuthMiddleware(http.HandlerFunc(s.handleRemoteDownload)))
 	s.mux.Handle("POST /api/files/symlink", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSymlink)))
 	s.mux.Handle("POST /api/files/search-content", s.AuthMiddleware(http.HandlerFunc(s.handleSearchContent)))
+
+	// Manajemen Database & Engine Terkelola
+	s.mux.Handle("GET /api/databases/engines", s.AuthMiddleware(http.HandlerFunc(s.handleListEngines)))
+	s.mux.Handle("POST /api/databases/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallDatabase)))
+	s.mux.Handle("GET /api/databases/{engine}/list", s.AuthMiddleware(http.HandlerFunc(s.handleListDatabases)))
+	s.mux.Handle("POST /api/databases/{engine}/create", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDatabase)))
+	s.mux.Handle("DELETE /api/databases/{engine}/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDatabase)))
+
+	// Antrean Tugas Sistem & Streaming Log Real-time
+	s.mux.Handle("GET /api/system/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListTasks)))
+	s.mux.Handle("GET /api/system/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetTask)))
+	s.mux.Handle("GET /api/system/tasks/{id}/stream", s.AuthMiddleware(http.HandlerFunc(s.handleStreamTask)))
 
 	// Nginx Manager (layanan, config, versi, beban, optimasi, log error)
 	nginxRoutes := map[string]http.HandlerFunc{

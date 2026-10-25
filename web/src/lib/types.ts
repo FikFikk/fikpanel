@@ -275,3 +275,39 @@ export interface AIMessage {
   tool_name?: string;
   ts: number;
 }
+
+export interface DatabaseEngineInfo {
+  name: 'mysql' | 'postgresql' | 'mongodb' | 'redis';
+  display_name: string;
+  installed: boolean;
+  version: string;
+  running: boolean;
+  port: number;
+  databases_count: number;
+  service_unit: string;
+  supported_versions: string[];
+  description: string;
+}
+
+export interface DatabaseItem {
+  id: number;
+  engine: string;
+  name: string;
+  username: string;
+  password: string;
+  size_bytes: number;
+  backup_count: number;
+  location: string;
+  note: string;
+  created_at: number;
+}
+
+export interface SystemTask {
+  id: string;
+  type: string;
+  target: string;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  log: string;
+  created_at: number;
+  updated_at: number;
+}

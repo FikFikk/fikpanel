@@ -81,6 +81,31 @@ flowchart TD
     EksekusiOS --> CatatAudit
 ```
 
+### 1.4 Siklus Hidup Database & Antrean Quick Install
+
+```mermaid
+flowchart TD
+    PilihEngine[Pilih Tab Engine: MySQL / Postgres / MongoDB / Redis] --> CekTerpasang{Engine Terpasang & Aktif?}
+    
+    CekTerpasang -- Belum Terpasang --> EmptyState[Tampilkan Banner Edukatif Belum Terkonfigurasi]
+    EmptyState --> KlikInstall[Klik Quick Install]
+    KlikInstall --> ModalVersi[Pilih Versi misal 7.0 & Mode Native/Docker]
+    ModalVersi --> PicuInstall[POST /api/databases/install]
+    PicuInstall --> TaskQueue[Daftarkan ke system_tasks & Jalankan Background Worker]
+    TaskQueue --> MessagesBox[Buka Drawer Messages Box & Buka Stream SSE]
+    MessagesBox --> StreamLog[Alirkan stdout/stderr Terminal Real-time]
+    StreamLog --> SelesaiInstall{Instalasi Sukses?}
+    SelesaiInstall -- Ya --> UpdateState[Set Engine Installed & Refresh UI]
+    UpdateState --> DashboardDB
+    
+    CekTerpasang -- Sudah Terpasang --> DashboardDB[Tampilkan Dashboard & Tabel Database]
+    DashboardDB --> TambahDB[Tambah DB + Generate Password Acak 16 Karakter]
+    DashboardDB --> KelolaPass[Lihat / Sensor / Salin Password User & Root]
+    DashboardDB --> BackupDB[Backup / Ekspor Instan]
+    DashboardDB --> WebGUI[Akses Web Client Manager]
+    DashboardDB --> HapusDB[Hapus Database via Dialog Konfirmasi]
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)

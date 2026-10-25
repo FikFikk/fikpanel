@@ -15,6 +15,7 @@
   // Halaman selain dashboard dimuat terpisah (code splitting) agar login & dashboard cepat tampil
   const loaders: Record<string, () => Promise<{ default: Component<any> }>> = {
     website: () => import('./routes/Sites.svelte'),
+    databases: () => import('./routes/Databases.svelte'),
     services: () => import('./routes/Services.svelte'),
     terminal: () => import('./routes/Terminal.svelte'),
     monitor: () => import('./routes/Monitor.svelte'),
