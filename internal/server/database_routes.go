@@ -602,6 +602,22 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 	if userName == "" {
 		userName = targetDb
 	}
+	pass := strings.TrimSpace(req.Password)
+	if targetDb != "" {
+		var dbUser, dbPass string
+		err := s.store.DB().QueryRowContext(r.Context(), "SELECT username, password FROM databases WHERE name = ? LIMIT 1", targetDb).Scan(&dbUser, &dbPass)
+		if err == nil {
+			if userName == "" || userName == targetDb {
+				userName = dbUser
+			}
+			if pass == "" {
+				pass = dbPass
+			}
+		}
+	}
+
+	database.StorePmaSSOSession(ssoToken, targetDb, userName, pass)
+
 	if userName != "" {
 		queryParts = append(queryParts, fmt.Sprintf("user=%s", userName))
 		queryParts = append(queryParts, fmt.Sprintf("pma_username=%s", userName))

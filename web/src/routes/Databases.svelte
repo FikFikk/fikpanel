@@ -574,7 +574,9 @@
 
   // Hitung URL Publik Web GUI secara dinamis berdasarkan jalur akses yang dipilih (Format resmi phpMyAdmin 5)
   function getComputedPublicUrl(): string {
-    const userParam = targetWebGuiUser ? `&user=${encodeURIComponent(targetWebGuiUser)}` : '';
+    const userParam = targetWebGuiUser
+      ? `&user=${encodeURIComponent(targetWebGuiUser)}&pma_username=${encodeURIComponent(targetWebGuiUser)}`
+      : '';
     if (webGuiAccessMode === 'domain' && selectedWebGuiDomain) {
       const targetObj = webGuiStatus?.available_domains?.find((d) => d.domain === selectedWebGuiDomain);
       const scheme = targetObj?.ssl ? 'https' : 'http';
