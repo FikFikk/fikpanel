@@ -162,6 +162,12 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/databases/webgui/sso", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiSSO)))
 	s.mux.Handle("POST /api/databases/webgui/toggle-public", s.AuthMiddleware(http.HandlerFunc(s.handleWebGuiTogglePublic)))
 
+	// Web Client Database Terintegrasi (Bebas Port 888 & Bebas Keterikatan Domain)
+	s.mux.HandleFunc("GET /pma/", s.handleBuiltinWebGuiClient)
+	s.mux.HandleFunc("GET /phpmyadmin/", s.handleBuiltinWebGuiClient)
+	s.mux.HandleFunc("GET /pma/api/tables", s.handleBuiltinWebGuiTables)
+	s.mux.HandleFunc("POST /pma/api/query", s.handleBuiltinWebGuiQuery)
+
 	// Antrean Tugas Sistem & Streaming Log Real-time
 	s.mux.Handle("GET /api/system/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListTasks)))
 	s.mux.Handle("GET /api/system/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetTask)))

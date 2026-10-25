@@ -728,8 +728,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "installed": true, "software": "phpMyAdmin 5.2.1", "port": 888, "php_version": "PHP 8.2 (FPM)", "public_access": false, "sso_supported": true}` |
-| Notes | Memeriksa ketersediaan paket antarmuka visual phpMyAdmin atau Adminer pada server. |
+| Response | HTTP 200 `{"ok": true, "installed": true, "software": "phpMyAdmin / FikPanel Web Client", "port": 888, "panel_host": "127.0.0.1:8443", "available_domains": [{"domain": "kostash.my.id", "ssl": true, "url": "https://kostash.my.id/phpmyadmin/"}], "has_domains": true}` |
+| Notes | Memeriksa ketersediaan antarmuka visual database, daftar domain situs aktif untuk akses via domain, dan port server. |
 
 | Field | Detail |
 |---|---|
@@ -737,9 +737,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `database` (string, opsional) |
-| Response | HTTP 200 `{"ok": true, "installed": true, "url": "http://127.0.0.1:888/phpmyadmin/index.php?sso_token=...", "token": "pma_sso_..."}` |
-| Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO) agar pengguna langsung masuk ke phpMyAdmin tanpa memasukkan sandi root. |
+| Request Body | `database` (string, opsional), `access_mode` (`"panel"` / `"domain"` / `"custom_port"`), `target_domain` (string, opsional mis. `"kostash.my.id"`), `custom_port` (int, opsional mis. 888) |
+| Response | HTTP 200 `{"ok": true, "installed": true, "access_mode": "panel", "url": "http://127.0.0.1:8443/pma/?sso_token=...", "token": "pma_sso_..."}` |
+| Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO). Mendukung mode domain situs (port 80/443), mode panel independen (`/pma/` pada port panel), atau port khusus. |
 
 | Field | Detail |
 |---|---|
@@ -749,7 +749,37 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `enabled` (bool, wajib) |
 | Response | HTTP 200 `{"ok": true, "public_access": true, "message": "Akses publik phpMyAdmin berhasil diaktifkan"}` |
-| Notes | Mengatur pembukaan port 888 ke jaringan publik atau membatasinya hanya untuk akses lokal / panel. |
+| Notes | Mengatur pembukaan port ke jaringan publik atau membatasinya hanya untuk akses lokal / panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /pma/` atau `GET /phpmyadmin/` |
+| Auth Required | Yes (Session cookie atau parameter query `sso_token`) |
+| Headers | `Accept: text/html` |
+| Query Params | `db` (string, opsional nama database), `sso_token` (string, token SSO) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 HTML dokumen mandiri antarmuka visual Database Manager FikPanel. |
+| Notes | Menyajikan antarmuka visual mandiri berbasis dark-theme FikPanel untuk inspeksi tabel dan SQL runner tanpa dependensi port 888. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /pma/api/tables` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "tables": ["users", "sites", "databases", ...]}` |
+| Notes | Mengambil daftar tabel yang ada dalam database sistem aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /pma/api/query` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json` |
+| Query Params | Tidak ada |
+| Request Body | `query` (string SQL, wajib) |
+| Response | HTTP 200 `{"ok": true, "columns": ["id", "username"], "rows": [[1, "admin"]], "count": 1, "time_ms": 0.8}` |
+| Notes | Mengeksekusi perintah SQL secara interaktif dan mengembalikan hasil grid data. |
 
 ---
 

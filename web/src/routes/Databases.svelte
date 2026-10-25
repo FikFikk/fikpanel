@@ -39,10 +39,22 @@
   let savingEngineConfig = $state(false);
   let loadingEngineLogs = $state(false);
 
-  // State Web GUI Access (phpMyAdmin / Adminer)
+  // State Web GUI Access (phpMyAdmin / FikPanel Client)
   let publicAccessEnabled = $state(false);
   let targetWebGuiDb = $state('');
-  let webGuiStatus = $state<{ installed: boolean; software: string; port: number; php_version: string; public_access: boolean } | null>(null);
+  let webGuiStatus = $state<{
+    installed: boolean;
+    software: string;
+    port: number;
+    panel_host?: string;
+    php_version: string;
+    public_access: boolean;
+    available_domains?: Array<{ domain: string; ssl: boolean; url: string }>;
+    has_domains?: boolean;
+  } | null>(null);
+  let webGuiAccessMode = $state<'panel' | 'domain' | 'custom_port'>('panel');
+  let selectedWebGuiDomain = $state('');
+  let customWebGuiPort = $state(888);
 
   // State Kuota Database
   let quotaTargetDb = $state<DatabaseItem | null>(null);
@@ -488,12 +500,38 @@
     targetWebGuiDb = dbName;
     showWebGuiModal = true;
     try {
-      const res = await apiFetch<{ ok: boolean; installed: boolean; software: string; port: number; php_version: string; public_access: boolean }>('/api/databases/webgui/status');
+      const res = await apiFetch<any>('/api/databases/webgui/status');
       webGuiStatus = res;
       publicAccessEnabled = res.public_access;
+      if (res.available_domains && res.available_domains.length > 0) {
+        if (!selectedWebGuiDomain) {
+          selectedWebGuiDomain = res.available_domains[0].domain;
+        }
+      }
     } catch {
       // Abaikan bila backend merespons default
     }
+  }
+
+  // Hitung URL Publik Web GUI secara dinamis berdasarkan jalur akses yang dipilih
+  function getComputedPublicUrl(): string {
+    if (webGuiAccessMode === 'domain' && selectedWebGuiDomain) {
+      const targetObj = webGuiStatus?.available_domains?.find((d) => d.domain === selectedWebGuiDomain);
+      const scheme = targetObj?.ssl ? 'https' : 'http';
+      let url = `${scheme}://${selectedWebGuiDomain}/phpmyadmin/`;
+      if (targetWebGuiDb) url += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
+      return url;
+    }
+    if (webGuiAccessMode === 'custom_port') {
+      const host = window.location.hostname || '127.0.0.1';
+      let url = `http://${host}:${customWebGuiPort}/phpmyadmin/`;
+      if (targetWebGuiDb) url += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
+      return url;
+    }
+    // Default: 'panel' (Akses mandiri via FikPanel port saat ini)
+    let url = `${window.location.origin}/pma/`;
+    if (targetWebGuiDb) url += `?db=${encodeURIComponent(targetWebGuiDb)}`;
+    return url;
   }
 
   // Buka Web GUI dengan autentikasi SSO sekali klik dan redirect membuka tab baru
@@ -512,7 +550,12 @@
     try {
       const res = await apiFetch<{ ok: boolean; url: string; installed: boolean; message?: string }>('/api/databases/webgui/sso', {
         method: 'POST',
-        body: JSON.stringify({ database: targetWebGuiDb }),
+        body: JSON.stringify({
+          database: targetWebGuiDb,
+          access_mode: webGuiAccessMode,
+          target_domain: selectedWebGuiDomain,
+          custom_port: customWebGuiPort,
+        }),
       });
 
       if (!res.installed) {
@@ -521,7 +564,7 @@
         return;
       }
 
-      notify('Membuka antarmuka phpMyAdmin (SSO) di tab baru...', 'success');
+      notify('Membuka antarmuka Web GUI di tab baru...', 'success');
       showWebGuiModal = false;
 
       // Alihkan tab yang telah dibuka langsung ke URL target SSO
@@ -538,13 +581,8 @@
 
   // Buka URL Publik phpMyAdmin langsung di tab baru
   function openWebGuiPublic() {
-    const host = window.location.hostname || '127.0.0.1';
-    const port = webGuiStatus?.port || 888;
-    let publicUrl = `http://${host}:${port}/phpmyadmin/`;
-    if (targetWebGuiDb) {
-      publicUrl += `index.php?db=${encodeURIComponent(targetWebGuiDb)}`;
-    }
-    notify('Membuka URL Publik phpMyAdmin di tab baru...', 'info');
+    const publicUrl = getComputedPublicUrl();
+    notify('Membuka URL Publik di tab baru...', 'info');
     showWebGuiModal = false;
     window.open(publicUrl, '_blank', 'noopener,noreferrer');
   }
@@ -1480,18 +1518,102 @@
       <div class="modal-body">
         <div class="webgui-info-card">
           <div class="webgui-badge-row">
-            <span class="badge-status-online">● Layanan Aktif (Port {webGuiStatus?.port || 888})</span>
-            <span class="badge-php-version">{webGuiStatus?.php_version || 'PHP 8.2 (FPM)'}</span>
+            <span class="badge-status-online">● Layanan Aktif</span>
+            <span class="badge-php-version">{webGuiStatus?.software || 'FikPanel Database Client'}</span>
             {#if targetWebGuiDb}
               <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
             {/if}
           </div>
           <p class="webgui-desc">
-            Pilih metode akses ke antarmuka web database Anda:
+            Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
           </p>
+
+          <!-- Pilihan Jalur Akses (Access Mode Selector) -->
+          <div class="webgui-mode-selector mt-2">
+            <button
+              type="button"
+              class="mode-tab-btn"
+              class:active={webGuiAccessMode === 'panel'}
+              onclick={() => (webGuiAccessMode = 'panel')}
+            >
+              <i class="ri-dashboard-line" aria-hidden="true"></i>
+              <span>Melalui FikPanel (Independen)</span>
+            </button>
+            <button
+              type="button"
+              class="mode-tab-btn"
+              class:active={webGuiAccessMode === 'domain'}
+              onclick={() => (webGuiAccessMode = 'domain')}
+            >
+              <i class="ri-global-line" aria-hidden="true"></i>
+              <span>Melalui Domain Situs</span>
+            </button>
+            <button
+              type="button"
+              class="mode-tab-btn"
+              class:active={webGuiAccessMode === 'custom_port'}
+              onclick={() => (webGuiAccessMode = 'custom_port')}
+            >
+              <i class="ri-terminal-box-line" aria-hidden="true"></i>
+              <span>Port Standalone Khusus</span>
+            </button>
+          </div>
+
+          <!-- Konfigurasi sesuai Mode Terpilih -->
+          {#if webGuiAccessMode === 'domain'}
+            <div class="mode-config-box mt-3">
+              {#if webGuiStatus?.available_domains && webGuiStatus.available_domains.length > 0}
+                <label for="webgui-domain-select" class="form-label">Pilih Domain Situs yang Terpasang:</label>
+                <select id="webgui-domain-select" class="form-input" bind:value={selectedWebGuiDomain}>
+                  {#each webGuiStatus.available_domains as d}
+                    <option value={d.domain}>{d.domain} ({d.ssl ? 'HTTPS:443' : 'HTTP:80'})</option>
+                  {/each}
+                </select>
+                <p class="mode-help-text">
+                  Mengakses phpMyAdmin via subpath domain <code>/{selectedWebGuiDomain}/phpmyadmin</code> pada port standar web (80/443).
+                </p>
+              {:else}
+                <div class="mode-alert-box">
+                  <i class="ri-alert-line" aria-hidden="true"></i>
+                  <span>Belum ada situs terdaftar di menu Sites. Mengalihkan ke mode FikPanel Independen yang langsung aktif.</span>
+                </div>
+              {/if}
+            </div>
+          {:else if webGuiAccessMode === 'custom_port'}
+            <div class="mode-config-box mt-3">
+              <label for="webgui-port-input" class="form-label">Nomor Port Khusus phpMyAdmin:</label>
+              <div class="input-with-unit">
+                <input
+                  id="webgui-port-input"
+                  type="number"
+                  class="form-input"
+                  bind:value={customWebGuiPort}
+                  placeholder="888"
+                  min="1"
+                  max="65535"
+                />
+                <span class="unit-badge">TCP</span>
+              </div>
+              <p class="mode-help-text">
+                Gunakan mode ini jika Anda menjalankan daemon phpMyAdmin pada port standalone (mis. 888 atau 8080). Pastikan port telah dibuka di firewall VPS.
+              </p>
+            </div>
+          {:else}
+            <div class="mode-config-box mt-3">
+              <div class="mode-panel-info">
+                <i class="ri-shield-check-line mode-panel-icon" aria-hidden="true"></i>
+                <div>
+                  <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
+                  <p class="mode-help-text">
+                    Berjalan langsung di port panel (<code>{window.location.origin}/pma/</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
+                  </p>
+                </div>
+              </div>
+            </div>
+          {/if}
         </div>
 
-        <div class="webgui-cards-container">
+        <div class="webgui-cards-container mt-3">
           <!-- Opsi 1: Akses Bebas Sandi (Password-Free Access / SSO) -->
           <div class="webgui-choice-card highlight">
             <div class="choice-card-header">
@@ -1499,15 +1621,21 @@
               <h4 class="choice-card-title">Akses Bebas Sandi (One-Click SSO)</h4>
             </div>
             <p class="choice-card-desc">
-              Masuk langsung ke antarmuka phpMyAdmin tanpa perlu mengetik ulang root password secara manual.
+              Masuk langsung ke antarmuka web database tanpa perlu mengetik ulang root password secara manual.
               Menggunakan token sesi panel yang aman dan otomatis kedaluwarsa.
             </p>
+            <div class="webgui-public-url-box mt-2">
+              <div class="public-url-wrapper">
+                <span class="public-url-label">Target URL:</span>
+                <code class="public-url-text">{getComputedPublicUrl()}</code>
+              </div>
+            </div>
             <button
               class="btn btn-primary mt-2"
               onclick={openWebGuiSso}
             >
               <i class="ri-external-link-line" aria-hidden="true"></i>
-              <span>Buka Akses Bebas Sandi (Redirect Tab Baru)</span>
+              <span>Buka Akses Bebas Sandi (Tab Baru)</span>
             </button>
           </div>
 
@@ -1525,19 +1653,19 @@
               </label>
             </div>
             <p class="choice-card-desc">
-              Membuka port phpMyAdmin ke internet publik untuk diakses via URL domain/IP.
+              Membuka port / URL antarmuka web database ke internet publik untuk diakses via URL domain/IP.
               Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
             </p>
             {#if publicAccessEnabled}
               <div class="webgui-public-url-box mt-2">
                 <div class="public-url-wrapper">
                   <span class="public-url-label">URL Publik:</span>
-                  <code class="public-url-text">http://{window.location.hostname || '127.0.0.1'}:{webGuiStatus?.port || 888}/phpmyadmin/</code>
+                  <code class="public-url-text">{getComputedPublicUrl()}</code>
                 </div>
                 <button
                   type="button"
                   class="btn-icon"
-                  onclick={() => copyText(`http://${window.location.hostname || '127.0.0.1'}:${webGuiStatus?.port || 888}/phpmyadmin/`, 'URL Web GUI')}
+                  onclick={() => copyText(getComputedPublicUrl(), 'URL Web GUI')}
                   title="Salin URL Publik"
                   aria-label="Salin URL Publik"
                 >
@@ -1555,15 +1683,13 @@
           </div>
         </div>
 
-        <!-- Informasi Arsitektur Live Server vs Lingkungan Dev -->
+        <!-- Penjelasan Komprehensif Port 888 vs Domain vs Panel -->
         <div class="webgui-environment-hint mt-3">
           <i class="ri-information-line hint-icon" aria-hidden="true"></i>
           <div class="hint-content">
-            <span class="hint-title">Arsitektur Live Server:</span>
+            <span class="hint-title">Mengapa phpMyAdmin Tidak Wajib Port 888?</span>
             <p class="hint-text">
-              Di server VPS (Linux), phpMyAdmin berjalan sebagai daemon web internal di port <strong>{webGuiStatus?.port || 888}</strong>.
-              Tombol <em>Akses Bebas Sandi (SSO)</em> akan men-generate token login sekali pakai dan langsung membuka phpMyAdmin tanpa perlu memasukkan password root.
-              Di mode development lokal Windows, tab baru akan diarahkan ke port 888 (pastikan port/service phpMyAdmin lokal tersedia).
+              Di industri hosting (seperti cPanel, DirectAdmin, atau CloudPanel), phpMyAdmin umumnya diakses melalui domain situs (mis. <code>kostash.my.id/phpmyadmin</code>) pada port standar 80/443 dengan SSL HTTPS, atau disajikan langsung melalui port panel itu sendiri. Port 888 adalah default warisan aaPanel yang sering terblokir firewall cloud. FikPanel memberikan fleksibilitas penuh: Anda bisa mengakses via domain situs, port khusus, atau langsung melalui FikPanel Built-in Client tanpa hambatan port!
             </p>
           </div>
         </div>
@@ -3012,6 +3138,86 @@
     font-size: 0.8125rem;
     color: var(--text-muted);
     line-height: 1.4;
+  }
+
+  .webgui-mode-selector {
+    display: flex;
+    gap: 0.375rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.25rem;
+  }
+
+  .mode-tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .mode-tab-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .mode-tab-btn.active {
+    background: var(--bg-surface);
+    color: var(--accent);
+    border-color: var(--border-color);
+    font-weight: 600;
+  }
+
+  .mode-config-box {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1rem;
+  }
+
+  .mode-help-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.375rem;
+    margin-bottom: 0;
+    line-height: 1.4;
+  }
+
+  .mode-alert-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--warning);
+    font-size: 0.8125rem;
+  }
+
+  .mode-panel-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .mode-panel-icon {
+    font-size: 1.25rem;
+    color: var(--accent);
+    margin-top: 0.125rem;
+    flex-shrink: 0;
+  }
+
+  .mode-panel-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: block;
   }
 
   .webgui-public-url-box {
