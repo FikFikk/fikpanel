@@ -153,11 +153,18 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/backups/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunBackupNow)))
 	s.mux.Handle("GET /api/backups/{id}/records", s.AuthMiddleware(http.HandlerFunc(s.handleListBackupRecords)))
 
-	// Firewall UFW
+	// Firewall UFW Guard
 	s.mux.Handle("GET /api/firewall/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetFirewallStatus)))
 	s.mux.Handle("POST /api/firewall/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleFirewall)))
 	s.mux.Handle("POST /api/firewall/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddFirewallRule)))
 	s.mux.Handle("DELETE /api/firewall/rules/{number}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFirewallRule)))
+
+	// Security Center: SSH Hardening, Fail2Ban & Vulnerability Scanner
+	s.mux.Handle("GET /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleGetSSHConfig)))
+	s.mux.Handle("POST /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSSHConfig)))
+	s.mux.Handle("GET /api/security/fail2ban", s.AuthMiddleware(http.HandlerFunc(s.handleGetFail2BanStatus)))
+	s.mux.Handle("POST /api/security/fail2ban/unban", s.AuthMiddleware(http.HandlerFunc(s.handleUnbanFail2BanIP)))
+	s.mux.Handle("POST /api/security/scan", s.AuthMiddleware(http.HandlerFunc(s.handleRunSecurityScan)))
 
 	// Node.js & PM2 Management
 	s.mux.Handle("GET /api/node/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListNodeProcesses)))

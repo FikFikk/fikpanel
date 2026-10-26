@@ -107,6 +107,15 @@ func (m *Manager) Catalog(ctx context.Context) []AppPackage {
 			AptPackages: []string{"certbot", "python3-certbot-nginx"},
 		},
 		{
+			ID:          "fail2ban",
+			Name:        "Fail2Ban Intrusion Guard",
+			Category:    "tools",
+			Version:     "1.0.x",
+			Description: "Sistem pencegahan intrusi otomatis yang memblokir alamat IP penyerang brute-force SSH dan Nginx.",
+			Icon:        "ri-Alarm-warning-line",
+			AptPackages: []string{"fail2ban"},
+		},
+		{
 			ID:          "git",
 			Name:        "Git Version Control",
 			Category:    "tools",
@@ -202,6 +211,16 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 	case "certbot":
 		cmd := exec.CommandContext(ctx, "which", "certbot")
 		return cmd.Run() == nil, false
+
+	case "fail2ban":
+		cmd := exec.CommandContext(ctx, "which", "fail2ban-client")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "fail2ban").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
 
 	case "git":
 		cmd := exec.CommandContext(ctx, "which", "git")

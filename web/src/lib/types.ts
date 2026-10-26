@@ -319,6 +319,48 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── Security Center & Scanner ─────────────────────────────────────────────
+export interface SSHConfig {
+  port: number;
+  password_auth: boolean;
+  permit_root_login: boolean;
+  pubkey_auth: boolean;
+  active_service: boolean;
+}
+
+export interface Fail2BanJail {
+  name: string;
+  currently_failed: number;
+  total_failed: number;
+  banned_count: number;
+  banned_ips: string[];
+}
+
+export interface Fail2BanStatus {
+  installed: boolean;
+  running: boolean;
+  jails: Fail2BanJail[];
+}
+
+export interface ScanFinding {
+  category: 'baseline' | 'risk' | 'malware' | 'vuln';
+  severity: 'critical' | 'warning' | 'safe';
+  title: string;
+  detail: string;
+  fix_hint: string;
+}
+
+export interface SecurityScanReport {
+  score: number;
+  scanned_at: number;
+  risk_count: number;
+  malware_count: number;
+  vuln_count: number;
+  baseline_pass: number;
+  baseline_total: number;
+  findings: ScanFinding[];
+}
+
 // ── Persistent Monitoring ──────────────────────────────────────────────────
 export interface MonitorConfig {
   enabled: boolean;
