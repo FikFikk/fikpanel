@@ -28,7 +28,8 @@ if [ ! -d "$INSTALL_DIR" ]; then
     exit 1
 fi
 
-clear
+# Bersihkan layar jika terminal mendukung TTY
+clear 2>/dev/null || true
 echo -e "${CYAN}${BOLD}"
 echo "  ███████╗██╗██╗  ██╗██████╗  █████╗ ███╗   ██╗███████╗██╗     "
 echo "  ██╔════╝██║██║ ██╔╝██╔══██╗██╔══██╗████╗  ██║██╔════╝██║     "
