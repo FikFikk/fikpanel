@@ -4,10 +4,11 @@
   interface Props {
     current: string;
     open: boolean;
+    version?: string;
     onNavigate: () => void;
   }
 
-  let { current, open, onNavigate }: Props = $props();
+  let { current, open, version = '0.1.3', onNavigate }: Props = $props();
 
   const groups = [
     { id: 'utama', label: 'Kelola' },
@@ -46,7 +47,7 @@
     {/each}
   </nav>
 
-  <div class="sidebar__foot">v0.1.0-dev</div>
+  <div class="sidebar__foot">{version.startsWith('v') ? version : `v${version}`}</div>
 </aside>
 
 <style>

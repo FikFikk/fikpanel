@@ -164,6 +164,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"hostname":   hostname,
 			"os":         osDisplay,
 			"kernel":     runtime.Version(),
+			"version":    s.Version(),
 			"cpu_cores":  runtime.NumCPU(),
 			"uptime_sec": time.Now().Unix(),
 			"ip":         getIP(r),

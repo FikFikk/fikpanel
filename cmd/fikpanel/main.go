@@ -23,7 +23,7 @@ import (
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.1.0-dev"
+	version = "0.1.3"
 )
 
 func main() {
@@ -138,6 +138,7 @@ func runServe(args []string) {
 		fmt.Fprintf(os.Stderr, "Fatal: Gagal konfigurasi server: %v\n", err)
 		os.Exit(1)
 	}
+	srv.SetVersion(version)
 
 	// Jalankan server di goroutine terpisah
 	go func() {

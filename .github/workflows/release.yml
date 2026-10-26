@@ -42,14 +42,27 @@ jobs:
           go-version: '1.24'
           cache: true
 
+      - name: Determine Release Tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            RAW_TAG="${{ github.event.inputs.tag_name }}"
+          else
+            RAW_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "val=${RAW_TAG}" >> $GITHUB_OUTPUT
+          CLEAN_VER="${RAW_TAG#v}"
+          echo "clean_ver=${CLEAN_VER}" >> $GITHUB_OUTPUT
+
       - name: Build Linux amd64
         env:
           CGO_ENABLED: 0
           GOOS: linux
           GOARCH: amd64
+          TAG_VER: ${{ steps.tag.outputs.clean_ver }}
         run: |
           mkdir -p dist/linux-amd64
-          go build -ldflags="-s -w" -o dist/linux-amd64/fikpanel ./cmd/fikpanel
+          go build -ldflags="-s -w -X main.version=${TAG_VER}" -o dist/linux-amd64/fikpanel ./cmd/fikpanel
           tar -czf dist/fikpanel-linux-amd64.tar.gz -C dist/linux-amd64 fikpanel
 
       - name: Build Linux arm64
@@ -57,9 +70,10 @@ jobs:
           CGO_ENABLED: 0
           GOOS: linux
           GOARCH: arm64
+          TAG_VER: ${{ steps.tag.outputs.clean_ver }}
         run: |
           mkdir -p dist/linux-arm64
-          go build -ldflags="-s -w" -o dist/linux-arm64/fikpanel ./cmd/fikpanel
+          go build -ldflags="-s -w -X main.version=${TAG_VER}" -o dist/linux-arm64/fikpanel ./cmd/fikpanel
           tar -czf dist/fikpanel-linux-arm64.tar.gz -C dist/linux-arm64 fikpanel
 
       - name: Build Windows amd64
@@ -67,19 +81,11 @@ jobs:
           CGO_ENABLED: 0
           GOOS: windows
           GOARCH: amd64
+          TAG_VER: ${{ steps.tag.outputs.clean_ver }}
         run: |
           mkdir -p dist/windows-amd64
-          go build -ldflags="-s -w" -o dist/windows-amd64/fikpanel.exe ./cmd/fikpanel
+          go build -ldflags="-s -w -X main.version=${TAG_VER}" -o dist/windows-amd64/fikpanel.exe ./cmd/fikpanel
           cd dist/windows-amd64 && zip ../fikpanel-windows-amd64.zip fikpanel.exe && cd ../..
-
-      - name: Determine Release Tag
-        id: tag
-        run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            echo "val=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
 
       - name: Generate Checksums & Release Notes
         id: release_meta

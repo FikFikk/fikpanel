@@ -215,7 +215,7 @@
 {:else}
   <a href="#main-content" class="skip-link">Lewati ke konten</a>
   <div class="shell">
-    <Sidebar current={currentRoute} open={menuOpen} onNavigate={() => (menuOpen = false)} />
+    <Sidebar current={currentRoute} open={menuOpen} version={overview?.system?.version} onNavigate={() => (menuOpen = false)} />
     {#if menuOpen}
       <div class="shell__scrim" role="presentation" onclick={() => (menuOpen = false)}></div>
     {/if}

@@ -132,6 +132,7 @@ export interface OverviewData {
     hostname: string;
     os: string;
     kernel: string;
+    version?: string;
     cpu_cores: number;
     uptime_sec: number;
     ip: string;

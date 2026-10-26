@@ -49,10 +49,24 @@ type Server struct {
 	discoveryScanner *discovery.Scanner
 	k8sClient        *k8s.Client
 	limiter  *RateLimiter
+	version  string
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
 	bgCtx    context.Context
 	bgCancel context.CancelFunc
+}
+
+// SetVersion menetapkan nomor versi biner server yang sedang berjalan
+func (s *Server) SetVersion(v string) {
+	s.version = v
+}
+
+// Version mengembalikan versi biner server aktif
+func (s *Server) Version() string {
+	if s.version == "" {
+		return "0.1.3"
+	}
+	return s.version
 }
 
 // NewServer membuat instansiasi Server baru dengan routing terdaftar
