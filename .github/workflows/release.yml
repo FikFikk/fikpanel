@@ -81,13 +81,80 @@ jobs:
             echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Generate Checksums & Release Notes
+        id: release_meta
+        run: |
+          TAG_VAL="${{ steps.tag.outputs.val }}"
+          
+          # Hitung Checksum SHA-256 dan Ukuran Berkas
+          cd dist
+          sha256sum fikpanel-linux-amd64.tar.gz > SHA256SUMS.txt
+          sha256sum fikpanel-linux-arm64.tar.gz >> SHA256SUMS.txt
+          sha256sum fikpanel-windows-amd64.zip >> SHA256SUMS.txt
+          
+          SHA_LINUX_AMD64=$(sha256sum fikpanel-linux-amd64.tar.gz | awk '{print $1}')
+          SHA_LINUX_ARM64=$(sha256sum fikpanel-linux-arm64.tar.gz | awk '{print $1}')
+          SHA_WIN_AMD64=$(sha256sum fikpanel-windows-amd64.zip | awk '{print $1}')
+          
+          SIZE_LINUX_AMD64=$(ls -lh fikpanel-linux-amd64.tar.gz | awk '{print $5}')
+          SIZE_LINUX_ARM64=$(ls -lh fikpanel-linux-arm64.tar.gz | awk '{print $5}')
+          SIZE_WIN_AMD64=$(ls -lh fikpanel-windows-amd64.zip | awk '{print $5}')
+          cd ..
+          
+          cat <<EOF > release_body.md
+          ## FikPanel ${TAG_VAL}
+
+          > **FikPanel** adalah Lightweight Linux Server Control Panel mandiri dengan arsitektur *Single Binary* (Go 1.24 + Svelte 5 Runes + embedded SQLite WAL). Zero external runtime dependencies, konsumsi RAM idle ultra-rendah (< 25 MB), dan instalasi instan.
+
+          ---
+
+          ### ⚡ Instalasi Cepat (Server Baru / AWS / VPS)
+          \`\`\`bash
+          curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/install.sh | sudo bash
+          \`\`\`
+
+          ### 🔄 Pembaruan Tanpa Downtime (Server Sudah Terpasang)
+          \`\`\`bash
+          sudo fikpanel update
+          \`\`\`
+          *Konfigurasi website, virtual host Nginx, dan database pengguna dijamin aman 100% tanpa downtime.*
+
+          ---
+
+          ### 📊 Release by the Numbers
+          | Parameter | Nilai / Spesifikasi |
+          |---|---|
+          | **Default Port** | \`1405\` (HTTP/HTTPS) |
+          | **Arsitektur Binary** | Linux (x86_64, ARM64), Windows (x64) |
+          | **Frontend Engine** | Svelte 5 (Runes) embedded via Go \`embed.FS\` |
+          | **Database Engine** | Embedded SQLite dengan Write-Ahead Logging (WAL) |
+          | **Memory Footprint** | ~12 - 25 MB RAM saat idle |
+
+          ---
+
+          ### 📦 Paket Distribusi & Verifikasi Checksum SHA-256
+          | Berkas Paket | Arsitektur | Ukuran | Checksum SHA-256 |
+          |---|---|---|---|
+          | \`fikpanel-linux-amd64.tar.gz\` | Linux x86_64 / amd64 | ${SIZE_LINUX_AMD64} | \`${SHA_LINUX_AMD64}\` |
+          | \`fikpanel-linux-arm64.tar.gz\` | Linux aarch64 / arm64 | ${SIZE_LINUX_ARM64} | \`${SHA_LINUX_ARM64}\` |
+          | \`fikpanel-windows-amd64.zip\` | Windows x64 | ${SIZE_WIN_AMD64} | \`${SHA_WIN_AMD64}\` |
+
+          ---
+
+          ### 📝 Ringkasan Pembaruan (Changelog)
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: FikPanel ${{ steps.tag.outputs.val }}
           tag_name: ${{ steps.tag.outputs.val }}
+          body_path: release_body.md
           files: |
             dist/fikpanel-linux-amd64.tar.gz
             dist/fikpanel-linux-arm64.tar.gz
             dist/fikpanel-windows-amd64.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
+
 

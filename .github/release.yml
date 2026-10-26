@@ -1,0 +1,27 @@
+changelog:
+  categories:
+    - title: "✨ Fitur Baru & Inovasi (New Features)"
+      labels:
+        - "feature"
+        - "enhancement"
+        - "feat"
+    - title: "🐛 Perbaikan Bug & Stabilitas (Bug Fixes)"
+      labels:
+        - "bug"
+        - "fix"
+    - title: "⚡ Optimasi & Performa (Performance)"
+      labels:
+        - "performance"
+        - "perf"
+    - title: "🔐 Keamanan & Arsitektur (Security & Core)"
+      labels:
+        - "security"
+    - title: "📚 Dokumentasi & Panduan (Documentation)"
+      labels:
+        - "documentation"
+        - "docs"
+    - title: "🏗️ Infrastruktur & CI/CD (Maintenance)"
+      labels:
+        - "ci"
+        - "build"
+        - "chore"
