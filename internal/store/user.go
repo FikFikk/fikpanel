@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"context"
@@ -74,3 +74,18 @@ func (s *Store) UpdateLastLogin(ctx context.Context, userID int64) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE users SET last_login_at = ? WHERE id = ?", now, userID)
 	return err
 }
+
+// GetUserByID mengambil data pengguna berdasarkan ID numerik
+func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
+	row := s.db.QueryRowContext(ctx,
+		"SELECT id, username, password_hash, totp_secret, role, created_at, last_login_at FROM users WHERE id = ?",
+		id)
+
+	var u User
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.TotpSecret, &u.Role, &u.CreatedAt, &u.LastLoginAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+

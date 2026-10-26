@@ -64,7 +64,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.1.3"
+		return "0.1.5"
 	}
 	return s.version
 }
@@ -173,15 +173,35 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/backups/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunBackupNow)))
 	s.mux.Handle("GET /api/backups/{id}/records", s.AuthMiddleware(http.HandlerFunc(s.handleListBackupRecords)))
 
-	// Firewall UFW Guard
+	// Firewall UFW Guard & Extended Port Rules
 	s.mux.Handle("GET /api/firewall/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetFirewallStatus)))
+	s.mux.Handle("GET /api/firewall/extended", s.AuthMiddleware(http.HandlerFunc(s.handleGetExtendedFirewallStatus)))
 	s.mux.Handle("POST /api/firewall/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleFirewall)))
 	s.mux.Handle("POST /api/firewall/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddFirewallRule)))
+	s.mux.Handle("POST /api/firewall/rules/extended", s.AuthMiddleware(http.HandlerFunc(s.handleAddExtendedPortRule)))
 	s.mux.Handle("DELETE /api/firewall/rules/{number}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFirewallRule)))
+	s.mux.Handle("POST /api/firewall/icmp", s.AuthMiddleware(http.HandlerFunc(s.handleToggleICMP)))
+	s.mux.Handle("POST /api/firewall/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearSiteLogs)))
 
-	// Security Center: SSH Hardening, Fail2Ban & Vulnerability Scanner
+	// Security Center: Enterprise Overview, SSH, Brute Force & Hardening
+	s.mux.Handle("GET /api/security/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetSecurityOverview)))
 	s.mux.Handle("GET /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleGetSSHConfig)))
 	s.mux.Handle("POST /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSSHConfig)))
+	s.mux.Handle("GET /api/security/ssh/stats", s.AuthMiddleware(http.HandlerFunc(s.handleGetSSHStats)))
+	s.mux.Handle("POST /api/security/ssh/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartSSHService)))
+	s.mux.Handle("GET /api/security/ssh/accounts", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemAccounts)))
+	s.mux.Handle("POST /api/security/ssh/accounts/{user}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleAccountLock)))
+	s.mux.Handle("GET /api/security/server-security", s.AuthMiddleware(http.HandlerFunc(s.handleGetServerSecurity)))
+	s.mux.Handle("POST /api/security/server-security/fix", s.AuthMiddleware(http.HandlerFunc(s.handleApplySecurityFix)))
+	s.mux.Handle("GET /api/security/bruteforce", s.AuthMiddleware(http.HandlerFunc(s.handleGetBruteForce)))
+	s.mux.Handle("POST /api/security/bruteforce/config", s.AuthMiddleware(http.HandlerFunc(s.handleSaveBruteForceConfig)))
+	s.mux.Handle("POST /api/security/bruteforce/whitelist", s.AuthMiddleware(http.HandlerFunc(s.handleAddWhitelistIP)))
+	s.mux.Handle("DELETE /api/security/bruteforce/whitelist/{ip}", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveWhitelistIP)))
+	s.mux.Handle("POST /api/security/bruteforce/blacklist", s.AuthMiddleware(http.HandlerFunc(s.handleAddBlacklistIP)))
+	s.mux.Handle("DELETE /api/security/bruteforce/blacklist/{ip}", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveBlacklistIP)))
+	s.mux.Handle("GET /api/security/hardening", s.AuthMiddleware(http.HandlerFunc(s.handleGetHardeningStatus)))
+	s.mux.Handle("POST /api/security/hardening/compiler", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCompilerAccess)))
+	s.mux.Handle("POST /api/security/hardening/tamper", s.AuthMiddleware(http.HandlerFunc(s.handleToggleTamperProof)))
 	s.mux.Handle("GET /api/security/fail2ban", s.AuthMiddleware(http.HandlerFunc(s.handleGetFail2BanStatus)))
 	s.mux.Handle("POST /api/security/fail2ban/unban", s.AuthMiddleware(http.HandlerFunc(s.handleUnbanFail2BanIP)))
 	s.mux.Handle("POST /api/security/scan", s.AuthMiddleware(http.HandlerFunc(s.handleRunSecurityScan)))

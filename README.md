@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Svelte-5.0_(Runes)-FF3E00?style=flat&logo=svelte&logoColor=white" alt="Svelte 5" />
   <img src="https://img.shields.io/badge/Database-SQLite_WAL-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite WAL" />
   <img src="https://img.shields.io/badge/Architecture-Single_Binary-10b981?style=flat" alt="Single Binary" />
-  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" />
+  <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" />
 </p>
 
 ---
@@ -238,7 +238,7 @@ sudo /opt/fikpanel/scripts/uninstall.sh
 Biner `fikpanel` menyediakan utilitas baris perintah terintegrasi:
 
 ```text
-FikPanel — Lightweight Server Control Panel (v0.1.0-dev)
+FikPanel — Lightweight Server Control Panel (v0.1.5)
 
 Penggunaan:
   fikpanel <perintah> [opsi]
@@ -286,5 +286,10 @@ Contoh Penggunaan:
 
 ---
 
-## Lisensi
-Didistribusikan di bawah lisensi MIT. Silakan gunakan dan kembangkan sesuai kebutuhan Anda.
+## Lisensi & Perlindungan Hak Cipta
+Didistribusikan di bawah lisensi **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
+Hak Cipta (C) 2026 **FikFikk (Fikri)**. Seluruh hak cipta dilindungi undang-undang.
+
+> **Pemberitahuan Orisinalitas & Merek Dagang:**  
+> Nama **FikPanel**, logo, serta identitas visual proyek adalah hak eksklusif **FikFikk**. Modifikasi atau redistribusi kode sumber wajib mempertahankan atribusi pencipta asli pada antarmuka pengguna dan tidak diperkenankan menggunakan merek FikPanel untuk produk turunan komersial tanpa izin tertulis.
+
