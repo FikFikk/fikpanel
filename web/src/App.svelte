@@ -17,6 +17,7 @@
     website: () => import('./routes/Sites.svelte'),
     databases: () => import('./routes/Databases.svelte'),
     docker: () => import('./routes/Docker.svelte'),
+    k8s: () => import('./routes/Kubernetes.svelte'),
     cron: () => import('./routes/Cron.svelte'),
   backup: () => import('./routes/Backup.svelte'),
   node: () => import('./routes/NodeManager.svelte'),

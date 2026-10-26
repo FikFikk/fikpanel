@@ -697,3 +697,103 @@ export interface DockerDaemonConfig {
   one_click_dir: string;
   raw_json: string;
 }
+
+// ── Kubernetes Orchestrator ───────────────────────────────────────────────
+export interface K8sNode {
+  name: string;
+  status: string;
+  roles: string;
+  version: string;
+  os_image: string;
+}
+
+export interface K8sNamespace {
+  name: string;
+  status: string;
+  age: string;
+}
+
+export interface K8sPod {
+  name: string;
+  namespace: string;
+  status: string;
+  ready: string;
+  restarts: number;
+  age: string;
+  ip: string;
+  node: string;
+  containers: string[];
+}
+
+export interface K8sDeployment {
+  name: string;
+  namespace: string;
+  ready_replicas: number;
+  replicas: number;
+  available_replicas: number;
+  age: string;
+  images: string[];
+}
+
+export interface K8sService {
+  name: string;
+  namespace: string;
+  type: string;
+  cluster_ip: string;
+  external_ip: string;
+  ports: string;
+  age: string;
+}
+
+export interface ClusterStatus {
+  available: boolean;
+  cluster_type: string;
+  server_version: string;
+  nodes_count: number;
+  pods_count: number;
+  nodes: K8sNode[];
+}
+
+// ── Host Discovery & Adoption ─────────────────────────────────────────────
+export interface NginxDiscoveredItem {
+  config_file: string;
+  server_name: string;
+  root_dir: string;
+  port: number;
+  ssl: boolean;
+  proxy_pass: string;
+  is_adopted: boolean;
+}
+
+export interface DockerDiscoveredItem {
+  project_name: string;
+  compose_path: string;
+  working_dir: string;
+  containers: string[];
+  running: boolean;
+}
+
+export interface PM2DiscoveredItem {
+  id: number;
+  name: string;
+  script: string;
+  working_dir: string;
+  status: string;
+  instances: number;
+}
+
+export interface DatabaseDiscoveredItem {
+  engine: string;
+  port: number;
+  running: boolean;
+  databases: string[];
+}
+
+export interface DiscoveryResult {
+  nginx_vhosts: NginxDiscoveredItem[];
+  docker_projects: DockerDiscoveredItem[];
+  pm2_apps: PM2DiscoveredItem[];
+  databases: DatabaseDiscoveredItem[];
+  kubernetes_detected: boolean;
+  kubernetes_type: string;
+}

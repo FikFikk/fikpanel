@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'php', label: 'PHP Manager', icon: 'ri-code-s-slash-line', group: 'utama' },
   { id: 'databases', label: 'Databases', icon: 'ri-database-2-line', group: 'utama' },
   { id: 'docker', label: 'Docker', icon: 'ri-box-3-line', group: 'utama' },
+  { id: 'k8s', label: 'Kubernetes', icon: 'ri-bubble-chart-line', group: 'utama' },
   { id: 'node', label: 'Node / PM2', icon: 'ri-nodejs-line', group: 'utama' },
   { id: 'files', label: 'Files', icon: 'ri-folder-3-line', group: 'utama' },
   { id: 'services', label: 'Services', icon: 'ri-server-line', group: 'utama' },
