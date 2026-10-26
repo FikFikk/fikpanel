@@ -15,6 +15,8 @@ import (
 	"fikpanel/internal/appstore"
 	"fikpanel/internal/cron"
 	"fikpanel/internal/database"
+	"fikpanel/internal/discovery"
+	"fikpanel/internal/k8s"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/node"
@@ -44,6 +46,8 @@ type Server struct {
 	phpMgr   *php.Manager
 	systemMgr *system.Manager
 	appStore *appstore.Manager
+	discoveryScanner *discovery.Scanner
+	k8sClient        *k8s.Client
 	limiter  *RateLimiter
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
@@ -68,6 +72,8 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		phpMgr:   php.NewManager(),
 		systemMgr: system.NewManager(),
 		appStore:  appstore.NewManager(),
+		discoveryScanner: discovery.NewScanner(),
+		k8sClient:        k8s.NewClient(),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -334,6 +340,25 @@ func (s *Server) registerRoutes() {
 	for pattern, h := range nginxRoutes {
 		s.mux.Handle(pattern, s.AuthMiddleware(h))
 	}
+
+	// Deteksi Otomatis Sumber Daya Host (Discovery) & Adopsi Konfigurasi
+	s.mux.Handle("GET /api/discovery/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetDiscoveryConfig)))
+	s.mux.Handle("POST /api/discovery/config", s.AuthMiddleware(http.HandlerFunc(s.handleSaveDiscoveryConfig)))
+	s.mux.Handle("POST /api/discovery/scan", s.AuthMiddleware(http.HandlerFunc(s.handleDiscoveryScan)))
+	s.mux.Handle("POST /api/discovery/adopt", s.AuthMiddleware(http.HandlerFunc(s.handleDiscoveryAdopt)))
+
+	// Orkestrasi Lengkap Kubernetes & K3s Host
+	s.mux.Handle("GET /api/k8s/status", s.AuthMiddleware(http.HandlerFunc(s.handleK8sStatus)))
+	s.mux.Handle("GET /api/k8s/nodes", s.AuthMiddleware(http.HandlerFunc(s.handleK8sNodes)))
+	s.mux.Handle("GET /api/k8s/namespaces", s.AuthMiddleware(http.HandlerFunc(s.handleK8sNamespaces)))
+	s.mux.Handle("GET /api/k8s/pods", s.AuthMiddleware(http.HandlerFunc(s.handleK8sPods)))
+	s.mux.Handle("GET /api/k8s/deployments", s.AuthMiddleware(http.HandlerFunc(s.handleK8sDeployments)))
+	s.mux.Handle("GET /api/k8s/services", s.AuthMiddleware(http.HandlerFunc(s.handleK8sServices)))
+	s.mux.Handle("POST /api/k8s/deployments/{name}/scale", s.AuthMiddleware(http.HandlerFunc(s.handleK8sScaleDeployment)))
+	s.mux.Handle("POST /api/k8s/apply", s.AuthMiddleware(http.HandlerFunc(s.handleK8sApplyManifest)))
+	s.mux.Handle("GET /api/k8s/pods/{name}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleK8sPodLogs)))
+	s.mux.Handle("DELETE /api/k8s/resources", s.AuthMiddleware(http.HandlerFunc(s.handleK8sDeleteResource)))
+	s.mux.Handle("POST /api/k8s/install-k3s", s.AuthMiddleware(http.HandlerFunc(s.handleK8sInstallK3s)))
 
 	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS)
 	viteURL, _ := url.Parse("http://127.0.0.1:5173")

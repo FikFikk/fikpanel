@@ -144,6 +144,15 @@ func (c *Client) GetStatus(ctx context.Context) (*ClusterStatus, error) {
 	return status, nil
 }
 
+// ListNodes mengambil daftar node worker dan control plane cluster
+func (c *Client) ListNodes(ctx context.Context) ([]K8sNode, error) {
+	status, err := c.GetStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return status.Nodes, nil
+}
+
 func parseNodesFromJSON(data []byte) ([]K8sNode, error) {
 	var raw struct {
 		Items []struct {
@@ -469,14 +478,19 @@ func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, re
 }
 
 // ApplyManifest mengeksekusi deklarasi YAML manifest langsung ke cluster
-func (c *Client) ApplyManifest(ctx context.Context, yamlContent string) (string, error) {
+func (c *Client) ApplyManifest(ctx context.Context, yamlContent, namespace string) (string, error) {
 	if strings.TrimSpace(yamlContent) == "" {
 		return "", errors.New("konten manifest YAML tidak boleh kosong")
 	}
 
-	out, err := c.runKubectl(ctx, yamlContent, "apply", "-f", "-")
+	args := []string{"apply", "-f", "-"}
+	if namespace != "" {
+		args = append(args, "-n", namespace)
+	}
+
+	out, err := c.runKubectl(ctx, yamlContent, args...)
 	if err != nil {
-		return "", err
+		return string(out), err
 	}
 	return string(out), nil
 }

@@ -96,7 +96,8 @@ func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
 			// Lewati verifikasi CSRF khusus endpoint login publik
 			if !strings.HasSuffix(r.URL.Path, "/api/auth/login") && strings.HasPrefix(r.URL.Path, "/api/") {
-				if r.Header.Get("X-Panel-Request") != "1" {
+				csrfVal := r.Header.Get("X-Panel-Request")
+				if csrfVal != "1" && csrfVal != "true" {
 					http.Error(w, `{"error":"header CSRF X-Panel-Request tidak valid"}`, http.StatusForbidden)
 					return
 				}

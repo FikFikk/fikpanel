@@ -282,14 +282,20 @@ systemctl daemon-reload
 systemctl enable fikpanel.service
 systemctl restart fikpanel.service || true
 
-# 8. Firewall Helper (Buka port 8443, 80, 443)
+# 8. Pindai dan Adopsi Otomatis Seluruh Infrastruktur Host (Nginx, Docker Compose, PM2, K8s)
+echo -e "\n[*] Menjalankan Host Infrastructure Auto-Discovery & Reverse Adoption..."
+if [ -x "$INSTALL_DIR/bin/fikpanel" ]; then
+    "$INSTALL_DIR/bin/fikpanel" discover --db "${INSTALL_DIR}/data/fikpanel.db" --adopt || true
+fi
+
+# 9. Firewall Helper (Buka port 8443, 80, 443)
 if which ufw >/dev/null 2>&1; then
     ufw allow 8443/tcp comment 'FikPanel Control Panel' || true
     ufw allow 80/tcp comment 'HTTP Web' || true
     ufw allow 443/tcp comment 'HTTPS Web' || true
 fi
 
-# 9. Informasi Akses Selesai
+# 10. Informasi Akses Selesai
 PUBLIC_IP=$(curl -s4 https://api.ipify.org || hostname -I | awk '{print $1}')
 echo -e "\n=============================================================="
 echo -e "${GREEN}${BOLD}✓ Instalasi FikPanel Berhasil Diselesaikan!${NC}"

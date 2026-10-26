@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"fikpanel/internal/discovery"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/server"
 	"fikpanel/internal/services"
@@ -39,6 +42,8 @@ func main() {
 		runResetPassword(os.Args[2:])
 	case "doctor":
 		runDoctor(os.Args[2:])
+	case "discover":
+		runDiscover(os.Args[2:])
 	case "version":
 		fmt.Printf("fikpanel v%s\n", version)
 	default:
@@ -58,6 +63,7 @@ Perintah yang tersedia:
   init            Inisialisasi kredensial awal dan konfigurasi panel
   reset-password  Reset kata sandi pengguna admin secara aman
   doctor          Diagnosa integritas database, Nginx, dan perizinan
+  discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
   version         Menampilkan informasi versi aplikasi`)
 }
 
@@ -176,4 +182,124 @@ func runDoctor(args []string) {
 	fmt.Println("[fikpanel doctor] Memeriksa status kesehatan sistem...")
 	fmt.Println("  [OK] SQLite WAL engine siap")
 	fmt.Println("  [OK] Driver runtime terverifikasi")
+}
+
+// runDiscover memindai infrastruktur server dan mengadopsi situs vhost/container/pm2 secara otomatis
+func runDiscover(args []string) {
+	fs := flag.NewFlagSet("discover", flag.ExitOnError)
+	dbPath := fs.String("db", "fikpanel.db", "Lokasi file database SQLite")
+	adopt := fs.Bool("adopt", true, "Adopsi otomatis situs yang ditemukan ke database")
+	rootsFlag := fs.String("roots", "", "Direktori kustom tambahan (dipisah koma)")
+	fs.Parse(args)
+
+	fmt.Println("==========================================================")
+	fmt.Println("       FikPanel Host Infrastructure Auto-Discovery        ")
+	fmt.Println("==========================================================")
+
+	st, err := store.Open(*dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Fatal: Gagal membuka database: %v\n", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var customRoots []string
+	if *rootsFlag != "" {
+		for _, r := range strings.Split(*rootsFlag, ",") {
+			if trimmed := strings.TrimSpace(r); trimmed != "" {
+				customRoots = append(customRoots, trimmed)
+			}
+		}
+	} else {
+		val, _ := st.GetSetting(ctx, "discovery_custom_roots")
+		if val != "" {
+			_ = json.Unmarshal([]byte(val), &customRoots)
+		}
+	}
+
+	scanner := discovery.NewScanner()
+	fmt.Println("[1/4] Memindai Nginx Virtual Hosts, Docker Compose, PM2, dan Database...")
+	res, err := scanner.ScanAll(ctx, customRoots)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Gagal memindai server: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf(" -> Ditemukan %d Virtual Host Nginx\n", len(res.NginxVhosts))
+	for _, vh := range res.NginxVhosts {
+		fmt.Printf("    • %s (Port: %d, Root: %s, SSL: %v)\n", vh.ServerName, vh.Port, vh.RootDir, vh.SSL)
+	}
+
+	fmt.Printf(" -> Ditemukan %d Stack Docker Compose\n", len(res.DockerProjects))
+	for _, dp := range res.DockerProjects {
+		fmt.Printf("    • %s (Dir: %s, Running: %v)\n", dp.ProjectName, dp.WorkingDir, dp.Running)
+	}
+
+	fmt.Printf(" -> Ditemukan %d Aplikasi PM2 Node.js\n", len(res.PM2Apps))
+	for _, app := range res.PM2Apps {
+		fmt.Printf("    • %s (Script: %s, Cwd: %s, Status: %s)\n", app.Name, app.Script, app.WorkingDir, app.Status)
+	}
+
+	fmt.Printf(" -> Status Kubernetes: Terdeteksi=%v (Tipe: %s)\n", res.KubernetesDetected, res.KubernetesType)
+
+	if *adopt && len(res.NginxVhosts) > 0 {
+		fmt.Println("[2/4] Mengadopsi Virtual Host Nginx ke database FikPanel...")
+		adoptedCount := 0
+		for _, item := range res.NginxVhosts {
+			domains := strings.Fields(item.ServerName)
+			if len(domains) == 0 {
+				continue
+			}
+			primary := domains[0]
+			var aliases []string
+			if len(domains) > 1 {
+				aliases = domains[1:]
+			}
+
+			taken, err := st.DomainTaken(ctx, primary, 0)
+			if err != nil || taken {
+				continue
+			}
+
+			kind := "static"
+			if item.ProxyPass != "" {
+				kind = "proxy"
+			} else if strings.Contains(item.ConfigFile, "php") || item.Port == 80 || item.Port == 443 {
+				kind = "php"
+			}
+
+			sslMode := "none"
+			if item.SSL {
+				sslMode = "custom"
+			}
+
+			aliasJSON, _ := json.Marshal(aliases)
+			site := store.Site{
+				Domain:      primary,
+				Aliases:     string(aliasJSON),
+				Kind:        kind,
+				Upstream:    item.ProxyPass,
+				RootPath:    item.RootDir,
+				PHPVersion:  "8.3",
+				SSLMode:     sslMode,
+				ForceHTTPS:  0,
+				Enabled:     1,
+				Description: "Diadopsi secara otomatis oleh fikpanel discover",
+			}
+
+			if _, err := st.CreateSite(ctx, &site); err == nil {
+				adoptedCount++
+				fmt.Printf("    ✓ Situs '%s' berhasil didaftarkan (Root: %s)\n", primary, item.RootDir)
+			}
+		}
+		fmt.Printf("[3/4] Selesai: %d situs berhasil diadopsi ke database FikPanel.\n", adoptedCount)
+	} else {
+		fmt.Println("[2/4] Melewati adopsi situs (opsi adopt dimatikan atau tidak ada vhost baru).")
+		fmt.Println("[3/4] Database siap.")
+	}
+
+	fmt.Println("[4/4] Proses discovery selesai!")
 }

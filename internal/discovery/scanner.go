@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type NginxVhostItem struct {
@@ -20,6 +21,7 @@ type NginxVhostItem struct {
 	Port       int    `json:"port"`
 	SSL        bool   `json:"ssl"`
 	ProxyPass  string `json:"proxy_pass"`
+	IsAdopted  bool   `json:"is_adopted"`
 }
 
 type DockerDiscoveredItem struct {
@@ -169,14 +171,34 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 	seenDirs := make(map[string]bool)
 
 	for _, root := range roots {
+		if _, err := os.Stat(root); err != nil {
+			continue
+		}
 		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
-			// Batasi kedalaman pencarian agar tidak membebani I/O
+			// Periksa pembatalan context
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// Batasi kedalaman pencarian maksimal 3 subdirektori
+			rel, errRel := filepath.Rel(root, path)
+			if errRel == nil && strings.Count(rel, string(filepath.Separator)) > 3 {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
 			if info.IsDir() {
 				name := info.Name()
-				if name == "node_modules" || name == ".git" || name == "vendor" || name == "storage" {
+				if name == "node_modules" || name == ".git" || name == "vendor" || name == "storage" ||
+					name == "AppData" || name == "Local" || name == "Windows" || name == "Program Files" ||
+					(strings.HasPrefix(name, ".") && name != "." && name != "..") {
 					return filepath.SkipDir
 				}
 				return nil
@@ -206,15 +228,23 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 func (s *Scanner) ScanDockerProjects(ctx context.Context, customRoots []string) ([]DockerDiscoveredItem, error) {
 	defaultRoots := []string{"/var/www", "/opt"}
 	if home, err := os.UserHomeDir(); err == nil {
-		defaultRoots = append(defaultRoots, home)
+		// Pindai subdirektori proyek umum di home direktori pengguna
+		for _, sub := range []string{"projects", "workspace", "www", "web", "dev"} {
+			subPath := filepath.Join(home, sub)
+			if _, err := os.Stat(subPath); err == nil {
+				defaultRoots = append(defaultRoots, subPath)
+			}
+		}
 	}
 	allRoots := append(defaultRoots, customRoots...)
 
 	projects := scanComposeInPaths(ctx, allRoots)
 
-	// Periksa kontainer docker aktif jika docker daemon tersedia
+	// Periksa kontainer docker aktif jika docker daemon tersedia (timeout 2 detik jika daemon offline)
 	if _, err := exec.LookPath("docker"); err == nil {
-		cmd := exec.CommandContext(ctx, "docker", "ps", "--format", "{{.Names}}\t{{.Labels}}")
+		dockerCtx, cancelDocker := context.WithTimeout(ctx, 2*time.Second)
+		defer cancelDocker()
+		cmd := exec.CommandContext(dockerCtx, "docker", "ps", "--format", "{{.Names}}\t{{.Labels}}")
 		if out, err := cmd.Output(); err == nil {
 			scanner := bufio.NewScanner(strings.NewReader(string(out)))
 			for scanner.Scan() {
