@@ -15,6 +15,7 @@ type CreateCronJobRequest struct {
 	Spec         string `json:"spec"`
 	Command      string `json:"command"`
 	SaveLog      bool   `json:"save_log"`
+	LogFile      string `json:"log_file"`
 	TimeoutSec   int    `json:"timeout_sec"`
 }
 
@@ -60,6 +61,7 @@ func (s *Server) handleCreateCronJob(w http.ResponseWriter, r *http.Request) {
 		Command:      req.Command,
 		Enabled:      true,
 		SaveLog:      req.SaveLog,
+		LogFile:      req.LogFile,
 		TimeoutSec:   req.TimeoutSec,
 	}
 
@@ -185,5 +187,66 @@ func (s *Server) handleListCronLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":   true,
 		"logs": logs,
+	})
+}
+
+func (s *Server) handleGetCronJobFileLog(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"ID tugas tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	if s.cronMgr == nil {
+		http.Error(w, `{"error":"cron manager belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	content, path, err := s.cronMgr.ReadJobLogFile(r.Context(), id, 256*1024)
+	if err != nil && content == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      false,
+			"path":    path,
+			"message": err.Error(),
+			"content": "",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"path":    path,
+		"content": content,
+	})
+}
+
+func (s *Server) handleClearCronJobFileLog(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"ID tugas tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	if s.cronMgr == nil {
+		http.Error(w, `{"error":"cron manager belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	path, err := s.cronMgr.ClearJobLogFile(r.Context(), id)
+	if err != nil {
+		http.Error(w, `{"error":"gagal membersihkan berkas log: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"path":    path,
+		"message": "Berkas log berhasil dikosongkan",
 	})
 }

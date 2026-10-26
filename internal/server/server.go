@@ -13,6 +13,7 @@ import (
 
 	"fikpanel/internal/ai"
 	"fikpanel/internal/appstore"
+	"fikpanel/internal/cloudflare"
 	"fikpanel/internal/cron"
 	"fikpanel/internal/database"
 	"fikpanel/internal/discovery"
@@ -26,6 +27,7 @@ import (
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 	"fikpanel/internal/system"
+	"fikpanel/internal/waf"
 	"fikpanel/web"
 )
 
@@ -48,6 +50,8 @@ type Server struct {
 	appStore *appstore.Manager
 	discoveryScanner *discovery.Scanner
 	k8sClient        *k8s.Client
+	waf              *waf.Manager
+	cloudflare       *cloudflare.Client
 	limiter  *RateLimiter
 	version  string
 
@@ -64,7 +68,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.1.5"
+		return "0.1.6"
 	}
 	return s.version
 }
@@ -88,6 +92,8 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		appStore:  appstore.NewManager(),
 		discoveryScanner: discovery.NewScanner(),
 		k8sClient:        k8s.NewClient(),
+		waf:              waf.NewManager(s),
+		cloudflare:       cloudflare.NewClient(s),
 		limiter:  NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
@@ -165,6 +171,8 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("DELETE /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunCronJobNow)))
 	s.mux.Handle("GET /api/cron/jobs/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronLogs)))
+	s.mux.Handle("GET /api/cron/jobs/{id}/file-log", s.AuthMiddleware(http.HandlerFunc(s.handleGetCronJobFileLog)))
+	s.mux.Handle("POST /api/cron/jobs/{id}/file-log/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearCronJobFileLog)))
 
 	// Backup & Arsip (S3 & Lokal)
 	s.mux.Handle("GET /api/backups", s.AuthMiddleware(http.HandlerFunc(s.handleListBackups)))
@@ -396,6 +404,25 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/k8s/pods/{name}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleK8sPodLogs)))
 	s.mux.Handle("DELETE /api/k8s/resources", s.AuthMiddleware(http.HandlerFunc(s.handleK8sDeleteResource)))
 	s.mux.Handle("POST /api/k8s/install-k3s", s.AuthMiddleware(http.HandlerFunc(s.handleK8sInstallK3s)))
+
+	// Web Application Firewall (WAF) Terpadu & Attack Map
+	s.mux.Handle("GET /api/waf/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFOverview)))
+	s.mux.Handle("GET /api/waf/sites", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFSites)))
+	s.mux.Handle("POST /api/waf/sites/{domain}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWAFSite)))
+	s.mux.Handle("GET /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFRules)))
+	s.mux.Handle("POST /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddWAFRule)))
+	s.mux.Handle("DELETE /api/waf/rules/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWAFRule)))
+	s.mux.Handle("GET /api/waf/events", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFEvents)))
+
+	// Integrasi Cloudflare API v4 & DNS Pointing
+	s.mux.Handle("GET /api/cloudflare/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetCloudflareConfig)))
+	s.mux.Handle("POST /api/cloudflare/connect", s.AuthMiddleware(http.HandlerFunc(s.handleConnectCloudflare)))
+	s.mux.Handle("POST /api/cloudflare/disconnect", s.AuthMiddleware(http.HandlerFunc(s.handleDisconnectCloudflare)))
+	s.mux.Handle("GET /api/cloudflare/zones", s.AuthMiddleware(http.HandlerFunc(s.handleListCloudflareZones)))
+	s.mux.Handle("GET /api/cloudflare/zones/{id}/dns", s.AuthMiddleware(http.HandlerFunc(s.handleListCloudflareDNSRecords)))
+	s.mux.Handle("POST /api/cloudflare/zones/{id}/point-here", s.AuthMiddleware(http.HandlerFunc(s.handlePointZoneToServer)))
+	s.mux.Handle("POST /api/cloudflare/zones/{id}/purge-cache", s.AuthMiddleware(http.HandlerFunc(s.handlePurgeCloudflareCache)))
+	s.mux.Handle("POST /api/cloudflare/zones/{id}/dev-mode", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCloudflareDevMode)))
 
 	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS)
 	viteURL, _ := url.Parse("http://127.0.0.1:5173")

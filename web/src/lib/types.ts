@@ -702,11 +702,12 @@ export interface PM2Process {
 export interface CronJob {
   id: number;
   name: string;
-  schedule_type: 'minute_n' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
+  schedule_type: 'minute_n' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom' | string;
   spec: string;
   command: string;
   enabled: boolean;
   save_log: boolean;
+  log_file?: string;
   timeout_sec: number;
   last_run_at: number;
   last_status: string;
@@ -717,7 +718,7 @@ export interface CronJob {
 export interface CronLog {
   id: number;
   job_id: number;
-  status: 'success' | 'failed' | 'timeout';
+  status: 'success' | 'failed' | 'timeout' | string;
   output: string;
   exit_code: number;
   duration_ms: number;
@@ -956,38 +957,100 @@ export interface DiscoveryResult {
   kubernetes_type: string;
 }
 
-// ── Cron Scheduler ────────────────────────────────────────────────────────
-export interface CronJob {
-  id: number;
-  name: string;
-  schedule_type: string;
-  spec: string;
-  command: string;
-  enabled: boolean;
-  save_log: boolean;
-  timeout_sec: number;
-  last_run_at: number;
-  last_status: string;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface CronLog {
-  id: number;
-  job_id: number;
-  started_at: number;
-  finished_at: number;
-  duration_ms: number;
-  status: string;
-  exit_code: number;
-  output: string;
-}
-
 export interface ServerTimeInfo {
   unix: number;
   iso: string;
   timezone_name: string;
   offset_sec: number;
+}
+
+// ── Web Application Firewall (WAF) ──────────────────────────────────────────
+export interface WAFSite {
+  site_name: string;
+  total_interceptions: number;
+  fake_spider: boolean;
+  using_cdn: boolean;
+  smart_cc: number;
+  crawl_protection: boolean;
+  rate_limit: boolean;
+  cc_defense: number;
+  status: boolean;
+  updated_at: number;
+}
+
+export interface WAFRule {
+  id: number;
+  rule_type: 'ip_whitelist' | 'ip_blacklist' | 'ua_whitelist' | 'ua_blacklist' | 'url_whitelist' | 'url_blacklist';
+  ip_version: 'IPv4' | 'IPv6';
+  start_ip?: string;
+  end_ip?: string;
+  pattern?: string;
+  remarks?: string;
+  created_at: number;
+}
+
+export interface WAFEvent {
+  id: number;
+  site_name: string;
+  client_ip: string;
+  country: string;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  attack_type: string;
+  action: 'block' | 'intercept' | 'challenge';
+  url_path: string;
+  user_agent?: string;
+  status_code: number;
+  created_at: number;
+}
+
+export interface WAFOverview {
+  today_requests: number;
+  malicious_requests: number;
+  yesterday_requests: number;
+  yesterday_malicious: number;
+  intercept_rate: number;
+  realtime_qps: number;
+  origin_latency_ms: number;
+  top_attack_ips: { ip: string; count: number; country: string; country_code: string }[];
+  attacked_domains: { domain: string; count: number }[];
+  traffic_ranking: { domain: string; requests: number }[];
+  visited_pages: { path: string; count: number }[];
+  recent_events: WAFEvent[];
+  total_rules_count: number;
+  waf_global_enabled: boolean;
+}
+
+// ── Cloudflare Integration ──────────────────────────────────────────────────
+export interface CloudflareConfig {
+  connected: boolean;
+  api_token_masked?: string;
+  email?: string;
+  account_name?: string;
+  account_id?: string;
+  last_sync?: number;
+}
+
+export interface CloudflareDNSRecord {
+  id: string;
+  type: string; // A, AAAA, CNAME, etc.
+  name: string;
+  content: string;
+  proxied: boolean;
+  ttl: number;
+  points_to_server: boolean;
+}
+
+export interface CloudflareZone {
+  id: string;
+  name: string;
+  status: string;
+  paused: boolean;
+  development_mode: number;
+  ssl_mode?: string;
+  dns_records?: CloudflareDNSRecord[];
+  points_to_server?: boolean;
 }
 
 export interface GlobalPackage {

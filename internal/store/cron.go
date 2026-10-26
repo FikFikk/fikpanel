@@ -15,6 +15,7 @@ type CronJob struct {
 	Command      string `json:"command"`
 	Enabled      bool   `json:"enabled"`
 	SaveLog      bool   `json:"save_log"`
+	LogFile      string `json:"log_file"` // Jalur berkas log kustom (misal: /var/cronlog/my-task.log)
 	TimeoutSec   int    `json:"timeout_sec"`
 	LastRunAt    int64  `json:"last_run_at"`
 	LastStatus   string `json:"last_status"`
@@ -34,7 +35,7 @@ type CronLog struct {
 }
 
 func (s *Store) ListCronJobs(ctx context.Context) ([]CronJob, error) {
-	query := `SELECT id, name, schedule_type, spec, command, enabled, save_log, timeout_sec, 
+	query := `SELECT id, name, schedule_type, spec, command, enabled, save_log, coalesce(log_file, ''), timeout_sec, 
 	                 coalesce(last_run_at, 0), coalesce(last_status, ''), created_at, updated_at 
 	          FROM cron_jobs ORDER BY id DESC`
 	rows, err := s.db.QueryContext(ctx, query)
@@ -49,7 +50,7 @@ func (s *Store) ListCronJobs(ctx context.Context) ([]CronJob, error) {
 		var enabled, saveLog int
 		if err := rows.Scan(
 			&j.ID, &j.Name, &j.ScheduleType, &j.Spec, &j.Command,
-			&enabled, &saveLog, &j.TimeoutSec,
+			&enabled, &saveLog, &j.LogFile, &j.TimeoutSec,
 			&j.LastRunAt, &j.LastStatus, &j.CreatedAt, &j.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -65,7 +66,7 @@ func (s *Store) ListCronJobs(ctx context.Context) ([]CronJob, error) {
 }
 
 func (s *Store) GetCronJob(ctx context.Context, id int64) (*CronJob, error) {
-	query := `SELECT id, name, schedule_type, spec, command, enabled, save_log, timeout_sec, 
+	query := `SELECT id, name, schedule_type, spec, command, enabled, save_log, coalesce(log_file, ''), timeout_sec, 
 	                 coalesce(last_run_at, 0), coalesce(last_status, ''), created_at, updated_at 
 	          FROM cron_jobs WHERE id = ?`
 	row := s.db.QueryRowContext(ctx, query, id)
@@ -73,7 +74,7 @@ func (s *Store) GetCronJob(ctx context.Context, id int64) (*CronJob, error) {
 	var enabled, saveLog int
 	if err := row.Scan(
 		&j.ID, &j.Name, &j.ScheduleType, &j.Spec, &j.Command,
-		&enabled, &saveLog, &j.TimeoutSec,
+		&enabled, &saveLog, &j.LogFile, &j.TimeoutSec,
 		&j.LastRunAt, &j.LastStatus, &j.CreatedAt, &j.UpdatedAt,
 	); err != nil {
 		if err == sql.ErrNoRows {
@@ -100,9 +101,9 @@ func (s *Store) CreateCronJob(ctx context.Context, j *CronJob) (int64, error) {
 		j.TimeoutSec = 3600
 	}
 
-	query := `INSERT INTO cron_jobs (name, schedule_type, spec, command, enabled, save_log, timeout_sec, created_at, updated_at) 
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	res, err := s.db.ExecContext(ctx, query, j.Name, j.ScheduleType, j.Spec, j.Command, enabled, saveLog, j.TimeoutSec, now, now)
+	query := `INSERT INTO cron_jobs (name, schedule_type, spec, command, enabled, save_log, log_file, timeout_sec, created_at, updated_at) 
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	res, err := s.db.ExecContext(ctx, query, j.Name, j.ScheduleType, j.Spec, j.Command, enabled, saveLog, j.LogFile, j.TimeoutSec, now, now)
 	if err != nil {
 		return 0, fmt.Errorf("create cron job: %w", err)
 	}
@@ -120,8 +121,8 @@ func (s *Store) UpdateCronJob(ctx context.Context, j *CronJob) error {
 		saveLog = 1
 	}
 
-	query := `UPDATE cron_jobs SET name = ?, schedule_type = ?, spec = ?, command = ?, enabled = ?, save_log = ?, timeout_sec = ?, updated_at = ? WHERE id = ?`
-	_, err := s.db.ExecContext(ctx, query, j.Name, j.ScheduleType, j.Spec, j.Command, enabled, saveLog, j.TimeoutSec, now, j.ID)
+	query := `UPDATE cron_jobs SET name = ?, schedule_type = ?, spec = ?, command = ?, enabled = ?, save_log = ?, log_file = ?, timeout_sec = ?, updated_at = ? WHERE id = ?`
+	_, err := s.db.ExecContext(ctx, query, j.Name, j.ScheduleType, j.Spec, j.Command, enabled, saveLog, j.LogFile, j.TimeoutSec, now, j.ID)
 	return err
 }
 

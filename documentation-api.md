@@ -1856,12 +1856,194 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.14 Berkas Log Tugas Cron (Dynamic File Log)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs/{id}/file-log` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "content": "...", "path": "/var/cronlog/myjob.log", "exists": true, "size_bytes": 1024}` |
+| Notes | Membaca isi berkas log langsung dari disk server (maksimal 256 KB terakhir). Mengembalikan exists: false jika berkas belum terbentuk. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/file-log/clear` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "path": "/var/cronlog/myjob.log"}` |
+| Notes | Mengosongkan berkas log yang tersimpan di disk server tanpa menghapus path konfigurasi tugas. |
+
+---
+
+### 1.15 WAF (Web Application Firewall) & Peta Serangan
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/overview` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "overview": {"today_requests": 765, "malicious_requests": 23, "realtime_qps": 0.2, "origin_latency_ms": 14, "recent_events": [...], "top_attack_ips": [...], "attacked_domains": [...], "traffic_ranking": [...], "visited_pages": [...]}}` |
+| Notes | Menyediakan statistik agregasi proteksi WAF, QPS real-time, top IP penyerang, dan telemetri koordinat untuk visualisasi peta dunia. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/sites` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "sites": [{"domain": "example.com", "total_interceptions": 1047, "fake_spider": false, "using_cdn": false, "smart_cc": 0, "crawl_protection": false, "waiting_room": false, "cc_defense": 210, "status": "active"}]}` |
+| Notes | Mengembalikan daftar domain yang dilindungi WAF beserta konfigurasi filter dan counter intersepsi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/sites/{domain}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `fake_spider` (bool), `using_cdn` (bool), `smart_cc` (int), `crawl_protection` (bool), `waiting_room` (bool), `cc_defense` (int), `status` (string: "active"/"disabled") |
+| Response | HTTP 200 `{"ok": true, "site": {...}}` |
+| Notes | Memperbarui parameter proteksi dan mode pertahanan WAF untuk domain tertentu. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/rules` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `type` (string, opsional: "ip_whitelist", "ip_blacklist", "ua_whitelist", "ua_blacklist", "url_whitelist", "url_blacklist") |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "rules": [{"id": 1, "rule_type": "ip_blacklist", "target_value": "192.168.1.100", "ip_type": "IPv4", "remarks": "Malicious scanner", "created_at": "..."}]}` |
+| Notes | Menyajikan aturan filter daftar hitam dan putih IP, User-Agent, dan URL. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/rules` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `rule_type` (string, wajib), `target_value` (string, wajib), `ip_type` (string: "IPv4"/"IPv6"), `remarks` (string) |
+| Response | HTTP 200 `{"ok": true, "rule": {...}}` |
+| Notes | Menambahkan aturan filter baru ke basis data WAF. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/waf/rules/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus aturan filter WAF berdasarkan ID. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/events` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, opsional, default: 50) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "events": [{"id": 1, "source_ip": "...", "country": "US", "city": "Ashburn", "attack_type": "SQL Injection", "action": "block", "target_domain": "...", "request_url": "...", "created_at": "..."}]}` |
+| Notes | Mengembalikan log insiden penyerangan real-time beserta data atribusi negara untuk visualisasi feed radar insiden. |
+
+---
+
+### 1.16 Cloudflare Hub & Integrasi Edge DNS
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cloudflare/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "config": {"connected": true, "account_email": "user@example.com", "server_ip": "103.189.23.45"}}` |
+| Notes | Memeriksa status konektivitas token Cloudflare dan IP publik host server saat ini. API token disensor. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/connect` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `api_token` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Berhasil terhubung ke Cloudflare"}` |
+| Notes | Memvalidasi API token ke `api.cloudflare.com/client/v4/user/tokens/verify`, mendeteksi identitas akun, dan menyimpannya ke database. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/disconnect` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Koneksi Cloudflare diputuskan"}` |
+| Notes | Menghapus token konfigurasi Cloudflare dari database. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cloudflare/zones` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "zones": [{"id": "...", "name": "example.com", "status": "active", "points_to_this_server": true, "proxied": true, "ssl_mode": "full", "development_mode": 0, "dns_records": [...]}]}` |
+| Notes | Mengambil seluruh zona dan rekaman DNS dari Cloudflare, otomatis membandingkan target IP DNS dengan IP server lokal dan menandai status `points_to_this_server`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cloudflare/zones/{id}/dns` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "records": [{"id": "...", "name": "example.com", "type": "A", "content": "103.189.23.45", "proxied": true, "points_to_this_server": true}]}` |
+| Notes | Mengembalikan daftar rekaman DNS lengkap untuk zona tertentu. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/zones/{id}/point-here` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `proxied` (bool, opsional: status Cloudflare Orange Cloud proxy) |
+| Response | HTTP 200 `{"ok": true, "message": "DNS domain dan www diarahkan ke server ini (103.189.23.45)"}` |
+| Notes | Otomatis memperbarui atau membuat rekaman A `@` dan `www` agar mengarah ke IP publik server ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/zones/{id}/purge-cache` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Seluruh cache Cloudflare untuk domain ini berhasil dibersihkan"}` |
+| Notes | Mengirim perintah `purge_everything: true` ke Cloudflare Edge Cache. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/zones/{id}/dev-mode` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enable` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Development mode berhasil diatur", "development_mode": 10800}` |
+| Notes | Mengaktifkan atau menonaktifkan mode pengembang (Development Mode) Cloudflare selama 3 jam untuk bypass cache sementara saat debugging situs. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
 | `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
 | `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |
 | `srv.StartMonitoringRecorder` | Setiap 60 detik (background ticker) & setiap 24 jam (purge) | Merekam metrik CPU, RAM, Disk, Jaringan jika fitur monitor aktif, serta membersihkan snapshot metrik melebihi masa retensi | Menyimpan data historis ke tabel `monitor_snapshots`; menghapus snapshot lama secara berkala |
-| `srv.cronMgr.Start` | Setiap menit (sesuai spesifikasi cron) | Mengeksekusi antrean tugas cron kustom pengguna yang terdaftar di database | Menjalankan skrip shell/perintah cadangan atau pemeliharaan berkala |
+| `srv.cronMgr.Start` | Setiap menit (sesuai spesifikasi cron) | Mengeksekusi antrean tugas cron kustom pengguna yang terdaftar di database | Menjalankan skrip shell/perintah cadangan atau pemeliharaan berkala; jika opsi `log_file` disetel, membuat direktori induk otomatis dan menulis output log ke berkas disk |
 | `store.CleanupRoutine` | 1x sehari (pukul 03:00) | Menghapus baris audit log berumur > 90 hari dan pesan obrolan AI berumur > 30 hari | Menjaga ukuran database `/var/lib/panel/panel.db` tetap ringkas di bawah 10 MB |
 | `store.BackupRoutine` | 1x sehari (pukul 04:00) | Eksekusi `VACUUM INTO` untuk snapshot SQLite ke direktori `/var/lib/panel/backups/panel-<timestamp>.db` | Menahan penulisan DB selama hitungan milidetik; mempertahankan rotasi 7 file backup terbaru |

@@ -24,7 +24,15 @@
   let formCommand = $state('');
   let formTimeout = $state(3600);
   let formSaveLog = $state(true);
+  let formSaveLogFile = $state(false);
+  let formLogFile = $state('');
   let submitting = $state(false);
+
+  // Log Modal State (Dukungan Berkas Log Dinamis & Database History)
+  let activeLogTab = $state<'file' | 'db'>('file');
+  let fileLogContent = $state('');
+  let fileLogPath = $state('');
+  let loadingFileLog = $state(false);
 
   // Schedule Generator State (HestiaCP + aaPanel Style)
   type TabType = 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
@@ -368,6 +376,7 @@
           command: formCommand,
           timeout_sec: formTimeout,
           save_log: formSaveLog,
+          log_file: formSaveLogFile ? formLogFile.trim() : '',
         }),
       });
 
@@ -392,7 +401,14 @@
     selectedPreset = 'custom';
     formTimeout = 3600;
     formSaveLog = true;
+    formSaveLogFile = false;
+    formLogFile = '';
     updateCrontabFromGenerator();
+  }
+
+  function autoFillLogPath(prefix: string) {
+    const slug = formName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'task';
+    formLogFile = `${prefix}/${slug}.log`;
   }
 
   async function toggleJob(job: CronJob) {
@@ -446,15 +462,56 @@
     }
   }
 
-  async function viewLogs(job: CronJob) {
+  async function viewLogs(job: CronJob, preferredTab?: 'file' | 'db') {
     selectedJob = job;
     showLogModal = true;
+    activeLogTab = preferredTab || (job.log_file ? 'file' : 'db');
+    if (job.log_file) {
+      loadFileLog(job.id);
+    }
+    loadDbLogs(job.id);
+  }
+
+  async function loadFileLog(jobId: number) {
+    loadingFileLog = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; path: string; content: string; message?: string }>(`/api/cron/jobs/${jobId}/file-log`);
+      if (res) {
+        fileLogPath = res.path;
+        fileLogContent = res.content || (res.message ? `ℹ️ ${res.message}` : '(Berkas log masih kosong)');
+      }
+    } catch (err: any) {
+      fileLogContent = `⚠️ Gagal membaca berkas log: ${err.message}`;
+    } finally {
+      loadingFileLog = false;
+    }
+  }
+
+  async function clearFileLog(jobId: number) {
+    const ok = await confirmDialog({
+      title: 'Kosongkan Berkas Log',
+      message: 'Apakah Anda yakin ingin mengosongkan berkas log pada disk ini?',
+      confirmLabel: 'Kosongkan',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      await apiFetch(`/api/cron/jobs/${jobId}/file-log/clear`, { method: 'POST' });
+      fileLogContent = '(Berkas log telah dikosongkan)';
+      notify('Berkas log berhasil dikosongkan', 'success');
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengosongkan berkas log', 'error');
+    }
+  }
+
+  async function loadDbLogs(jobId: number) {
     try {
       loadingLogs = true;
-      const res = await apiFetch<{ ok: boolean; logs: CronLog[] }>(`/api/cron/jobs/${job.id}/logs`);
+      const res = await apiFetch<{ ok: boolean; logs: CronLog[] }>(`/api/cron/jobs/${jobId}/logs`);
       logs = res?.logs || [];
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat log', 'error');
+      notify(err.message || 'Gagal memuat log database', 'error');
     } finally {
       loadingLogs = false;
     }
@@ -587,7 +644,17 @@
                   </div>
                 </td>
                 <td class="col-cmd mono" title={job.command}>
-                  {job.command}
+                  <div class="cmd-text">{job.command}</div>
+                  {#if job.log_file}
+                    <button
+                      type="button"
+                      class="log-file-pill"
+                      onclick={() => viewLogs(job, 'file')}
+                      title="Klik untuk membuka isi berkas log pada disk"
+                    >
+                      <i class="ri-file-text-line"></i> {job.log_file}
+                    </button>
+                  {/if}
                 </td>
                 <td>
                   {#if job.last_status === 'success'}
@@ -1035,13 +1102,46 @@
           </span>
         </div>
 
-        <!-- Checkbox Simpan Log -->
+        <!-- Checkbox Simpan Log Database -->
         <div class="checkbox-row">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={formSaveLog} />
-            <span>Simpan riwayat log eksekusi (output terminal dan status kode keluar)</span>
+            <span>Simpan riwayat eksekusi ke database (Default history)</span>
           </label>
         </div>
+
+        <!-- Checkbox Simpan Log ke Berkas Fisik (.log) -->
+        <div class="checkbox-row">
+          <label class="custom-chk">
+            <input type="checkbox" bind:checked={formSaveLogFile} />
+            <span class="font-semibold text-accent">Simpan output eksekusi ke berkas log (.log)</span>
+          </label>
+        </div>
+
+        {#if formSaveLogFile}
+          <div class="log-file-input-box">
+            <div class="label-row">
+              <label for="form-logfile">Jalur Direktori / Berkas Log (.log)</label>
+              <span class="hint-inline">Folder dan file otomatis dibuat jika belum ada</span>
+            </div>
+            <div class="input-with-shortcuts">
+              <input
+                id="form-logfile"
+                type="text"
+                bind:value={formLogFile}
+                placeholder="/var/cronlog/my-task.log atau /var/log/cron/task.log"
+                class="mono"
+              />
+            </div>
+            <div class="shortcut-pills">
+              <span class="shortcut-label">Saran Cepat:</span>
+              <button type="button" class="btn-shortcut" onclick={() => autoFillLogPath('/var/cronlog')}>/var/cronlog/...</button>
+              <button type="button" class="btn-shortcut" onclick={() => autoFillLogPath('/var/log/cron')}>/var/log/cron/...</button>
+              <button type="button" class="btn-shortcut" onclick={() => autoFillLogPath('/var/log/fikpanel/cron')}>/var/log/fikpanel/cron/...</button>
+              <button type="button" class="btn-shortcut" onclick={() => autoFillLogPath('/tmp')}>/tmp/...</button>
+            </div>
+          </div>
+        {/if}
 
         <!-- Modal Actions -->
         <div class="modal-actions">
@@ -1070,47 +1170,105 @@
         <div class="modal-title-wrap">
           <i class="ri-file-list-3-line"></i>
           <div>
-            <h3>Riwayat Eksekusi: {selectedJob.name}</h3>
+            <h3>Log Tugas: {selectedJob.name}</h3>
             <span class="modal-sub mono text-xs">{selectedJob.command}</span>
           </div>
         </div>
         <button class="btn-close" onclick={() => (showLogModal = false)}>&times;</button>
       </div>
 
-      <div class="log-container">
-        {#if loadingLogs}
-          <div class="table-empty">
-            <i class="ri-loader-4-line spin text-lg"></i> Memuat log eksekusi...
+      <!-- Tab Switcher jika ada log_file -->
+      {#if selectedJob.log_file}
+        <div class="log-modal-tabs">
+          <button
+            type="button"
+            class="log-tab-btn {activeLogTab === 'file' ? 'active' : ''}"
+            onclick={() => { activeLogTab = 'file'; if (selectedJob) loadFileLog(selectedJob.id); }}
+          >
+            <i class="ri-file-text-line"></i> Berkas Log (.log)
+          </button>
+          <button
+            type="button"
+            class="log-tab-btn {activeLogTab === 'db' ? 'active' : ''}"
+            onclick={() => { activeLogTab = 'db'; if (selectedJob) loadDbLogs(selectedJob.id); }}
+          >
+            <i class="ri-history-line"></i> Riwayat Database ({logs.length})
+          </button>
+        </div>
+      {/if}
+
+      <!-- Tab 1: Berkas Log Fisik (.log) -->
+      {#if selectedJob.log_file && activeLogTab === 'file'}
+        <div class="file-log-toolbar">
+          <div class="file-path-info mono text-xs">
+            <i class="ri-folder-open-line text-accent"></i>
+            <span>{fileLogPath || selectedJob.log_file}</span>
           </div>
-        {:else if logs.length === 0}
-          <div class="table-empty">
-            Belum ada catatan eksekusi untuk tugas ini. Klik ikon play pada tabel untuk menjalankan sekarang.
+          <div class="toolbar-actions">
+            <button
+              type="button"
+              class="btn btn-xs btn-secondary"
+              onclick={() => { if (selectedJob) loadFileLog(selectedJob.id); }}
+              disabled={loadingFileLog}
+            >
+              <i class="ri-refresh-line {loadingFileLog ? 'spin' : ''}"></i> Segarkan
+            </button>
+            <button
+              type="button"
+              class="btn btn-xs btn-danger-outline"
+              onclick={() => { if (selectedJob) clearFileLog(selectedJob.id); }}
+            >
+              <i class="ri-delete-bin-line"></i> Kosongkan Log
+            </button>
           </div>
-        {:else}
-          <div class="log-list">
-            {#each logs as log (log.id)}
-              <div class="log-item">
-                <div class="log-meta">
-                  <span class="status-badge {log.status}">
-                    {#if log.status === 'success'}
-                      <i class="ri-checkbox-circle-fill"></i>
-                    {:else}
-                      <i class="ri-close-circle-fill"></i>
-                    {/if}
-                    {log.status.toUpperCase()} (Exit Code: {log.exit_code})
-                  </span>
-                  <span class="text-muted">{formatTimestamp(log.started_at)} • Durasi {log.duration_ms}ms</span>
+        </div>
+
+        <div class="file-log-viewer">
+          {#if loadingFileLog}
+            <div class="table-empty">
+              <i class="ri-loader-4-line spin text-lg"></i> Membaca berkas log dari disk...
+            </div>
+          {:else}
+            <pre class="file-log-pre mono">{fileLogContent}</pre>
+          {/if}
+        </div>
+      {:else}
+        <!-- Tab 2: Riwayat Database -->
+        <div class="log-container">
+          {#if loadingLogs}
+            <div class="table-empty">
+              <i class="ri-loader-4-line spin text-lg"></i> Memuat log eksekusi...
+            </div>
+          {:else if logs.length === 0}
+            <div class="table-empty">
+              Belum ada catatan eksekusi untuk tugas ini. Klik ikon play pada tabel untuk menjalankan sekarang.
+            </div>
+          {:else}
+            <div class="log-list">
+              {#each logs as log (log.id)}
+                <div class="log-item">
+                  <div class="log-meta">
+                    <span class="status-badge {log.status}">
+                      {#if log.status === 'success'}
+                        <i class="ri-checkbox-circle-fill"></i>
+                      {:else}
+                        <i class="ri-close-circle-fill"></i>
+                      {/if}
+                      {log.status.toUpperCase()} (Exit Code: {log.exit_code})
+                    </span>
+                    <span class="text-muted">{formatTimestamp(log.started_at)} • Durasi {log.duration_ms}ms</span>
+                  </div>
+                  {#if log.output}
+                    <pre class="log-output mono">{log.output}</pre>
+                  {:else}
+                    <span class="text-subtle italic text-xs">Perintah selesai tanpa output teks standar.</span>
+                  {/if}
                 </div>
-                {#if log.output}
-                  <pre class="log-output mono">{log.output}</pre>
-                {:else}
-                  <span class="text-subtle italic text-xs">Perintah selesai tanpa output teks standar.</span>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick={() => (showLogModal = false)}>Tutup</button>
@@ -1748,5 +1906,155 @@
     text-align: center;
     padding: 2.5rem;
     color: var(--text-subtle);
+  }
+
+  /* Log File Custom Styles */
+  .log-file-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--tint-accent);
+    border: 1px solid var(--ring-accent);
+    color: var(--accent);
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    margin-top: 0.35rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .log-file-pill:hover {
+    background: var(--ring-accent);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .log-file-input-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+  .log-file-input-box input {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    width: 100%;
+  }
+  .log-file-input-box input:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .shortcut-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+  }
+  .shortcut-label {
+    color: var(--text-subtle);
+  }
+  .btn-shortcut {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-shortcut:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--tint-accent);
+  }
+
+  .log-modal-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+    padding-bottom: 0.25rem;
+  }
+  .log-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .log-tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .log-tab-btn:hover:not(.active) {
+    color: var(--text);
+  }
+
+  .file-log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+  }
+  .file-path-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toolbar-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .file-log-viewer {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+  .file-log-pre {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .btn-danger-outline {
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+  }
+  .btn-danger-outline:hover {
+    background: var(--tint-danger);
   }
 </style>

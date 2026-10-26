@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -287,9 +291,139 @@ func (m *Manager) ExecuteJob(ctx context.Context, jobID int64) (*store.CronLog, 
 		FinishedAt: finishedAt,
 	}
 
+	// 1. Tulis ke berkas log disk bila opsi log_file diaktifkan
+	if strings.TrimSpace(job.LogFile) != "" {
+		resolvedPath := resolveLogFilePath(job.LogFile, job.Name, job.ID)
+		_ = writeToLogFile(resolvedPath, job.Name, job.ID, status, exitCode, duration.Milliseconds(), outCombined, startTime)
+	}
+
+	// 2. Simpan riwayat eksekusi ke database bila opsi SaveLog aktif
 	if job.SaveLog {
 		_ = m.store.RecordCronLog(ctx, logEntry)
 	}
 
 	return logEntry, runErr
+}
+
+// sanitizeSlug membersihkan nama tugas agar aman dijadikan nama file
+func sanitizeSlug(s string) string {
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]+`)
+	slug := strings.ToLower(reg.ReplaceAllString(s, "-"))
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		slug = "cron-task"
+	}
+	return slug
+}
+
+// resolveLogFilePath menentukan path berkas log final dan memastikan ekstensinya .log
+func resolveLogFilePath(rawPath, jobName string, jobID int64) string {
+	clean := strings.TrimSpace(rawPath)
+	if clean == "" {
+		return ""
+	}
+	// Jika pengguna hanya memasukkan folder (misal: /var/cronlog atau /var/cronlog/)
+	if strings.HasSuffix(clean, "/") || strings.HasSuffix(clean, "\\") || !strings.Contains(filepath.Base(clean), ".") {
+		slug := sanitizeSlug(jobName)
+		return filepath.Join(clean, fmt.Sprintf("%s-%d.log", slug, jobID))
+	}
+	return filepath.Clean(clean)
+}
+
+// writeToLogFile menulis hasil eksekusi ke file log di disk secara otomatis membuat folder bila belum ada
+func writeToLogFile(filePath, jobName string, jobID int64, status string, exitCode int, durationMs int64, output string, startTime time.Time) error {
+	if filePath == "" {
+		return nil
+	}
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("gagal membuat direktori log %s: %w", dir, err)
+	}
+
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("gagal membuka berkas log %s: %w", filePath, err)
+	}
+	defer f.Close()
+
+	header := fmt.Sprintf("\n================================================================================\n[%s] Eksekusi: %s (#%d)\nStatus: %s | Durasi: %d ms | Kode Keluar: %d\n--------------------------------------------------------------------------------\n",
+		startTime.Format("2006-01-02 15:04:05"), jobName, jobID, strings.ToUpper(status), durationMs, exitCode)
+
+	if _, err := f.WriteString(header); err != nil {
+		return err
+	}
+	if len(output) > 0 {
+		if _, err := f.WriteString(output); err != nil {
+			return err
+		}
+		if !strings.HasSuffix(output, "\n") {
+			_, _ = f.WriteString("\n")
+		}
+	}
+	_, err = f.WriteString("================================================================================\n")
+	return err
+}
+
+// ReadJobLogFile membaca isi berkas log langsung dari disk untuk ditampilkan di UI
+func (m *Manager) ReadJobLogFile(ctx context.Context, jobID int64, maxBytes int64) (string, string, error) {
+	job, err := m.store.GetCronJob(ctx, jobID)
+	if err != nil || job == nil {
+		return "", "", fmt.Errorf("tugas cron tidak ditemukan")
+	}
+	if strings.TrimSpace(job.LogFile) == "" {
+		return "", "", fmt.Errorf("berkas log kustom tidak dikonfigurasi untuk tugas ini")
+	}
+
+	resolved := resolveLogFilePath(job.LogFile, job.Name, job.ID)
+	info, err := os.Stat(resolved)
+	if os.IsNotExist(err) {
+		return "", resolved, fmt.Errorf("berkas log belum dibuat (tugas belum pernah dijalankan)")
+	} else if err != nil {
+		return "", resolved, err
+	}
+
+	if maxBytes <= 0 {
+		maxBytes = 128 * 1024 // 128 KB
+	}
+
+	f, err := os.Open(resolved)
+	if err != nil {
+		return "", resolved, err
+	}
+	defer f.Close()
+
+	size := info.Size()
+	offset := int64(0)
+	if size > maxBytes {
+		offset = size - maxBytes
+		_, _ = f.Seek(offset, 0)
+	}
+
+	buf := make([]byte, maxBytes)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
+		return "", resolved, err
+	}
+
+	content := string(buf[:n])
+	if offset > 0 {
+		content = "... [menampilkan 128KB terakhir dari berkas log]\n\n" + content
+	}
+	return content, resolved, nil
+}
+
+// ClearJobLogFile mengosongkan berkas log di disk
+func (m *Manager) ClearJobLogFile(ctx context.Context, jobID int64) (string, error) {
+	job, err := m.store.GetCronJob(ctx, jobID)
+	if err != nil || job == nil {
+		return "", fmt.Errorf("tugas cron tidak ditemukan")
+	}
+	if strings.TrimSpace(job.LogFile) == "" {
+		return "", fmt.Errorf("berkas log kustom tidak dikonfigurasi")
+	}
+	resolved := resolveLogFilePath(job.LogFile, job.Name, job.ID)
+	if err := os.Truncate(resolved, 0); err != nil {
+		return resolved, err
+	}
+	return resolved, nil
 }
