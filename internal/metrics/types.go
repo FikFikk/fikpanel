@@ -11,4 +11,6 @@ type Point struct {
 	NetIn     uint64  `json:"net_in"`   // Kecepatan download (byte/detik)
 	NetOut    uint64  `json:"net_out"`  // Kecepatan upload (byte/detik)
 	LoadAvg   float64 `json:"load_avg"` // Load average 1 menit
+	Load5m    float64 `json:"load_5m"`  // Load average 5 menit
+	Load15m   float64 `json:"load_15m"` // Load average 15 menit
 }

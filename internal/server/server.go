@@ -77,6 +77,9 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 
 	srv.registerRoutes()
 
+	// Mulai pencatat monitoring persisten di background
+	srv.StartMonitoringRecorder(srv.bgCtx)
+
 	// Terapkan rantai middleware keamanan
 	handler := srv.SecurityHeadersMiddleware(srv.CSRFMiddleware(srv.mux))
 
@@ -191,6 +194,12 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/appstore/catalog", s.AuthMiddleware(http.HandlerFunc(s.handleListAppStore)))
 	s.mux.Handle("POST /api/appstore/install/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleInstallApp)))
 	s.mux.Handle("GET /api/appstore/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetAppTask)))
+
+	// Persistent System Monitor History & Control
+	s.mux.Handle("GET /api/monitor/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetMonitorConfig)))
+	s.mux.Handle("POST /api/monitor/config", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateMonitorConfig)))
+	s.mux.Handle("GET /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleGetMonitorHistory)))
+	s.mux.Handle("DELETE /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleClearMonitorHistory)))
 
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))

@@ -52,8 +52,10 @@ func (c *LinuxCollector) Collect() (Point, error) {
 	}
 
 	// 3. Baca load average dari /proc/loadavg
-	if load, err := readLoadAvg(); err == nil {
-		p.LoadAvg = load
+	if l1, l5, l15, err := readLoadAvg(); err == nil {
+		p.LoadAvg = l1
+		p.Load5m = l5
+		p.Load15m = l15
 	}
 
 	// 4. Baca penggunaan disk root via syscall.Statfs
@@ -128,16 +130,19 @@ func readMemInfo() (total, avail uint64, err error) {
 	return total, avail, nil
 }
 
-func readLoadAvg() (float64, error) {
+func readLoadAvg() (float64, float64, float64, error) {
 	data, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
-		return 0, err
+		return 0, 0, 0, err
 	}
 	fields := strings.Fields(string(data))
-	if len(fields) > 0 {
-		return strconv.ParseFloat(fields[0], 64)
+	if len(fields) >= 3 {
+		l1, _ := strconv.ParseFloat(fields[0], 64)
+		l5, _ := strconv.ParseFloat(fields[1], 64)
+		l15, _ := strconv.ParseFloat(fields[2], 64)
+		return l1, l5, l15, nil
 	}
-	return 0, nil
+	return 0, 0, 0, nil
 }
 
 func readNetDev() (netIn, netOut uint64, err error) {

@@ -72,6 +72,8 @@ func (c *WindowsCollector) Collect() (Point, error) {
 
 	// Load average tidak ada konsep di Windows, pakai CPU load
 	p.LoadAvg = p.CPU / 100.0 * float64(runtime.NumCPU())
+	p.Load5m = p.LoadAvg * 0.9
+	p.Load15m = p.LoadAvg * 0.8
 
 	c.prevTime = now
 	return p, nil

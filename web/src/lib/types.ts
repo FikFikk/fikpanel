@@ -319,6 +319,27 @@ export interface SystemTask {
   updated_at: number;
 }
 
+// ── Persistent Monitoring ──────────────────────────────────────────────────
+export interface MonitorConfig {
+  enabled: boolean;
+  save_days: number;
+}
+
+export interface MonitorSnapshot {
+  id: number;
+  timestamp: number;
+  cpu: number;
+  ram_used: number;
+  ram_total: number;
+  load_1m: number;
+  load_5m: number;
+  load_15m: number;
+  disk_used: number;
+  disk_total: number;
+  net_in: number;
+  net_out: number;
+}
+
 // ── App Store & Toolkit Installer ─────────────────────────────────────────
 export interface AppPackage {
   id: string;
