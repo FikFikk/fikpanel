@@ -1347,6 +1347,156 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "target": "0", "logs": "..."}` |
 | Notes | Mengambil baris log gabungan stdout dan stderr langsung dari daemon PM2. |
 
+---
+
+### 1.14 Host Infrastructure Auto-Discovery & Reverse Adoption
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/discovery/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "roots": ["/home/fikfikk/projects", "/var/www"]}` |
+| Notes | Mengambil daftar direktori kustom yang dikonfigurasi untuk pemindaian file compose dan proyek host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/discovery/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `roots` (array of string, contoh: `["/home/fikfikk/projects"]`) |
+| Response | HTTP 200 `{"ok": true, "message": "...", "roots": [...]}` |
+| Notes | Menyimpan direktori pencarian kustom ke tabel `settings`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/discovery/scan` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `custom_roots` (opsional, array of string) |
+| Response | HTTP 200 `{"ok": true, "result": {"nginx_vhosts": [...], "docker_projects": [...], "pm2_apps": [...], "kubernetes_detected": bool, "kubernetes_type": "k3s"}}` |
+| Notes | Memindai menyeluruh konfigurasi vhost Nginx host (`/etc/nginx/**`), stack docker compose, proses PM2 aktif, dan status cluster K8s. Vhost yang sudah ada di database otomatis ditandai `is_adopted: true`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/discovery/adopt` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`) |
+| Response | HTTP 200 `{"ok": true, "adopted_sites": 2, "message": "..."}` |
+| Notes | Mengadopsi vhost host yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli tanpa merombak struktur folder server. |
+
+---
+
+### 1.15 Kubernetes & K3s Orchestrator
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "status": {"available": true, "cluster_type": "k3s", "server_version": "v1.28.2", "nodes_count": 1, "pods_count": 5, "nodes": [...]}}` |
+| Notes | Memeriksa ketersediaan koneksi ke cluster K3s, MicroK8s, atau Kubernetes standar. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/nodes` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "nodes": [{"name": "node-1", "status": "Ready", "roles": "control-plane,master", "version": "v1.28.2", "os_image": "Ubuntu 22.04"}]}` |
+| Notes | Menampilkan ringkasan status node worker dan control plane cluster. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/namespaces` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "namespaces": [{"name": "default", "status": "Active", "age": "10d"}]}` |
+| Notes | Menampilkan daftar seluruh namespace isolasi cluster. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/pods` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `namespace` (opsional string, kosong = semua namespace) |
+| Response | HTTP 200 `{"ok": true, "pods": [{"name": "web-pod-xxx", "namespace": "default", "status": "Running", "ready": "1/1", "restarts": 0, "age": "2h", "ip": "10.42.0.12"}]}` |
+| Notes | Mengambil daftar kontainer pod yang berjalan di cluster. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/deployments` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `namespace` (opsional string) |
+| Response | HTTP 200 `{"ok": true, "deployments": [{"name": "web-app", "namespace": "default", "ready_replicas": 2, "replicas": 2, "age": "3d", "images": ["nginx:alpine"]}]}` |
+| Notes | Mengambil daftar beban kerja deployment yang dapat di-scale. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/services` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `namespace` (opsional string) |
+| Response | HTTP 200 `{"ok": true, "services": [{"name": "web-svc", "namespace": "default", "type": "ClusterIP", "cluster_ip": "10.43.0.1", "external_ip": "-", "ports": "80/TCP"}]}` |
+| Notes | Menampilkan abstraksi exposure service jaringan internal dan eksternal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/k8s/deployments/{name}/scale` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `namespace` (string, default: "default"), `replicas` (int, non-negatif) |
+| Response | HTTP 200 `{"ok": true, "message": "Deployment demo-web berhasil di-scale menjadi 3 replika"}` |
+| Notes | Mengubah jumlah replika Pod yang berjalan secara instan via `kubectl scale`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/k8s/apply` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `manifest` (string YAML deklaratif, wajib), `namespace` (opsional string) |
+| Response | HTTP 200 `{"ok": true, "message": "Manifest berhasil diterapkan ke cluster", "output": "..."}` |
+| Notes | Menerapkan definisi resource YAML langsung ke cluster via `kubectl apply -f -`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/k8s/pods/{name}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `namespace` (string, default: "default"), `container` (opsional string), `tail` (int, default: 100) |
+| Response | HTTP 200 `{"ok": true, "logs": "..."}` |
+| Notes | Membaca riwayat baris log kontainer pod secara real-time via `kubectl logs`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/k8s/resources` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `kind` (string, wajib: `"pod"`, `"deployment"`, atau `"service"`), `name` (string, wajib), `namespace` (string) |
+| Response | HTTP 200 `{"ok": true, "message": "Resource deployment 'web' berhasil dihapus"}` |
+| Notes | Menghapus resource dari cluster via `kubectl delete <kind> <name> -n <namespace>`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/k8s/install-k3s` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Instalasi K3s telah dimulai di latar belakang..."}` |
+| Notes | Menjalankan skrip resmi Rancher K3s (`curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644`) di background. |
 
 ---
 

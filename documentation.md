@@ -152,6 +152,30 @@ flowchart TD
     Kontrol --> UpdateKontainer[Eksekusi via Socket Docker / CLI]
 ```
 
+### 1.6 Siklus Hidup Pindai Host (Host Discovery) & Orkestrasi Kubernetes
+
+```mermaid
+flowchart TD
+    Mulai[Pemicu: install.sh / CLI discover / UI Dashboard] --> ScanHost[Pindai Host Server: Nginx, Docker, PM2, K8s]
+    
+    ScanHost --> NginxScan[Pindai /etc/nginx/sites-* & conf.d/]
+    ScanHost --> DockerScan[Pindai Compose Files di /var/www, /opt, /home/**]
+    ScanHost --> PM2Scan[Pindai Proses PM2 jlist]
+    ScanHost --> K8sScan[Deteksi K3s / MicroK8s / Kubectl]
+    
+    NginxScan --> BandingDB{Ada di Database FikPanel?}
+    BandingDB -- Belum Ada --> Unadopted[Tandai Belum Diadopsi]
+    Unadopted --> AksiAdopsi[User / Skrip Pilih Adopsi]
+    AksiAdopsi --> SimpanSite[Daftarkan ke SQLite dengan Web Root Asli]
+    BandingDB -- Sudah Ada --> Adopted[Tandai Terdaftar & Kelola Normal]
+    
+    K8sScan -- K3s / K8s Aktif --> K8sReady[Orkestrator K8s Aktif]
+    K8sReady --> KelolaK8s[Pantau Pods, Deployments, Services, Scale, YAML Apply, Logs]
+    K8sScan -- K8s Belum Ada --> K8sNotReady[Tampilkan Banner Edukatif & 1-Klik Install K3s]
+    K8sNotReady --> KlikK3s[Jalankan Script Resmi Rancher K3s]
+    KlikK3s --> K8sReady
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -344,6 +368,9 @@ flowchart TD
 | **BR-41** | Software App Store & Toolkit Linux | Instalasi paket aplikasi sistem operasi | Menggunakan antrean worker asinkron (`system_tasks`) dengan streaming kemajuan log real-time agar tidak memblokir UI panel |
 | **BR-42** | Manajemen Proses Node.js & PM2 | Pengguna mengelola aplikasi Node.js SSR / API | Menghubungkan langsung ke daemon PM2 host tanpa dummy data; mendukung start aplikasi, reload, delete, dan pembacaan log real-time dengan sinkronisasi `pm2 save` |
 | **BR-43** | Integrasi Cadangan S3 pada Modul Database | Pengguna mengelola snapshot database dan S3 Cloud | Modul Backup S3 diintegrasikan sebagai sub-tab di dalam menu Databases, mengeliminasi menu redundan di sidebar dan menyederhanakan alur pencadangan data |
+| **BR-44** | Pindai Otomatis Infrastruktur Host & Adopsi Konfigurasi | Instalasi server via `install.sh`, CLI `fikpanel discover`, atau aksi Pindai di antarmuka | Memindai secara dinamis virtual host Nginx, stack Docker Compose, proses PM2, dan status Kubernetes. Menyimpan path root kustom asli (misal `/home/fikfikk/projects/**`) ke database SQLite agar resource terkelola langsung di panel tanpa perombakan struktur direktori. |
+| **BR-45** | Orkestrasi Lengkap Kubernetes & K3s Host | Pengguna menginspeksi cluster Kubernetes di menu Kubernetes | Mendeteksi ketersediaan cluster K3s, MicroK8s, atau standar; menyediakan pemantauan workload Pods, Deployments, Services, scaling interaktif, pembacaan log kontainer, dan penerapan manifest YAML langsung via `kubectl apply`. |
+
 
 
 
