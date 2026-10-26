@@ -127,9 +127,9 @@ cd ..
 
 ### 3. Jalankan Server dalam Mode Development
 ```bash
-go run ./cmd/fikpanel serve --dev --port 8443
+go run ./cmd/fikpanel serve --dev --port 1405
 ```
-> Server akan berjalan di `http://127.0.0.1:8443`.
+> Server akan berjalan di `http://127.0.0.1:1405`.
 > Pada mode `--dev`, akun pengujian lokal dibuat otomatis:
 > - **Username**: `root`
 > - **Password**: *(kosongkan / tekan Masuk)*
@@ -154,7 +154,7 @@ fikpanel <perintah> [opsi]
 
 Perintah:
   serve           Menjalankan server web control panel
-                  Opsi: --port <port> (default: 8443)
+                  Opsi: --port <port> (default: 1405)
                         --db <path>   (default: fikpanel.db)
                         --dev         (aktifkan auto-seed akun root)
   init            Inisialisasi kredensial awal administrator

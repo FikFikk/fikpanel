@@ -4,7 +4,7 @@ testdata_dir = "testdata"
 tmp_dir = "bin/tmp"
 
 [build]
-  args_bin = ["serve", "--dev", "--port=8443"]
+  args_bin = ["serve", "--dev", "--port=1405"]
   bin = ".\\bin\\tmp\\fikpanel.exe"
   entrypoint = [".\\bin\\tmp\\fikpanel.exe"]
   cmd = "go build -o .\\bin\\tmp\\fikpanel.exe .\\cmd\\fikpanel"

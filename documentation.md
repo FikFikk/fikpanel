@@ -209,7 +209,7 @@ flowchart TD
     InstallPkg --> PasangDaemon
     
     PasangDaemon --> AutoDiscover[Pindai Otomatis & Adopsi Vhost, Docker, PM2, K8s ke DB]
-    AutoDiscover --> SiapAkses[Panel Aktif di Port 8443 - Software Opsional Dapat Ditambah via Web UI]
+    AutoDiscover --> SiapAkses[Panel Aktif di Port 1405 - Software Opsional Dapat Ditambah via Web UI]
 ```
 
 ---

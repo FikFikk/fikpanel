@@ -470,7 +470,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/bin/fikpanel serve --port 8443 --db ${INSTALL_DIR}/data/fikpanel.db
+ExecStart=${INSTALL_DIR}/bin/fikpanel serve --port 1405 --db ${INSTALL_DIR}/data/fikpanel.db
 Restart=always
 RestartSec=5s
 LimitNOFILE=65535
@@ -496,25 +496,29 @@ if [ -x "$INSTALL_DIR/bin/fikpanel" ]; then
     "$INSTALL_DIR/bin/fikpanel" discover --db "${INSTALL_DIR}/data/fikpanel.db" --adopt || true
 fi
 
-# 10. Firewall Helper (Buka port 8443, 80, 443)
+# 10. Firewall Helper (Buka port 1405, 80, 443)
 if which ufw >/dev/null 2>&1; then
-    ufw allow 8443/tcp comment 'FikPanel Control Panel' || true
+    ufw allow 1405/tcp comment 'FikPanel Control Panel' || true
     ufw allow 80/tcp comment 'HTTP Web' || true
     ufw allow 443/tcp comment 'HTTPS Web' || true
 elif which firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
-    firewall-cmd --permanent --add-port=8443/tcp || true
+    firewall-cmd --permanent --add-port=1405/tcp || true
     firewall-cmd --permanent --add-port=80/tcp || true
     firewall-cmd --permanent --add-port=443/tcp || true
     firewall-cmd --reload || true
 fi
 
 # 11. Informasi Akses Selesai
-PUBLIC_IP=$(curl -s4 https://api.ipify.org || hostname -I | awk '{print $1}')
+PRIVATE_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+PUBLIC_IP=$(curl -s4 --max-time 3 https://api.ipify.org 2>/dev/null || echo "$PRIVATE_IP")
+
 echo -e "\n=============================================================="
 echo -e "${GREEN}${BOLD}✓ Instalasi FikPanel Berhasil Diselesaikan!${NC}"
 echo -e "=============================================================="
-echo -e "Alamat Akses Panel : ${CYAN}${BOLD}https://${PUBLIC_IP}:8443${NC}"
-echo -e "                    (atau http://${PUBLIC_IP}:8443)"
+if [ -n "$PRIVATE_IP" ] && [ "$PRIVATE_IP" != "127.0.0.1" ]; then
+    echo -e "Akses IP Privat    : ${CYAN}${BOLD}http://${PRIVATE_IP}:1405${NC} (atau https://${PRIVATE_IP}:1405)"
+fi
+echo -e "Akses IP Publik    : ${CYAN}${BOLD}http://${PUBLIC_IP}:1405${NC} (atau https://${PUBLIC_IP}:1405)"
 echo -e "Username Standar   : ${BOLD}root${NC}"
 echo -e "Password Standar   : ${YELLOW}(Dibuat saat login pertama atau kosong)${NC}"
 echo -e "Status Layanan     : $(systemctl is-active fikpanel.service 2>/dev/null || echo 'unknown')"

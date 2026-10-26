@@ -728,7 +728,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "installed": true, "software": "phpMyAdmin / FikPanel Web Client", "port": 888, "panel_host": "127.0.0.1:8443", "available_domains": [{"domain": "kostash.my.id", "ssl": true, "url": "https://kostash.my.id/phpmyadmin/"}], "has_domains": true}` |
+| Response | HTTP 200 `{"ok": true, "installed": true, "software": "phpMyAdmin / FikPanel Web Client", "port": 888, "panel_host": "127.0.0.1:1405", "available_domains": [{"domain": "kostash.my.id", "ssl": true, "url": "https://kostash.my.id/phpmyadmin/"}], "has_domains": true}` |
 | Notes | Memeriksa ketersediaan antarmuka visual database, daftar domain situs aktif untuk akses via domain, dan port server. |
 
 | Field | Detail |
@@ -738,7 +738,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | `database` (string, opsional), `username` (string, opsional), `password` (string, opsional), `access_mode` (`"panel"` / `"domain"` / `"custom_port"`), `target_domain` (string, opsional mis. `"kostash.my.id"`), `custom_port` (int, opsional mis. 888) |
-| Response | HTTP 200 `{"ok": true, "installed": true, "access_mode": "panel", "url": "http://127.0.0.1:8443/phpmyadmin/index.php?route=/database/structure&db=...&user=...&sso_token=...", "token": "pma_sso_..."}` |
+| Response | HTTP 200 `{"ok": true, "installed": true, "access_mode": "panel", "url": "http://127.0.0.1:1405/phpmyadmin/index.php?route=/database/structure&db=...&user=...&sso_token=...", "token": "pma_sso_..."}` |
 | Notes | Menghasilkan token login otomatis sekali pakai (One-Click SSO) dengan parameter rute resmi phpMyAdmin 5. Mendukung mode domain situs (port 80/443), mode panel independen (`/phpmyadmin/index.php` pada port panel), atau port khusus. |
 
 | Field | Detail |
@@ -1231,7 +1231,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `port` (string, misal `"8443"`), `proto` (string: `"tcp"`, `"udp"`, atau `"any"`), `action` (string: `"allow"` atau `"deny"`) |
+| Request Body | `port` (string, misal `"1405"`), `proto` (string: `"tcp"`, `"udp"`, atau `"any"`), `action` (string: `"allow"` atau `"deny"`) |
 | Response | HTTP 200 `{"ok": true}` |
 | Notes | Menambahkan aturan penerusan port baru pada firewall. |
 

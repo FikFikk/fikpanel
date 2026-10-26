@@ -70,7 +70,7 @@ Perintah yang tersedia:
 // runServe menangani eksekusi mode HTTP web server
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	port := fs.Int("port", 8443, "Port server HTTP/HTTPS")
+	port := fs.Int("port", 1405, "Port server HTTP/HTTPS")
 	dbPath := fs.String("db", "fikpanel.db", "Lokasi file database SQLite")
 	isDev := fs.Bool("dev", true, "Mode development dengan auto-seed akun root")
 	fs.Parse(args)

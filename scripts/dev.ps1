@@ -1,13 +1,13 @@
 # Skrip otomasi live-reload untuk Go (Air) dan Svelte (Vite HMR)
 param (
-    [int]$Port = 8443
+    [int]$Port = 1405
 )
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   FikPanel Live Development Environment (Auto-Reload)    " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# 1. Pastikan port 8443 dan 5173 bersih dari proses lama yang menggantung
+# 1. Pastikan port 1405 dan 5173 bersih dari proses lama yang menggantung
 Get-Process -Name "fikpanel", "air" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # 2. Periksa ketersediaan Air
