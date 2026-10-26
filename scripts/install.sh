@@ -452,11 +452,18 @@ else
     fi
 fi
 
+# Verifikasi keberadaan biner FikPanel
+if [ ! -x "$INSTALL_DIR/bin/fikpanel" ]; then
+    echo -e "${RED}[ERROR] Biner FikPanel tidak ditemukan atau gagal dipasang di $INSTALL_DIR/bin/fikpanel.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}[✓] Biner FikPanel terpasang: $INSTALL_DIR/bin/fikpanel${NC}"
+
 # 8. Membuat Systemd Unit Service
 cat <<EOF > /etc/systemd/system/fikpanel.service
 [Unit]
 Description=FikPanel Server Control Panel Daemon
-After=network.target network-online.target nginx.service
+After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
@@ -475,6 +482,13 @@ EOF
 systemctl daemon-reload
 systemctl enable fikpanel.service
 systemctl restart fikpanel.service || true
+sleep 1
+
+if systemctl is-active --quiet fikpanel.service; then
+    echo -e "${GREEN}[✓] Layanan daemon FikPanel aktif dan berjalan normal.${NC}"
+else
+    echo -e "${YELLOW}[!] Peringatan: Layanan FikPanel belum aktif. Periksa log: journalctl -u fikpanel -n 20 --no-pager${NC}"
+fi
 
 # 9. Pindai dan Adopsi Otomatis Seluruh Infrastruktur Host (Nginx, Docker Compose, PM2, K8s)
 echo -e "\n[*] Menjalankan Host Infrastructure Auto-Discovery & Reverse Adoption..."
@@ -487,6 +501,11 @@ if which ufw >/dev/null 2>&1; then
     ufw allow 8443/tcp comment 'FikPanel Control Panel' || true
     ufw allow 80/tcp comment 'HTTP Web' || true
     ufw allow 443/tcp comment 'HTTPS Web' || true
+elif which firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+    firewall-cmd --permanent --add-port=8443/tcp || true
+    firewall-cmd --permanent --add-port=80/tcp || true
+    firewall-cmd --permanent --add-port=443/tcp || true
+    firewall-cmd --reload || true
 fi
 
 # 11. Informasi Akses Selesai
