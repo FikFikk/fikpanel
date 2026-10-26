@@ -1498,6 +1498,152 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "message": "Instalasi K3s telah dimulai di latar belakang..."}` |
 | Notes | Menjalankan skrip resmi Rancher K3s (`curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644`) di background. |
 
+### 1.13 Penjadwal Tugas (Cron Manager)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "jobs": [...], "server_time": {"unix": 1771747800, "iso": "...", "timezone_name": "UTC", "offset_sec": 0}}` |
+| Notes | Mengembalikan daftar tugas cron aktif beserta waktu server dan offset untuk sinkronisasi timezone klien. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `schedule_type` (string), `spec` (string crontab 5-kolom, wajib), `command` (string, wajib), `timeout_sec` (int), `save_log` (bool) |
+| Response | HTTP 201 `{"ok": true, "job": {...}}` |
+| Notes | Menjadwalkan tugas cron baru. Mendukung pola 5-kolom crontab (`m h dom mon dow`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/toggle` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "id": 1, "enabled": false}` |
+| Notes | Mengaktifkan atau menjeda eksekusi cron job tertentu tanpa menghapus data. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/cron/jobs/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Menghapus tugas cron dan riwayat log eksekusinya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/run` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "log": {"status": "success", "exit_code": 0, "duration_ms": 120, "output": "..."}}` |
+| Notes | Memicu eksekusi tugas cron secara instan di luar siklus jadwal dan mencatat hasil eksekusi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "logs": [...]}` |
+| Notes | Mengembalikan hingga 30 riwayat eksekusi terakhir dari tugas cron tertentu. |
+
+### 1.14 PHP Multi-Version & FPM Tuning
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "versions": [{"version": "8.5", "installed": true, "running": true, "fpm_socket": "/run/php/php8.5-fpm.sock", "settings": {...}}]}` |
+| Notes | Memindai versi PHP dinamis di host OS (8.5, 8.4, 8.3, dst.) beserta status FPM socket dan konfigurasi php.ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/settings` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `key` (string, wajib: `memory_limit`, `upload_max_filesize`, dll), `value` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "version": "8.5", "key": "memory_limit", "value": "512M"}` |
+| Notes | Memperbarui parameter direktif pada berkas `php.ini` FPM dan me-reload layanan secara otomatis. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/restart` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "PHP 8.5 FPM berhasil direstart"}` |
+| Notes | Me-restart daemon FPM versi spesifik via systemctl (`php8.5-fpm`). |
+
+### 1.15 App Store & Repositori Global Linux
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/catalog` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "apps": [...]}` |
+| Notes | Mengembalikan katalog paket unggulan web stack (Nginx, PHP, MariaDB, Redis, Node, dll.) dengan status deteksi real-time. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/search` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `q` (string, wajib: kata kunci pencarian paket Linux) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "packages": [{"name": "htop", "description": "...", "installed": true}]}` |
+| Notes | Mencari paket di seluruh repositori resmi OS (APT) via `apt-cache search` dan memeriksa status via `dpkg-query`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/install/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Instalasi telah dimulai di background"}` |
+| Notes | Menjalankan instalasi paket software di latar belakang via APT. Mendukung prefix `pkg:<nama_paket>` untuk paket global. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/uninstall/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Pencopotan paket telah dimulai di background"}` |
+| Notes | Menghapus paket dari sistem via `apt-get remove -y` di latar belakang. Mendukung prefix `pkg:<nama_paket>`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/tasks/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task": {"app_id": "...", "status": "running/success/failed", "logs": "..."}}` |
+| Notes | Membaca output baris terminal instalasi/pencopotan paket software yang sedang berjalan di latar belakang. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

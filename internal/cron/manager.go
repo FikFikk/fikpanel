@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,7 +74,13 @@ func (m *Manager) checkAndRun(ctx context.Context) {
 
 // shouldRun memeriksa apakah saat ini jadwal cron terpenuhi
 func (m *Manager) shouldRun(job store.CronJob, now time.Time) bool {
-	// Simple matching berdasarkan schedule_type
+	// Evaluasi langsung jika spec merupakan ekspresi standar 5-field (misal: "0 5 * * *")
+	fields := strings.Fields(strings.TrimSpace(job.Spec))
+	if len(fields) == 5 {
+		return matchCronExpression(fields, now)
+	}
+
+	// Evaluasi fallback berdasarkan tipe jadwal bawaan
 	switch job.ScheduleType {
 	case "minute_n": // per N menit misal spec="15"
 		var n int
@@ -96,9 +104,72 @@ func (m *Manager) shouldRun(job store.CronJob, now time.Time) bool {
 		fmt.Sscanf(job.Spec, "%d %d:%d", &date, &hour, &min)
 		return now.Day() == date && now.Hour() == hour && now.Minute() == min
 	default:
-		// Fallback custom: cocokkan tiap jam jika belum ada runtime cron parser kompleks
 		return false
 	}
+}
+
+// matchCronExpression mencocokkan waktu sekarang terhadap 5 kolom ekspresi cron standard
+func matchCronExpression(fields []string, t time.Time) bool {
+	if len(fields) != 5 {
+		return false
+	}
+	minuteMatch := matchCronField(fields[0], t.Minute(), 0, 59)
+	hourMatch := matchCronField(fields[1], t.Hour(), 0, 23)
+	dayMatch := matchCronField(fields[2], t.Day(), 1, 31)
+	monthMatch := matchCronField(fields[3], int(t.Month()), 1, 12)
+	dowMatch := matchCronField(fields[4], int(t.Weekday()), 0, 7) // 0 atau 7 = Minggu
+	return minuteMatch && hourMatch && dayMatch && monthMatch && dowMatch
+}
+
+// matchCronField mengecek satu token cron (mendukung *, */N, rentang N-M, dan koma A,B)
+func matchCronField(field string, value, min, max int) bool {
+	if field == "*" {
+		return true
+	}
+
+	// Tangani step */N
+	if strings.HasPrefix(field, "*/") {
+		step, err := strconv.Atoi(strings.TrimPrefix(field, "*/"))
+		if err != nil || step <= 0 {
+			return false
+		}
+		return value%step == 0
+	}
+
+	// Tangani daftar nilai dipisah koma
+	if strings.Contains(field, ",") {
+		parts := strings.Split(field, ",")
+		for _, p := range parts {
+			if matchCronField(strings.TrimSpace(p), value, min, max) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Tangani rentang N-M
+	if strings.Contains(field, "-") {
+		parts := strings.Split(field, "-")
+		if len(parts) == 2 {
+			start, err1 := strconv.Atoi(parts[0])
+			end, err2 := strconv.Atoi(parts[1])
+			if err1 == nil && err2 == nil {
+				return value >= start && value <= end
+			}
+		}
+		return false
+	}
+
+	// Nilai angka tunggal
+	num, err := strconv.Atoi(field)
+	if err == nil {
+		if field == "7" && min == 0 && max == 7 {
+			return value == 0 // Di cron, 7 adalah hari Minggu
+		}
+		return value == num
+	}
+
+	return false
 }
 
 // ExecuteJob menjalankan perintah shell dari cron job dan merekam lognya

@@ -1,9 +1,11 @@
 package appstore
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -12,15 +14,21 @@ import (
 )
 
 type AppPackage struct {
-	ID          string   `json:"id"`           // misal: 'nginx', 'php8.3', 'mysql', 'redis', 'nodejs'
+	ID          string   `json:"id"`           // misal: 'nginx', 'php8.5', 'php8.3', 'mysql', 'redis', 'nodejs'
 	Name        string   `json:"name"`         // 'Nginx Web Server'
 	Category    string   `json:"category"`     // 'webserver', 'runtime', 'database', 'tools'
-	Version     string   `json:"version"`      // '1.24.0', '8.3'
+	Version     string   `json:"version"`      // '1.24.0', '8.5', '8.3'
 	Description string   `json:"description"`  // deskripsi singkat
 	Icon        string   `json:"icon"`         // remixicon class
 	Installed   bool     `json:"installed"`
 	Status      string   `json:"status"`       // 'running', 'stopped', 'not_installed'
 	AptPackages []string `json:"apt_packages"` // apt packages yang diinstall
+}
+
+type GlobalPackage struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Installed   bool   `json:"installed"`
 }
 
 type InstallTask struct {
@@ -51,6 +59,15 @@ func (m *Manager) Catalog(ctx context.Context) []AppPackage {
 			Description: "High-performance HTTP server & reverse proxy untuk routing domain, SSL, dan static files.",
 			Icon:        "ri-server-line",
 			AptPackages: []string{"nginx"},
+		},
+		{
+			ID:          "php8.5",
+			Name:        "PHP 8.5 + FPM Suite",
+			Category:    "runtime",
+			Version:     "8.5 / Latest",
+			Description: "PHP 8.5 modern runtime lengkap dengan FastCGI Process Manager, ekstensi MySQL, GD, cURL, dan Mbstring.",
+			Icon:        "ri-code-s-slash-line",
+			AptPackages: []string{"php8.5-fpm", "php8.5-mysql", "php8.5-cli", "php8.5-curl", "php8.5-mbstring", "php8.5-gd", "php8.5-xml", "php8.5-zip"},
 		},
 		{
 			ID:          "php8.3",
@@ -143,11 +160,11 @@ func (m *Manager) Catalog(ctx context.Context) []AppPackage {
 
 func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 	if runtime.GOOS != "linux" {
-		return id == "nginx" || id == "php8.3", id == "nginx"
+		return id == "nginx" || id == "php8.5" || id == "php8.3", id == "nginx" || id == "php8.5"
 	}
 
-	switch id {
-	case "nginx":
+	switch {
+	case id == "nginx":
 		cmd := exec.CommandContext(ctx, "which", "nginx")
 		installed := cmd.Run() == nil
 		running := false
@@ -157,27 +174,27 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 		}
 		return installed, running
 
-	case "php8.3":
-		cmd := exec.CommandContext(ctx, "which", "php8.3")
+	case strings.HasPrefix(id, "php"):
+		ver := strings.TrimPrefix(id, "php")
+		cmd := exec.CommandContext(ctx, "which", "php"+ver)
 		installed := cmd.Run() == nil
+		if !installed {
+			// Cek apakah socket atau direktori konfigurasi /etc/php/<ver> ada
+			sock := fmt.Sprintf("/run/php/php%s-fpm.sock", ver)
+			if _, err := os.Stat(sock); err == nil {
+				installed = true
+			} else if _, err := os.Stat(fmt.Sprintf("/etc/php/%s", ver)); err == nil {
+				installed = true
+			}
+		}
 		running := false
 		if installed {
-			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "php8.3-fpm").Output()
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", fmt.Sprintf("php%s-fpm", ver)).Output()
 			running = strings.TrimSpace(string(out)) == "active"
 		}
 		return installed, running
 
-	case "php8.2":
-		cmd := exec.CommandContext(ctx, "which", "php8.2")
-		installed := cmd.Run() == nil
-		running := false
-		if installed {
-			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "php8.2-fpm").Output()
-			running = strings.TrimSpace(string(out)) == "active"
-		}
-		return installed, running
-
-	case "mariadb":
+	case id == "mariadb":
 		cmd := exec.CommandContext(ctx, "which", "mariadb")
 		installed := cmd.Run() == nil
 		if !installed {
@@ -194,7 +211,7 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 		}
 		return installed, running
 
-	case "redis":
+	case id == "redis":
 		cmd := exec.CommandContext(ctx, "which", "redis-server")
 		installed := cmd.Run() == nil
 		running := false
@@ -204,15 +221,15 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 		}
 		return installed, running
 
-	case "nodejs":
+	case id == "nodejs":
 		cmd := exec.CommandContext(ctx, "which", "node")
 		return cmd.Run() == nil, false
 
-	case "certbot":
+	case id == "certbot":
 		cmd := exec.CommandContext(ctx, "which", "certbot")
 		return cmd.Run() == nil, false
 
-	case "fail2ban":
+	case id == "fail2ban":
 		cmd := exec.CommandContext(ctx, "which", "fail2ban-client")
 		installed := cmd.Run() == nil
 		running := false
@@ -222,7 +239,7 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 		}
 		return installed, running
 
-	case "git":
+	case id == "git":
 		cmd := exec.CommandContext(ctx, "which", "git")
 		return cmd.Run() == nil, false
 	}
@@ -251,16 +268,19 @@ func (m *Manager) Install(appID string) error {
 		defer cancel()
 
 		var pkgs []string
-		catalog := m.Catalog(ctx)
-		for _, a := range catalog {
-			if a.ID == appID {
-				pkgs = a.AptPackages
-				break
+		if strings.HasPrefix(appID, "pkg:") {
+			pkgs = []string{strings.TrimPrefix(appID, "pkg:")}
+		} else {
+			catalog := m.Catalog(ctx)
+			for _, a := range catalog {
+				if a.ID == appID {
+					pkgs = a.AptPackages
+					break
+				}
 			}
-		}
-
-		if len(pkgs) == 0 {
-			pkgs = []string{appID}
+			if len(pkgs) == 0 {
+				pkgs = []string{appID}
+			}
 		}
 
 		if runtime.GOOS != "linux" {
@@ -302,8 +322,175 @@ func (m *Manager) Install(appID string) error {
 	return nil
 }
 
+// Uninstall mencopot paket software sistem
+func (m *Manager) Uninstall(appID string) error {
+	m.mu.Lock()
+	if task, exists := m.tasks[appID]; exists && task.Status == "running" {
+		m.mu.Unlock()
+		return fmt.Errorf("operasi untuk %s sedang berjalan", appID)
+	}
+
+	task := &InstallTask{
+		AppID:     appID,
+		Status:    "running",
+		Logs:      fmt.Sprintf("[%s] Memulai pencopotan paket %s...\n", time.Now().Format("15:04:05"), appID),
+		StartedAt: time.Now().Unix(),
+	}
+	m.tasks[appID] = task
+	m.mu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		var pkgs []string
+		if strings.HasPrefix(appID, "pkg:") {
+			pkgs = []string{strings.TrimPrefix(appID, "pkg:")}
+		} else {
+			catalog := m.Catalog(ctx)
+			for _, a := range catalog {
+				if a.ID == appID {
+					pkgs = a.AptPackages
+					break
+				}
+			}
+			if len(pkgs) == 0 {
+				pkgs = []string{appID}
+			}
+		}
+
+		if runtime.GOOS != "linux" {
+			time.Sleep(2 * time.Second)
+			m.mu.Lock()
+			task.Status = "success"
+			task.Logs += "[Simulasi] Paket berhasil dicopot di lingkungan non-Linux.\n"
+			m.mu.Unlock()
+			return
+		}
+
+		args := append([]string{"remove", "-y"}, pkgs...)
+		cmd := exec.CommandContext(ctx, "apt-get", args...)
+		cmd.Env = append(cmd.Environ(), "DEBIAN_FRONTEND=noninteractive")
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err := cmd.Run()
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		task.Logs += stdout.String()
+		if stderr.Len() > 0 {
+			task.Logs += "\n[STDERR]\n" + stderr.String()
+		}
+
+		if err != nil {
+			task.Status = "failed"
+			task.Logs += fmt.Sprintf("\n[GAGAL] %v\n", err)
+		} else {
+			task.Status = "success"
+			task.Logs += fmt.Sprintf("\n[SUKSES] Paket %s berhasil dicopot dari sistem!\n", appID)
+		}
+	}()
+
+	return nil
+}
+
+// SearchGlobalPackages mencari paket software di repositori global OS (APT)
+func (m *Manager) SearchGlobalPackages(ctx context.Context, query string) ([]GlobalPackage, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+
+	// Sanitasi query agar hanya mengandung karakter aman
+	var safeBuilder strings.Builder
+	for _, r := range query {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			safeBuilder.WriteRune(r)
+		}
+	}
+	safeQuery := safeBuilder.String()
+	if safeQuery == "" {
+		return nil, nil
+	}
+
+	if runtime.GOOS != "linux" {
+		// Mock data untuk lingkungan development non-Linux
+		mocks := []GlobalPackage{
+			{Name: "composer", Description: "Dependency Manager for PHP", Installed: false},
+			{Name: "htop", Description: "Interactive processes viewer for Linux", Installed: true},
+			{Name: "ffmpeg", Description: "Tools for transcoding, streaming and playing multimedia files", Installed: false},
+			{Name: "postgresql", Description: "Object-relational SQL database server", Installed: false},
+			{Name: "supervisor", Description: "System for controlling process state on UNIX-like OS", Installed: false},
+			{Name: "python3-pip", Description: "Python package installer", Installed: true},
+			{Name: "unzip", Description: "De-archiver for .zip files", Installed: true},
+		}
+		var matched []GlobalPackage
+		qLower := strings.ToLower(safeQuery)
+		for _, pkg := range mocks {
+			if strings.Contains(strings.ToLower(pkg.Name), qLower) || strings.Contains(strings.ToLower(pkg.Description), qLower) {
+				matched = append(matched, pkg)
+			}
+		}
+		if len(matched) == 0 {
+			matched = append(matched, GlobalPackage{
+				Name:        safeQuery,
+				Description: fmt.Sprintf("Paket sistem Linux %s dari repositori", safeQuery),
+				Installed:   false,
+			})
+		}
+		return matched, nil
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, "apt-cache", "search", "--names-only", safeQuery)
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		cmdFallback := exec.CommandContext(cmdCtx, "apt-cache", "search", safeQuery)
+		out, _ = cmdFallback.Output()
+	}
+
+	var results []GlobalPackage
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	count := 0
+	for scanner.Scan() && count < 30 {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " - ", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		pkgName := strings.TrimSpace(parts[0])
+		desc := ""
+		if len(parts) > 1 {
+			desc = strings.TrimSpace(parts[1])
+		}
+
+		chkCmd := exec.CommandContext(ctx, "dpkg-query", "-W", "-f=${Status}", pkgName)
+		chkOut, _ := chkCmd.Output()
+		installed := strings.Contains(string(chkOut), "ok installed")
+
+		results = append(results, GlobalPackage{
+			Name:        pkgName,
+			Description: desc,
+			Installed:   installed,
+		})
+		count++
+	}
+
+	return results, nil
+}
+
 func (m *Manager) GetTask(appID string) *InstallTask {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.tasks[appID]
 }
+

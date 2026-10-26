@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"fikpanel/internal/store"
 )
@@ -24,10 +25,19 @@ func (s *Server) handleListCronJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
+	zoneName, zoneOffset := now.Zone()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":   true,
 		"jobs": jobs,
+		"server_time": map[string]interface{}{
+			"unix":          now.Unix(),
+			"iso":           now.Format(time.RFC3339),
+			"timezone_name": zoneName,
+			"offset_sec":    zoneOffset,
+		},
 	})
 }
 

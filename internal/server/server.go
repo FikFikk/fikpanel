@@ -208,7 +208,9 @@ func (s *Server) registerRoutes() {
 
 	// Software App Store & Toolkit Installer
 	s.mux.Handle("GET /api/appstore/catalog", s.AuthMiddleware(http.HandlerFunc(s.handleListAppStore)))
+	s.mux.Handle("GET /api/appstore/search", s.AuthMiddleware(http.HandlerFunc(s.handleSearchAppStore)))
 	s.mux.Handle("POST /api/appstore/install/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleInstallApp)))
+	s.mux.Handle("POST /api/appstore/uninstall/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUninstallApp)))
 	s.mux.Handle("GET /api/appstore/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetAppTask)))
 
 	// Persistent System Monitor History & Control

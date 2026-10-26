@@ -797,3 +797,44 @@ export interface DiscoveryResult {
   kubernetes_detected: boolean;
   kubernetes_type: string;
 }
+
+// ── Cron Scheduler ────────────────────────────────────────────────────────
+export interface CronJob {
+  id: number;
+  name: string;
+  schedule_type: string;
+  spec: string;
+  command: string;
+  enabled: boolean;
+  save_log: boolean;
+  timeout_sec: number;
+  last_run_at: number;
+  last_status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CronLog {
+  id: number;
+  job_id: number;
+  started_at: number;
+  finished_at: number;
+  duration_ms: number;
+  status: string;
+  exit_code: number;
+  output: string;
+}
+
+export interface ServerTimeInfo {
+  unix: number;
+  iso: string;
+  timezone_name: string;
+  offset_sec: number;
+}
+
+export interface GlobalPackage {
+  name: string;
+  description: string;
+  installed: boolean;
+}
+

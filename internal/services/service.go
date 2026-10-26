@@ -152,7 +152,7 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 	defer rows.Close()
 
 	var result []ServiceInfo
-	hasSSHD := false
+	var hasSSHD, hasSSH bool
 	for rows.Next() {
 		var s ServiceInfo
 		var protectedInt int
@@ -167,14 +167,25 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 			continue
 		}
 
-		// Jika sshd.service sudah ada dan aktif, jangan duplikasi dengan ssh.service
 		if s.Unit == "sshd.service" {
 			hasSSHD = true
-		} else if s.Unit == "ssh.service" && hasSSHD {
-			continue
+		} else if s.Unit == "ssh.service" {
+			hasSSH = true
 		}
 
 		result = append(result, s)
+	}
+
+	// Jika sshd.service dan ssh.service sama-sama terdeteksi, hapus duplikat ssh.service
+	if hasSSHD && hasSSH {
+		var deduped []ServiceInfo
+		for _, s := range result {
+			if s.Unit == "ssh.service" {
+				continue
+			}
+			deduped = append(deduped, s)
+		}
+		result = deduped
 	}
 
 	return result, nil

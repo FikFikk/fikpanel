@@ -16,13 +16,22 @@
   let editPostMax = $state('64M');
   let editMaxExec = $state('300');
 
+  let installingVer = $state<string | null>(null);
+
   async function loadPHPVersions() {
     try {
       loading = true;
       const res = await apiFetch<{ ok: boolean; versions: PHPVersionInfo[] }>('/api/php/versions');
       versions = res?.versions || [];
-      if (versions.length > 0 && !selectedVer) {
-        selectVer(versions[0]);
+      if (versions.length > 0) {
+        if (!selectedVer || !versions.some(v => v.version === selectedVer?.version)) {
+          // Utamakan versi yang sudah terpasang
+          const firstInstalled = versions.find((v) => v.installed) || versions[0];
+          selectVer(firstInstalled);
+        } else {
+          const current = versions.find(v => v.version === selectedVer?.version);
+          if (current) selectVer(current);
+        }
       }
     } catch (err: any) {
       notify(err.message || 'Gagal memuat status PHP', 'error');
@@ -37,6 +46,30 @@
     editUploadMax = v.settings?.['upload_max_filesize'] || '64M';
     editPostMax = v.settings?.['post_max_size'] || '64M';
     editMaxExec = v.settings?.['max_execution_time'] || '300';
+  }
+
+  async function installPHP(v: PHPVersionInfo) {
+    const ok = await confirmDialog({
+      title: `Pasang PHP ${v.version}`,
+      message: `Pasang paket runtime PHP ${v.version} dan daemon php${v.version}-fpm melalui manajer paket APT? Proses berjalan di background.`,
+      confirmLabel: 'Mulai Pasang',
+      variant: 'primary',
+    });
+    if (!ok) return;
+
+    try {
+      installingVer = v.version;
+      notify(`Memulai instalasi PHP ${v.version}...`, 'info');
+      await apiFetch(`/api/appstore/install/php${v.version}`, { method: 'POST' });
+      notify(`Instalasi PHP ${v.version} dimulai di background. Periksa menu App Store untuk melihat log instalasi.`, 'success');
+      setTimeout(() => {
+        loadPHPVersions();
+      }, 5000);
+    } catch (err: any) {
+      notify(err.message || 'Gagal memicu instalasi PHP', 'error');
+    } finally {
+      installingVer = null;
+    }
   }
 
   async function restartFPM(v: PHPVersionInfo) {
@@ -102,12 +135,12 @@
         <i class="ri-code-s-slash-line"></i> PHP Multi-Version & FPM Tuning
       </h1>
       <p class="page-sub">
-        Pantau versi PHP yang terinstal di server, kontrol daemon FPM, dan atur alokasi memori serta batas upload file.
+        Deteksi otomatis versi PHP yang terinstal di host, pantau daemon FPM socket, dan atur parameter alokasi memori serta upload.
       </p>
     </div>
     <div class="page-actions">
       <button class="btn btn-ghost" onclick={loadPHPVersions} disabled={loading}>
-        <i class="ri-refresh-line {loading ? 'spin' : ''}"></i> Refresh
+        <i class="ri-refresh-line {loading ? 'spin' : ''}"></i> Refresh Status
       </button>
     </div>
   </header>
@@ -134,20 +167,28 @@
             {/if}
           </div>
           <div class="v-meta">
-            <span class="mono text-subtle text-xs truncate" title={v.fpm_socket}>{v.fpm_socket}</span>
+            {#if v.installed}
+              <span class="mono text-subtle text-xs truncate" title={v.fpm_socket}>{v.fpm_socket || 'Socket Aktif'}</span>
+            {:else}
+              <span class="text-subtle text-xs">Tersedia di repositori OS</span>
+            {/if}
           </div>
-          {#if v.installed}
-            <div class="v-actions" onclick={(e) => e.stopPropagation()} role="presentation">
+          <div class="v-actions" onclick={(e) => e.stopPropagation()} role="presentation">
+            {#if v.installed}
               <button class="btn btn-ghost btn-sm" onclick={() => restartFPM(v)}>
                 <i class="ri-restart-line"></i> Restart FPM
               </button>
-            </div>
-          {/if}
+            {:else}
+              <button class="btn btn-primary btn-sm" onclick={() => installPHP(v)} disabled={installingVer === v.version}>
+                <i class="ri-download-2-line {installingVer === v.version ? 'spin' : ''}"></i> {installingVer === v.version ? 'Memasang...' : 'Pasang'}
+              </button>
+            {/if}
+          </div>
         </div>
       {/each}
     </div>
 
-    <!-- Tuning Panel -->
+    <!-- Tuning Panel / Uninstalled Banner -->
     {#if selectedVer && selectedVer.installed}
       <div class="tuning-panel">
         <div class="panel-head">
@@ -187,6 +228,24 @@
           <div class="flex justify-end pt-4 border-t border-neutral-800">
             <button class="btn btn-primary" onclick={saveSettings} disabled={saving}>
               {saving ? 'Menyimpan...' : 'Simpan & Reload PHP-FPM'}
+            </button>
+          </div>
+        </div>
+      </div>
+    {:else if selectedVer && !selectedVer.installed}
+      <div class="uninstalled-banner-card">
+        <div class="banner-icon">
+          <i class="ri-information-line"></i>
+        </div>
+        <div class="banner-content">
+          <h4>PHP {selectedVer.version} Belum Terpasang di Server</h4>
+          <p>
+            Paket runtime PHP {selectedVer.version} dan ekstensi FPM belum terinstal di host Anda. Anda dapat memasang paket ini secara otomatis hanya dengan 1-klik melalui manajer paket sistem.
+          </p>
+          <div class="banner-actions">
+            <button class="btn btn-primary" onclick={() => installPHP(selectedVer!)} disabled={installingVer === selectedVer.version}>
+              <i class="ri-download-2-line {installingVer === selectedVer.version ? 'spin' : ''}"></i>
+              {installingVer === selectedVer.version ? 'Sedang Memasang...' : `Pasang PHP ${selectedVer.version} via APT`}
             </button>
           </div>
         </div>
@@ -351,7 +410,46 @@
   .gap-2 { gap: 0.5rem; }
   .mono { font-family: var(--font-mono); }
   .text-muted { color: var(--text-muted); }
-  .text-subtle { color: var(--text-subtle); }
+  .uninstalled-banner-card {
+    background: var(--bg-surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+  .banner-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--tint-info);
+    color: var(--info);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+  .banner-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .banner-content h4 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: var(--text);
+  }
+  .banner-content p {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .banner-actions {
+    margin-top: 0.75rem;
+  }
   .spin { animation: spin 1s linear infinite; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
 </style>
