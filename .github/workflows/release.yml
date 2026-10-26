@@ -1,0 +1,78 @@
+name: Release FikPanel Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Svelte Frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build Linux amd64
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p dist/linux-amd64
+          go build -ldflags="-s -w" -o dist/linux-amd64/fikpanel ./cmd/fikpanel
+          tar -czf dist/fikpanel-linux-amd64.tar.gz -C dist/linux-amd64 fikpanel
+
+      - name: Build Linux arm64
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: arm64
+        run: |
+          mkdir -p dist/linux-arm64
+          go build -ldflags="-s -w" -o dist/linux-arm64/fikpanel ./cmd/fikpanel
+          tar -czf dist/fikpanel-linux-arm64.tar.gz -C dist/linux-arm64 fikpanel
+
+      - name: Build Windows amd64
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          mkdir -p dist/windows-amd64
+          go build -ldflags="-s -w" -o dist/windows-amd64/fikpanel.exe ./cmd/fikpanel
+          cd dist/windows-amd64 && zip ../fikpanel-windows-amd64.zip fikpanel.exe && cd ../..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/fikpanel-linux-amd64.tar.gz
+            dist/fikpanel-linux-arm64.tar.gz
+            dist/fikpanel-windows-amd64.zip
+          generate_release_notes: true
