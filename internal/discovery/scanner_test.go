@@ -63,6 +63,36 @@ server {
 	}
 }
 
+// TestParseNginxConfigIgnoresComments memastikan komentar dan template contoh diabaikan
+func TestParseNginxConfigIgnoresComments(t *testing.T) {
+	ubuntuDefaultConf := `
+server {
+	listen 80 default_server;
+	root /var/www/html;
+	index index.html;
+	server_name _;
+}
+
+# Virtual Host configuration for example.com
+#
+#server {
+#	listen 80;
+#	server_name example.com;
+#	root /var/www/example.com;
+#}
+`
+	tmpDir := t.TempDir()
+	confFile := filepath.Join(tmpDir, "default")
+	if err := os.WriteFile(confFile, []byte(ubuntuDefaultConf), 0644); err != nil {
+		t.Fatalf("Gagal membuat file sementara: %v", err)
+	}
+
+	items := parseConfigFile(confFile)
+	if len(items) != 0 {
+		t.Fatalf("Diharapkan 0 vhost untuk default template terkomentar, tetapi didapatkan: %d (%+v)", len(items), items)
+	}
+}
+
 func TestScanDockerComposeDirectory(t *testing.T) {
 	tmpRoot := t.TempDir()
 	projDir := filepath.Join(tmpRoot, "projects", "web", "app1")

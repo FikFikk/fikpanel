@@ -213,6 +213,26 @@ curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update
 
 ---
 
+## Cara Pencopotan (Clean Uninstaller)
+
+Jika Anda ingin mencopot FikPanel sepenuhnya dari server:
+
+### 1. Pencopotan Cepat via One-Line Command
+```bash
+curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/uninstall.sh | sudo bash
+```
+
+### 2. Melalui Skrip Lokal di Server
+```bash
+sudo /opt/fikpanel/scripts/uninstall.sh
+```
+
+> **Opsi Uninstaller:**
+> - `-y` atau `--yes`: Melewati konfirmasi interaktif.
+> - `--full`: Mencopot FikPanel sekaligus membersihkan paket stack (Nginx, MySQL, PHP) dari server.
+
+---
+
 ## Panduan Perintah CLI (`fikpanel --help`)
 
 Biner `fikpanel` menyediakan utilitas baris perintah terintegrasi:

@@ -27,9 +27,3 @@ CREATE TABLE IF NOT EXISTS system_tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON system_tasks(status);
-
--- Data bawaan untuk demonstrasi engine MySQL / MariaDB (menyerupai data referensi aaPanel)
-INSERT OR IGNORE INTO databases (id, engine, name, username, password, size_bytes, backup_count, location, note, created_at)
-VALUES 
-    (1, 'mysql', 'sql_fikpanel_app', 'usr_fikpanel', 'pAssw0rdFik_99x!', 18874368, 1, 'localhost', 'Aplikasi Web Utama FikPanel', strftime('%s', 'now')),
-    (2, 'mysql', 'sql_demo_portal', 'usr_demo', 'd3mo_Secur3Key#', 4194304, 0, 'localhost', 'Portal Berita & Dokumentasi', strftime('%s', 'now'));

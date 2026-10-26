@@ -1,4 +1,4 @@
-﻿package services
+package services
 
 import (
 	"bufio"
@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -53,11 +54,97 @@ func (m *Manager) SeedDefaultServices(ctx context.Context) error {
 			return fmt.Errorf("gagal mendaftarkan default service %s: %w", d.unit, err)
 		}
 	}
+
+	// Pindai dan daftarkan service sistem nyata yang terpasang pada host Linux
+	_ = m.discoverInstalledServices(ctx)
+	return nil
+}
+
+// discoverInstalledServices memindai unit service nyata di Linux dan mendaftarkannya otomatis
+func (m *Manager) discoverInstalledServices(ctx context.Context) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cmdCtx, "systemctl", "list-unit-files", "--type=service", "--no-legend").Output()
+	if err != nil {
+		return err
+	}
+
+	phpFpmRe := regexp.MustCompile(`^php([0-9.]*)-fpm\.service$`)
+
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		unit := fields[0]
+
+		var label string
+		var protected int
+
+		switch {
+		case unit == "fikpanel.service":
+			label = "Fikpanel Web Server"
+			protected = 1
+		case unit == "sshd.service" || unit == "ssh.service":
+			label = "OpenSSH Server"
+			protected = 1
+		case unit == "nginx.service":
+			label = "Nginx Reverse Proxy"
+		case unit == "apache2.service" || unit == "httpd.service":
+			label = "Apache HTTP Server"
+		case unit == "mysql.service" || unit == "mysqld.service":
+			label = "MySQL Database Server"
+		case unit == "mariadb.service":
+			label = "MariaDB Database Server"
+		case unit == "docker.service":
+			label = "Docker Container Engine"
+		case unit == "redis.service" || unit == "redis-server.service":
+			label = "Redis In-Memory Store"
+		case unit == "postgresql.service":
+			label = "PostgreSQL Database Server"
+		case unit == "mongod.service" || unit == "mongodb.service":
+			label = "MongoDB Database Server"
+		case unit == "fail2ban.service":
+			label = "Fail2ban Security Daemon"
+		case unit == "cron.service" || unit == "crond.service":
+			label = "Cron Task Scheduler"
+		case unit == "ufw.service":
+			label = "UFW Firewall Daemon"
+		case phpFpmRe.MatchString(unit):
+			matches := phpFpmRe.FindStringSubmatch(unit)
+			if len(matches) > 1 && matches[1] != "" {
+				label = fmt.Sprintf("PHP %s FastCGI (FPM)", matches[1])
+			} else {
+				label = "PHP FastCGI (FPM)"
+			}
+		default:
+			continue
+		}
+
+		// Daftarkan ke tabel managed_services jika belum terdaftar
+		_, _ = m.db.ExecContext(ctx,
+			"INSERT OR IGNORE INTO managed_services (unit, label, protected) VALUES (?, ?, ?)",
+			unit, label, protected)
+	}
+
 	return nil
 }
 
 // ListServices mengambil seluruh daftar layanan terkelola beserta status aktifnya
 func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
+	// Lakukan penemuan service sistem baru pada host Linux
+	_ = m.discoverInstalledServices(ctx)
+
 	rows, err := m.db.QueryContext(ctx, "SELECT unit, coalesce(label, ''), protected FROM managed_services ORDER BY unit ASC")
 	if err != nil {
 		return nil, fmt.Errorf("gagal query tabel managed_services: %w", err)
@@ -65,6 +152,7 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 	defer rows.Close()
 
 	var result []ServiceInfo
+	hasSSHD := false
 	for rows.Next() {
 		var s ServiceInfo
 		var protectedInt int
@@ -74,22 +162,34 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 		s.Protected = (protectedInt == 1)
 
 		// Periksa status terkini via systemctl
-		m.populateStatus(ctx, &s)
+		if !m.populateStatus(ctx, &s) {
+			// Lewati unit yang tidak terpasang di sistem host
+			continue
+		}
+
+		// Jika sshd.service sudah ada dan aktif, jangan duplikasi dengan ssh.service
+		if s.Unit == "sshd.service" {
+			hasSSHD = true
+		} else if s.Unit == "ssh.service" && hasSSHD {
+			continue
+		}
+
 		result = append(result, s)
 	}
 
 	return result, nil
 }
 
-// populateStatus mengisi informasi status runtime ActiveState, SubState, MainPID, dan MemoryCurrent
-func (m *Manager) populateStatus(ctx context.Context, s *ServiceInfo) {
+// populateStatus mengisi informasi status runtime ActiveState, SubState, MainPID, dan MemoryCurrent.
+// Mengembalikan false jika unit tidak ditemukan pada host Linux (LoadState == "not-found").
+func (m *Manager) populateStatus(ctx context.Context, s *ServiceInfo) bool {
 	if runtime.GOOS != "linux" {
 		// Mock data realistis untuk pengujian di lingkungan development Windows
 		s.ActiveState = "active"
 		s.SubState = "running"
 		s.MainPID = 1234
 		s.MemoryCurrent = 18 * 1024 * 1024
-		return
+		return true
 	}
 
 	// Pada Linux, panggil systemctl show dengan argumen tetap tanpa shell string
@@ -97,14 +197,15 @@ func (m *Manager) populateStatus(ctx context.Context, s *ServiceInfo) {
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "systemctl", "show", s.Unit,
-		"--property=ActiveState,SubState,MainPID,MemoryCurrent")
+		"--property=LoadState,ActiveState,SubState,MainPID,MemoryCurrent")
 	out, err := cmd.Output()
 	if err != nil {
 		s.ActiveState = "unknown"
 		s.SubState = "error"
-		return
+		return false
 	}
 
+	loadState := ""
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -114,6 +215,8 @@ func (m *Manager) populateStatus(ctx context.Context, s *ServiceInfo) {
 		}
 		key, val := parts[0], parts[1]
 		switch key {
+		case "LoadState":
+			loadState = val
 		case "ActiveState":
 			s.ActiveState = val
 		case "SubState":
@@ -124,5 +227,10 @@ func (m *Manager) populateStatus(ctx context.Context, s *ServiceInfo) {
 			s.MemoryCurrent, _ = strconv.ParseUint(val, 10, 64)
 		}
 	}
+
+	if loadState == "not-found" {
+		return false
+	}
+	return true
 }
 

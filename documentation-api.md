@@ -267,7 +267,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"services": [{"unit": "nginx.service", "active_state": "active", "sub_state": "running", "protected": 0}]}` |
-| Notes | Menampilkan status unit yang terdaftar di tabel `managed_services`. |
+| Notes | Menampilkan status unit yang terdaftar di tabel `managed_services` dengan auto-discovery dinamis unit sistem nyata terpasang (Nginx, MySQL, PHP-FPM, Docker, Redis, SSH, dll). |
 
 | Field | Detail |
 |---|---|

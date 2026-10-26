@@ -70,7 +70,22 @@ func parseConfigFile(path string) []NginxVhostItem {
 		return nil
 	}
 
-	content := string(data)
+	// Bersihkan baris komentar (#) agar tidak memproses blok atau directive yang dinonaktifkan
+	lines := strings.Split(string(data), "\n")
+	var cleanLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Hapus inline comment jika ada: directive # komentar
+		if idx := strings.Index(line, "#"); idx != -1 {
+			line = line[:idx]
+		}
+		cleanLines = append(cleanLines, line)
+	}
+	content := strings.Join(cleanLines, "\n")
+
 	// Regex pencocokan blok server
 	serverBlockRe := regexp.MustCompile(`(?s)server\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}`)
 	matches := serverBlockRe.FindAllStringSubmatch(content, -1)
@@ -122,7 +137,8 @@ func parseConfigFile(path string) []NginxVhostItem {
 			item.ProxyPass = strings.TrimSpace(pMatch[1])
 		}
 
-		if item.ServerName != "" && item.ServerName != "_" {
+		// Hanya sertakan domain aktif riil (bukan placeholder, wildcard default, atau localhost)
+		if item.ServerName != "" && item.ServerName != "_" && item.ServerName != "localhost" && item.ServerName != "example.com" {
 			items = append(items, item)
 		}
 	}
@@ -130,12 +146,12 @@ func parseConfigFile(path string) []NginxVhostItem {
 	return items
 }
 
-// ScanNginxVhosts memindai vhost Nginx yang sudah ada di direktori Linux standar
+// ScanNginxVhosts memindai vhost Nginx yang sudah aktif di direktori Linux standar
 func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error) {
 	var results []NginxVhostItem
+	// Hanya periksa konfigurasi yang benar-benar aktif (sites-enabled dan conf.d)
 	dirs := []string{
 		"/etc/nginx/sites-enabled",
-		"/etc/nginx/sites-available",
 		"/etc/nginx/conf.d",
 	}
 

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -205,7 +206,17 @@ func CheckPHP(ctx context.Context) SoftwareInfo {
 		info.Version = matches[1]
 	}
 
-	sysOut, _ := exec.CommandContext(cmdCtx, "systemctl", "is-active", "php8.3-fpm").Output()
+	// Deteksi unit FPM dinamis sesuai versi PHP yang terdeteksi (misal: php8.5-fpm atau php8.3-fpm)
+	fpmUnit := "php-fpm"
+	if info.Version != "" {
+		parts := strings.Split(info.Version, ".")
+		if len(parts) >= 2 {
+			fpmUnit = fmt.Sprintf("php%s.%s-fpm", parts[0], parts[1])
+		}
+	}
+	info.ServiceUnit = fpmUnit + ".service"
+
+	sysOut, _ := exec.CommandContext(cmdCtx, "systemctl", "is-active", fpmUnit).Output()
 	if strings.TrimSpace(string(sysOut)) != "active" {
 		sysOut, _ = exec.CommandContext(cmdCtx, "systemctl", "is-active", "php-fpm").Output()
 	}

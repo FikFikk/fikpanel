@@ -52,7 +52,7 @@ func TestDatabaseRoutes(t *testing.T) {
 		t.Errorf("diharapkan 4 engine terdaftar, didapat %d", len(enginesResp.Engines))
 	}
 
-	// 2. Uji GET /api/databases/mysql/list (memastikan data seed ada)
+	// 2. Uji GET /api/databases/mysql/list (memastikan database bersih tanpa data dummy awal)
 	reqList := httptest.NewRequest(http.MethodGet, "/api/databases/mysql/list", nil)
 	reqList.SetPathValue("engine", "mysql")
 	wList := httptest.NewRecorder()
@@ -68,8 +68,8 @@ func TestDatabaseRoutes(t *testing.T) {
 	if err := json.Unmarshal(wList.Body.Bytes(), &listResp); err != nil {
 		t.Fatalf("gagal parse daftar database: %v", err)
 	}
-	if len(listResp.Databases) == 0 {
-		t.Errorf("diharapkan ada data seed database mysql, didapat 0")
+	if len(listResp.Databases) != 0 {
+		t.Errorf("diharapkan database awal bersih (0 database), didapat: %d", len(listResp.Databases))
 	}
 
 	// 3. Uji POST /api/databases/mysql/create

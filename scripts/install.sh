@@ -185,9 +185,28 @@ echo -e "• Komponen yang tidak dipasang sekarang ${BOLD}bisa dipasang kapan sa
 echo -e "  melalui Web Panel FikPanel (menu App Store, Databases, atau Keamanan)."
 echo -e "• Komponen yang sudah terdeteksi di server ${BOLD}TIDAK AKAN DITIMPA${NC} agar konfigurasi aman.\n"
 
+# Fungsi pembaca input interaktif yang handal saat dijalankan via pipe (curl | sudo bash)
+prompt_read() {
+    local prompt_msg="$1"
+    local default_value="$2"
+    local var_name="$3"
+    local user_input=""
+
+    if [ -t 0 ]; then
+        read -rp "$prompt_msg" user_input || user_input=""
+    elif [ -r /dev/tty ]; then
+        read -rp "$prompt_msg" user_input </dev/tty || user_input=""
+    else
+        user_input="$default_value"
+    fi
+
+    user_input="${user_input:-$default_value}"
+    printf -v "$var_name" '%s' "$user_input"
+}
+
 # 4. Menu Interaktif Pemilihan Software Stack
 echo -e "${BOLD}Pilih Profil Pemasangan Software Stack:${NC}"
-echo -e "  ${GREEN}1) Full LNMP Stack${NC} (Nginx + MySQL 8.0 + PHP 8.3 FPM)"
+echo -e "  ${GREEN}1) Full LNMP Stack${NC} (Nginx + MySQL 8.0 + PHP FPM)"
 echo -e "     -> Cocok untuk server baru / AWS EC2 kosong untuk WordPress/Laravel."
 echo -e "  ${CYAN}2) Node.js & Web Server${NC} (Nginx + Node.js 20 + PM2)"
 echo -e "     -> Cocok untuk server aplikasi SSR / Express / Next.js / Nuxt."
@@ -197,8 +216,7 @@ echo -e "  ${BOLD}4) Minimal FikPanel Core${NC} (Hanya Panel & SQLite — Sangat
 echo -e "     -> MySQL, PHP, Docker, Fail2ban bisa dipasang nanti dari antarmuka Web Panel."
 echo -e "  ${YELLOW}5) Kustom / Pilih Sendiri${NC} (Tanya satu-per-satu per komponen)"
 
-read -rp "Masukkan nomor pilihan [1-5] (default: 1): " STACK_CHOICE
-STACK_CHOICE=${STACK_CHOICE:-1}
+prompt_read "Masukkan nomor pilihan [1-5] (default: 1): " "1" STACK_CHOICE
 
 INSTALL_NGINX=false
 INSTALL_APACHE=false
@@ -230,43 +248,43 @@ case "$STACK_CHOICE" in
         if [ "$HAS_NGINX" = true ] || [ "$HAS_APACHE" = true ]; then
             echo -e "  [i] Web server sudah terdeteksi di sistem. Melewati pertanyaan instalasi web server."
         else
-            read -rp "  Pasang Nginx Web Server? [Y/n]: " yn_nginx
-            [[ "${yn_nginx:-Y}" =~ ^[Yy] ]] && INSTALL_NGINX=true
+            prompt_read "  Pasang Nginx Web Server? [Y/n]: " "Y" yn_nginx
+            [[ "$yn_nginx" =~ ^[Yy] ]] && INSTALL_NGINX=true
         fi
 
         if [ "$HAS_MYSQL" = true ]; then
             echo -e "  [i] MySQL/MariaDB sudah terdeteksi di sistem. Melewati pertanyaan instalasi MySQL."
         else
-            read -rp "  Pasang MySQL 8.0 Database Server? (Bukan untuk panel, hanya untuk web app) [y/N]: " yn_mysql
-            [[ "${yn_mysql:-N}" =~ ^[Yy] ]] && INSTALL_MYSQL=true
+            prompt_read "  Pasang MySQL 8.0 Database Server? (Bukan untuk panel, hanya untuk web app) [y/N]: " "N" yn_mysql
+            [[ "$yn_mysql" =~ ^[Yy] ]] && INSTALL_MYSQL=true
         fi
 
         if [ "$HAS_PHP" = true ]; then
             echo -e "  [i] PHP sudah terdeteksi di sistem. Melewati pertanyaan instalasi PHP."
         else
-            read -rp "  Pasang PHP 8.3 FastCGI (FPM) & ekstensi umum? [y/N]: " yn_php
-            [[ "${yn_php:-N}" =~ ^[Yy] ]] && INSTALL_PHP=true
+            prompt_read "  Pasang PHP FastCGI (FPM) & ekstensi umum? [y/N]: " "N" yn_php
+            [[ "$yn_php" =~ ^[Yy] ]] && INSTALL_PHP=true
         fi
 
         if [ "$HAS_NODE" = true ]; then
             echo -e "  [i] Node.js sudah terdeteksi di sistem. Melewati pertanyaan instalasi Node.js."
         else
-            read -rp "  Pasang Node.js Runtime & PM2? [y/N]: " yn_node
-            [[ "${yn_node:-N}" =~ ^[Yy] ]] && INSTALL_NODE=true
+            prompt_read "  Pasang Node.js Runtime & PM2? [y/N]: " "N" yn_node
+            [[ "$yn_node" =~ ^[Yy] ]] && INSTALL_NODE=true
         fi
 
         if [ "$HAS_DOCKER" = true ]; then
             echo -e "  [i] Docker Engine sudah terdeteksi di sistem. Melewati pertanyaan instalasi Docker."
         else
-            read -rp "  Pasang Docker Engine & Compose? [y/N]: " yn_docker
-            [[ "${yn_docker:-N}" =~ ^[Yy] ]] && INSTALL_DOCKER=true
+            prompt_read "  Pasang Docker Engine & Compose? [y/N]: " "N" yn_docker
+            [[ "$yn_docker" =~ ^[Yy] ]] && INSTALL_DOCKER=true
         fi
 
         if [ "$HAS_FAIL2BAN" = true ]; then
             echo -e "  [i] Fail2ban sudah terdeteksi di sistem. Melewati pertanyaan instalasi Fail2ban."
         else
-            read -rp "  Pasang Fail2ban Intrusion Prevention? (Bisa diaktifkan nanti dari Web Panel) [y/N]: " yn_f2b
-            [[ "${yn_f2b:-N}" =~ ^[Yy] ]] && INSTALL_FAIL2BAN=true
+            prompt_read "  Pasang Fail2ban Intrusion Prevention? (Bisa diaktifkan nanti dari Web Panel) [y/N]: " "N" yn_f2b
+            [[ "$yn_f2b" =~ ^[Yy] ]] && INSTALL_FAIL2BAN=true
         fi
         ;;
     *)
@@ -345,7 +363,7 @@ if [ "$INSTALL_MYSQL" = true ]; then
     fi
 fi
 
-# --- PHP 8.3 FPM ---
+# --- PHP FastCGI (FPM) ---
 if [ "$INSTALL_PHP" = true ]; then
     if [ "$HAS_PHP" = true ]; then
         echo -e "\n${GREEN}[✓] PHP sudah terpasang (v${PHP_VER}). Melewati instalasi.${NC}"
@@ -353,11 +371,14 @@ if [ "$INSTALL_PHP" = true ]; then
         echo -e "\n[+] Memasang PHP FastCGI (FPM) & ekstensi pendukung..."
         if [ "$PKG_MGR" = "apt" ]; then
             apt-get install -y php-fpm php-mysql php-curl php-gd php-mbstring php-xml php-zip php-bcmath
-            systemctl enable php8.3-fpm || systemctl enable php-fpm || true
-            systemctl restart php8.3-fpm || systemctl restart php-fpm || true
+            # Deteksi unit service PHP FPM dinamis dari sistem (misal php8.5-fpm atau php8.3-fpm)
+            PHP_FPM_SVC=$(systemctl list-unit-files --type=service 2>/dev/null | grep -E '^php[0-9.]*-fpm\.service' | awk '{print $1}' | head -n 1 || true)
+            [ -z "$PHP_FPM_SVC" ] && PHP_FPM_SVC="php-fpm.service"
+            systemctl enable "$PHP_FPM_SVC" || true
+            systemctl restart "$PHP_FPM_SVC" || true
         else
             $PKG_MGR install -y php-fpm php-mysqlnd php-gd php-curl php-mbstring php-xml php-zip
-            systemctl enable php-fpm
+            systemctl enable php-fpm || true
             systemctl restart php-fpm || true
         fi
         echo -e "${GREEN}[✓] PHP FPM berhasil dipasang dan dijalankan.${NC}"
@@ -429,13 +450,21 @@ mkdir -p "$INSTALL_DIR/bin"
 mkdir -p "$INSTALL_DIR/scripts"
 mkdir -p "/var/www/html"
 
-# Salin skrip update lokal atau unduh dari repositori
+# Salin skrip update & uninstall lokal atau unduh dari repositori
 if [ -f "./scripts/update.sh" ]; then
     cp "./scripts/update.sh" "$INSTALL_DIR/scripts/update.sh"
     chmod +x "$INSTALL_DIR/scripts/update.sh"
 else
     curl -fsSL "https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh" -o "$INSTALL_DIR/scripts/update.sh" || true
     chmod +x "$INSTALL_DIR/scripts/update.sh" 2>/dev/null || true
+fi
+
+if [ -f "./scripts/uninstall.sh" ]; then
+    cp "./scripts/uninstall.sh" "$INSTALL_DIR/scripts/uninstall.sh"
+    chmod +x "$INSTALL_DIR/scripts/uninstall.sh"
+else
+    curl -fsSL "https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/uninstall.sh" -o "$INSTALL_DIR/scripts/uninstall.sh" || true
+    chmod +x "$INSTALL_DIR/scripts/uninstall.sh" 2>/dev/null || true
 fi
 
 # Salin biner atau kompilasi jika Go terpasang, atau unduh rilis terbaru
@@ -468,6 +497,7 @@ if [ ! -x "$INSTALL_DIR/bin/fikpanel" ]; then
     exit 1
 fi
 echo -e "${GREEN}[✓] Biner FikPanel terpasang: $INSTALL_DIR/bin/fikpanel${NC}"
+ln -sf "$INSTALL_DIR/bin/fikpanel" /usr/local/bin/fikpanel || true
 
 # 8. Membuat Systemd Unit Service
 cat <<EOF > /etc/systemd/system/fikpanel.service
