@@ -67,16 +67,20 @@ if [ -f "$INSTALL_DIR/bin/fikpanel" ]; then
 fi
 
 # 4. Unduh Biner Versi Terbaru dari GitHub Releases
-echo -e "[*] Mengunduh rilis biner FikPanel terbaru..."
 DOWNLOAD_URL="https://github.com/FikFikk/fikpanel/releases/latest/download/fikpanel-linux-${ARCH}.tar.gz"
 TEMP_FILE="/tmp/fikpanel-update.tar.gz"
 
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
-    echo -e "${RED}[ERROR] Gagal mengunduh biner terbaru dari GitHub Release.${NC}"
+echo -e "[*] Mengunduh rilis biner FikPanel terbaru (~8.3 MB)..."
+echo -e "    ${CYAN}Sumber rilis: ${DOWNLOAD_URL}${NC}\n"
+
+# Gunakan --progress-bar agar proses unduhan terpantau jelas di terminal dan tidak disangka hang
+if ! curl -fL --progress-bar --connect-timeout 20 --retry 3 "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
+    echo -e "\n${RED}[ERROR] Gagal mengunduh biner terbaru dari GitHub Release.${NC}"
     echo -e "${YELLOW}Periksa koneksi internet server atau halaman https://github.com/FikFikk/fikpanel/releases${NC}"
     rm -f "$TEMP_FILE"
     exit 1
 fi
+echo -e "${GREEN}[✓] Unduhan selesai.${NC}\n"
 
 # 5. Pasang Biner Baru
 echo -e "[*] Memasang biner baru..."

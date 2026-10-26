@@ -485,8 +485,8 @@ else
         aarch64|arm64) ARCH="arm64" ;;
         *) ARCH="amd64" ;;
     esac
-    echo "[*] Mengunduh rilis FikPanel biner untuk linux-${ARCH}..."
-    curl -fsSL "https://github.com/FikFikk/fikpanel/releases/latest/download/fikpanel-linux-${ARCH}.tar.gz" -o /tmp/fikpanel.tar.gz || true
+    echo -e "[*] Mengunduh rilis FikPanel biner untuk linux-${ARCH} (~8.3 MB)..."
+    curl -fL --progress-bar --connect-timeout 20 --retry 3 "https://github.com/FikFikk/fikpanel/releases/latest/download/fikpanel-linux-${ARCH}.tar.gz" -o /tmp/fikpanel.tar.gz || true
     if [ -f /tmp/fikpanel.tar.gz ]; then
         tar -xzf /tmp/fikpanel.tar.gz -C "$INSTALL_DIR/bin/"
         chmod +x "$INSTALL_DIR/bin/fikpanel"
