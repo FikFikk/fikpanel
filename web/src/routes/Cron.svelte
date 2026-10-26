@@ -153,6 +153,133 @@
     }
   }
 
+  // Kamus nama bulan dan nama hari untuk interpretasi manusia
+  const MONTH_NAMES: Record<string, string> = {
+    '1': 'Januari', '2': 'Februari', '3': 'Maret', '4': 'April',
+    '5': 'Mei', '6': 'Juni', '7': 'Juli', '8': 'Agustus',
+    '9': 'September', '10': 'Oktober', '11': 'November', '12': 'Desember',
+  };
+
+  const DOW_NAMES: Record<string, string> = {
+    '0': 'Minggu', '1': 'Senin', '2': 'Selasa', '3': 'Rabu',
+    '4': 'Kamis', '5': 'Jumat', '6': 'Sabtu', '7': 'Minggu',
+  };
+
+  // Fungsi penerjemah ekspresi 5-kolom crontab ke kalimat bahasa Indonesia yang sangat gamblang
+  function explainCustomCron(
+    min: string,
+    hr: string,
+    dom: string,
+    mon: string,
+    dow: string,
+    diffHours: number,
+    clientTz: string
+  ): string {
+    const m = (min || '*').trim();
+    const h = (hr || '*').trim();
+    const d = (dom || '*').trim();
+    const mo = (mon || '*').trim();
+    const dw = (dow || '*').trim();
+
+    // 1. Setiap menit
+    if (m === '*' && h === '*' && d === '*' && mo === '*' && dw === '*') {
+      return '⚡ Dijalankan setiap menit secara terus-menerus (60 kali per jam).';
+    }
+
+    // 2. Interval menit (step), misal */15 * * * * atau */5 * * * *
+    if (m.startsWith('*/') && h === '*' && d === '*' && mo === '*' && dw === '*') {
+      const step = m.replace('*/', '');
+      return `⚡ Dijalankan setiap ${step} menit sekali secara berulang.`;
+    }
+
+    // 3. Setiap jam pada menit tertentu, misal 0 * * * * atau 30 * * * *
+    if (!m.includes('*') && !m.includes('/') && h === '*' && d === '*' && mo === '*' && dw === '*') {
+      const mPad = m.padStart(2, '0');
+      return `⏱️ Dijalankan setiap jam pada menit ke-${mPad} (${mPad === '00' ? 'tepat di awal pergantian jam' : `menit ke-${m}`}).`;
+    }
+
+    // 4. Interval jam (step), misal 0 */2 * * *
+    if (h.startsWith('*/') && d === '*' && mo === '*' && dw === '*') {
+      const stepH = h.replace('*/', '');
+      const mPad = m === '*' ? 'setiap menit' : `menit ke-${m.padStart(2, '0')}`;
+      return `⏱️ Dijalankan setiap ${stepH} jam sekali pada ${mPad}.`;
+    }
+
+    // Format label jam dan menit
+    const isSingleH = /^\d+$/.test(h);
+    const isSingleM = /^\d+$/.test(m);
+    let timeHint = '';
+    let timeLabel = '';
+
+    if (isSingleH && isSingleM) {
+      const hNum = parseInt(h, 10);
+      const mNum = parseInt(m, 10);
+      const mPad = String(mNum).padStart(2, '0');
+      const hPad = String(hNum).padStart(2, '0');
+      timeLabel = `pukul ${hPad}:${mPad}`;
+
+      // Tambahkan konversi waktu pengguna (WIB) jika server berada di zona waktu berbeda (UTC)
+      if (diffHours !== 0) {
+        const clientH = (hNum + diffHours + 24) % 24;
+        const clientHPad = String(clientH).padStart(2, '0');
+        timeHint = ` (waktu server, setara ${clientHPad}:${mPad} ${clientTz})`;
+      }
+    } else if (h !== '*') {
+      timeLabel = `jam ${h} (menit ${m})`;
+    } else {
+      timeLabel = `menit ${m}`;
+    }
+
+    // 5. Setiap hari pada jam tertentu, misal 0 12 * * * atau 0 5 * * *
+    if (d === '*' && mo === '*' && dw === '*') {
+      return `🕒 Dijalankan setiap hari pada ${timeLabel}${timeHint}.`;
+    }
+
+    // 6. Setiap bulan pada tanggal tertentu, misal 0 12 12 * * atau 0 0 12 * *
+    if (d !== '*' && mo === '*' && dw === '*') {
+      let tglDesc = `tanggal ${d}`;
+      if (d === '1') tglDesc = 'tanggal 1 (awal bulan)';
+      else if (d === 'L') tglDesc = 'hari terakhir setiap bulan';
+      return `📆 Dijalankan setiap bulan pada ${tglDesc} ${timeLabel}${timeHint}.`;
+    }
+
+    // 7. Setiap minggu pada hari tertentu, misal 0 12 * * 1 atau 0 5 * * 1-5
+    if (d === '*' && mo === '*' && dw !== '*') {
+      let hariDesc = '';
+      if (dw === '1-5') hariDesc = 'hari kerja (Senin s/d Jumat)';
+      else if (dw === '0,6' || dw === '6,7') hariDesc = 'akhir pekan (Sabtu & Minggu)';
+      else {
+        const parts = dw.split(',').map((x) => DOW_NAMES[x.trim()] || `hari ${x}`);
+        hariDesc = `hari ${parts.join(', ')}`;
+      }
+      return `📅 Dijalankan setiap ${hariDesc} pada ${timeLabel}${timeHint}.`;
+    }
+
+    // 8. Tahunan / Bulan spesifik, misal 0 0 1 1 * atau 0 12 12 8 *
+    if (d !== '*' && mo !== '*' && dw === '*') {
+      const namaBulan = MONTH_NAMES[mo] || `bulan ${mo}`;
+      return `🗓️ Dijalankan setiap tahun pada tanggal ${d} ${namaBulan} ${timeLabel}${timeHint}.`;
+    }
+
+    // 9. Kombinasi Tanggal dan Hari dalam seminggu
+    if (d !== '*' && dw !== '*') {
+      const parts = dw.split(',').map((x) => DOW_NAMES[x.trim()] || `hari ${x}`);
+      return `🗓️ Dijalankan pada tanggal ${d} dan setiap hari ${parts.join(', ')} pada ${timeLabel}${timeHint}.`;
+    }
+
+    // 10. Fallback pola crontab lainnya
+    return `⚙️ Dijalankan berdasarkan pola Crontab: Menit (${m}), Jam (${h}), Tanggal (${d}), Bulan (${mo}), Hari (${dw})${timeHint}.`;
+  }
+
+  // Isi preset cepat untuk ekspresi crontab kustom
+  function applyCustomPreset(m: string, h: string, d: string, mo: string, dw: string) {
+    fieldMinute = m;
+    fieldHour = h;
+    fieldDay = d;
+    fieldMonth = mo;
+    fieldDow = dw;
+  }
+
   // Teks interpretasi jadwal yang sangat gamblang
   let scheduleHumanExplanation = $derived.by(() => {
     const diff = getTimezoneDiffHours();
@@ -185,7 +312,7 @@
     if (activeTab === 'monthly') {
       return `📆 Berjalan setiap tanggal ${genMonthlyDate} pukul ${String(genMonthlyHour).padStart(2, '0')}:${String(genMonthlyMinute).padStart(2, '0')} (${timezoneBasis === 'client' ? clientTz : serverTz}).`;
     }
-    return `⚙️ Jadwal dieksekusi berdasarkan pola 5-kolom Crontab standar Linux (${fieldMinute} ${fieldHour} ${fieldDay} ${fieldMonth} ${fieldDow}).`;
+    return explainCustomCron(fieldMinute, fieldHour, fieldDay, fieldMonth, fieldDow, diff, clientTz);
   });
 
   // String ekspresi crontab final
@@ -346,26 +473,14 @@
     });
   }
 
-  // Menerjemahkan ekspresi spec crontab ke teks ringkas
+  // Menerjemahkan ekspresi spec crontab ke teks bahasa Indonesia yang jelas
   function translateSpec(spec: string): string {
     const fields = spec.trim().split(/\s+/);
     if (fields.length === 5) {
       const [m, h, dom, mon, dow] = fields;
       const diff = getTimezoneDiffHours();
-
-      if (m.startsWith('*/') && h === '*' && dom === '*' && mon === '*' && dow === '*') {
-        return `Per ${m.replace('*/', '')} menit`;
-      }
-      if (h === '*' && dom === '*' && mon === '*' && dow === '*') {
-        return `Tiap jam :${m.padStart(2, '0')}`;
-      }
-      if (dom === '*' && mon === '*' && dow === '*' && !h.includes('*')) {
-        const hNum = parseInt(h, 10);
-        if (!isNaN(hNum)) {
-          const wibHour = (hNum + diff + 24) % 24;
-          return `Harian ${String(wibHour).padStart(2, '0')}:${m.padStart(2, '0')} WIB (${h.padStart(2, '0')}:${m.padStart(2, '0')} UTC)`;
-        }
-      }
+      const clientTz = getClientTimezoneLabel();
+      return explainCustomCron(m, h, dom, mon, dow, diff, clientTz);
     }
     return spec;
   }
@@ -784,7 +899,36 @@
             <!-- TAB: CUSTOM (5-Field Direct Input) -->
             {:else if activeTab === 'custom'}
               <div class="tab-content">
-                <span class="content-desc">Ketik langsung nilai ekspresi 5 kolom crontab (* atau angka/rentang/step):</span>
+                <div class="custom-tab-head">
+                  <span class="content-desc">Ketik langsung nilai ekspresi 5 kolom crontab (* atau angka/rentang/step):</span>
+                  <div class="quick-cron-examples">
+                    <span class="quick-examples-label">Contoh Cepat:</span>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '12', '*', '*', '*')}>
+                      Setiap Hari Jam 12
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '5', '*', '*', '*')}>
+                      Setiap Hari Jam 05
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '12', '12', '*', '*')}>
+                      Tiap Bulan Tgl 12 Jam 12
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '0', '12', '*', '*')}>
+                      Tiap Bulan Tgl 12 Jam 00
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '0', '1', '*', '*')}>
+                      Tiap Awal Bulan (Tgl 1)
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('*/15', '*', '*', '*', '*')}>
+                      Setiap 15 Menit
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '*', '*', '*', '*')}>
+                      Setiap Jam
+                    </button>
+                    <button type="button" class="example-chip" onclick={() => applyCustomPreset('0', '9', '*', '*', '1')}>
+                      Setiap Senin Jam 09
+                    </button>
+                  </div>
+                </div>
               </div>
             {/if}
 
@@ -1336,6 +1480,38 @@
   .content-desc {
     font-size: 0.78rem;
     color: var(--text-muted);
+  }
+  .custom-tab-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .quick-cron-examples {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    padding-top: 0.2rem;
+  }
+  .quick-examples-label {
+    font-size: 0.72rem;
+    color: var(--text-subtle);
+    font-weight: 500;
+  }
+  .example-chip {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .example-chip:hover {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border-color: var(--accent);
   }
   .input-inline-wrap {
     display: flex;
