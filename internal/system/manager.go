@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 type ProcessInfo struct {
@@ -247,8 +246,8 @@ func (m *Manager) CleanJunk(ctx context.Context, cleanApt bool, cleanLogs bool, 
 	}
 
 	if dropCaches {
-		// Sync disk dan drop RAM buffer cache aman: echo 3 > /proc/sys/vm/drop_caches
-		syscall.Sync()
+		// Sinkronisasi disk dan drop cache buffer RAM: echo 3 > /proc/sys/vm/drop_caches
+		_ = exec.CommandContext(ctx, "sync").Run()
 		_ = os.WriteFile("/proc/sys/vm/drop_caches", []byte("3\n"), 0644)
 	}
 

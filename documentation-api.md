@@ -1075,6 +1075,226 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "message": "Registri berhasil dihapus"}` |
 | Notes | Menghapus registri privat terdaftar. |
 
+### System Process & Task Manager
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/processes` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, opsional, default: 30) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "processes": [{"pid": 1234, "user": "www-data", "cpu": 1.5, "memory": 45.2, "command": "php-fpm: pool www"}]}` |
+| Notes | Mengambil daftar proses sistem aktif yang diurutkan berdasarkan konsumsi CPU tertinggi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/processes/{pid}/kill` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | `force` (bool, opsional, default: false) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "pid": 1234}` |
+| Notes | Mengirim sinyal SIGTERM atau SIGKILL (`force=true`) untuk menghentikan proses target. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/ports` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "ports": [{"proto": "tcp", "port": "80", "address": "0.0.0.0", "program": "nginx", "pid": 800}]}` |
+| Notes | Memeriksa seluruh soket jaringan aktif dan layanan yang mendengarkan (listening). |
+
+### System Cleaner & Optimization
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/cleaner/scan` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "scan": {"apt_cache_bytes": 104857600, "system_log_bytes": 52428800, "tmp_bytes": 20971520, "docker_reclaim_bytes": 0, "total_bytes": 178257920}}` |
+| Notes | Memindai estimasi ruang disk yang dapat dibebaskan dari APT cache, rotasi berkas log usang, dan berkas `/tmp`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/cleaner/clean` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `clean_apt` (bool), `clean_logs` (bool), `clean_tmp` (bool), `drop_caches` (bool) |
+| Response | HTTP 200 `{"ok": true, "message": "Pembersihan sistem berhasil diselesaikan"}` |
+| Notes | Mengeksekusi pembersihan selektif dan sinkronisasi disk cache (`drop_caches`). |
+
+### Software App Store & Toolkit Installer
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/catalog` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "apps": [{"id": "redis", "name": "Redis Server", "category": "database", "installed": true, "version": "7.0.15"}]}` |
+| Notes | Mengembalikan katalog aplikasi bawaan OS dan toolkit 1-klik beserta status instalasinya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/install/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task_id": "app_inst_123"}` |
+| Notes | Memulai instalasi paket aplikasi di latar belakang via sistem antrean task worker. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/tasks/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task": {"id": "app_inst_123", "status": "running", "progress": 80, "log": "..."}}` |
+| Notes | Memeriksa kemajuan eksekusi tugas instalasi aplikasi. |
+
+### Persistent System Monitor History & Control
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/monitor/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "retention_days": 30}}` |
+| Notes | Mengambil konfigurasi perekaman metrik persisten historis (mirip fitur aaPanel monitor). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/monitor/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool, wajib), `retention_days` (int, 1-365) |
+| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "retention_days": 30}}` |
+| Notes | Mengaktifkan/menonaktifkan perekam interval background metrik CPU, RAM, Disk, dan Jaringan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/monitor/history` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `range` (string: `"1h"`, `"6h"`, `"24h"`, `"7d"`, `"30d"`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "snapshots": [{"timestamp": 1740000000, "cpu": 12.4, "ram_used": 1024, "ram_total": 4096, "disk_used": 20480, "disk_total": 81920, "net_in": 10240, "net_out": 20480, "load_1m": 0.45}]}` |
+| Notes | Mengambil deret waktu metrik untuk visualisasi grafik multi-rentang. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/monitor/history` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Riwayat pemantauan berhasil dibersihkan"}` |
+| Notes | Mengosongkan seluruh tabel rekaman snapshot metrik persisten. |
+
+### Keamanan, Firewall, & SSH Hardening
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/firewall/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "status": {"active": true, "backend": "ufw", "rules": [{"number": 1, "port": "22", "proto": "tcp", "action": "ALLOW", "from": "Anywhere"}]}}` |
+| Notes | Menampilkan status UFW/iptables dan daftar aturan port aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/firewall/toggle` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "enabled": true}` |
+| Notes | Menyalakan atau mematikan layanan firewall UFW host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/firewall/rules` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `port` (string, misal `"8443"`), `proto` (string: `"tcp"`, `"udp"`, atau `"any"`), `action` (string: `"allow"` atau `"deny"`) |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menambahkan aturan penerusan port baru pada firewall. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/firewall/rules/{number}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus aturan firewall berdasarkan nomor urut index rule UFW. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/security/ssh` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "ssh": {"port": 22, "password_auth": true, "permit_root_login": false}}` |
+| Notes | Membaca konfigurasi `/etc/ssh/sshd_config` aktif pada server. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/security/ssh` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `port` (int), `password_auth` (bool), `permit_root_login` (bool) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi SSH berhasil disimpan dan di-reload"}` |
+| Notes | Memodifikasi parameter port dan autentikasi `sshd_config`, kemudian melakukan reload layanan SSH. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/security/fail2ban` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "fail2ban": {"active": true, "jails": ["sshd"], "banned_ips": [{"jail": "sshd", "ip": "192.168.1.100"}]}}` |
+| Notes | Memeriksa status proteksi brute-force Fail2Ban beserta daftar IP yang sedang diblokir. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/security/fail2ban/unban` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `jail` (string, misal `"sshd"`), `ip` (string IP address) |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Membuka blokir (unban) alamat IP tertentu dari jail Fail2Ban. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/security/scan` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "report": {"score": 85, "checks": [{"name": "SSH Root Login", "status": "passed", "risk": "low"}]}}` |
+| Notes | Menjalankan inspeksi audit keamanan menyeluruh terhadap sistem operasi, port terbuka, hak akses berkas, dan konfigurasi server. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
@@ -1083,5 +1303,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 |---|---|---|---|
 | `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
 | `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |
+| `srv.StartMonitoringRecorder` | Setiap 60 detik (background ticker) & setiap 24 jam (purge) | Merekam metrik CPU, RAM, Disk, Jaringan jika fitur monitor aktif, serta membersihkan snapshot metrik melebihi masa retensi | Menyimpan data historis ke tabel `monitor_snapshots`; menghapus snapshot lama secara berkala |
+| `srv.cronMgr.Start` | Setiap menit (sesuai spesifikasi cron) | Mengeksekusi antrean tugas cron kustom pengguna yang terdaftar di database | Menjalankan skrip shell/perintah cadangan atau pemeliharaan berkala |
 | `store.CleanupRoutine` | 1x sehari (pukul 03:00) | Menghapus baris audit log berumur > 90 hari dan pesan obrolan AI berumur > 30 hari | Menjaga ukuran database `/var/lib/panel/panel.db` tetap ringkas di bawah 10 MB |
 | `store.BackupRoutine` | 1x sehari (pukul 04:00) | Eksekusi `VACUUM INTO` untuk snapshot SQLite ke direktori `/var/lib/panel/backups/panel-<timestamp>.db` | Menahan penulisan DB selama hitungan milidetik; mempertahankan rotasi 7 file backup terbaru |
