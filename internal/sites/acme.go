@@ -344,8 +344,34 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
+// RenewAllExpiring memindai dan memperpanjang semua sertifikat yang sisa masa aktifnya < 30 hari
+func (m *Manager) RenewAllExpiring(ctx context.Context, audit func(ok bool, target, msg string)) (int, int, error) {
+	ids, err := m.store.ListExpiringCertificates(ctx, time.Now().Add(30*24*time.Hour).Unix())
+	if err != nil {
+		return 0, 0, err
+	}
+	renewed := 0
+	for _, id := range ids {
+		site, err := m.store.GetSite(ctx, id)
+		if err != nil {
+			continue
+		}
+		// skipDNS=false: renew tetap memvalidasi DNS agar error jelas di audit log
+		err = m.IssueSSL(ctx, id, false, func(ok bool, msg string) { audit(ok, site.Domain, msg) })
+		if err != nil {
+			audit(false, site.Domain, "Auto-renew gagal dimulai: "+err.Error())
+		} else {
+			renewed++
+		}
+	}
+	return renewed, len(ids), nil
+}
+
 // RunRenewLoop memeriksa sertifikat setiap 12 jam dan memperpanjang yang sisa masa aktifnya < 30 hari
 func (m *Manager) RunRenewLoop(ctx context.Context, audit func(ok bool, target, msg string)) {
+	// Jalankan pemeriksaan awal sesaat setelah server aktif
+	_, _, _ = m.RenewAllExpiring(ctx, audit)
+
 	ticker := time.NewTicker(12 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -353,21 +379,7 @@ func (m *Manager) RunRenewLoop(ctx context.Context, audit func(ok bool, target, 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ids, err := m.store.ListExpiringCertificates(ctx, time.Now().Add(30*24*time.Hour).Unix())
-			if err != nil {
-				continue
-			}
-			for _, id := range ids {
-				site, err := m.store.GetSite(ctx, id)
-				if err != nil {
-					continue
-				}
-				// skipDNS=false: renew tetap memvalidasi DNS agar error jelas di audit log
-				err = m.IssueSSL(ctx, id, false, func(ok bool, msg string) { audit(ok, site.Domain, msg) })
-				if err != nil {
-					audit(false, site.Domain, "Auto-renew gagal dimulai: "+err.Error())
-				}
-			}
+			_, _, _ = m.RenewAllExpiring(ctx, audit)
 		}
 	}
 }

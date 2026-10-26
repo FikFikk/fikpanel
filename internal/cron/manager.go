@@ -31,8 +31,37 @@ func NewManager(s *store.Store) *Manager {
 	}
 }
 
+// SeedDefaultJobs mendaftarkan tugas cron bawaan sistem (seperti auto-renew SSL ala aaPanel/HestiaCP)
+func (m *Manager) SeedDefaultJobs(ctx context.Context) error {
+	jobs, err := m.store.ListCronJobs(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, j := range jobs {
+		if strings.Contains(strings.ToLower(j.Name), "ssl") || strings.Contains(j.Command, "renew-ssl") {
+			return nil
+		}
+	}
+
+	sslJob := &store.CronJob{
+		Name:         "Domain SSL Auto-Renew (Let's Encrypt / ACME)",
+		ScheduleType: "daily",
+		Spec:         "0 2 * * *", // Dijalankan setiap hari pukul 02:00 waktu server
+		Command:      "fikpanel renew-ssl",
+		Enabled:      true,
+		SaveLog:      true,
+		TimeoutSec:   1800,
+	}
+
+	_, err = m.store.CreateCronJob(ctx, sslJob)
+	return err
+}
+
 // Start memulai loop pengecekan cron setiap menit
 func (m *Manager) Start(ctx context.Context) {
+	_ = m.SeedDefaultJobs(ctx)
+
 	ticker := time.NewTicker(60 * time.Second)
 	go func() {
 		for {

@@ -18,6 +18,7 @@ import (
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/server"
 	"fikpanel/internal/services"
+	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 )
 
@@ -54,6 +55,8 @@ func main() {
 		runDiscover(os.Args[2:])
 	case "update":
 		runUpdate(os.Args[2:])
+	case "renew-ssl", "ssl-renew":
+		runRenewSSL(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "Perintah tidak dikenal: %s\n\n", command)
 		printUsage()
@@ -80,6 +83,9 @@ Perintah yang Tersedia:
                     --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
                     --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
   update          Perbarui biner FikPanel ke versi rilis terbaru tanpa menyentuh data
+  renew-ssl       Pindai seluruh domain dan perpanjang sertifikat SSL yang < 30 hari
+                  Opsi:
+                    --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
   doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
   reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
   init            Inisialisasi kredensial awal administrator
@@ -364,4 +370,43 @@ func runUpdate(args []string) {
 		os.Exit(1)
 	}
 }
+
+// runRenewSSL memindai seluruh domain dan memperpanjang sertifikat SSL yang sisa masa aktifnya < 30 hari
+func runRenewSSL(args []string) {
+	fs := flag.NewFlagSet("renew-ssl", flag.ExitOnError)
+	dbPath := fs.String("db", "fikpanel.db", "Lokasi file database SQLite")
+	fs.Parse(args)
+
+	fmt.Println("[*] Memeriksa sertifikat SSL domain yang mendekati kedaluwarsa (< 30 hari)...")
+	st, err := store.Open(*dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Gagal membuka database: %v\n", err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	sitesMgr := sites.NewManager(sites.DefaultPaths(), nil, st)
+	renewed, total, err := sitesMgr.RenewAllExpiring(ctx, func(ok bool, target, msg string) {
+		status := "SUKSES"
+		if !ok {
+			status = "GAGAL"
+		}
+		fmt.Printf("[%s] Domain: %s -> %s\n", status, target, msg)
+	})
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error saat memindai sertifikat: %v\n", err)
+		os.Exit(1)
+	}
+
+	if total == 0 {
+		fmt.Println("[✓] Semua sertifikat SSL domain masih aktif dan berlaku (tidak ada yang kedaluwarsa dalam 30 hari ke depan).")
+	} else {
+		fmt.Printf("[✓] Pemindaian selesai: %d dari %d sertifikat dipicu perpanjangan otomatis.\n", renewed, total)
+	}
+}
+
 
