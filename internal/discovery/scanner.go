@@ -228,14 +228,30 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 func (s *Scanner) ScanDockerProjects(ctx context.Context, customRoots []string) ([]DockerDiscoveredItem, error) {
 	defaultRoots := []string{"/var/www", "/opt"}
 	if home, err := os.UserHomeDir(); err == nil {
-		// Pindai subdirektori proyek umum di home direktori pengguna
-		for _, sub := range []string{"projects", "workspace", "www", "web", "dev"} {
+		// Pindai subdirektori proyek umum di home direktori pengguna saat ini
+		for _, sub := range []string{"projects", "workspace", "www", "web", "node", "dev"} {
 			subPath := filepath.Join(home, sub)
 			if _, err := os.Stat(subPath); err == nil {
 				defaultRoots = append(defaultRoots, subPath)
 			}
 		}
 	}
+
+	// Jika berjalan sebagai root di Linux, pindai subdirektori proyek di seluruh akun /home/<user>
+	if entries, err := os.ReadDir("/home"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				userHome := filepath.Join("/home", e.Name())
+				for _, sub := range []string{"projects", "workspace", "www", "web", "node", "dev"} {
+					subPath := filepath.Join(userHome, sub)
+					if _, err := os.Stat(subPath); err == nil {
+						defaultRoots = append(defaultRoots, subPath)
+					}
+				}
+			}
+		}
+	}
+
 	allRoots := append(defaultRoots, customRoots...)
 
 	projects := scanComposeInPaths(ctx, allRoots)
