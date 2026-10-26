@@ -4,8 +4,10 @@
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import { notify } from '../lib/stores/toast.svelte';
   import type { DatabaseEngineInfo, DatabaseItem, SystemTask } from '../lib/types';
+  import Backup from './Backup.svelte';
 
-  // State Engine dan Tab Aktif
+  // State Tampilan Utama (Database atau Cadangan S3) & Engine Aktif
+  let mainView = $state<'database' | 'backup'>('database');
   let engines = $state<DatabaseEngineInfo[]>([]);
   let activeEngine = $state<'mysql' | 'postgresql' | 'mongodb' | 'redis'>('mysql');
   let databases = $state<DatabaseItem[]>([]);
@@ -207,6 +209,9 @@
   );
 
   onMount(async () => {
+    if (window.location.hash.includes('backup')) {
+      mainView = 'backup';
+    }
     await fetchEngines();
     await fetchDatabases(activeEngine);
     await fetchTasks();
@@ -249,6 +254,7 @@
 
   // Ganti tab engine
   async function switchEngine(eng: 'mysql' | 'postgresql' | 'mongodb' | 'redis') {
+    mainView = 'database';
     activeEngine = eng;
     const curr = engines.find((e) => e.name === eng) || getDefaultEngine(eng);
     if (curr.versions && curr.versions.length > 0) {
@@ -785,9 +791,9 @@
     <div class="engine-tabs" role="tablist">
       <button
         class="engine-tab"
-        class:active={activeEngine === 'mysql'}
+        class:active={mainView === 'database' && activeEngine === 'mysql'}
         role="tab"
-        aria-selected={activeEngine === 'mysql'}
+        aria-selected={mainView === 'database' && activeEngine === 'mysql'}
         onclick={() => switchEngine('mysql')}
       >
         <i class="ri-database-2-line tab-icon" aria-hidden="true"></i>
@@ -799,9 +805,9 @@
 
       <button
         class="engine-tab"
-        class:active={activeEngine === 'postgresql'}
+        class:active={mainView === 'database' && activeEngine === 'postgresql'}
         role="tab"
-        aria-selected={activeEngine === 'postgresql'}
+        aria-selected={mainView === 'database' && activeEngine === 'postgresql'}
         onclick={() => switchEngine('postgresql')}
       >
         <i class="ri-server-line tab-icon" aria-hidden="true"></i>
@@ -813,9 +819,9 @@
 
       <button
         class="engine-tab"
-        class:active={activeEngine === 'mongodb'}
+        class:active={mainView === 'database' && activeEngine === 'mongodb'}
         role="tab"
-        aria-selected={activeEngine === 'mongodb'}
+        aria-selected={mainView === 'database' && activeEngine === 'mongodb'}
         onclick={() => switchEngine('mongodb')}
       >
         <i class="ri-leaf-line tab-icon" aria-hidden="true"></i>
@@ -829,9 +835,9 @@
 
       <button
         class="engine-tab"
-        class:active={activeEngine === 'redis'}
+        class:active={mainView === 'database' && activeEngine === 'redis'}
         role="tab"
-        aria-selected={activeEngine === 'redis'}
+        aria-selected={mainView === 'database' && activeEngine === 'redis'}
         onclick={() => switchEngine('redis')}
       >
         <i class="ri-flashlight-line tab-icon" aria-hidden="true"></i>
@@ -839,6 +845,17 @@
         {#if engines.find((e) => e.name === 'redis')?.installed}
           <span class="engine-dot active" title="Layanan aktif"></span>
         {/if}
+      </button>
+
+      <button
+        class="engine-tab"
+        class:active={mainView === 'backup'}
+        role="tab"
+        aria-selected={mainView === 'backup'}
+        onclick={() => { mainView = 'backup'; }}
+      >
+        <i class="ri-inbox-archive-line tab-icon" aria-hidden="true"></i>
+        <span>Cadangan & S3 Cloud</span>
       </button>
     </div>
 
@@ -860,8 +877,12 @@
     </div>
   </header>
 
-  <!-- Jika Mesin Database BELUM Terpasang (State Edukatif ala aaPanel) -->
-  {#if !loadingEngines && !currentEngine.installed}
+  <!-- Tampilan Tab Cadangan & S3 Cloud Terintegrasi -->
+  {#if mainView === 'backup'}
+    <div class="backup-embedded-view">
+      <Backup />
+    </div>
+  {:else if !loadingEngines && !currentEngine.installed}
     <div class="uninstalled-card">
       <div class="uninstalled-card__body">
         <div class="alert-icon-box">

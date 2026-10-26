@@ -1295,6 +1295,59 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "report": {"score": 85, "checks": [{"name": "SSH Root Login", "status": "passed", "risk": "low"}]}}` |
 | Notes | Menjalankan inspeksi audit keamanan menyeluruh terhadap sistem operasi, port terbuka, hak akses berkas, dan konfigurasi server. |
 
+### Node.js & PM2 Process Manager
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/node/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "status": {"node_installed": true, "node_version": "v24.7.0", "pm2_installed": true, "pm2_version": "7.1.1"}}` |
+| Notes | Memeriksa ketersediaan biner runtime Node.js dan daemon PM2 di host. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/node/processes` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "status": {...}, "processes": [{"id": 0, "name": "my-app", "status": "online", "pid": 1234, "cpu": 0.5, "memory": 45000000, "uptime": 1740000000, "restart_count": 0, "mode": "fork"}]}` |
+| Notes | Mengambil daftar proses nyata dari output `pm2 jlist` (mengembalikan array kosong jika PM2 belum terpasang atau belum ada proses). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/node/processes/start` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `script` (string, wajib, misal `"server.js"`), `cwd` (string), `instances` (string, default `"1"`), `watch` (bool), `args` (string) |
+| Response | HTTP 200 `{"ok": true, "message": "Aplikasi PM2 berhasil dijalankan"}` |
+| Notes | Menjalankan aplikasi Node.js baru dengan PM2 dan menyimpan konfigurasi ke `pm2 save`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/node/processes/{id}/{action}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "target": "0", "action": "restart"}` |
+| Notes | Mengontrol siklus hidup proses PM2: `restart`, `stop`, `start`, `reload`, atau `delete` (otomatis mengeksekusi `pm2 save` saat menghapus). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/node/processes/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `lines` (int, default: 60) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "target": "0", "logs": "..."}` |
+| Notes | Mengambil baris log gabungan stdout dan stderr langsung dari daemon PM2. |
+
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

@@ -167,8 +167,11 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/security/scan", s.AuthMiddleware(http.HandlerFunc(s.handleRunSecurityScan)))
 
 	// Node.js & PM2 Management
+	s.mux.Handle("GET /api/node/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetNodeStatus)))
 	s.mux.Handle("GET /api/node/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListNodeProcesses)))
+	s.mux.Handle("POST /api/node/processes/start", s.AuthMiddleware(http.HandlerFunc(s.handleStartNodeProcess)))
 	s.mux.Handle("POST /api/node/processes/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleControlNodeProcess)))
+	s.mux.Handle("GET /api/node/processes/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleGetNodeProcessLogs)))
 
 	// DNS Management
 	s.mux.Handle("GET /api/dns/zones", s.AuthMiddleware(http.HandlerFunc(s.handleListDNSZones)))

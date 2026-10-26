@@ -516,6 +516,13 @@ export interface FirewallStatus {
 }
 
 // ── Node & PM2 Management ─────────────────────────────────────────────────
+export interface NodeSystemStatus {
+  node_installed: boolean;
+  node_version: string;
+  pm2_installed: boolean;
+  pm2_version: string;
+}
+
 export interface PM2Process {
   id: number;
   name: string;
@@ -525,10 +532,12 @@ export interface PM2Process {
   pid: number;
   uptime?: number;
   restart_count?: number;
-  status: 'online' | 'stopped' | 'errored';
+  status: 'online' | 'stopped' | 'errored' | 'launching';
   cpu: number;
   memory: number;
   user: string;
+  script?: string;
+  cwd?: string;
 }
 
 // ── Cron Job Management ──────────────────────────────────────────────────

@@ -12,12 +12,10 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Dashboard', icon: 'ri-dashboard-3-line', group: 'utama' },
   { id: 'website', label: 'Website', icon: 'ri-global-line', group: 'utama' },
   { id: 'appstore', label: 'App Store', icon: 'ri-apps-2-line', group: 'utama' },
-  { id: 'dns', label: 'DNS Manager', icon: 'ri-node-tree', group: 'utama' },
   { id: 'php', label: 'PHP Manager', icon: 'ri-code-s-slash-line', group: 'utama' },
   { id: 'databases', label: 'Databases', icon: 'ri-database-2-line', group: 'utama' },
   { id: 'docker', label: 'Docker', icon: 'ri-box-3-line', group: 'utama' },
   { id: 'node', label: 'Node / PM2', icon: 'ri-nodejs-line', group: 'utama' },
-  { id: 'backup', label: 'Backup S3', icon: 'ri-inbox-archive-line', group: 'utama' },
   { id: 'files', label: 'Files', icon: 'ri-folder-3-line', group: 'utama' },
   { id: 'services', label: 'Services', icon: 'ri-server-line', group: 'utama' },
   { id: 'cron', label: 'Cron Jobs', icon: 'ri-time-line', group: 'utama' },
@@ -32,5 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
 /** Ambil id rute dari hash URL; rute tak dikenal jatuh ke dashboard. */
 export function routeFromHash(hash: string): string {
   const id = hash.replace(/^#\/?/, '').split(/[?/]/)[0];
+  if (id === 'backup') return 'databases';
   return NAV_ITEMS.some((n) => n.id === id) ? id : 'home';
 }
