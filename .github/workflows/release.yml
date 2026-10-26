@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Nama tag rilis (misal: v0.1.0)'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -67,12 +72,22 @@ jobs:
           go build -ldflags="-s -w" -o dist/windows-amd64/fikpanel.exe ./cmd/fikpanel
           cd dist/windows-amd64 && zip ../fikpanel-windows-amd64.zip fikpanel.exe && cd ../..
 
+      - name: Determine Release Tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            echo "val=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.tag.outputs.val }}
           files: |
             dist/fikpanel-linux-amd64.tar.gz
             dist/fikpanel-linux-arm64.tar.gz
             dist/fikpanel-windows-amd64.zip
           generate_release_notes: true
+
