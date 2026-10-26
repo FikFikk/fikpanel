@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -44,6 +46,8 @@ func main() {
 		runDoctor(os.Args[2:])
 	case "discover":
 		runDiscover(os.Args[2:])
+	case "update":
+		runUpdate(os.Args[2:])
 	case "version":
 		fmt.Printf("fikpanel v%s\n", version)
 	default:
@@ -64,6 +68,7 @@ Perintah yang tersedia:
   reset-password  Reset kata sandi pengguna admin secara aman
   doctor          Diagnosa integritas database, Nginx, dan perizinan
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
+  update          Perbarui biner FikPanel ke versi rilis terbaru
   version         Menampilkan informasi versi aplikasi`)
 }
 
@@ -303,3 +308,37 @@ func runDiscover(args []string) {
 
 	fmt.Println("[4/4] Proses discovery selesai!")
 }
+
+// runUpdate menangani pembaruan otomatis biner fikpanel
+func runUpdate(args []string) {
+	fmt.Println("==========================================================")
+	fmt.Println("             FikPanel Self-Update Utility                 ")
+	fmt.Println("==========================================================")
+
+	if runtime.GOOS != "linux" {
+		fmt.Printf("Pembaruan otomatis saat ini dioptimalkan untuk lingkungan Linux (produksi).\nVersi lokal saat ini: v%s\n", version)
+		return
+	}
+
+	updateScript := "/opt/fikpanel/scripts/update.sh"
+	if _, err := os.Stat(updateScript); err == nil {
+		cmd := exec.Command("bash", updateScript)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Fallback jika file skrip lokal belum tersedia: eksekusi via unduhan langsung
+	cmd := exec.Command("bash", "-c", "curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | bash")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", err)
+		os.Exit(1)
+	}
+}
+

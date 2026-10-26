@@ -426,7 +426,17 @@ INSTALL_DIR="/opt/fikpanel"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data"
 mkdir -p "$INSTALL_DIR/bin"
+mkdir -p "$INSTALL_DIR/scripts"
 mkdir -p "/var/www/html"
+
+# Salin skrip update lokal atau unduh dari repositori
+if [ -f "./scripts/update.sh" ]; then
+    cp "./scripts/update.sh" "$INSTALL_DIR/scripts/update.sh"
+    chmod +x "$INSTALL_DIR/scripts/update.sh"
+else
+    curl -fsSL "https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh" -o "$INSTALL_DIR/scripts/update.sh" || true
+    chmod +x "$INSTALL_DIR/scripts/update.sh" 2>/dev/null || true
+fi
 
 # Salin biner atau kompilasi jika Go terpasang, atau unduh rilis terbaru
 if which go >/dev/null 2>&1 && [ -f "./cmd/fikpanel/main.go" ]; then
