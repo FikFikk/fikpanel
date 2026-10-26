@@ -212,6 +212,36 @@ flowchart TD
     AutoDiscover --> SiapAkses[Panel Aktif di Port 1405 - Software Opsional Dapat Ditambah via Web UI]
 ```
 
+### 1.8 Siklus Manajemen Aturan Firewall Bergaya AWS Security Groups
+
+```mermaid
+flowchart TD
+    BukaFirewall[Buka Tab Firewall di Security Center] --> LoadExtended[GET /api/firewall/extended]
+    LoadExtended --> ParseRules[Generate Deterministic Rule ID sgr-xxxx & Deteksi Service Type]
+    ParseRules --> RenderAWS[Render UI: Security Group Details, Subtabs, & Inbound Rules Table]
+    
+    RenderAWS --> UserAksi{Aksi Pengguna}
+    UserAksi -- Toggle Status UFW --> ToggleFW[POST /api/firewall/toggle]
+    UserAksi -- Hapus 1 Rule --> DeleteRule[DELETE /api/firewall/rules/{number}]
+    UserAksi -- Kelola Massal --> EditMode[Klik 'Edit inbound rules']
+    
+    EditMode --> MultiRowEditor[Buka Editor Form Multi-Baris]
+    MultiRowEditor --> PresetPilih{Pilih Tipe Layanan / Type}
+    
+    PresetPilih -- Layanan Standar SSH/HTTP/HTTPS/MySQL --> AutoLock[Kunci Protokol TCP & Isi Port Otomatis]
+    PresetPilih -- Custom TCP / Custom UDP --> CustomInput[Buka Input Port Bebas & Protokol]
+    
+    MultiRowEditor --> AddRow[Klik 'Add rule' untuk Baris Baru]
+    MultiRowEditor --> SourceType[Pilih Source Type: Custom / Anywhere IPv4 / My IP]
+    SourceType --> RenderChips[Render Source Chip misal 0.0.0.0/0]
+    
+    MultiRowEditor --> SimpanBatch[Klik 'Save rules']
+    SimpanBatch --> KirimAPI[POST /api/firewall/rules/batch]
+    KirimAPI --> EksekusiAtomik[Terapkan Seluruh Aturan Baru & Bersihkan Aturan Dihapus]
+    EksekusiAtomik --> CatatAudit[Catat Audit Log security.port_rules_batch]
+    CatatAudit --> KembaliView[Kembali ke Tampilan Tabel Inbound Rules & Refresh Data]
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -415,6 +445,7 @@ flowchart TD
 | **BR-52** | Perlindungan Brute-Force Berbasis Akun & IP dengan Whitelist/Blacklist | Percobaan autentikasi pada panel atau layanan SSH | Melacak frekuensi kegagalan autentikasi berdasarkan nama pengguna dan alamat IP. IP yang terdaftar di Whitelist dikecualikan dari pemblokiran; IP penyerang diblokir secara otomatis dan dimasukkan ke Blacklist dengan durasi retensi tertentu. Menyediakan banner peringatan dan tombol 1-klik untuk mendaftarkan IP aktif pengelola ke Whitelist. |
 | **BR-53** | Evaluasi Keamanan Server 10-Poin & Auto-Remediation | Audit postur keamanan server | Menghitung Safety Rating dinamis (0-100) berdasarkan 10 kriteria evaluasi (Default SSH Port, Password Complexity, Password Length Limit, SSH Login Alert, Root Login Settings, SSH Brute-force, Panel Login Alert, Panel Google Authenticator TOTP, UnAuth Status Code, Panel SSL) dengan tombol perbaikan otomatis 1-klik. |
 | **BR-54** | Hardening Sistem Kernel & Pembatasan Akses Compiler Non-Root | Pengerasan keamanan kernel dan sistem operasi | Mendukung pemblokiran ping ICMP (`net.ipv4.icmp_echo_ignore_all`), mitigasi TCP SYN Flood (`net.ipv4.tcp_syncookies`), verifikasi reverse-path IP spoofing (`net.ipv4.conf.all.rp_filter`), penonaktifan core dump, dan pembatasan izin biner compiler (`/usr/bin/gcc`, `/usr/bin/make` chmod 700) khusus root untuk mencegah eksekusi dan kompilasi malware oleh user web biasa. |
+| **BR-55** | Manajemen Firewall Bergaya AWS EC2 Security Groups & Editor Multi-Row Inbound | Pengguna mengonfigurasi aturan port dan keamanan firewall UFW | Antarmuka mengadopsi format konsol AWS EC2 Security Groups: Security Group Details Card (`sg-...`, hostname, owner, VPC, ringkasan inbound/outbound), Sub-tab switching (`Inbound rules`, `Outbound rules`, `Firewall Settings & Logs`), tabel inbound terperinci dengan Rule ID unik (`sgr-...`), identifikasi preset layanan otomatis (SSH, HTTP, HTTPS, MySQL, Postgres, Redis, FikPanel Web, dll.), badge status listening real-time, serta editor multi-baris interaktif ("Edit inbound rules") dengan tombol "Add rule" dinamis dan penyimpanan massal atomik (`POST /api/firewall/rules/batch`) untuk mengeliminasi UFW race condition. |
 
 
 

@@ -519,6 +519,9 @@ export interface FirewallStatus {
 // ── Enterprise Security Center & Firewall Guard ───────────────────────────
 export interface PortRule {
   number: number;
+  rule_id?: string;
+  rule_type?: string;
+  ip_version?: string;
   protocol: string;
   port: string;
   status: string;

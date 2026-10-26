@@ -1671,8 +1671,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "status": {"enabled": true, "block_icmp": false, "port_rules_count": 9, "rules": [...], "site_logs_path": "/var/log/nginx", "site_logs_size": "573.86 KB"}}` |
-| Notes | Menyajikan daftar aturan port UFW lengkap dengan deteksi status mendengarkan (Listening/Not Listening), arah paket, dan ukuran log web. |
+| Response | HTTP 200 `{"ok": true, "status": {"enabled": true, "block_icmp": false, "port_rules_count": 9, "rules": [{"number": 1, "rule_id": "sgr-04e14abc516d37fd5", "rule_type": "SSH", "ip_version": "IPv4", "port": "22", "protocol": "tcp", "strategy": "allow", "direction": "in", "source_ip": "0.0.0.0/0", "remarks": "SSH Port", "status": "Listening"}], "site_logs_path": "/var/log/nginx", "site_logs_size": "573.86 KB"}}` |
+| Notes | Menyajikan daftar aturan port UFW lengkap berformat AWS EC2 Security Groups (`rule_id`, `rule_type`, `ip_version`, `source_ip`), status listening port, arah paket, dan ukuran log web. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/firewall/rules/batch` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `rules` (array of `PortRule`: `port`, `protocol`, `strategy`, `direction`, `source_ip`, `remarks`, `rule_type`, `rule_id`, `ip_version`) |
+| Response | HTTP 200 `{"ok": true, "message": "Berhasil menyimpan 4 aturan port firewall"}` |
+| Notes | Menerapkan seluruh aturan port inbound secara massal & atomik (AWS EC2 Security Group "Edit inbound rules" pattern), membersihkan aturan usang yang dihapus pengguna, mencegah lock contention UFW, dan mencatat ringkasan aksi ke audit log `security.port_rules_batch`. |
 
 | Field | Detail |
 |---|---|

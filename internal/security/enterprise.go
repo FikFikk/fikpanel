@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,6 +40,53 @@ var (
 	memCustomPortRules     = []PortRule{}
 )
 
+// generateAWSRuleID menghasilkan format ID aturan khas AWS EC2 Security Group (sgr-xxxxxxxxxxxxxxxxx)
+func generateAWSRuleID(port, proto, source string, num int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%s:%d", port, proto, source, num)))
+	return fmt.Sprintf("sgr-%x", sum[:8]) + fmt.Sprintf("%01x", num%16)
+}
+
+// detectAWSRuleType mendeteksi label tipe aturan port sesuai konvensi AWS EC2
+func detectAWSRuleType(port, proto string) string {
+	p := strings.ToLower(proto)
+	switch port {
+	case "22":
+		return "SSH"
+	case "80":
+		return "HTTP"
+	case "443":
+		return "HTTPS"
+	case "1405":
+		return "Custom TCP"
+	case "3306":
+		return "MySQL/Aurora"
+	case "5432":
+		return "PostgreSQL"
+	case "6379":
+		return "Redis"
+	case "53":
+		if p == "udp" {
+			return "DNS (UDP)"
+		}
+		return "DNS (TCP)"
+	case "25":
+		return "SMTP"
+	case "465":
+		return "SMTPS"
+	case "888":
+		return "phpMyAdmin"
+	case "20", "21":
+		return "FTP"
+	case "39000-40000":
+		return "Custom TCP (FTP)"
+	default:
+		if p == "udp" {
+			return "Custom UDP"
+		}
+		return "Custom TCP"
+	}
+}
+
 // GetExtendedFirewallStatus mengembalikan status firewall lengkap beserta tabel aturan dan deteksi port listening
 func (m *Manager) GetExtendedFirewallStatus(ctx context.Context) (*FirewallExtendedStatus, error) {
 	basicStatus, err := m.GetStatus(ctx)
@@ -66,14 +114,22 @@ func (m *Manager) GetExtendedFirewallStatus(ctx context.Context) (*FirewallExten
 				statusText = "Listening (Details)"
 			}
 
+			src := r.From
+			if src == "" || src == "All" || src == "Anywhere" {
+				src = "0.0.0.0/0"
+			}
+
 			rules = append(rules, PortRule{
 				Number:    ruleNum,
+				RuleID:    generateAWSRuleID(portClean, proto, src, ruleNum),
+				RuleType:  detectAWSRuleType(portClean, proto),
+				IPVersion: "IPv4",
 				Protocol:  proto,
 				Port:      portClean,
 				Status:    statusText,
 				Strategy:  strings.Title(strings.ToLower(r.Action)),
 				Direction: "Inbound",
-				SourceIP:  r.From,
+				SourceIP:  src,
 				Remarks:   getStandardPortRemark(portClean),
 				AddTime:   time.Now().Format("2006-01-02 15:04"),
 			})
@@ -86,32 +142,35 @@ func (m *Manager) GetExtendedFirewallStatus(ctx context.Context) (*FirewallExten
 			proto   string
 			remarks string
 		}{
-			{"20", "tcp", "Data port of FTP active mode"},
-			{"21", "tcp", "Default port of FTP protocol"},
 			{"22", "tcp", "SSH remote service"},
 			{"80", "tcp", "Default port of WebServer (HTTP)"},
 			{"443", "tcp", "Default port of SSL WebServer (HTTPS)"},
-			{"888", "tcp", "phpMyAdmin Web Interface"},
+			{"1405", "tcp", "FikPanel Secure Management Daemon"},
 			{"3306", "tcp", "MySQL/MariaDB Database Service"},
+			{"888", "tcp", "phpMyAdmin Web Interface"},
+			{"21", "tcp", "Default port of FTP protocol"},
 			{"39000-40000", "tcp", "Port range of FTP passive mode"},
-			{"24441", "tcp", "FikPanel Secure Management Daemon"},
 		}
 
 		for _, dp := range defaultPorts {
-			isListening := listeningMap[dp.port] || dp.port == "22" || dp.port == "80" || dp.port == "443" || dp.port == "24441"
+			isListening := listeningMap[dp.port] || dp.port == "22" || dp.port == "80" || dp.port == "443" || dp.port == "1405"
 			statusText := "Not Listening"
 			if isListening {
 				statusText = "Listening (Details)"
 			}
 
+			src := "0.0.0.0/0"
 			rules = append(rules, PortRule{
 				Number:    ruleNum,
+				RuleID:    generateAWSRuleID(dp.port, dp.proto, src, ruleNum),
+				RuleType:  detectAWSRuleType(dp.port, dp.proto),
+				IPVersion: "IPv4",
 				Protocol:  dp.proto,
 				Port:      dp.port,
 				Status:    statusText,
 				Strategy:  "Allow",
 				Direction: "Inbound",
-				SourceIP:  "All",
+				SourceIP:  src,
 				Remarks:   dp.remarks,
 				AddTime:   "--",
 			})
@@ -123,6 +182,15 @@ func (m *Manager) GetExtendedFirewallStatus(ctx context.Context) (*FirewallExten
 	// Gabungkan aturan kustom yang ditambahkan pengguna jika ada
 	for _, cr := range memCustomPortRules {
 		cr.Number = ruleNum
+		if cr.RuleID == "" || cr.RuleID == "-" {
+			cr.RuleID = generateAWSRuleID(cr.Port, cr.Protocol, cr.SourceIP, ruleNum)
+		}
+		if cr.RuleType == "" {
+			cr.RuleType = detectAWSRuleType(cr.Port, cr.Protocol)
+		}
+		if cr.IPVersion == "" {
+			cr.IPVersion = "IPv4"
+		}
 		rules = append(rules, cr)
 		ruleNum++
 	}
@@ -288,7 +356,16 @@ func (m *Manager) AddExtendedRule(ctx context.Context, rule PortRule) error {
 	rule.Status = "Listening (Details)"
 	rule.AddTime = time.Now().Format("2006-01-02 15:04")
 	if rule.SourceIP == "" {
-		rule.SourceIP = "All"
+		rule.SourceIP = "0.0.0.0/0"
+	}
+	if rule.RuleID == "" || rule.RuleID == "-" {
+		rule.RuleID = generateAWSRuleID(rule.Port, rule.Protocol, rule.SourceIP, rule.Number)
+	}
+	if rule.RuleType == "" {
+		rule.RuleType = detectAWSRuleType(rule.Port, rule.Protocol)
+	}
+	if rule.IPVersion == "" {
+		rule.IPVersion = "IPv4"
 	}
 	if rule.Remarks == "" {
 		rule.Remarks = getStandardPortRemark(rule.Port)
@@ -296,6 +373,64 @@ func (m *Manager) AddExtendedRule(ctx context.Context, rule PortRule) error {
 	memCustomPortRules = append(memCustomPortRules, rule)
 	secMu.Unlock()
 
+	return nil
+}
+
+// BatchSavePortRules memperbarui daftar aturan port secara massal (ala AWS EC2 Security Group)
+func (m *Manager) BatchSavePortRules(ctx context.Context, rules []PortRule) error {
+	for _, rule := range rules {
+		if rule.Port == "" {
+			continue
+		}
+		proto := rule.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		strategy := rule.Strategy
+		if strategy == "" {
+			strategy = "allow"
+		}
+		_ = m.AddRule(ctx, rule.Port, proto, strings.ToLower(strategy))
+	}
+
+	secMu.Lock()
+	defer secMu.Unlock()
+
+	newRules := make([]PortRule, 0, len(rules))
+	for i, r := range rules {
+		if r.Port == "" {
+			continue
+		}
+		if r.Protocol == "" {
+			r.Protocol = "tcp"
+		}
+		if r.Strategy == "" {
+			r.Strategy = "Allow"
+		}
+		if r.Direction == "" {
+			r.Direction = "Inbound"
+		}
+		if r.SourceIP == "" || r.SourceIP == "All" {
+			r.SourceIP = "0.0.0.0/0"
+		}
+		if r.IPVersion == "" {
+			r.IPVersion = "IPv4"
+		}
+		if r.RuleType == "" {
+			r.RuleType = detectAWSRuleType(r.Port, r.Protocol)
+		}
+		if r.RuleID == "" || r.RuleID == "-" {
+			r.RuleID = generateAWSRuleID(r.Port, r.Protocol, r.SourceIP, i+1)
+		}
+		if r.Remarks == "" {
+			r.Remarks = getStandardPortRemark(r.Port)
+		}
+		r.Number = i + 1
+		r.Status = "Listening (Details)"
+		r.AddTime = time.Now().Format("2006-01-02 15:04")
+		newRules = append(newRules, r)
+	}
+	memCustomPortRules = newRules
 	return nil
 }
 

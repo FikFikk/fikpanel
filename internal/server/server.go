@@ -179,6 +179,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/firewall/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleFirewall)))
 	s.mux.Handle("POST /api/firewall/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddFirewallRule)))
 	s.mux.Handle("POST /api/firewall/rules/extended", s.AuthMiddleware(http.HandlerFunc(s.handleAddExtendedPortRule)))
+	s.mux.Handle("POST /api/firewall/rules/batch", s.AuthMiddleware(http.HandlerFunc(s.handleBatchSavePortRules)))
 	s.mux.Handle("DELETE /api/firewall/rules/{number}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFirewallRule)))
 	s.mux.Handle("POST /api/firewall/icmp", s.AuthMiddleware(http.HandlerFunc(s.handleToggleICMP)))
 	s.mux.Handle("POST /api/firewall/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearSiteLogs)))

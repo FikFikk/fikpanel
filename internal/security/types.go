@@ -3,14 +3,17 @@ package security
 // PortRule merepresentasikan satu aturan port firewall dengan status port aktif
 type PortRule struct {
 	Number    int    `json:"number"`
-	Protocol  string `json:"protocol"` // tcp, udp, tcp/udp
-	Port      string `json:"port"`     // misal: "22", "80", "39000-40000"
-	Status    string `json:"status"`   // "Listening" atau "Not Listening"
-	Strategy  string `json:"strategy"` // "Allow" atau "Deny"
-	Direction string `json:"direction"`// "Inbound" atau "Outbound"
-	SourceIP  string `json:"source_ip"`// "All" atau alamat IP/CIDR tertentu
-	Remarks   string `json:"remarks"`  // Catatan keterangan aturan
-	AddTime   string `json:"add_time"` // Waktu pembuatan aturan
+	RuleID    string `json:"rule_id"`    // misal: "sgr-04e14abc516d37fd5" ala AWS EC2
+	RuleType  string `json:"rule_type"`  // misal: "SSH", "HTTP", "HTTPS", "Custom TCP"
+	IPVersion string `json:"ip_version"` // "IPv4" atau "IPv6"
+	Protocol  string `json:"protocol"`   // tcp, udp, tcp/udp
+	Port      string `json:"port"`       // misal: "22", "80", "39000-40000"
+	Status    string `json:"status"`     // "Listening" atau "Not Listening"
+	Strategy  string `json:"strategy"`   // "Allow" atau "Deny"
+	Direction string `json:"direction"`  // "Inbound" atau "Outbound"
+	SourceIP  string `json:"source_ip"`  // "0.0.0.0/0" atau alamat IP/CIDR tertentu
+	Remarks   string `json:"remarks"`    // Catatan keterangan aturan
+	AddTime   string `json:"add_time"`   // Waktu pembuatan aturan
 }
 
 // IPRule merepresentasikan aturan pemblokiran atau perizinan IP firewall

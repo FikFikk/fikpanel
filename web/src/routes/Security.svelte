@@ -43,9 +43,142 @@
   let bruteSubTab = $state<'config' | 'whitelist' | 'blacklist' | 'history'>('config');
   let scanCategoryFilter = $state<string>('all');
 
-  // Filter firewall
+  // Filter firewall & Subtab ala AWS EC2 Security Groups
   let fwDirectionFilter = $state<'all' | 'inbound' | 'outbound'>('all');
   let fwPortSearch = $state('');
+  let fwSubTab = $state<'inbound' | 'outbound' | 'settings'>('inbound');
+  let isEditingInbound = $state(false);
+  let draftRules = $state<PortRule[]>([]);
+  let showActionsDropdown = $state(false);
+
+  // Template preset tipe aturan port ala AWS EC2 Security Group
+  const ruleTypePresets = [
+    { type: 'Custom TCP', proto: 'tcp', port: '', desc: 'Custom TCP port' },
+    { type: 'Custom UDP', proto: 'udp', port: '', desc: 'Custom UDP port' },
+    { type: 'Custom ICMP - IPv4', proto: 'icmp', port: 'All', desc: 'Custom ICMP Ping/Echo' },
+    { type: 'All TCP', proto: 'tcp', port: '0 - 65535', desc: 'All TCP ports' },
+    { type: 'All UDP', proto: 'udp', port: '0 - 65535', desc: 'All UDP ports' },
+    { type: 'All traffic', proto: 'All', port: 'All', desc: 'All inbound traffic' },
+    { type: 'SSH', proto: 'tcp', port: '22', desc: 'SSH remote management' },
+    { type: 'HTTP', proto: 'tcp', port: '80', desc: 'WebServer (HTTP)' },
+    { type: 'HTTPS', proto: 'tcp', port: '443', desc: 'WebServer (HTTPS)' },
+    { type: 'FikPanel Web', proto: 'tcp', port: '1405', desc: 'FikPanel Secure Management Panel' },
+    { type: 'MySQL/Aurora', proto: 'tcp', port: '3306', desc: 'MySQL/MariaDB Database Service' },
+    { type: 'PostgreSQL', proto: 'tcp', port: '5432', desc: 'PostgreSQL Database Service' },
+    { type: 'Redis', proto: 'tcp', port: '6379', desc: 'Redis In-Memory Key-Value Store' },
+    { type: 'DNS (UDP)', proto: 'udp', port: '53', desc: 'DNS Name Resolution Service' },
+    { type: 'DNS (TCP)', proto: 'tcp', port: '53', desc: 'DNS Zone Transfer Service' },
+    { type: 'SMTP', proto: 'tcp', port: '25', desc: 'SMTP Mail Delivery' },
+    { type: 'SMTPS', proto: 'tcp', port: '465', desc: 'Secure SMTPS Email Submission' },
+    { type: 'phpMyAdmin', proto: 'tcp', port: '888', desc: 'phpMyAdmin Web Interface' },
+  ];
+
+  function isPresetFixed(type?: string): boolean {
+    if (!type) return false;
+    return ['SSH', 'HTTP', 'HTTPS', 'MySQL/Aurora', 'PostgreSQL', 'Redis', 'DNS (UDP)', 'DNS (TCP)', 'SMTP', 'SMTPS', 'phpMyAdmin', 'All TCP', 'All UDP', 'All traffic'].includes(type);
+  }
+
+  function isPresetFixedPort(type?: string): boolean {
+    if (!type) return false;
+    return ['SSH', 'HTTP', 'HTTPS', 'MySQL/Aurora', 'PostgreSQL', 'Redis', 'DNS (UDP)', 'DNS (TCP)', 'SMTP', 'SMTPS', 'phpMyAdmin', 'All traffic', 'Custom ICMP - IPv4'].includes(type);
+  }
+
+  function detectTypeFromPort(port: string, proto: string): string {
+    const p = (proto || '').toLowerCase();
+    switch (port) {
+      case '22': return 'SSH';
+      case '80': return 'HTTP';
+      case '443': return 'HTTPS';
+      case '1405': return 'FikPanel Web';
+      case '3306': return 'MySQL/Aurora';
+      case '5432': return 'PostgreSQL';
+      case '6379': return 'Redis';
+      case '53': return p === 'udp' ? 'DNS (UDP)' : 'DNS (TCP)';
+      case '25': return 'SMTP';
+      case '465': return 'SMTPS';
+      case '888': return 'phpMyAdmin';
+      default: return p === 'udp' ? 'Custom UDP' : 'Custom TCP';
+    }
+  }
+
+  function startEditInbound() {
+    if (!fwStatus || !fwStatus.rules) return;
+    draftRules = fwStatus.rules.map(r => ({
+      ...r,
+      rule_id: r.rule_id || `sgr-${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 11)}`,
+      rule_type: r.rule_type || detectTypeFromPort(r.port, r.protocol),
+      ip_version: r.ip_version || 'IPv4',
+      source_ip: r.source_ip || '0.0.0.0/0',
+    }));
+    isEditingInbound = true;
+  }
+
+  function addDraftRule() {
+    draftRules = [
+      ...draftRules,
+      {
+        number: draftRules.length + 1,
+        rule_id: '-',
+        rule_type: 'Custom TCP',
+        ip_version: 'IPv4',
+        protocol: 'tcp',
+        port: '',
+        status: 'Not Listening',
+        strategy: 'Allow',
+        direction: 'Inbound',
+        source_ip: '0.0.0.0/0',
+        remarks: '',
+        add_time: '--',
+      },
+    ];
+  }
+
+  function removeDraftRule(index: number) {
+    draftRules = draftRules.filter((_, i) => i !== index);
+  }
+
+  function handleRuleTypeChange(index: number, newType: string) {
+    const preset = ruleTypePresets.find(p => p.type === newType);
+    if (!preset) return;
+    const rule = draftRules[index];
+    rule.rule_type = preset.type;
+    rule.protocol = preset.proto;
+    if (preset.port !== '') {
+      rule.port = preset.port;
+    }
+    if (!rule.remarks || rule.remarks === 'Custom port rule' || rule.remarks === '') {
+      rule.remarks = preset.desc;
+    }
+  }
+
+  function handleSourceTypeChange(index: number, newType: string) {
+    const rule = draftRules[index];
+    if (newType === 'Anywhere-IPv4') {
+      rule.source_ip = '0.0.0.0/0';
+    } else if (newType === 'My IP') {
+      rule.source_ip = protection?.client_ip ? `${protection.client_ip}/32` : '0.0.0.0/0';
+    }
+  }
+
+  async function saveDraftRules() {
+    try {
+      for (const r of draftRules) {
+        if (!r.port || r.port === '0') {
+          notify('Port range tidak boleh kosong', 'warning');
+          return;
+        }
+      }
+      await apiFetch('/api/firewall/rules/batch', {
+        method: 'POST',
+        body: JSON.stringify({ rules: draftRules }),
+      });
+      notify('Aturan inbound firewall berhasil disimpan', 'success');
+      isEditingInbound = false;
+      await loadFirewall();
+    } catch (err: any) {
+      notify(err.message || 'Gagal menyimpan aturan firewall', 'error');
+    }
+  }
 
   // Form modal tambah aturan port
   let showAddPortModal = $state(false);
@@ -528,7 +661,14 @@
     return fwStatus.rules.filter((r) => {
       if (fwDirectionFilter === 'inbound' && r.direction.toLowerCase() !== 'inbound') return false;
       if (fwDirectionFilter === 'outbound' && r.direction.toLowerCase() !== 'outbound') return false;
-      if (fwPortSearch.trim() && !r.port.toLowerCase().includes(fwPortSearch.trim().toLowerCase())) return false;
+      if (fwPortSearch.trim()) {
+        const q = fwPortSearch.trim().toLowerCase();
+        const matchPort = r.port.toLowerCase().includes(q);
+        const matchType = (r.rule_type || '').toLowerCase().includes(q);
+        const matchID = (r.rule_id || '').toLowerCase().includes(q);
+        const matchDesc = (r.remarks || '').toLowerCase().includes(q);
+        if (!matchPort && !matchType && !matchID && !matchDesc) return false;
+      }
       return true;
     });
   });
@@ -933,170 +1073,463 @@
     </div>
   {/if}
 
-  <!-- TAB 2: FIREWALL -->
+  <!-- TAB 2: FIREWALL (AWS EC2 Security Group Style) -->
   {#if activeTab === 'firewall'}
     <div class="tab-pane">
-      <!-- Toolbar Pengaturan Utama Firewall (Blok ICMP, Log Web, dll) -->
-      <div class="card fw-top-card">
-        <div class="fw-controls-row">
-          <div class="fw-toggle-group">
-            <span class="fw-control-label">Turn on to Firewall</span>
-            <label class="switch" aria-label="Toggle Firewall UFW">
-              <input
-                type="checkbox"
-                role="switch"
-                checked={fwStatus ? fwStatus.enabled : false}
-                onchange={toggleFirewall}
-              />
-              <span class="switch__track"></span>
-            </label>
+      {#if !isEditingInbound}
+        <!-- AWS EC2 Header Breadcrumb & Actions Bar -->
+        <div class="aws-header-bar">
+          <div class="aws-title-wrap">
+            <h2 class="aws-main-title">sg-0645a2456451e6a9f - launch-wizard-fikpanel</h2>
           </div>
-
-          <div class="fw-divider"></div>
-
-          <div class="fw-toggle-group">
-            <span class="fw-control-label">Turn on to Block ICMP</span>
-            <label class="switch" aria-label="Toggle Block ICMP Ping">
-              <input
-                type="checkbox"
-                role="switch"
-                checked={fwStatus ? fwStatus.block_icmp : false}
-                onchange={toggleICMP}
-              />
-              <span class="switch__track"></span>
-            </label>
-          </div>
-
-          <div class="fw-divider"></div>
-
-          <div class="fw-logs-group">
-            <span class="fw-control-label">Site Logs:</span>
-            <span class="logs-path mono">{fwStatus?.site_logs_path || '/var/log/nginx'}</span>
-            <span class="logs-size badge badge--info">{fwStatus?.site_logs_size || '0 KB'}</span>
-            <button class="btn btn--secondary btn--sm" onclick={clearSiteLogs}>Clear</button>
-            <button class="btn btn--ghost btn--sm" onclick={clearSiteLogs}>Clear cache</button>
+          <div class="aws-header-actions">
+            <div class="dropdown-wrap" style="position: relative;">
+              <button class="btn btn--secondary btn--sm aws-actions-btn" onclick={() => (showActionsDropdown = !showActionsDropdown)}>
+                Actions <i class="ri-arrow-down-s-line"></i>
+              </button>
+              {#if showActionsDropdown}
+                <div class="dropdown-menu aws-dropdown-menu">
+                  <button class="dropdown-item" onclick={() => { showActionsDropdown = false; startEditInbound(); }}>
+                    <i class="ri-edit-line"></i> Edit inbound rules
+                  </button>
+                  <button class="dropdown-item" onclick={() => { showActionsDropdown = false; toggleFirewall(); }}>
+                    <i class="ri-shield-flash-line"></i> {fwStatus?.enabled ? 'Disable UFW' : 'Enable UFW'}
+                  </button>
+                  <button class="dropdown-item" onclick={() => { showActionsDropdown = false; toggleICMP(); }}>
+                    <i class="ri-radar-line"></i> {fwStatus?.block_icmp ? 'Allow ICMP Ping' : 'Block ICMP Ping'}
+                  </button>
+                  <button class="dropdown-item" onclick={() => { showActionsDropdown = false; clearSiteLogs(); }}>
+                    <i class="ri-delete-bin-line"></i> Clear web logs
+                  </button>
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Bilah Penghitung Metrik Aturan -->
-      <div class="fw-metric-bar">
-        <span class="metric-item">Port rule: <strong class="text-accent">{fwStatus?.port_rules_count || 0}</strong></span>
-        <span class="metric-sep">|</span>
-        <span class="metric-item">IP rules: <strong>0</strong></span>
-        <span class="metric-sep">|</span>
-        <span class="metric-item">Port forward: <strong>0</strong></span>
-        <span class="metric-sep">|</span>
-        <span class="metric-item">Area rules: <strong>0</strong></span>
-      </div>
+        <!-- AWS EC2 Details Card -->
+        <div class="card aws-details-card">
+          <div class="aws-card-title">Details</div>
+          <div class="aws-details-grid">
+            <div class="aws-detail-item">
+              <span class="aws-label">Security group name</span>
+              <div class="aws-value-copy">
+                <span class="aws-val-text font-bold">launch-wizard-fikpanel</span>
+                <button class="copy-icon-btn" title="Copy name" onclick={() => { navigator.clipboard.writeText('launch-wizard-fikpanel'); notify('Security group name copied', 'info'); }}>
+                  <i class="ri-file-copy-line"></i>
+                </button>
+              </div>
+            </div>
 
-      <!-- Bilah Aksi dan Filter -->
-      <div class="fw-action-bar">
-        <div class="action-left">
-          <button class="btn btn--primary btn--sm" onclick={() => (showAddPortModal = true)}>
-            <i class="ri-add-line"></i> Add Port Rule
+            <div class="aws-detail-item">
+              <span class="aws-label">Security group ID</span>
+              <div class="aws-value-copy">
+                <span class="aws-val-text mono font-semibold">sg-0645a2456451e6a9f</span>
+                <button class="copy-icon-btn" title="Copy ID" onclick={() => { navigator.clipboard.writeText('sg-0645a2456451e6a9f'); notify('Security group ID copied', 'info'); }}>
+                  <i class="ri-file-copy-line"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">Description</span>
+              <span class="aws-val-text text-muted">Linux Host Firewall (UFW) managed by FikPanel</span>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">VPC ID / Network Host</span>
+              <span class="aws-val-text text-accent mono">vpc-0630356aa20ed371f (Host IP)</span>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">Owner</span>
+              <div class="aws-value-copy">
+                <span class="aws-val-text mono">691687039084</span>
+                <button class="copy-icon-btn" title="Copy Owner" onclick={() => { navigator.clipboard.writeText('691687039084'); notify('Owner ID copied', 'info'); }}>
+                  <i class="ri-file-copy-line"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">Inbound rules count</span>
+              <span class="aws-val-text font-bold text-accent">{fwStatus?.port_rules_count || 0} Permission entries</span>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">Outbound rules count</span>
+              <span class="aws-val-text">1 Permission entry (All traffic allowed)</span>
+            </div>
+
+            <div class="aws-detail-item">
+              <span class="aws-label">UFW Daemon Status</span>
+              <span class="badge {fwStatus?.enabled ? 'badge--success' : 'badge--ghost'}">
+                <span class="dot {fwStatus?.enabled ? 'dot--success' : ''}"></span>
+                {fwStatus?.enabled ? 'Active (Running)' : 'Disabled'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AWS EC2 Sub-Navigation Tabs Bar -->
+        <div class="aws-tabs-bar">
+          <button
+            class="aws-subtab-btn"
+            class:active={fwSubTab === 'inbound'}
+            onclick={() => (fwSubTab = 'inbound')}
+          >
+            Inbound rules
           </button>
-          <button class="btn btn--secondary btn--sm" onclick={() => notify('Daftar aturan siap diekspor', 'info')}>
-            <i class="ri-download-2-line"></i> Export rules
+          <button
+            class="aws-subtab-btn"
+            class:active={fwSubTab === 'outbound'}
+            onclick={() => (fwSubTab = 'outbound')}
+          >
+            Outbound rules
           </button>
-          <button class="btn btn--secondary btn--sm" onclick={() => notify('Fitur impor konfigurasi aturan aktif', 'info')}>
-            <i class="ri-upload-2-line"></i> Import rules
+          <button
+            class="aws-subtab-btn"
+            class:active={fwSubTab === 'settings'}
+            onclick={() => (fwSubTab = 'settings')}
+          >
+            Firewall Settings & Logs
           </button>
         </div>
 
-        <div class="action-right">
-          <!-- Segmented Filter Arah Paket -->
-          <div class="segmented">
-            <button
-              class:active={fwDirectionFilter === 'all'}
-              onclick={() => (fwDirectionFilter = 'all')}
-            >
-              All directions
-            </button>
-            <button
-              class:active={fwDirectionFilter === 'inbound'}
-              onclick={() => (fwDirectionFilter = 'inbound')}
-            >
-              Inbound
-            </button>
-            <button
-              class:active={fwDirectionFilter === 'outbound'}
-              onclick={() => (fwDirectionFilter = 'outbound')}
-            >
-              Outbound
-            </button>
+        <!-- SUBTAB 1: Inbound rules Table -->
+        {#if fwSubTab === 'inbound'}
+          <div class="aws-table-container">
+            <div class="aws-table-header-row">
+              <div class="aws-table-title">
+                Inbound rules ({filteredPortRules.length})
+              </div>
+              <div class="aws-table-actions">
+                <div class="search-box">
+                  <input
+                    type="text"
+                    class="input input--sm aws-search-input"
+                    placeholder="Search rules, port, type..."
+                    bind:value={fwPortSearch}
+                  />
+                </div>
+                <button class="btn btn--ghost btn--icon" title="Refresh" onclick={loadFirewall}>
+                  <i class="ri-refresh-line"></i>
+                </button>
+                <button class="btn btn--primary btn--sm aws-edit-rules-btn" onclick={startEditInbound}>
+                  Edit inbound rules
+                </button>
+              </div>
+            </div>
+
+            <div class="table-wrap aws-table-wrap">
+              <table class="table aws-table">
+                <thead>
+                  <tr>
+                    <th style="width: 32px;"><input type="checkbox" aria-label="Select all" /></th>
+                    <th>Name</th>
+                    <th>Security group rule ID</th>
+                    <th>IP version</th>
+                    <th>Type</th>
+                    <th>Protocol</th>
+                    <th>Port range</th>
+                    <th>Source</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#if filteredPortRules.length === 0}
+                    <tr>
+                      <td colspan="11" class="text-center text-muted p-4">
+                        Tidak ada aturan inbound yang sesuai dengan kriteria pencarian.
+                      </td>
+                    </tr>
+                  {:else}
+                    {#each filteredPortRules as r (r.number)}
+                      <tr>
+                        <td><input type="checkbox" aria-label="Select row" /></td>
+                        <td class="text-subtle">-</td>
+                        <td class="mono font-semibold text-accent" style="font-size: 0.8rem;">
+                          {r.rule_id || `sgr-${r.port}00000000`}
+                        </td>
+                        <td>IPv4</td>
+                        <td>
+                          <span class="badge badge--pill badge--ghost font-semibold">
+                            {r.rule_type || detectTypeFromPort(r.port, r.protocol)}
+                          </span>
+                        </td>
+                        <td class="mono uppercase font-semibold">{r.protocol}</td>
+                        <td class="mono font-bold text-white">{r.port}</td>
+                        <td class="mono text-muted">{r.source_ip || '0.0.0.0/0'}</td>
+                        <td class="text-subtle text-truncate" style="max-width: 200px;" title={r.remarks}>
+                          {r.remarks || '-'}
+                        </td>
+                        <td>
+                          <span class="badge {r.status.includes('Listening') ? 'badge--success' : 'badge--ghost'}">
+                            <span class="dot {r.status.includes('Listening') ? 'dot--success' : ''}"></span>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td class="text-right">
+                          <button class="btn btn--ghost btn--sm text-danger" onclick={() => handleDeletePortRule(r)}>
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    {/each}
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
+
+        <!-- SUBTAB 2: Outbound rules Table -->
+        {#if fwSubTab === 'outbound'}
+          <div class="aws-table-container">
+            <div class="aws-table-header-row">
+              <div class="aws-table-title">
+                Outbound rules (1)
+              </div>
+            </div>
+
+            <div class="table-wrap aws-table-wrap">
+              <table class="table aws-table">
+                <thead>
+                  <tr>
+                    <th>Security group rule ID</th>
+                    <th>IP version</th>
+                    <th>Type</th>
+                    <th>Protocol</th>
+                    <th>Port range</th>
+                    <th>Destination</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="mono font-semibold text-accent" style="font-size: 0.8rem;">sgr-0938bfe43810c9e71</td>
+                    <td>IPv4</td>
+                    <td><span class="badge badge--pill badge--ghost">All traffic</span></td>
+                    <td class="mono uppercase">All</td>
+                    <td class="mono">All</td>
+                    <td class="mono">0.0.0.0/0</td>
+                    <td class="text-subtle">Allow all outbound IPv4 traffic</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
+
+        <!-- SUBTAB 3: Firewall Settings & Logs -->
+        {#if fwSubTab === 'settings'}
+          <div class="card p-4">
+            <h4 class="font-bold text-white mb-3">Pengaturan Tingkat Lanjut UFW & Logging</h4>
+            <div class="fw-controls-row">
+              <div class="fw-toggle-group">
+                <span class="fw-control-label">Status Firewall UFW</span>
+                <label class="switch" aria-label="Toggle Firewall UFW">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={fwStatus ? fwStatus.enabled : false}
+                    onchange={toggleFirewall}
+                  />
+                  <span class="switch__track"></span>
+                </label>
+              </div>
+
+              <div class="fw-divider"></div>
+
+              <div class="fw-toggle-group">
+                <span class="fw-control-label">Blokir Ping ICMP Echo</span>
+                <label class="switch" aria-label="Toggle Block ICMP Ping">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={fwStatus ? fwStatus.block_icmp : false}
+                    onchange={toggleICMP}
+                  />
+                  <span class="switch__track"></span>
+                </label>
+              </div>
+
+              <div class="fw-divider"></div>
+
+              <div class="fw-logs-group">
+                <span class="fw-control-label">Berkas Log Web:</span>
+                <span class="logs-path mono">{fwStatus?.site_logs_path || '/var/log/nginx'}</span>
+                <span class="logs-size badge badge--info">{fwStatus?.site_logs_size || '0 KB'}</span>
+                <button class="btn btn--secondary btn--sm" onclick={clearSiteLogs}>Bersihkan Log</button>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+      {:else}
+        <!-- ======================================================== -->
+        <!-- AWS EC2: EDIT INBOUND RULES FULL-VIEW MULTI-ROW BUILDER -->
+        <!-- ======================================================== -->
+        <div class="aws-edit-view">
+          <div class="aws-edit-header">
+            <h2 class="aws-edit-title">Edit inbound rules <span class="aws-info-link">Info</span></h2>
+            <p class="aws-edit-sub">
+              Inbound rules control the incoming traffic that's allowed to reach the instance.
+            </p>
           </div>
 
-          <div class="search-box">
-            <input
-              type="text"
-              class="input input--sm mono"
-              placeholder="Please enter the port"
-              bind:value={fwPortSearch}
-            />
+          <div class="card aws-edit-card">
+            <div class="aws-card-top-head">
+              <span class="aws-card-heading">Inbound rules</span>
+              <span class="aws-info-link">Info</span>
+            </div>
+
+            <div class="table-wrap aws-edit-table-wrap">
+              <table class="aws-edit-table">
+                <thead>
+                  <tr>
+                    <th style="min-width: 170px;">Security group rule ID</th>
+                    <th style="min-width: 180px;">Type <span class="aws-info-link">Info</span></th>
+                    <th style="min-width: 100px;">Protocol <span class="aws-info-link">Info</span></th>
+                    <th style="min-width: 110px;">Port range <span class="aws-info-link">Info</span></th>
+                    <th style="min-width: 130px;">Source type <span class="aws-info-link">Info</span></th>
+                    <th style="min-width: 170px;">Source <span class="aws-info-link">Info</span></th>
+                    <th style="min-width: 200px;">Description - optional <span class="aws-info-link">Info</span></th>
+                    <th style="width: 90px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each draftRules as rule, i}
+                    <tr class="aws-edit-row">
+                      <!-- Rule ID -->
+                      <td>
+                        <span class="mono text-muted text-xs">{rule.rule_id || '-'}</span>
+                      </td>
+
+                      <!-- Type Preset Dropdown -->
+                      <td>
+                        <select
+                          class="input input--sm aws-input-select"
+                          value={rule.rule_type || detectTypeFromPort(rule.port, rule.protocol)}
+                          onchange={(e) => handleRuleTypeChange(i, (e.target as HTMLSelectElement).value)}
+                        >
+                          {#each ruleTypePresets as p}
+                            <option value={p.type}>{p.type}</option>
+                          {/each}
+                        </select>
+                      </td>
+
+                      <!-- Protocol -->
+                      <td>
+                        <input
+                          type="text"
+                          class="input input--sm mono aws-input-disabled"
+                          value={rule.protocol.toUpperCase()}
+                          disabled={isPresetFixed(rule.rule_type)}
+                          readonly={isPresetFixed(rule.rule_type)}
+                        />
+                      </td>
+
+                      <!-- Port range -->
+                      <td>
+                        <input
+                          type="text"
+                          class="input input--sm mono"
+                          class:aws-input-disabled={isPresetFixedPort(rule.rule_type)}
+                          bind:value={rule.port}
+                          placeholder="22, 80..."
+                          disabled={isPresetFixedPort(rule.rule_type)}
+                          readonly={isPresetFixedPort(rule.rule_type)}
+                        />
+                      </td>
+
+                      <!-- Source type -->
+                      <td>
+                        <select
+                          class="input input--sm aws-input-select"
+                          onchange={(e) => handleSourceTypeChange(i, (e.target as HTMLSelectElement).value)}
+                        >
+                          <option value="Anywhere-IPv4" selected={rule.source_ip === '0.0.0.0/0' || rule.source_ip === 'All'}>Anywhere-IPv4</option>
+                          <option value="Custom" selected={rule.source_ip !== '0.0.0.0/0' && rule.source_ip !== 'All'}>Custom</option>
+                          <option value="My IP">My IP</option>
+                        </select>
+                      </td>
+
+                      <!-- Source Input with Badge Chip -->
+                      <td>
+                        <div class="aws-source-input-wrap">
+                          <div class="source-chip-box">
+                            <span class="source-chip">
+                              {rule.source_ip || '0.0.0.0/0'}
+                              <button
+                                type="button"
+                                class="chip-remove"
+                                onclick={() => (rule.source_ip = '0.0.0.0/0')}
+                                title="Reset"
+                              >
+                                &times;
+                              </button>
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      <!-- Description -->
+                      <td>
+                        <input
+                          type="text"
+                          class="input input--sm"
+                          bind:value={rule.remarks}
+                          placeholder="Keterangan aturan port..."
+                        />
+                      </td>
+
+                      <!-- Delete Row Button -->
+                      <td class="text-right">
+                        <button
+                          type="button"
+                          class="btn btn--sm aws-btn-delete"
+                          onclick={() => removeDraftRule(i)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Add Rule Button -->
+            <div class="aws-add-rule-row">
+              <button type="button" class="btn btn--sm aws-btn-add-rule" onclick={addDraftRule}>
+                <i class="ri-add-line"></i> Add rule
+              </button>
+            </div>
+          </div>
+
+          <!-- Alert Callout -->
+          <div class="aws-warning-banner">
+            <i class="ri-alert-line warning-icon"></i>
+            <span class="warning-text">
+              <strong>Rules with source of 0.0.0.0/0 or ::/0 allow all IP addresses to access your instance.</strong>
+              We recommend setting security group rules to allow access from known IP addresses only.
+            </span>
+          </div>
+
+          <!-- Sticky Bottom Actions -->
+          <div class="aws-edit-footer-actions">
+            <button type="button" class="btn btn--secondary" onclick={() => (isEditingInbound = false)}>
+              Cancel
+            </button>
+            <button type="button" class="btn btn--primary aws-save-rules-btn" onclick={saveDraftRules}>
+              Save rules
+            </button>
           </div>
         </div>
-      </div>
-
-      <!-- Tabel Aturan Port Firewall -->
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th style="width: 38px;"><input type="checkbox" aria-label="Pilih Semua" /></th>
-              <th>Protocol</th>
-              <th>Port</th>
-              <th>Status <i class="ri-question-line" title="Port terbuka dan mendengarkan koneksi di OS"></i></th>
-              <th>Strategy</th>
-              <th>Direction</th>
-              <th>Source IP</th>
-              <th>Remarks</th>
-              <th>Add Time</th>
-              <th class="text-right">Operate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if filteredPortRules.length === 0}
-              <tr>
-                <td colspan="10" class="text-center text-muted p-4">
-                  Tidak ada aturan port yang sesuai dengan filter.
-                </td>
-              </tr>
-            {:else}
-              {#each filteredPortRules as r (r.number)}
-                <tr>
-                  <td><input type="checkbox" aria-label="Pilih Baris {r.number}" /></td>
-                  <td class="mono">{r.protocol}</td>
-                  <td class="mono font-bold text-accent">{r.port}</td>
-                  <td>
-                    <span class="badge {r.status.includes('Listening') ? 'badge--success' : 'badge--ghost'}">
-                      <span class="dot {r.status.includes('Listening') ? 'dot--success' : ''}"></span>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td>
-                    <span class="badge {r.strategy.toLowerCase() === 'allow' ? 'badge--success' : 'badge--danger'}">
-                      {r.strategy}
-                    </span>
-                  </td>
-                  <td class="text-muted">{r.direction}</td>
-                  <td class="mono text-muted">{r.source_ip}</td>
-                  <td class="text-subtle text-truncate" style="max-width: 220px;" title={r.remarks}>{r.remarks}</td>
-                  <td class="mono text-subtle">{r.add_time}</td>
-                  <td class="text-right">
-                    <button class="btn btn--ghost btn--sm text-accent" onclick={() => notify(`Edit port ${r.port}`, 'info')}>
-                      Edit
-                    </button>
-                    <button class="btn btn--ghost btn--sm text-danger" onclick={() => handleDeletePortRule(r)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              {/each}
-            {/if}
-          </tbody>
-        </table>
-      </div>
+      {/if}
     </div>
   {/if}
 
@@ -2296,6 +2729,348 @@
     align-items: center;
     gap: var(--space-2);
     flex-wrap: wrap;
+  }
+
+  /* ── AWS EC2 Security Groups UI Styling ──────────────────────────────────── */
+  .aws-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-3);
+  }
+  .aws-main-title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    color: var(--text);
+  }
+  .aws-actions-btn {
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-3);
+  }
+  .aws-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: var(--space-1);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    z-index: 50;
+    min-width: 200px;
+    padding: var(--space-1);
+  }
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: left;
+  }
+  .dropdown-item:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+
+  /* Details Card */
+  .aws-details-card {
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-4);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .aws-card-title {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    color: var(--text);
+    margin-bottom: var(--space-3);
+  }
+  .aws-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-4);
+  }
+  .aws-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .aws-label {
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    color: var(--text-subtle);
+    text-transform: capitalize;
+  }
+  .aws-val-text {
+    font-size: var(--text-xs);
+    color: var(--text);
+  }
+  .aws-value-copy {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .copy-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+  }
+  .copy-icon-btn:hover {
+    color: var(--text);
+  }
+
+  /* AWS Sub-Navigation Tabs */
+  .aws-tabs-bar {
+    display: flex;
+    gap: var(--space-4);
+    border-bottom: 2px solid var(--border-subtle);
+    margin-bottom: var(--space-4);
+  }
+  .aws-subtab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--duration-fast) ease;
+  }
+  .aws-subtab-btn:hover {
+    color: var(--text);
+  }
+  .aws-subtab-btn.active {
+    color: var(--accent-strong);
+    border-bottom-color: var(--accent-strong);
+    font-weight: var(--weight-bold);
+  }
+
+  /* Table Container */
+  .aws-table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .aws-table-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+  .aws-table-title {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    color: var(--text);
+  }
+  .aws-table-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .aws-search-input {
+    min-width: 240px;
+    border-radius: var(--radius-full);
+  }
+  .aws-edit-rules-btn {
+    border-radius: var(--radius-full);
+    font-weight: var(--weight-semibold);
+    padding: 6px 18px;
+  }
+  .aws-table th {
+    white-space: nowrap;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+  }
+  .aws-table td {
+    font-size: var(--text-xs);
+  }
+
+  /* Edit View Multi-Row Builder */
+  .aws-edit-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .aws-edit-header {
+    margin-bottom: var(--space-1);
+  }
+  .aws-edit-title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .aws-info-link {
+    font-size: var(--text-xs);
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-weight: normal;
+  }
+  .aws-info-link:hover {
+    text-decoration: underline;
+  }
+  .aws-edit-sub {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .aws-edit-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+  }
+  .aws-card-top-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+  .aws-card-heading {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    color: var(--text);
+  }
+  .aws-edit-table-wrap {
+    overflow-x: auto;
+    margin-bottom: var(--space-4);
+  }
+  .aws-edit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+  }
+  .aws-edit-table th {
+    text-align: left;
+    padding: var(--space-2) var(--space-3);
+    color: var(--text-secondary);
+    font-weight: var(--weight-semibold);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-2xs);
+  }
+  .aws-edit-row td {
+    padding: var(--space-2) var(--space-3);
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .aws-input-select {
+    cursor: pointer;
+  }
+  .aws-input-disabled {
+    opacity: 0.55;
+    background: var(--bg-subtle) !important;
+    cursor: not-allowed;
+  }
+  .aws-source-input-wrap {
+    display: flex;
+    align-items: center;
+  }
+  .source-chip-box {
+    display: flex;
+    align-items: center;
+  }
+  .source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border: 1px solid var(--accent-subtle);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+  .chip-remove {
+    background: transparent;
+    border: none;
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0;
+  }
+  .chip-remove:hover {
+    color: var(--danger-strong);
+  }
+  .aws-btn-delete {
+    border: 1px solid var(--accent-strong);
+    color: var(--accent-strong);
+    border-radius: var(--radius-full);
+    background: transparent;
+    font-weight: var(--weight-semibold);
+    padding: 4px 14px;
+    cursor: pointer;
+    transition: all var(--duration-fast) ease;
+  }
+  .aws-btn-delete:hover {
+    background: var(--tint-accent);
+  }
+  .aws-add-rule-row {
+    padding-top: var(--space-2);
+  }
+  .aws-btn-add-rule {
+    border: 1px solid var(--accent-strong);
+    color: var(--accent-strong);
+    border-radius: var(--radius-full);
+    background: transparent;
+    font-weight: var(--weight-semibold);
+    padding: 6px 18px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    transition: all var(--duration-fast) ease;
+  }
+  .aws-btn-add-rule:hover {
+    background: var(--tint-accent);
+  }
+  .aws-warning-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border-left: 4px solid var(--warning);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    color: var(--text);
+  }
+  .warning-icon {
+    color: var(--warning);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .aws-edit-footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+  .aws-save-rules-btn {
+    border-radius: var(--radius-full);
+    padding: 6px 22px;
+    font-weight: var(--weight-bold);
   }
 
   /* SSH Elements */

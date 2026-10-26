@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -102,6 +103,30 @@ func (s *Server) handleAddExtendedPortRule(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok": true,
+	})
+}
+
+// handleBatchSavePortRules menyimpan daftar aturan port secara massal (ala AWS EC2 Security Group)
+func (s *Server) handleBatchSavePortRules(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Rules []security.PortRule `json:"rules"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := s.firewall.BatchSavePortRules(r.Context(), req.Rules); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "security.port_rules_batch", "", true, fmt.Sprintf("Menyimpan %d aturan firewall secara massal", len(req.Rules)), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Berhasil menyimpan %d aturan port firewall", len(req.Rules)),
 	})
 }
 
