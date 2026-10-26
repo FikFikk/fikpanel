@@ -133,6 +133,60 @@ func (m *Manager) Catalog(ctx context.Context) []AppPackage {
 			AptPackages: []string{"fail2ban"},
 		},
 		{
+			ID:          "apache2",
+			Name:        "Apache HTTP Server",
+			Category:    "webserver",
+			Version:     "2.4 / Latest",
+			Description: "Web server modular standar industri dengan dukungan berkas konfigurasi .htaccess dan modul rewrite.",
+			Icon:        "ri-server-line",
+			AptPackages: []string{"apache2"},
+		},
+		{
+			ID:          "postgresql",
+			Name:        "PostgreSQL Database",
+			Category:    "database",
+			Version:     "16 / Latest",
+			Description: "Sistem basis data relasional objek canggih dengan keandalan tinggi dan konkurensi data yang kuat.",
+			Icon:        "ri-database-2-line",
+			AptPackages: []string{"postgresql", "postgresql-contrib"},
+		},
+		{
+			ID:          "composer",
+			Name:        "Composer PHP Manager",
+			Category:    "runtime",
+			Version:     "2.x / Latest",
+			Description: "Manajer dependensi resmi untuk ekosistem PHP dan framework Laravel, Symfony, dan WordPress.",
+			Icon:        "ri-terminal-box-line",
+			AptPackages: []string{"composer"},
+		},
+		{
+			ID:          "docker",
+			Name:        "Docker CE Engine",
+			Category:    "tools",
+			Version:     "26.x / Latest",
+			Description: "Platform kontainerisasi untuk membangun, mendistribusikan, dan menjalankan kontainer aplikasi.",
+			Icon:        "ri-instance-line",
+			AptPackages: []string{"docker.io"},
+		},
+		{
+			ID:          "ufw",
+			Name:        "UFW Firewall Shield",
+			Category:    "tools",
+			Version:     "0.36 / Latest",
+			Description: "Uncomplicated Firewall untuk manajemen aturan port dan keamanan jaringan server Linux.",
+			Icon:        "ri-shield-check-line",
+			AptPackages: []string{"ufw"},
+		},
+		{
+			ID:          "supervisor",
+			Name:        "Supervisor Process Control",
+			Category:    "tools",
+			Version:     "4.x / Latest",
+			Description: "Sistem kontrol proses client/server untuk menjaga worker queue dan daemon tetap hidup.",
+			Icon:        "ri-cpu-line",
+			AptPackages: []string{"supervisor"},
+		},
+		{
 			ID:          "git",
 			Name:        "Git Version Control",
 			Category:    "tools",
@@ -235,6 +289,60 @@ func (m *Manager) checkAppStatus(ctx context.Context, id string) (bool, bool) {
 		running := false
 		if installed {
 			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "fail2ban").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
+
+	case id == "apache2":
+		cmd := exec.CommandContext(ctx, "which", "apache2")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "apache2").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
+
+	case id == "postgresql":
+		cmd := exec.CommandContext(ctx, "which", "psql")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "postgresql").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
+
+	case id == "docker":
+		cmd := exec.CommandContext(ctx, "which", "docker")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "docker").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
+
+	case id == "composer":
+		cmd := exec.CommandContext(ctx, "which", "composer")
+		return cmd.Run() == nil, false
+
+	case id == "ufw":
+		cmd := exec.CommandContext(ctx, "which", "ufw")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "ufw").Output()
+			running = strings.TrimSpace(string(out)) == "active"
+		}
+		return installed, running
+
+	case id == "supervisor":
+		cmd := exec.CommandContext(ctx, "which", "supervisord")
+		installed := cmd.Run() == nil
+		running := false
+		if installed {
+			out, _ := exec.CommandContext(ctx, "systemctl", "is-active", "supervisor").Output()
 			running = strings.TrimSpace(string(out)) == "active"
 		}
 		return installed, running
