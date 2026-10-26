@@ -176,6 +176,42 @@ flowchart TD
     KlikK3s --> K8sReady
 ```
 
+### 1.7 Siklus Instalasi Server Host & Pemilihan Stack Modular
+
+```mermaid
+flowchart TD
+    RunInstall[Jalankan scripts/install.sh sebagai Root] --> PreCheck[Pre-Deteksi RAM, Swap, & Software Host]
+    PreCheck --> StatusBanner[Tampilkan Status Deteksi Software Host]
+    
+    StatusBanner --> PisahkanKomponen{Identifikasi Prasyarat}
+    PisahkanKomponen --> CoreWajib[WAJIB: FikPanel Core Daemon + Embedded SQLite]
+    PisahkanKomponen --> OpsiStack[OPSIONAL: Nginx, MySQL, PHP, Node.js, Docker, Fail2ban]
+    
+    CoreWajib --> PilihProfil[Pilih Profil Instalasi 1-5]
+    OpsiStack --> PilihProfil
+    
+    PilihProfil -- 1) Full LNMP --> SetLNMP[Aktifkan Nginx + MySQL 8.0 + PHP 8.3 FPM]
+    PilihProfil -- 2) Node.js & Web --> SetNode[Aktifkan Nginx + Node.js 20 + PM2]
+    PilihProfil -- 3) Reverse Proxy --> SetProxy[Aktifkan Nginx Saja]
+    PilihProfil -- 4) Minimal Core --> SetMinimal[Hanya FikPanel Core & SQLite - Bebas Beban]
+    PilihProfil -- 5) Kustom --> TanyaManual[Tanya Konfirmasi Tiap Komponen yang Belum Ada]
+    
+    SetLNMP --> EksekusiInstall[Eksekusi Pemasangan Paket]
+    SetNode --> EksekusiInstall
+    SetProxy --> EksekusiInstall
+    SetMinimal --> PasangDaemon[Pasang Biner & Aktifkan Systemd fikpanel]
+    TanyaManual --> EksekusiInstall
+    
+    EksekusiInstall --> CekExisting{Komponen Sudah Terpasang di Server?}
+    CekExisting -- Ya --> SmartSkip[Lewati Pemasangan - Amankan Konfigurasi & Data Existing]
+    CekExisting -- Belum --> InstallPkg[Pasang via Package Manager APT / DNF]
+    SmartSkip --> PasangDaemon
+    InstallPkg --> PasangDaemon
+    
+    PasangDaemon --> AutoDiscover[Pindai Otomatis & Adopsi Vhost, Docker, PM2, K8s ke DB]
+    AutoDiscover --> SiapAkses[Panel Aktif di Port 8443 - Software Opsional Dapat Ditambah via Web UI]
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -370,6 +406,7 @@ flowchart TD
 | **BR-43** | Integrasi Cadangan S3 pada Modul Database | Pengguna mengelola snapshot database dan S3 Cloud | Modul Backup S3 diintegrasikan sebagai sub-tab di dalam menu Databases, mengeliminasi menu redundan di sidebar dan menyederhanakan alur pencadangan data |
 | **BR-44** | Pindai Otomatis Infrastruktur Host & Adopsi Konfigurasi | Instalasi server via `install.sh`, CLI `fikpanel discover`, atau aksi Pindai di antarmuka | Memindai secara dinamis virtual host Nginx, stack Docker Compose, proses PM2, dan status Kubernetes. Menyimpan path root kustom asli (misal `/home/fikfikk/projects/**`) ke database SQLite agar resource terkelola langsung di panel tanpa perombakan struktur direktori. |
 | **BR-45** | Orkestrasi Lengkap Kubernetes & K3s Host | Pengguna menginspeksi cluster Kubernetes di menu Kubernetes | Mendeteksi ketersediaan cluster K3s, MicroK8s, atau standar; menyediakan pemantauan workload Pods, Deployments, Services, scaling interaktif, pembacaan log kontainer, dan penerapan manifest YAML langsung via `kubectl apply`. |
+| **BR-46** | Kemandirian Database FikPanel & Profil Instalasi Host Modular | Eksekusi installer `scripts/install.sh` di server host (server baru maupun server existing) | FikPanel Core berjalan dengan embedded SQLite independen tanpa memerlukan MySQL/MariaDB eksternal. MySQL, PHP, Docker, dan Fail2ban bersifat sepenuhnya opsional. Installer memindai software existing dengan proteksi smart-skip agar tidak menimpa vhost/data existing, menyediakan profil instalasi terstruktur, dan komponen opsional dapat dipasang kapan saja melalui antarmuka Web Panel (App Store / Databases / Security Center). |
 
 
 

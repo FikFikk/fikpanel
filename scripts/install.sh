@@ -87,14 +87,117 @@ if [ "$TOTAL_RAM_MB" -lt 1900 ] && [ "$SWAP_TOTAL_MB" -lt 1024 ]; then
     fi
 fi
 
-# 3. Menu Interaktif Pemilihan Software Stack
-echo -e "\n${BOLD}Pilih Paket Software Stack yang ingin dipasang bersama FikPanel:${NC}"
-echo -e "  ${GREEN}1) Full LNMP${NC} (Nginx + MySQL 8.0 + PHP 8.3 FPM) [Sangat Direkomendasikan]"
-echo -e "  ${CYAN}2) Reverse Proxy Saja${NC} (Hanya Nginx Web Server)"
-echo -e "  ${BLUE}3) Minimal FikPanel Core${NC} (Panel saja — software dipasang nanti via antarmuka web)"
-echo -e "  ${YELLOW}4) Kustom Stack${NC} (Pilih manual masing-masing software)"
+# 3. Pre-Deteksi Software yang Sudah Terpasang di Host Server
+# Mencegah penimpaan konfigurasi pada server yang sudah memiliki proyek berjalan
+HAS_NGINX=false; NGINX_VER=""
+if which nginx >/dev/null 2>&1; then
+    HAS_NGINX=true
+    NGINX_VER=$(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo "terpasang")
+fi
 
-read -rp "Masukkan nomor pilihan [1-4] (default: 1): " STACK_CHOICE
+HAS_APACHE=false; APACHE_VER=""
+if which apache2 >/dev/null 2>&1; then
+    HAS_APACHE=true
+    APACHE_VER=$(apache2 -v 2>&1 | awk -F'/' 'NR==1{print $2}' | awk '{print $1}' || echo "terpasang")
+elif which httpd >/dev/null 2>&1; then
+    HAS_APACHE=true
+    APACHE_VER=$(httpd -v 2>&1 | awk -F'/' 'NR==1{print $2}' | awk '{print $1}' || echo "terpasang")
+fi
+
+HAS_MYSQL=false; MYSQL_VER=""
+if which mysql >/dev/null 2>&1 || which mysqld >/dev/null 2>&1; then
+    HAS_MYSQL=true
+    MYSQL_VER=$(mysql --version 2>/dev/null | awk '{print $5}' | tr -d ',' || echo "terpasang")
+fi
+
+HAS_PHP=false; PHP_VER=""
+if which php >/dev/null 2>&1; then
+    HAS_PHP=true
+    PHP_VER=$(php -v 2>/dev/null | awk 'NR==1{print $2}' || echo "terpasang")
+fi
+
+HAS_NODE=false; NODE_VER=""
+if which node >/dev/null 2>&1; then
+    HAS_NODE=true
+    NODE_VER=$(node -v 2>/dev/null || echo "terpasang")
+fi
+
+HAS_DOCKER=false; DOCKER_VER=""
+if which docker >/dev/null 2>&1; then
+    HAS_DOCKER=true
+    DOCKER_VER=$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo "terpasang")
+fi
+
+HAS_FAIL2BAN=false; FAIL2BAN_VER=""
+if which fail2ban-client >/dev/null 2>&1; then
+    HAS_FAIL2BAN=true
+    FAIL2BAN_VER=$(fail2ban-client version 2>/dev/null || echo "terpasang")
+fi
+
+# Tampilkan ringkasan deteksi status software pada host
+echo -e "\n${BOLD}==============================================================${NC}"
+echo -e "${BOLD}            STATUS DETEKSI SOFTWARE HOST SERVER               ${NC}"
+echo -e "${BOLD}==============================================================${NC}"
+echo -e "  [${GREEN}WAJIB${NC}] FikPanel Core & SQLite  : ${GREEN}Akan Dipasang${NC} (Mandiri, tanpa MySQL)"
+
+if [ "$HAS_NGINX" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  Nginx Web Server        : ${GREEN}SUDAH ADA${NC} (v${NGINX_VER} - Tidak akan ditimpa)"
+elif [ "$HAS_APACHE" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  Apache Web Server       : ${GREEN}SUDAH ADA${NC} (v${APACHE_VER} - Tidak akan ditimpa)"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  Nginx Web Server        : ${YELLOW}Belum Ada${NC} (Bisa dipasang sekarang/nanti)"
+fi
+
+if [ "$HAS_MYSQL" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  MySQL / MariaDB Server  : ${GREEN}SUDAH ADA${NC} (${MYSQL_VER} - Data aman)"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  MySQL / MariaDB Server  : ${YELLOW}Belum Ada${NC} (Opsional, untuk database web)"
+fi
+
+if [ "$HAS_PHP" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  PHP FastCGI (FPM)       : ${GREEN}SUDAH ADA${NC} (v${PHP_VER})"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  PHP FastCGI (FPM)       : ${YELLOW}Belum Ada${NC} (Opsional, untuk WordPress/PHP)"
+fi
+
+if [ "$HAS_NODE" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  Node.js & PM2           : ${GREEN}SUDAH ADA${NC} (${NODE_VER})"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  Node.js & PM2           : ${YELLOW}Belum Ada${NC} (Opsional, untuk aplikasi JS)"
+fi
+
+if [ "$HAS_DOCKER" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  Docker Engine           : ${GREEN}SUDAH ADA${NC} (${DOCKER_VER})"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  Docker Engine           : ${YELLOW}Belum Ada${NC} (Opsional, untuk container)"
+fi
+
+if [ "$HAS_FAIL2BAN" = true ]; then
+    echo -e "  [${CYAN}OPSI${NC}]  Fail2ban Security       : ${GREEN}SUDAH ADA${NC} (${FAIL2BAN_VER})"
+else
+    echo -e "  [${CYAN}OPSI${NC}]  Fail2ban Security       : ${YELLOW}Belum Ada${NC} (Opsional, bisa via Web Panel)"
+fi
+echo -e "${BOLD}==============================================================${NC}"
+echo -e "${CYAN}Catatan Penting:${NC}"
+echo -e "• ${BOLD}FikPanel TIDAK membutuhkan MySQL${NC} untuk beroperasi (FikPanel memakai embedded SQLite)."
+echo -e "• MySQL, PHP, Docker, dan Fail2ban bersifat ${BOLD}OPSIONAL${NC}."
+echo -e "• Komponen yang tidak dipasang sekarang ${BOLD}bisa dipasang kapan saja secara 1-klik${NC}"
+echo -e "  melalui Web Panel FikPanel (menu App Store, Databases, atau Keamanan)."
+echo -e "• Komponen yang sudah terdeteksi di server ${BOLD}TIDAK AKAN DITIMPA${NC} agar konfigurasi aman.\n"
+
+# 4. Menu Interaktif Pemilihan Software Stack
+echo -e "${BOLD}Pilih Profil Pemasangan Software Stack:${NC}"
+echo -e "  ${GREEN}1) Full LNMP Stack${NC} (Nginx + MySQL 8.0 + PHP 8.3 FPM)"
+echo -e "     -> Cocok untuk server baru / AWS EC2 kosong untuk WordPress/Laravel."
+echo -e "  ${CYAN}2) Node.js & Web Server${NC} (Nginx + Node.js 20 + PM2)"
+echo -e "     -> Cocok untuk server aplikasi SSR / Express / Next.js / Nuxt."
+echo -e "  ${BLUE}3) Reverse Proxy Saja${NC} (Hanya Nginx Web Server)"
+echo -e "     -> Cocok jika backend berjalan di port aplikasi atau container Docker."
+echo -e "  ${BOLD}4) Minimal FikPanel Core${NC} (Hanya Panel & SQLite — Sangat Ringan)"
+echo -e "     -> MySQL, PHP, Docker, Fail2ban bisa dipasang nanti dari antarmuka Web Panel."
+echo -e "  ${YELLOW}5) Kustom / Pilih Sendiri${NC} (Tanya satu-per-satu per komponen)"
+
+read -rp "Masukkan nomor pilihan [1-5] (default: 1): " STACK_CHOICE
 STACK_CHOICE=${STACK_CHOICE:-1}
 
 INSTALL_NGINX=false
@@ -102,6 +205,8 @@ INSTALL_APACHE=false
 INSTALL_MYSQL=false
 INSTALL_PHP=false
 INSTALL_NODE=false
+INSTALL_DOCKER=false
+INSTALL_FAIL2BAN=false
 
 case "$STACK_CHOICE" in
     1)
@@ -111,28 +216,58 @@ case "$STACK_CHOICE" in
         ;;
     2)
         INSTALL_NGINX=true
+        INSTALL_NODE=true
         ;;
     3)
-        # Hanya instal panel
+        INSTALL_NGINX=true
         ;;
     4)
-        echo -e "\n${CYAN}Konfigurasi Pilihan Kustom:${NC}"
-        read -rp "  Pasang Nginx Web Server? [Y/n]: " yn_nginx
-        [[ "${yn_nginx:-Y}" =~ ^[Yy] ]] && INSTALL_NGINX=true
-
-        if [ "$INSTALL_NGINX" = false ]; then
-            read -rp "  Pasang Apache HTTP Server sebagai gantinya? [y/N]: " yn_apache
-            [[ "${yn_apache:-N}" =~ ^[Yy] ]] && INSTALL_APACHE=true
+        # Hanya pasang panel FikPanel core
+        echo -e "${BLUE}[*] Memilih mode Minimal FikPanel Core. Komponen lain dapat dipasang dari Web Panel kapan saja.${NC}"
+        ;;
+    5)
+        echo -e "\n${CYAN}Konfigurasi Pilihan Kustom Komponen:${NC}"
+        if [ "$HAS_NGINX" = true ] || [ "$HAS_APACHE" = true ]; then
+            echo -e "  [i] Web server sudah terdeteksi di sistem. Melewati pertanyaan instalasi web server."
+        else
+            read -rp "  Pasang Nginx Web Server? [Y/n]: " yn_nginx
+            [[ "${yn_nginx:-Y}" =~ ^[Yy] ]] && INSTALL_NGINX=true
         fi
 
-        read -rp "  Pasang MySQL 8.0 Database Server? [Y/n]: " yn_mysql
-        [[ "${yn_mysql:-Y}" =~ ^[Yy] ]] && INSTALL_MYSQL=true
+        if [ "$HAS_MYSQL" = true ]; then
+            echo -e "  [i] MySQL/MariaDB sudah terdeteksi di sistem. Melewati pertanyaan instalasi MySQL."
+        else
+            read -rp "  Pasang MySQL 8.0 Database Server? (Bukan untuk panel, hanya untuk web app) [y/N]: " yn_mysql
+            [[ "${yn_mysql:-N}" =~ ^[Yy] ]] && INSTALL_MYSQL=true
+        fi
 
-        read -rp "  Pasang PHP 8.3 FastCGI (FPM) & ekstensi umum? [Y/n]: " yn_php
-        [[ "${yn_php:-Y}" =~ ^[Yy] ]] && INSTALL_PHP=true
+        if [ "$HAS_PHP" = true ]; then
+            echo -e "  [i] PHP sudah terdeteksi di sistem. Melewati pertanyaan instalasi PHP."
+        else
+            read -rp "  Pasang PHP 8.3 FastCGI (FPM) & ekstensi umum? [y/N]: " yn_php
+            [[ "${yn_php:-N}" =~ ^[Yy] ]] && INSTALL_PHP=true
+        fi
 
-        read -rp "  Pasang Node.js Runtime? [y/N]: " yn_node
-        [[ "${yn_node:-N}" =~ ^[Yy] ]] && INSTALL_NODE=true
+        if [ "$HAS_NODE" = true ]; then
+            echo -e "  [i] Node.js sudah terdeteksi di sistem. Melewati pertanyaan instalasi Node.js."
+        else
+            read -rp "  Pasang Node.js Runtime & PM2? [y/N]: " yn_node
+            [[ "${yn_node:-N}" =~ ^[Yy] ]] && INSTALL_NODE=true
+        fi
+
+        if [ "$HAS_DOCKER" = true ]; then
+            echo -e "  [i] Docker Engine sudah terdeteksi di sistem. Melewati pertanyaan instalasi Docker."
+        else
+            read -rp "  Pasang Docker Engine & Compose? [y/N]: " yn_docker
+            [[ "${yn_docker:-N}" =~ ^[Yy] ]] && INSTALL_DOCKER=true
+        fi
+
+        if [ "$HAS_FAIL2BAN" = true ]; then
+            echo -e "  [i] Fail2ban sudah terdeteksi di sistem. Melewati pertanyaan instalasi Fail2ban."
+        else
+            read -rp "  Pasang Fail2ban Intrusion Prevention? (Bisa diaktifkan nanti dari Web Panel) [y/N]: " yn_f2b
+            [[ "${yn_f2b:-N}" =~ ^[Yy] ]] && INSTALL_FAIL2BAN=true
+        fi
         ;;
     *)
         echo -e "${YELLOW}Pilihan tidak valid, menggunakan standar Full LNMP.${NC}"
@@ -142,7 +277,7 @@ case "$STACK_CHOICE" in
         ;;
 esac
 
-# 4. Update Repositori Paket Sistem
+# 5. Update Repositori Paket Sistem
 echo -e "\n[*] Memperbarui katalog repositori paket sistem..."
 if [ "$PKG_MGR" = "apt" ]; then
     export DEBIAN_FRONTEND=noninteractive
@@ -153,80 +288,139 @@ elif [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
     $PKG_MGR install -y curl wget git tar ca-certificates gnupg epel-release
 fi
 
-# 5. Instalasi Komponen Stack yang Dipilih
+# 6. Instalasi Komponen Stack yang Dipilih (Dengan Proteksi Smart Skip)
 
 # --- Nginx ---
 if [ "$INSTALL_NGINX" = true ]; then
-    echo -e "\n[+] Memasang Nginx Web Server..."
-    if [ "$PKG_MGR" = "apt" ]; then
-        apt-get install -y nginx
+    if [ "$HAS_NGINX" = true ]; then
+        echo -e "\n${GREEN}[✓] Nginx sudah terpasang (v${NGINX_VER}). Melewati instalasi agar konfigurasi vhost existing tidak tertimpa.${NC}"
     else
-        $PKG_MGR install -y nginx
+        echo -e "\n[+] Memasang Nginx Web Server..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y nginx
+        else
+            $PKG_MGR install -y nginx
+        fi
+        systemctl enable nginx
+        systemctl restart nginx || true
+        echo -e "${GREEN}[✓] Nginx berhasil dipasang dan dijalankan.${NC}"
     fi
-    systemctl enable nginx
-    systemctl restart nginx || true
-    echo -e "${GREEN}[✓] Nginx berhasil dipasang dan dijalankan.${NC}"
 fi
 
 # --- Apache ---
 if [ "$INSTALL_APACHE" = true ]; then
-    echo -e "\n[+] Memasang Apache HTTP Server..."
-    if [ "$PKG_MGR" = "apt" ]; then
-        apt-get install -y apache2
-        systemctl enable apache2
-        systemctl restart apache2 || true
+    if [ "$HAS_APACHE" = true ]; then
+        echo -e "\n${GREEN}[✓] Apache sudah terpasang. Melewati instalasi agar konfigurasi existing aman.${NC}"
     else
-        $PKG_MGR install -y httpd
-        systemctl enable httpd
-        systemctl restart httpd || true
+        echo -e "\n[+] Memasang Apache HTTP Server..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y apache2
+            systemctl enable apache2
+            systemctl restart apache2 || true
+        else
+            $PKG_MGR install -y httpd
+            systemctl enable httpd
+            systemctl restart httpd || true
+        fi
+        echo -e "${GREEN}[✓] Apache berhasil dipasang dan dijalankan.${NC}"
     fi
-    echo -e "${GREEN}[✓] Apache berhasil dipasang dan dijalankan.${NC}"
 fi
 
 # --- MySQL 8.0 ---
 if [ "$INSTALL_MYSQL" = true ]; then
-    echo -e "\n[+] Memasang MySQL 8.0 Database Server..."
-    if [ "$PKG_MGR" = "apt" ]; then
-        apt-get install -y mysql-server
-        systemctl enable mysql
-        systemctl restart mysql || true
+    if [ "$HAS_MYSQL" = true ]; then
+        echo -e "\n${GREEN}[✓] MySQL/MariaDB sudah terpasang (${MYSQL_VER}). Melewati instalasi agar database & data existing aman.${NC}"
     else
-        $PKG_MGR install -y mysql-server || $PKG_MGR install -y mariadb-server
-        systemctl enable mysqld || systemctl enable mariadb
-        systemctl restart mysqld || systemctl restart mariadb || true
+        echo -e "\n[+] Memasang MySQL 8.0 Database Server..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y mysql-server
+            systemctl enable mysql
+            systemctl restart mysql || true
+        else
+            $PKG_MGR install -y mysql-server || $PKG_MGR install -y mariadb-server
+            systemctl enable mysqld || systemctl enable mariadb
+            systemctl restart mysqld || systemctl restart mariadb || true
+        fi
+        echo -e "${GREEN}[✓] Database server berhasil dipasang dan dijalankan.${NC}"
     fi
-    echo -e "${GREEN}[✓] Database server berhasil dipasang dan dijalankan.${NC}"
 fi
 
 # --- PHP 8.3 FPM ---
 if [ "$INSTALL_PHP" = true ]; then
-    echo -e "\n[+] Memasang PHP FastCGI (FPM) & ekstensi pendukung..."
-    if [ "$PKG_MGR" = "apt" ]; then
-        apt-get install -y php-fpm php-mysql php-curl php-gd php-mbstring php-xml php-zip php-bcmath
-        systemctl enable php8.3-fpm || systemctl enable php-fpm || true
-        systemctl restart php8.3-fpm || systemctl restart php-fpm || true
+    if [ "$HAS_PHP" = true ]; then
+        echo -e "\n${GREEN}[✓] PHP sudah terpasang (v${PHP_VER}). Melewati instalasi.${NC}"
     else
-        $PKG_MGR install -y php-fpm php-mysqlnd php-gd php-curl php-mbstring php-xml php-zip
-        systemctl enable php-fpm
-        systemctl restart php-fpm || true
+        echo -e "\n[+] Memasang PHP FastCGI (FPM) & ekstensi pendukung..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y php-fpm php-mysql php-curl php-gd php-mbstring php-xml php-zip php-bcmath
+            systemctl enable php8.3-fpm || systemctl enable php-fpm || true
+            systemctl restart php8.3-fpm || systemctl restart php-fpm || true
+        else
+            $PKG_MGR install -y php-fpm php-mysqlnd php-gd php-curl php-mbstring php-xml php-zip
+            systemctl enable php-fpm
+            systemctl restart php-fpm || true
+        fi
+        echo -e "${GREEN}[✓] PHP FPM berhasil dipasang dan dijalankan.${NC}"
     fi
-    echo -e "${GREEN}[✓] PHP FPM berhasil dipasang dan dijalankan.${NC}"
 fi
 
-# --- Node.js ---
+# --- Node.js & PM2 ---
 if [ "$INSTALL_NODE" = true ]; then
-    echo -e "\n[+] Memasang Node.js Runtime..."
-    if [ "$PKG_MGR" = "apt" ]; then
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
+    if [ "$HAS_NODE" = true ]; then
+        echo -e "\n${GREEN}[✓] Node.js sudah terpasang (${NODE_VER}). Melewati instalasi runtime.${NC}"
     else
-        curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-        $PKG_MGR install -y nodejs
+        echo -e "\n[+] Memasang Node.js Runtime..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+            apt-get install -y nodejs
+        else
+            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+            $PKG_MGR install -y nodejs
+        fi
+        echo -e "${GREEN}[✓] Node.js $(node -v 2>/dev/null || true) berhasil dipasang.${NC}"
     fi
-    echo -e "${GREEN}[✓] Node.js $(node -v 2>/dev/null || true) berhasil dipasang.${NC}"
+    # Pastikan PM2 terpasang untuk manajemen proses Node.js
+    if ! which pm2 >/dev/null 2>&1; then
+        echo "[*] Memasang PM2 process manager secara global..."
+        npm install -g pm2 || true
+    fi
 fi
 
-# 6. Pemasangan Biner FikPanel & Konfigurasi Systemd
+# --- Docker Engine ---
+if [ "$INSTALL_DOCKER" = true ]; then
+    if [ "$HAS_DOCKER" = true ]; then
+        echo -e "\n${GREEN}[✓] Docker Engine sudah terpasang (${DOCKER_VER}). Melewati instalasi.${NC}"
+    else
+        echo -e "\n[+] Memasang Docker Engine & Docker Compose Plugin..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y docker.io docker-compose-plugin || curl -fsSL https://get.docker.com | sh
+        else
+            $PKG_MGR install -y docker-ce docker-ce-cli containerd.io || curl -fsSL https://get.docker.com | sh
+        fi
+        systemctl enable docker || true
+        systemctl restart docker || true
+        echo -e "${GREEN}[✓] Docker Engine berhasil dipasang dan dijalankan.${NC}"
+    fi
+fi
+
+# --- Fail2ban ---
+if [ "$INSTALL_FAIL2BAN" = true ]; then
+    if [ "$HAS_FAIL2BAN" = true ]; then
+        echo -e "\n${GREEN}[✓] Fail2ban sudah terpasang. Melewati instalasi.${NC}"
+    else
+        echo -e "\n[+] Memasang Fail2ban Intrusion Prevention..."
+        if [ "$PKG_MGR" = "apt" ]; then
+            apt-get install -y fail2ban
+        else
+            $PKG_MGR install -y fail2ban
+        fi
+        systemctl enable fail2ban || true
+        systemctl restart fail2ban || true
+        echo -e "${GREEN}[✓] Fail2ban berhasil dipasang dan diaktifkan.${NC}"
+    fi
+fi
+
+# 7. Pemasangan Biner FikPanel & Konfigurasi Direktori
 echo -e "\n[*] Memasang FikPanel Server Control Panel..."
 INSTALL_DIR="/opt/fikpanel"
 mkdir -p "$INSTALL_DIR"
@@ -258,7 +452,7 @@ else
     fi
 fi
 
-# 7. Membuat Systemd Unit Service
+# 8. Membuat Systemd Unit Service
 cat <<EOF > /etc/systemd/system/fikpanel.service
 [Unit]
 Description=FikPanel Server Control Panel Daemon
@@ -282,20 +476,20 @@ systemctl daemon-reload
 systemctl enable fikpanel.service
 systemctl restart fikpanel.service || true
 
-# 8. Pindai dan Adopsi Otomatis Seluruh Infrastruktur Host (Nginx, Docker Compose, PM2, K8s)
+# 9. Pindai dan Adopsi Otomatis Seluruh Infrastruktur Host (Nginx, Docker Compose, PM2, K8s)
 echo -e "\n[*] Menjalankan Host Infrastructure Auto-Discovery & Reverse Adoption..."
 if [ -x "$INSTALL_DIR/bin/fikpanel" ]; then
     "$INSTALL_DIR/bin/fikpanel" discover --db "${INSTALL_DIR}/data/fikpanel.db" --adopt || true
 fi
 
-# 9. Firewall Helper (Buka port 8443, 80, 443)
+# 10. Firewall Helper (Buka port 8443, 80, 443)
 if which ufw >/dev/null 2>&1; then
     ufw allow 8443/tcp comment 'FikPanel Control Panel' || true
     ufw allow 80/tcp comment 'HTTP Web' || true
     ufw allow 443/tcp comment 'HTTPS Web' || true
 fi
 
-# 10. Informasi Akses Selesai
+# 11. Informasi Akses Selesai
 PUBLIC_IP=$(curl -s4 https://api.ipify.org || hostname -I | awk '{print $1}')
 echo -e "\n=============================================================="
 echo -e "${GREEN}${BOLD}✓ Instalasi FikPanel Berhasil Diselesaikan!${NC}"
