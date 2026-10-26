@@ -28,8 +28,10 @@ if [ ! -d "$INSTALL_DIR" ]; then
     exit 1
 fi
 
-# Bersihkan layar jika terminal mendukung TTY
-clear 2>/dev/null || true
+# Bersihkan layar hanya jika terminal interaktif (TTY) dan variabel TERM valid
+if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] && [ "$TERM" != "unknown" ]; then
+    clear 2>/dev/null || true
+fi
 echo -e "${CYAN}${BOLD}"
 echo "  ███████╗██╗██╗  ██╗██████╗  █████╗ ███╗   ██╗███████╗██╗     "
 echo "  ██╔════╝██║██║ ██╔╝██╔══██╗██╔══██╗████╗  ██║██╔════╝██║     "
