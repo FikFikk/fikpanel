@@ -29,11 +29,17 @@ var (
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	command := os.Args[1]
 	switch command {
+	case "help", "--help", "-h":
+		printUsage()
+		os.Exit(0)
+	case "version", "--version", "-v":
+		fmt.Printf("fikpanel v%s\n", version)
+		os.Exit(0)
 	case "serve":
 		runServe(os.Args[2:])
 	case "agent":
@@ -48,10 +54,8 @@ func main() {
 		runDiscover(os.Args[2:])
 	case "update":
 		runUpdate(os.Args[2:])
-	case "version":
-		fmt.Printf("fikpanel v%s\n", version)
 	default:
-		fmt.Fprintf(os.Stderr, "Perintah tidak dikenal: %s\n", command)
+		fmt.Fprintf(os.Stderr, "Perintah tidak dikenal: %s\n\n", command)
 		printUsage()
 		os.Exit(1)
 	}
@@ -59,17 +63,35 @@ func main() {
 
 // printUsage menampilkan panduan penggunaan CLI fikpanel
 func printUsage() {
-	fmt.Println(`Penggunaan: fikpanel <perintah> [argumen]
+	fmt.Printf(`FikPanel — Lightweight Server Control Panel (v%s)
 
-Perintah yang tersedia:
-  serve           Menjalankan server web unprivileged (panel serve)
-  agent           Menjalankan agen RPC root socket-activated (panel agent)
-  init            Inisialisasi kredensial awal dan konfigurasi panel
-  reset-password  Reset kata sandi pengguna admin secara aman
-  doctor          Diagnosa integritas database, Nginx, dan perizinan
+Penggunaan:
+  fikpanel <perintah> [opsi]
+
+Perintah yang Tersedia:
+  serve           Menjalankan server web control panel
+                  Opsi:
+                    --port <nomor>   Port server HTTP/HTTPS (default: 1405)
+                    --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
+                    --dev            Mode development dengan auto-seed akun root
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
-  update          Perbarui biner FikPanel ke versi rilis terbaru
-  version         Menampilkan informasi versi aplikasi`)
+                  Opsi:
+                    --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
+                    --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
+                    --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
+  update          Perbarui biner FikPanel ke versi rilis terbaru tanpa menyentuh data
+  doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
+  reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
+  init            Inisialisasi kredensial awal administrator
+  version, -v     Menampilkan informasi versi biner FikPanel
+  help, -h        Menampilkan panduan bantuan perintah ini
+
+Contoh Penggunaan:
+  fikpanel serve --port 1405
+  fikpanel discover --adopt --roots "/home/fikfikk/projects,/var/www"
+  fikpanel reset-password --user root
+  fikpanel update
+`, version)
 }
 
 // runServe menangani eksekusi mode HTTP web server

@@ -145,22 +145,90 @@ GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/fikpanel ./cmd/fikpanel
 
 ---
 
-## Perintah CLI
+## Instalasi Cepat di Server Linux (One-Line Installer)
 
-Biner `fikpanel` menyediakan utilitas CLI terintegrasi:
+FikPanel dapat langsung dipasang di server Linux Anda (Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS, RHEL) hanya dengan satu baris perintah:
+
+### 1. Metode Utama (Tersedia Sekarang via GitHub CDN)
+```bash
+curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/install.sh | sudo bash
+```
+
+### 2. Metode Domain Kustom (*Coming Soon*)
+```bash
+# Segera hadir melalui jalur domain resmi:
+curl -sSL https://panel.fikfikk.my.id/install.sh | sudo bash
+```
+
+> **Catatan Instalasi:**
+> - Installer secara otomatis melakukan **pre-deteksi software** pada host server.
+> - Jika server sudah memiliki proyek berjalan (Nginx, MySQL, PHP, Docker), konfigurasi dan database yang ada **TIDAK AKAN DITIMPA** (fitur *smart-skip*).
+> - Komponen FikPanel mandiri dan menggunakan database embedded SQLite. Software website seperti MySQL, PHP, Docker, dan Fail2ban bersifat opsional dan dapat dipasang belakangan dengan 1-klik dari Web Panel.
+> - Akses Web Panel setelah instalasi: **`http://IP_SERVER:1405`** (atau `https://IP_SERVER:1405`).
+
+---
+
+## Cara Pembaruan (Zero-Downtime Auto-Update)
+
+Jika FikPanel sudah terpasang di server Anda dan Anda ingin memperbarui ke versi rilis terbaru (misal ada penambahan menu, fitur baru, atau perbaikan bug), **data website, virtual host Nginx, dan akun database Anda dijamin 100% aman**:
+
+### 1. Melalui Perintah Terminal Server
+```bash
+sudo fikpanel update
+```
+
+### 2. Melalui Skrip Pembaruan Otomatis
+```bash
+curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | sudo bash
+```
+
+> Skrip pembaruan secara otomatis mencadangkan biner lama ke `fikpanel.bak`, mengunduh biner rilis terbaru, mengeksekusi migrasi skema database non-destruktif, dan me-restart daemon dalam 1–2 detik tanpa downtime.
+
+---
+
+## Panduan Perintah CLI (`fikpanel --help`)
+
+Biner `fikpanel` menyediakan utilitas baris perintah terintegrasi:
 
 ```text
-fikpanel <perintah> [opsi]
+FikPanel — Lightweight Server Control Panel (v0.1.0-dev)
 
-Perintah:
+Penggunaan:
+  fikpanel <perintah> [opsi]
+
+Perintah yang Tersedia:
   serve           Menjalankan server web control panel
-                  Opsi: --port <port> (default: 1405)
-                        --db <path>   (default: fikpanel.db)
-                        --dev         (aktifkan auto-seed akun root)
+                  Opsi:
+                    --port <nomor>   Port server HTTP/HTTPS (default: 1405)
+                    --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
+                    --dev            Mode development dengan auto-seed akun root
+  discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
+                  Opsi:
+                    --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
+                    --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
+                    --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
+  update          Perbarui biner FikPanel ke versi rilis terbaru tanpa menyentuh data
+  doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
+  reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
   init            Inisialisasi kredensial awal administrator
-  reset-password  Reset kata sandi pengguna secara aman
-  doctor          Pemeriksaan diagnostik integritas database dan perizinan sistem
-  version         Mencetak versi fikpanel
+  version, -v     Menampilkan informasi versi biner FikPanel
+  help, -h        Menampilkan panduan bantuan perintah ini
+
+Contoh Penggunaan:
+  # Menjalankan daemon panel di port khusus
+  fikpanel serve --port 1405 --db /opt/fikpanel/data/fikpanel.db
+
+  # Memindai virtual host dan stack docker di server untuk diadopsi
+  fikpanel discover --adopt --roots "/home/fikfikk/projects,/var/www"
+
+  # Reset password akun administrator
+  fikpanel reset-password --user root
+
+  # Memperbarui biner ke rilis terbaru
+  fikpanel update
+
+  # Menampilkan panduan bantuan
+  fikpanel --help
 ```
 
 ---
