@@ -52,8 +52,8 @@ func RenderWelcomePage(domain string) string {
 	return strings.ReplaceAll(tplWelcome, "{{DOMAIN}}", domain)
 }
 
-// buildCleanEdgePage menghasilkan dokumen HTML mandiri (tanpa dependensi CDN eksternal) dengan estetika gelap edge
-func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, desc, hint, defaultDomain string) string {
+// buildCleanEdgePage menghasilkan dokumen HTML mandiri tanpa dependensi eksternal
+func buildCleanEdgePage(code, statusLabel, badgeText, badgeSub, dotColor, textColor, title, desc, hint, defaultDomain string) string {
 	return `<!DOCTYPE html>
 <html class="dark" lang="id">
 <head>
@@ -89,7 +89,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Vignette Radial Ambien Latar Belakang */
+    /* Pendaran Latar Belakang Ambien */
     .hero-glow {
       position: fixed;
       inset: 0;
@@ -98,7 +98,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
       z-index: 0;
     }
 
-    /* Kontainer Utama Terpusat Secara Vertikal & Horizontal */
+    /* Kontainer Utama Terpusat Vertikal & Horizontal */
     .main-wrap {
       position: relative;
       z-index: 10;
@@ -351,20 +351,21 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
 
     .grid-4 {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.5rem;
       font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
-      font-size: 0.75rem;
     }
     @media (min-width: 640px) {
-      .grid-4 { grid-template-columns: repeat(4, 1fr); }
+      .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
 
     .tel-card {
-      padding: 0.65rem;
-      border-radius: 5px;
+      padding: 0.6rem 0.65rem;
+      border-radius: 6px;
       border: 1px solid var(--border);
       background: rgba(17, 19, 26, 0.9);
+      min-width: 0;
+      overflow: hidden;
     }
 
     .tel-label {
@@ -373,10 +374,12 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
       text-transform: uppercase;
       display: block;
       margin-bottom: 0.2rem;
+      letter-spacing: 0.03em;
     }
 
     .tel-val {
       color: var(--text);
+      font-size: 0.72rem;
       font-weight: 500;
       white-space: nowrap;
       overflow: hidden;
@@ -547,7 +550,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
         </button>
       </div>
 
-      <!-- Accordion Telemetri Server -->
+      <!-- Accordion Telemetri Server (Tertutup Secara Bawaan) -->
       <div class="telemetry-container">
         <button class="telemetry-toggle" onclick="toggleTelemetry()">
           <div class="telemetry-toggle-left">
@@ -557,7 +560,8 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
           <svg id="telemetry-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
 
-        <div class="telemetry-drawer" id="telemetry-drawer">
+        <!-- Laci Diagnostik Tertutup Default (hidden) -->
+        <div class="telemetry-drawer hidden" id="telemetry-drawer">
           <div class="grid-4">
             <div class="tel-card">
               <span class="tel-label">Host</span>
@@ -565,15 +569,15 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
             </div>
             <div class="tel-card">
               <span class="tel-label">Response Code</span>
-              <span class="tel-val status">` + code + ` ` + title + `</span>
+              <span class="tel-val status" title="` + statusLabel + `">` + statusLabel + `</span>
             </div>
             <div class="tel-card">
               <span class="tel-label">Edge Node</span>
-              <span class="tel-val">sg-edge-01 (SIN)</span>
+              <span class="tel-val" title="sg-edge-01 (SIN)">sg-edge-01 (SIN)</span>
             </div>
             <div class="tel-card">
               <span class="tel-label">Trace ID</span>
-              <span class="tel-val" id="trace-id">8f3d9b4c0e21a7</span>
+              <span class="tel-val" id="trace-id" title="8f3d9b4c0e">8f3d9b4c0e</span>
             </div>
           </div>
 
@@ -647,7 +651,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
     setInterval(updateClock, 1000);
     updateClock();
 
-    // Navigasi kembali ke riwayat sebelumnya jika tersedia
+    // Navigasi kembali ke riwayat sebelumnya jika berasal dari host yang sama
     function goHomeOrBack(e) {
       if (window.history.length > 1 && document.referrer && new URL(document.referrer).hostname === window.location.hostname) {
         e.preventDefault();
@@ -658,7 +662,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
     // Salin info diagnostik
     function copyDiagnostics() {
       const code = '` + code + `';
-      const trace = document.getElementById('trace-id')?.textContent.trim() || '8f3d9b4c0e21a7';
+      const trace = document.getElementById('trace-id')?.textContent.trim() || '8f3d9b4c0e';
       const host = window.location.hostname || '` + defaultDomain + `';
       const node = 'sg-edge-01 (SIN)';
       const utc = document.getElementById('utc-time')?.textContent.trim() || 'UTC';
@@ -680,16 +684,20 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
       });
     }
 
-    // Inisialisasi awal hostname dinamis & trace ID acak
+    // Inisialisasi awal hostname dinamis & trace ID 10 karakter rapi
     document.addEventListener('DOMContentLoaded', () => {
       const curHost = window.location.hostname || '` + defaultDomain + `';
       document.querySelectorAll('.domain-host-label').forEach(el => {
         el.textContent = curHost;
       });
 
-      const randomHex = Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 8);
+      // Hasilkan Trace ID 10 karakter hex agar pas di dalam kartu tanpa terpotong
+      const randomHex = Math.random().toString(16).substring(2, 12);
       const traceEl = document.getElementById('trace-id');
-      if (traceEl) traceEl.textContent = randomHex;
+      if (traceEl) {
+        traceEl.textContent = randomHex;
+        traceEl.title = randomHex;
+      }
     });
   </script>
 </body>
@@ -699,6 +707,7 @@ func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, d
 var (
 	tpl404 = buildCleanEdgePage(
 		"404",
+		"404 Not Found",
 		"HTTP 404 NOT FOUND",
 		"Edge Router",
 		"#fbbf24",
@@ -711,6 +720,7 @@ var (
 
 	tpl403 = buildCleanEdgePage(
 		"403",
+		"403 Forbidden",
 		"HTTP 403 FORBIDDEN",
 		"Security Guard",
 		"#fb7185",
@@ -723,6 +733,7 @@ var (
 
 	tpl50x = buildCleanEdgePage(
 		"502",
+		"502 Bad Gateway",
 		"HTTP 502 BAD GATEWAY",
 		"Upstream Offline",
 		"#fb7185",
@@ -735,6 +746,7 @@ var (
 
 	tplWelcome = buildCleanEdgePage(
 		"200",
+		"200 OK",
 		"HTTP 200 OK — SITE READY",
 		"Virtual Host Ready",
 		"#34d399",
