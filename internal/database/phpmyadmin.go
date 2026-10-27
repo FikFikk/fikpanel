@@ -215,19 +215,42 @@ func EnsurePhpMyAdminAvailable(ctx context.Context) (docRoot string, folder stri
 	return docRoot, folder, fullPath, nil
 }
 
+// EnsurePhpMyAdminConfigSettings memastikan konfigurasi phpMyAdmin memiliki direktif penting seperti hide_db
+func EnsurePhpMyAdminConfigSettings(fullPath string) {
+	cfgPath := filepath.Join(fullPath, "config.inc.php")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	if !strings.Contains(content, "hide_db") {
+		hideDbDirective := "\n$cfg['Servers'][$i]['hide_db'] = '^(information_schema|performance_schema|mysql|sys)$';\n"
+		if strings.Contains(content, "$cfg['Servers'][$i]['AllowNoPassword']") {
+			content = strings.Replace(content, "$cfg['Servers'][$i]['AllowNoPassword'] = true;", "$cfg['Servers'][$i]['AllowNoPassword'] = true;"+hideDbDirective, 1)
+		} else if strings.Contains(content, "$cfg['Servers'][$i]['compress']") {
+			content = strings.Replace(content, "$cfg['Servers'][$i]['compress'] = false;", "$cfg['Servers'][$i]['compress'] = false;"+hideDbDirective, 1)
+		} else {
+			content += hideDbDirective
+		}
+		_ = os.WriteFile(cfgPath, []byte(content), 0644)
+	}
+}
+
 // GetPhpMyAdminProxy mengembalikan ReverseProxy aktif yang mengarah ke instance resmi phpMyAdmin
 func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 	globalPmaDaemon.mu.Lock()
 	defer globalPmaDaemon.mu.Unlock()
 
-	docRoot, folder, _, found := FindPhpMyAdminLocation()
+	docRoot, folder, fullPath, found := FindPhpMyAdminLocation()
 	if !found {
 		var err error
-		docRoot, folder, _, err = EnsurePhpMyAdminAvailable(context.Background())
+		docRoot, folder, fullPath, err = EnsurePhpMyAdminAvailable(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("direktori fisik paket resmi phpMyAdmin tidak ditemukan di server: %w", err)
 		}
 	}
+
+	EnsurePhpMyAdminConfigSettings(fullPath)
 
 	globalPmaDaemon.docRoot = docRoot
 	globalPmaDaemon.folder = folder
@@ -325,21 +348,26 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 						}
 
 						if targetUser != "" || targetDb != "" {
-							// 1. Isi field username secara langsung di HTML
+							// 1. Matikan autocomplete peramban agar tidak menginjeksi kredensial usang
+							htmlStr = strings.Replace(htmlStr, `<form method="post" id="login_form"`, `<form method="post" id="login_form" autocomplete="off"`, 1)
+							htmlStr = strings.Replace(htmlStr, `id="input_username"`, `id="input_username" autocomplete="off"`, 1)
+							htmlStr = strings.Replace(htmlStr, `id="input_password"`, `id="input_password" autocomplete="new-password"`, 1)
+
+							// 2. Isi field username secara langsung di HTML
 							if targetUser != "" {
 								escapedUser := html.EscapeString(targetUser)
 								htmlStr = strings.Replace(htmlStr, `id="input_username" value=""`, fmt.Sprintf(`id="input_username" value="%s"`, escapedUser), 1)
 								htmlStr = strings.Replace(htmlStr, `name="pma_username" id="input_username" value=""`, fmt.Sprintf(`name="pma_username" id="input_username" value="%s"`, escapedUser), 1)
 							}
 
-							// 2. Isi field password bila tersedia di sesi SSO
+							// 3. Isi field password bila tersedia di sesi SSO
 							if targetPass != "" {
 								escapedPass := html.EscapeString(targetPass)
 								htmlStr = strings.Replace(htmlStr, `id="input_password" value=""`, fmt.Sprintf(`id="input_password" value="%s"`, escapedPass), 1)
 								htmlStr = strings.Replace(htmlStr, `name="pma_password" id="input_password" value=""`, fmt.Sprintf(`name="pma_password" id="input_password" value="%s"`, escapedPass), 1)
 							}
 
-							// 3. Kunci rute dan target database saat form login dikirim
+							// 4. Kunci rute dan target database saat form login dikirim
 							if targetRoute == "" && targetDb != "" {
 								targetRoute = "/database/structure"
 							}
@@ -357,7 +385,7 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 								htmlStr = strings.Replace(htmlStr, `<div class="card-header">`, badgeHtml, 1)
 							}
 
-							// 4. Injeksi skrip klien sinkronisasi untuk menjaga isi field tetap stabil terhadap event peramban
+							// 5. Injeksi skrip klien sinkronisasi untuk memastikan akun target aktif dan menimpa autofill peramban usang
 							syncScript := fmt.Sprintf(`<script>
 (function() {
   var tUser = %q;
@@ -368,12 +396,12 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
     var u = document.getElementById('input_username');
     var p = document.getElementById('input_password');
     var form = document.getElementById('login_form');
-    if (u && tUser && (!u.value || u.value === '')) {
+    if (u && tUser && u.value !== tUser) {
       u.value = tUser;
       u.dispatchEvent(new Event('input', { bubbles: true }));
       u.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    if (p && tPass && (!p.value || p.value === '')) {
+    if (p && tPass && p.value !== tPass) {
       p.value = tPass;
       p.dispatchEvent(new Event('input', { bubbles: true }));
       p.dispatchEvent(new Event('change', { bubbles: true }));
@@ -410,7 +438,7 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
       }
     } catch (e) {}
 
-    // Auto-submit formulir masuk secara instan saat kredensial SSO tersedia
+    // Auto-submit formulir masuk secara instan saat kredensial SSO tersedia dan cocok
     if (tUser && tPass && form && !window.__pma_sso_submitted) {
       if (u && p && u.value === tUser && p.value === tPass) {
         window.__pma_sso_submitted = true;
@@ -423,7 +451,7 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
           } else {
             form.submit();
           }
-        }, 100);
+        }, 80);
       }
     }
   }
@@ -434,7 +462,9 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
   }
   setTimeout(syncPma, 50);
   setTimeout(syncPma, 150);
-  setTimeout(syncPma, 350);
+  setTimeout(syncPma, 300);
+  setTimeout(syncPma, 600);
+  setTimeout(syncPma, 1000);
 })();
 </script>`, targetUser, targetPass, targetDb, targetRoute)
 

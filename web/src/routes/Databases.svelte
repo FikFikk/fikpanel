@@ -803,11 +803,49 @@
   }
 
 
-  // Salin teks ke papan klip
+  // Salin teks ke papan klip (mendukung HTTPS dan HTTP non-secure context)
   async function copyText(text: string, label: string) {
+    if (!text) {
+      notify(`Nilai ${label} kosong`, 'warning');
+      return;
+    }
+    // 1. Coba Clipboard API modern bila peramban berada dalam Secure Context (HTTPS/localhost)
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        notify(`${label} disalin ke papan klip`, 'success');
+        return;
+      } catch {
+        // Lanjutkan ke fallback jika izin ditolak
+      }
+    }
+
+    // 2. Fallback universal menggunakan textarea untuk HTTP IP (non-secure context)
     try {
-      await navigator.clipboard.writeText(text);
-      notify(`${label} disalin ke papan klip`, 'success');
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      // Konfigurasi agar tidak tampak tetapi tetap dapat menerima fokus dan seleksi
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '0';
+      ta.style.width = '2em';
+      ta.style.height = '2em';
+      ta.style.padding = '0';
+      ta.style.border = 'none';
+      ta.style.outline = 'none';
+      ta.style.boxShadow = 'none';
+      ta.style.background = 'transparent';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const successful = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (successful) {
+        notify(`${label} disalin ke papan klip`, 'success');
+      } else {
+        notify('Gagal menyalin ke papan klip', 'error');
+      }
     } catch {
       notify('Gagal menyalin ke papan klip', 'error');
     }
