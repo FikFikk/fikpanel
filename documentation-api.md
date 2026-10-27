@@ -2420,8 +2420,87 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.15 Web Application Firewall (WAF) & Telemetri Serangan
+
+Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menyertakan header `Content-Type: application/json` dan `X-Panel-Request: 1`.
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/overview` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "overview": {"today_requests": 1420, "today_malicious": 179, "yesterday_malicious": 65, "intercept_pct": 12.6, "realtime_qps": 0.8, "origin_latency_ms": 4, "top_attack_ips": [...], "attack_paths": [...], "top_domains": [...]}}` |
+| Notes | Menyediakan data ringkasan metrik pencegatan WAF, daftar 10 IP penyerang teratas dengan metadata negara/kota/ISP, jalur URL yang di-probe, dan peringkat domain yang diserang. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/sites` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "sites": [{"site_name": "example.com", "waf_enabled": true, "cc_defense": true, "sql_defense": true, "xss_defense": true, "scan_defense": true, "total_blocked": 42}]}` |
+| Notes | Menampilkan konfigurasi status modul proteksi WAF per virtual host domain. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/sites/{domain}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Objek konfigurasi WAF situs (`waf_enabled`, `cc_defense`, `sql_defense`, `xss_defense`, `scan_defense`, dll) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi WAF situs berhasil diperbarui", "site": {...}}` |
+| Notes | Memperbarui modul proteksi WAF domain dan dicatat ke audit log `waf.site_update`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/rules` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `type` (string, opsional: "ip_blacklist", "ip_whitelist", "url_rule", dll) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "rules": [{"id": 1, "rule_type": "ip_blacklist", "match_value": "103.145.13.22", "action": "block", "remark": "Automated probe", "enabled": true}]}` |
+| Notes | Mengembalikan aturan penyaringan akses IP atau URL. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/rules` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `rule_type` (string, wajib), `match_value` (string, wajib), `action` (string, default "block"), `remark` (string, opsional), `enabled` (bool, default true) |
+| Response | HTTP 201 `{"ok": true, "rule": {...}}` |
+| Notes | Menambahkan aturan blacklist / whitelist baru. Dicatat ke audit log `waf.rule_add`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/waf/rules/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Menghapus aturan penyaringan WAF berdasarkan ID dan dicatat ke audit log `waf.rule_delete`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/events` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, default 50, maks 500) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "events": [{"id": 1, "ts": 1771747200, "client_ip": "103.145.13.22", "country_code": "VN", "country_name": "Vietnam", "region": "Hanoi", "city": "Hanoi", "isp": "VNPT", "latitude": 21.0285, "longitude": 105.8542, "device": "Bot / Scanner", "os": "Linux", "browser": "LeakIX Scanner", "attack_type": "Sensitive File Probe", "rule_name": "Sensitive File Probe", "request_path": "/.env", "http_method": "GET", "action_taken": "block"}]}` |
+| Notes | Menghasilkan daftar kronologis log ancaman lengkap dengan telemetri geolokasi akurat hingga koordinat latitude/longitude, ISP, perangkat klien, OS, peramban, serta vektor serangan. Digunakan oleh Leaflet Attack Map Studio untuk merender laser busur trajektori dan beacon animasi. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
+| Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |
+|---|---|---|---|
+| `waf.LogWatcher.Start` | Setiap 4 detik (background daemon) | Memindai byte baru pada seluruh access log Nginx (`/var/log/nginx/*.access.log`), mendeteksi probe keamanan, mengekstrak telemetri client (IP, User-Agent, Device, OS, Browser), mengklasifikasikan jenis ancaman, dan melengkapi koordinat geolokasi (Country, City, ISP, Lat/Long) | Mengisi dan memperbarui entri pada tabel `waf_events`; melakukan deduplikasi event dari IP dan path yang sama dalam jeda 15 detik |
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
 | `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
 | `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |

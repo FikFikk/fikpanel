@@ -1031,12 +1031,20 @@ export interface WAFEvent {
   client_ip: string;
   country: string;
   country_code: string;
+  region?: string;
+  city?: string;
+  isp?: string;
   latitude: number;
   longitude: number;
+  device?: string;
+  os?: string;
+  browser?: string;
+  method?: string;
   attack_type: string;
   action: 'block' | 'intercept' | 'challenge';
   url_path: string;
   user_agent?: string;
+  rule_name?: string;
   status_code: number;
   created_at: number;
 }
@@ -1049,7 +1057,15 @@ export interface WAFOverview {
   intercept_rate: number;
   realtime_qps: number;
   origin_latency_ms: number;
-  top_attack_ips: { ip: string; count: number; country: string; country_code: string }[];
+  top_attack_ips: {
+    ip: string;
+    count: number;
+    country: string;
+    country_code: string;
+    region?: string;
+    city?: string;
+    isp?: string;
+  }[];
   attacked_domains: { domain: string; count: number }[];
   traffic_ranking: { domain: string; requests: number }[];
   visited_pages: { path: string; count: number }[];

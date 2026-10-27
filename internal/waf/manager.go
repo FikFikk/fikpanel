@@ -36,19 +36,27 @@ type WAFRule struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// WAFEvent merepresentasikan satu insiden penangkapan serangan oleh WAF
+// WAFEvent merepresentasikan satu insiden penangkapan serangan oleh WAF dengan telemetri lengkap
 type WAFEvent struct {
 	ID          int64   `json:"id"`
 	SiteName    string  `json:"site_name"`
 	ClientIP    string  `json:"client_ip"`
 	Country     string  `json:"country"`
 	CountryCode string  `json:"country_code"`
+	Region      string  `json:"region"`
+	City        string  `json:"city"`
+	ISP         string  `json:"isp"`
 	Latitude    float64 `json:"latitude"`
 	Longitude   float64 `json:"longitude"`
+	Device      string  `json:"device"`
+	OS          string  `json:"os"`
+	Browser     string  `json:"browser"`
+	Method      string  `json:"method"`
 	AttackType  string  `json:"attack_type"`
 	Action      string  `json:"action"`
 	URLPath     string  `json:"url_path"`
 	UserAgent   string  `json:"user_agent"`
+	RuleName    string  `json:"rule_name"`
 	StatusCode  int     `json:"status_code"`
 	CreatedAt   int64   `json:"created_at"`
 }
@@ -76,6 +84,9 @@ type AttackIPItem struct {
 	Count       int    `json:"count"`
 	Country     string `json:"country"`
 	CountryCode string `json:"country_code"`
+	Region      string `json:"region"`
+	City        string `json:"city"`
+	ISP         string `json:"isp"`
 }
 
 type AttackedDomain struct {
@@ -93,16 +104,24 @@ type VisitedPageItem struct {
 	Count int    `json:"count"`
 }
 
-// Manager mengelola mesin WAF, aturan proteksi, dan pencatatan telemetri insiden
+// Manager mengelola mesin WAF, aturan proteksi, watcher log, dan pencatatan telemetri insiden
 type Manager struct {
-	store *store.Store
-	mu    sync.RWMutex
+	store      *store.Store
+	logWatcher *LogWatcher
+	mu         sync.RWMutex
 }
 
-// NewManager membuat instance manajer WAF baru
+// NewManager membuat instance manajer WAF baru dan menyalakan watcher log Nginx
 func NewManager(s *store.Store) *Manager {
-	m := &Manager{store: s}
-	go m.seedInitialData(context.Background())
+	m := &Manager{
+		store:      s,
+		logWatcher: NewLogWatcher(s.DB(), "/var/log/nginx"),
+	}
+	ctx := context.Background()
+	go m.seedInitialData(ctx)
+	if m.logWatcher != nil {
+		go m.logWatcher.Start(ctx)
+	}
 	return m
 }
 
@@ -143,30 +162,45 @@ func (m *Manager) seedInitialData(ctx context.Context) {
 			Site     string
 			IP       string
 			CC       string
+			Country  string
+			Region   string
+			City     string
+			ISP      string
+			Lat      float64
+			Lng      float64
+			Device   string
+			OS       string
+			Browser  string
+			Method   string
 			Type     string
 			Path     string
 			Action   string
+			RuleName string
 			SecAgo   int64
 		}{
-			{"fikpanel.net", "198.51.100.24", "US", "SQL Injection", "/wp-login.php?id=1' OR '1'='1", "block", 120},
-			{"api.example.com", "45.154.255.89", "RU", "Fake Spider", "/robots.txt", "intercept", 340},
-			{"fikpanel.net", "185.220.101.5", "DE", "Path Traversal", "/etc/passwd", "block", 560},
-			{"store.myid.com", "114.119.130.4", "SG", "CC Flood", "/api/checkout", "challenge", 890},
-			{"blog.domain.com", "180.251.14.92", "ID", "Bad Bot", "/xmlrpc.php", "block", 1200},
-			{"fikpanel.net", "116.179.32.14", "CN", "SQL Injection", "/index.php?search=union+select", "block", 1800},
-			{"demo.server.io", "89.248.165.71", "NL", "XSS Attack", "/comment?name=<script>alert(1)</script>", "block", 2400},
-			{"api.example.com", "103.145.13.22", "VN", "CC Flood", "/v1/auth/token", "challenge", 3600},
-			{"fikpanel.net", "142.250.190.46", "US", "Bad Bot", "/.env", "block", 4200},
-			{"store.myid.com", "194.26.29.112", "RO", "Malicious Probe", "/phpmyadmin/index.php", "block", 5100},
+			{"fikpanel.net", "198.51.100.24", "US", "United States", "California", "San Jose", "Cloudflare Warp CDN", 37.3382, -121.8863, "Desktop (PC)", "Windows 11", "Chrome 131", "POST", "SQL Injection", "/wp-login.php?id=1' OR '1'='1", "block", "Deteksi Pola SQLi OWASP", 120},
+			{"api.example.com", "45.154.255.89", "RU", "Russia", "Moscow", "Moscow", "Selectel Cloud", 55.7558, 37.6173, "Bot / Automated Scanner", "Linux", "LeakIX Security Scanner", "GET", "Vulnerability Scanner", "/robots.txt", "intercept", "Pemindaian Botnet Teridentifikasi", 340},
+			{"fikpanel.net", "185.220.101.5", "DE", "Germany", "Hesse", "Frankfurt am Main", "Tor Exit Node", 50.1109, 8.6821, "Desktop (PC)", "Linux", "cURL CLI", "GET", "Path Traversal", "/etc/passwd", "block", "Akses Ilegal ke File Sistem", 560},
+			{"store.myid.com", "114.119.130.4", "SG", "Singapore", "Central Region", "Singapore", "Singtel Broadband", 1.3521, 103.8198, "Mobile (Smartphone)", "Android 14", "Chrome Mobile", "POST", "CC Flood", "/api/checkout", "challenge", "Tingkat Permintaan Melebihi Batas (Rate Limit)", 890},
+			{"blog.domain.com", "180.251.14.92", "ID", "Indonesia", "DKI Jakarta", "Jakarta Pusat", "PT Telkom Indonesia", -6.2088, 106.8456, "Desktop (PC)", "Windows 10", "Firefox 134", "POST", "Bad Bot", "/xmlrpc.php", "block", "Percobaan Brute Force XML-RPC", 1200},
+			{"fikpanel.net", "116.179.32.14", "CN", "China", "Guangdong", "Shenzhen", "China Telecom Backbone", 22.5431, 114.0579, "Bot / Automated Scanner", "Linux", "sqlmap Pentest Tool", "GET", "SQL Injection", "/index.php?search=union+select", "block", "Injeksi SQL Parameter Search", 1800},
+			{"demo.server.io", "89.248.165.71", "NL", "Netherlands", "North Holland", "Amsterdam", "DigitalOcean LLC", 52.3676, 4.9041, "Desktop (PC)", "macOS", "Safari 17", "POST", "XSS Attack", "/comment?name=<script>alert(1)</script>", "block", "Payload Cross-Site Scripting Ditolak", 2400},
+			{"api.example.com", "103.145.13.22", "VN", "Vietnam", "Hanoi", "Hanoi", "Viettel Group", 21.0285, 105.8542, "Mobile (Smartphone)", "iOS 17", "Apple Safari", "GET", "CC Flood", "/v1/auth/token", "challenge", "Mitigasi Lonjakan Akses Otomatis", 3600},
+			{"fikpanel.net", "142.250.190.46", "US", "United States", "New York", "New York City", "Google Cloud Platform", 40.7128, -74.0060, "Bot / Automated Scanner", "Linux", "Python Requests Suite", "GET", "Sensitive File Probe", "/.env", "block", "Pencurian Kredensial Environment", 4200},
+			{"store.myid.com", "194.26.29.112", "RO", "Romania", "Bucharest", "Bucharest", "Voxility S.R.L.", 44.4268, 26.1025, "Desktop (PC)", "Windows 11", "Microsoft Edge", "GET", "Malicious Probe", "/phpmyadmin/index.php", "block", "Probe Akses Panel Database", 5100},
 		}
 
 		now := time.Now().Unix()
 		for _, se := range sampleEvents {
-			coords := countryCoordinates[se.CC]
 			_, _ = m.store.DB().ExecContext(ctx, `
-				INSERT INTO waf_events (site_name, client_ip, country, country_code, latitude, longitude, attack_type, action, url_path, status_code, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 403, ?)
-			`, se.Site, se.IP, coords.Name, se.CC, coords.Lat, coords.Lng, se.Type, se.Action, se.Path, now-se.SecAgo)
+				INSERT INTO waf_events (
+					site_name, client_ip, country, country_code, region, city, isp,
+					latitude, longitude, device, os, browser, method,
+					attack_type, action, url_path, rule_name, status_code, created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 403, ?)
+			`, se.Site, se.IP, se.Country, se.CC, se.Region, se.City, se.ISP,
+				se.Lat, se.Lng, se.Device, se.OS, se.Browser, se.Method,
+				se.Type, se.Action, se.Path, se.RuleName, now-se.SecAgo)
 		}
 	}
 
@@ -234,18 +268,24 @@ func (m *Manager) GetOverview(ctx context.Context) (*WAFOverview, error) {
 		ov.InterceptRate = float64(ov.MaliciousRequests) / float64(ov.TodayRequests) * 100
 	}
 
-	// 1. Top Attack IPs
+	// 1. Top Attack IPs dengan geolokasi dan ISP lengkap
 	rowsIP, err := m.store.DB().QueryContext(ctx, `
-		SELECT client_ip, country, country_code, COUNT(1) as cnt 
+		SELECT client_ip, 
+		       COALESCE(country, ''), 
+		       COALESCE(country_code, ''), 
+		       COALESCE(region, ''), 
+		       COALESCE(city, ''), 
+		       COALESCE(isp, ''), 
+		       COUNT(1) as cnt 
 		FROM waf_events 
-		GROUP BY client_ip, country, country_code 
+		GROUP BY client_ip, country, country_code, region, city, isp 
 		ORDER BY cnt DESC LIMIT 10
 	`)
 	if err == nil {
 		defer rowsIP.Close()
 		for rowsIP.Next() {
 			var item AttackIPItem
-			if err := rowsIP.Scan(&item.IP, &item.Country, &item.CountryCode, &item.Count); err == nil {
+			if err := rowsIP.Scan(&item.IP, &item.Country, &item.CountryCode, &item.Region, &item.City, &item.ISP, &item.Count); err == nil {
 				ov.TopAttackIPs = append(ov.TopAttackIPs, item)
 			}
 		}
@@ -431,13 +471,19 @@ func (m *Manager) DeleteRule(ctx context.Context, id int64) error {
 	return err
 }
 
-// ListEvents mengambil rekaman insiden serangan terbaru
+// ListEvents mengambil rekaman insiden serangan terbaru beserta telemetri lengkap
 func (m *Manager) ListEvents(ctx context.Context, limit int) ([]WAFEvent, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := m.store.DB().QueryContext(ctx, `
-		SELECT id, site_name, client_ip, country, country_code, latitude, longitude, attack_type, action, url_path, user_agent, status_code, created_at
+		SELECT id, site_name, client_ip, 
+		       COALESCE(country, ''), COALESCE(country_code, ''), 
+		       COALESCE(region, ''), COALESCE(city, ''), COALESCE(isp, ''),
+		       latitude, longitude, 
+		       COALESCE(device, ''), COALESCE(os, ''), COALESCE(browser, ''), COALESCE(method, 'GET'),
+		       attack_type, action, url_path, 
+		       COALESCE(user_agent, ''), COALESCE(rule_name, ''), status_code, created_at
 		FROM waf_events ORDER BY created_at DESC LIMIT ?
 	`, limit)
 	if err != nil {
@@ -449,9 +495,13 @@ func (m *Manager) ListEvents(ctx context.Context, limit int) ([]WAFEvent, error)
 	for rows.Next() {
 		var e WAFEvent
 		if err := rows.Scan(
-			&e.ID, &e.SiteName, &e.ClientIP, &e.Country, &e.CountryCode,
-			&e.Latitude, &e.Longitude, &e.AttackType, &e.Action,
-			&e.URLPath, &e.UserAgent, &e.StatusCode, &e.CreatedAt,
+			&e.ID, &e.SiteName, &e.ClientIP,
+			&e.Country, &e.CountryCode,
+			&e.Region, &e.City, &e.ISP,
+			&e.Latitude, &e.Longitude,
+			&e.Device, &e.OS, &e.Browser, &e.Method,
+			&e.AttackType, &e.Action, &e.URLPath,
+			&e.UserAgent, &e.RuleName, &e.StatusCode, &e.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

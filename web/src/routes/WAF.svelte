@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import L from 'leaflet';
+  import 'leaflet/dist/leaflet.css';
   import { apiFetch } from '../lib/api';
   import type {
     WAFOverview,
@@ -16,6 +18,14 @@
   // State Tab Navigasi WAF
   type WAFTab = 'overview' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
   let activeTab = $state<WAFTab>('overview');
+
+  // State Telemetri & Filter Attack Map
+  let selectedEvent = $state<WAFEvent | null>(null);
+  let attackTypeFilter = $state('all');
+  let countryFilter = $state('');
+  let mapSearchQuery = $state('');
+  let attackMapInstance: L.Map | null = null;
+  let overviewMapInstance: L.Map | null = null;
 
   // Loading States
   let loadingOverview = $state(true);
@@ -337,15 +347,277 @@
     }
   }
 
-  // Konversi koordinat bumi (lat, lng) ke koordinat proyeksi peta SVG (1000x500)
-  function projectCoordinates(lat: number, lng: number): { x: number; y: number } {
-    const x = ((lng + 180) / 360) * 1000;
-    const y = ((90 - lat) / 180) * 500;
-    return { x, y };
+  // Koordinat server host Edge (Default Singapore AWS: 1.3521, 103.8198)
+  const hostServerLocation = { lat: 1.3521, lng: 103.8198, name: 'FikPanel Origin Host (AWS Singapore)' };
+
+  // Filter daftar event serangan untuk Attack Map
+  let filteredEvents = $derived(
+    events.filter((ev) => {
+      if (attackTypeFilter !== 'all' && ev.attack_type !== attackTypeFilter) return false;
+      if (countryFilter && ev.country_code !== countryFilter) return false;
+      if (!mapSearchQuery.trim()) return true;
+      const q = mapSearchQuery.toLowerCase();
+      return (
+        ev.client_ip.toLowerCase().includes(q) ||
+        ev.country.toLowerCase().includes(q) ||
+        (ev.city && ev.city.toLowerCase().includes(q)) ||
+        (ev.isp && ev.isp.toLowerCase().includes(q)) ||
+        ev.url_path.toLowerCase().includes(q) ||
+        ev.site_name.toLowerCase().includes(q) ||
+        (ev.device && ev.device.toLowerCase().includes(q)) ||
+        (ev.os && ev.os.toLowerCase().includes(q))
+      );
+    })
+  );
+
+  // Statistik negara penyerang terbanyak
+  let countryStats = $derived(
+    (() => {
+      const counts: Record<string, { code: string; name: string; count: number; lat: number; lng: number }> = {};
+      for (const ev of events) {
+        const key = ev.country_code || 'XX';
+        if (!counts[key]) {
+          counts[key] = {
+            code: key,
+            name: ev.country || 'Unknown',
+            count: 0,
+            lat: ev.latitude || 0,
+            lng: ev.longitude || 0,
+          };
+        }
+        counts[key].count++;
+      }
+      return Object.values(counts).sort((a, b) => b.count - a.count);
+    })()
+  );
+
+  // Buat kurva quadratic bezier untuk laser serangan antar koordinat bumi
+  function createCurvedArc(from: [number, number], to: [number, number], pointsCount = 20): [number, number][] {
+    const [lat1, lng1] = from;
+    const [lat2, lng2] = to;
+    const midLat = (lat1 + lat2) / 2;
+    const midLng = (lng1 + lng2) / 2;
+    const dLat = lat2 - lat1;
+    const dLng = lng2 - lng1;
+    const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+    const arcHeight = Math.min(dist * 0.22, 22);
+
+    const ctrlLat = midLat + (dLng > 0 ? arcHeight : -arcHeight) * 0.35;
+    const ctrlLng = midLng + (dLat > 0 ? -arcHeight : arcHeight) * 0.35;
+
+    const points: [number, number][] = [];
+    for (let i = 0; i <= pointsCount; i++) {
+      const t = i / pointsCount;
+      const lat = (1 - t) * (1 - t) * lat1 + 2 * (1 - t) * t * ctrlLat + t * t * lat2;
+      const lng = (1 - t) * (1 - t) * lng1 + 2 * (1 - t) * t * ctrlLng + t * t * lng2;
+      points.push([lat, lng]);
+    }
+    return points;
   }
 
-  // Koordinat server host (Indonesia / Jakarta -6.2, 106.8 atau Singapore 1.35, 103.8)
-  const hostServerCoords = projectCoordinates(1.3521, 103.8198);
+  // Blokir IP seketika ke aturan blacklist WAF
+  async function quickBlockIP(ip: string, reason?: string) {
+    if (!ip) return;
+    try {
+      await apiFetch('/api/waf/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          rule_type: 'ip_blacklist',
+          ip_version: ip.includes(':') ? 'IPv6' : 'IPv4',
+          start_ip: ip.trim(),
+          remarks: reason || 'Diblokir langsung dari Attack Map',
+        }),
+      });
+      notify(`IP ${ip} berhasil dimasukkan ke daftar hitam (Blacklist)!`, 'success');
+      await loadRules();
+    } catch (err: any) {
+      notify(err.message || 'Gagal memblokir IP', 'error');
+    }
+  }
+
+  // Terbang ke lokasi negara pada Attack Map
+  function flyToCountry(lat: number, lng: number) {
+    if (attackMapInstance) {
+      attackMapInstance.flyTo([lat, lng], 5, { duration: 1.2 });
+    }
+  }
+
+  // Terbang ke koordinat host server
+  function flyToServer() {
+    if (attackMapInstance) {
+      attackMapInstance.flyTo([hostServerLocation.lat, hostServerLocation.lng], 6, { duration: 1.2 });
+    }
+  }
+
+  // Reset tampilan peta ke pandangan global dunia
+  function resetMapView() {
+    if (attackMapInstance) {
+      attackMapInstance.flyTo([20, 10], 2, { duration: 1.0 });
+    }
+    countryFilter = '';
+    attackTypeFilter = 'all';
+    mapSearchQuery = '';
+  }
+
+  // Svelte Action untuk peta ringkas di tab Overview
+  function overviewMapAction(node: HTMLElement) {
+    const map = L.map(node, {
+      zoomControl: false,
+      attributionControl: false,
+      minZoom: 1,
+      maxZoom: 14,
+      scrollWheelZoom: false,
+    }).setView([20, 10], 1);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    overviewMapInstance = map;
+    const layersGroup = L.layerGroup().addTo(map);
+
+    function updateLayers() {
+      layersGroup.clearLayers();
+
+      // Marker host server
+      const serverIcon = L.divIcon({
+        className: 'leaflet-server-icon',
+        html: '<div class="server-beacon-dot"><div class="pulse-ring pulse-green"></div><span class="dot-core"></span></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+      L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 1000 }).addTo(layersGroup);
+
+      // Titik serangan & laser arc
+      const threatList = overview?.recent_events || [];
+      threatList.slice(0, 8).forEach((ev) => {
+        if (!ev.latitude && !ev.longitude) return;
+        const isBlock = ev.action === 'block';
+        const threatIcon = L.divIcon({
+          className: 'leaflet-threat-icon',
+          html: `<div class="threat-beacon-dot ${isBlock ? 'blocked' : 'warn'}"><div class="pulse-ring ${isBlock ? 'pulse-red' : 'pulse-amber'}"></div><span class="dot-core"></span></div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+        L.marker([ev.latitude, ev.longitude], { icon: threatIcon }).addTo(layersGroup);
+
+        const arcPoints = createCurvedArc([ev.latitude, ev.longitude], [hostServerLocation.lat, hostServerLocation.lng]);
+        L.polyline(arcPoints, {
+          className: isBlock ? 'laser-arc-danger' : 'laser-arc-warn',
+          weight: 2,
+        }).addTo(layersGroup);
+      });
+    }
+
+    updateLayers();
+
+    return {
+      update() {
+        updateLayers();
+      },
+      destroy() {
+        map.remove();
+        overviewMapInstance = null;
+      },
+    };
+  }
+
+  // Svelte Action untuk peta studio penuh di tab Attack Map
+  function attackMapAction(node: HTMLElement) {
+    const map = L.map(node, {
+      zoomControl: false,
+      attributionControl: false,
+      minZoom: 2,
+      maxZoom: 18,
+    }).setView([22, 15], 2);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    attackMapInstance = map;
+
+    const layersGroup = L.layerGroup().addTo(map);
+
+    function renderAttackLayers() {
+      layersGroup.clearLayers();
+
+      // Marker host server (Origin Target)
+      const serverIcon = L.divIcon({
+        className: 'leaflet-server-full',
+        html: `
+          <div class="server-host-beacon">
+            <div class="pulse-ring pulse-green"></div>
+            <div class="server-core-icon"><i class="ri-shield-check-fill"></i></div>
+            <div class="server-host-label">FIKPANEL EDGE HOST</div>
+          </div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+      L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 2000 })
+        .bindTooltip('FikPanel Protected Host (IP 54.254.187.53 - Singapore)', { direction: 'top', className: 'dark-map-tooltip' })
+        .addTo(layersGroup);
+
+      // Render tiap serangan terfilter
+      filteredEvents.forEach((ev) => {
+        if (!ev.latitude && !ev.longitude) return;
+        const isBlock = ev.action === 'block';
+
+        const threatIcon = L.divIcon({
+          className: 'leaflet-threat-full',
+          html: `
+            <div class="threat-marker-beacon ${isBlock ? 'threat-danger' : 'threat-warning'}">
+              <div class="pulse-ring ${isBlock ? 'pulse-red' : 'pulse-amber'}"></div>
+              <div class="threat-dot-inner"></div>
+            </div>
+          `,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+
+        const marker = L.marker([ev.latitude, ev.longitude], { icon: threatIcon }).addTo(layersGroup);
+
+        marker.bindTooltip(`
+          <div class="map-tooltip-content">
+            <span class="flag-code">${ev.country_code}</span> <strong>${ev.country}</strong> · ${ev.city || 'Kota Terdeteksi'}<br/>
+            <span class="mono">${ev.client_ip}</span> · <span class="badge-tag-xs">${ev.attack_type}</span>
+          </div>
+        `, { direction: 'top', className: 'dark-map-tooltip' });
+
+        marker.on('click', () => {
+          selectedEvent = ev;
+          map.flyTo([ev.latitude, ev.longitude], Math.max(map.getZoom(), 5), { duration: 0.8 });
+        });
+
+        // Gambar kurva laser serangan
+        const arc = createCurvedArc([ev.latitude, ev.longitude], [hostServerLocation.lat, hostServerLocation.lng]);
+        L.polyline(arc, {
+          className: isBlock ? 'laser-arc-danger' : 'laser-arc-warn',
+          weight: 2,
+        }).addTo(layersGroup);
+      });
+    }
+
+    renderAttackLayers();
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+
+    return {
+      update() {
+        renderAttackLayers();
+      },
+      destroy() {
+        map.remove();
+        attackMapInstance = null;
+      },
+    };
+  }
 
   function formatTime(ts: number): string {
     if (!ts) return '-';
@@ -468,69 +740,23 @@
 
     <!-- Map & Top Attack Table Section -->
     <div class="bento-two-col">
-      <!-- 2D Interactive World Map -->
+      <!-- 2D Interactive World Map (Leaflet Dark Matter) -->
       <div class="bento-panel map-panel">
         <div class="panel-header">
           <div class="panel-title-wrap">
             <i class="ri-earth-line text-accent"></i>
             <h3>Access / Block Map</h3>
           </div>
-          <span class="badge-soft">Peta Koordinat Serangan</span>
+          <div class="panel-header-badges">
+            <span class="badge-soft">Peta Koordinat Serangan Real-time</span>
+            <button class="btn-link text-xs text-accent" onclick={() => activeTab = 'attack_map'}>
+              Buka Peta Penuh <i class="ri-arrow-right-line"></i>
+            </button>
+          </div>
         </div>
 
         <div class="world-map-wrapper">
-          <svg viewBox="0 0 1000 500" class="world-map-svg" preserveAspectRatio="xMidYMid meet">
-            <rect width="1000" height="500" fill="#0b1219" rx="12" />
-            <!-- Pola grid peta bumi -->
-            <defs>
-              <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
-              </pattern>
-              <filter id="glow-node" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-            <rect width="1000" height="500" fill="url(#grid-pattern)" />
-
-            <!-- Siluet Benua Sederhana (World Silhouette Outlines) -->
-            <!-- Amerika Utara & Selatan -->
-            <path d="M160,80 Q220,70 300,100 Q260,160 220,200 Q260,250 280,320 Q240,430 200,380 Q180,300 160,220 Z" fill="#152433" stroke="#223b53" stroke-width="1" />
-            <!-- Eropa & Asia -->
-            <path d="M460,80 Q580,60 820,90 Q880,180 820,260 Q720,280 620,220 Q540,240 480,160 Z" fill="#152433" stroke="#223b53" stroke-width="1" />
-            <!-- Afrika -->
-            <path d="M480,200 Q560,200 580,280 Q540,380 480,360 Q440,280 480,200 Z" fill="#152433" stroke="#223b53" stroke-width="1" />
-            <!-- Australia -->
-            <path d="M780,320 Q880,310 880,380 Q800,420 760,360 Z" fill="#152433" stroke="#223b53" stroke-width="1" />
-
-            <!-- Garis Serangan Laser Melengkung (Arcs) dari Negara Penyerang ke Server Host -->
-            {#if overview?.recent_events}
-              {#each overview.recent_events.slice(0, 8) as ev}
-                {@const origin = projectCoordinates(ev.latitude, ev.longitude)}
-                <path
-                  d="M {origin.x},{origin.y} Q {(origin.x + hostServerCoords.x) / 2},{(origin.y + hostServerCoords.y) / 2 - 45} {hostServerCoords.x},{hostServerCoords.y}"
-                  fill="none"
-                  stroke={ev.action === 'block' ? 'rgba(239, 68, 68, 0.65)' : 'rgba(245, 158, 11, 0.55)'}
-                  stroke-width="1.8"
-                  stroke-dasharray="6,4"
-                  class="laser-beam"
-                />
-                <!-- Pin Titik Serangan Asal -->
-                <circle cx={origin.x} cy={origin.y} r="4.5" fill="#ef4444" filter="url(#glow-node)" />
-                <circle cx={origin.x} cy={origin.y} r="9" fill="none" stroke="rgba(239, 68, 68, 0.4)" class="pulse-ring" />
-              {/each}
-            {/if}
-
-            <!-- Server Host Pin (Target) -->
-            <circle cx={hostServerCoords.x} cy={hostServerCoords.y} r="7" fill="#00d084" filter="url(#glow-node)" />
-            <circle cx={hostServerCoords.x} cy={hostServerCoords.y} r="14" fill="none" stroke="rgba(0, 208, 132, 0.5)" class="pulse-ring" />
-            <text x={hostServerCoords.x + 12} y={hostServerCoords.y + 4} fill="#00d084" font-size="11" font-weight="bold" font-family="monospace">
-              SERVER HOST
-            </text>
-          </svg>
+          <div class="overview-leaflet-container" use:overviewMapAction></div>
         </div>
       </div>
 
@@ -566,7 +792,13 @@
                       <span class="badge-attack-count">{ipItem.count}</span>
                     </td>
                     <td class="text-subtle">
-                      <span class="flag-code">{ipItem.country_code}</span> {ipItem.country}
+                      <div class="attribution-main">
+                        <span class="flag-code">{ipItem.country_code}</span> 
+                        <span class="country-name">{ipItem.country}{ipItem.city ? ` · ${ipItem.city}` : ''}</span>
+                      </div>
+                      {#if ipItem.isp}
+                        <div class="attribution-isp mono truncate max-w-xs">{ipItem.isp}</div>
+                      {/if}
                     </td>
                   </tr>
                 {/each}
@@ -756,87 +988,280 @@
 
   <!-- TAB 3: ATTACK MAP (Screenshot 4) -->
   {:else if activeTab === 'attack_map'}
-    <div class="bento-panel">
-      <div class="panel-header">
+    <div class="bento-panel attack-studio-panel">
+      <!-- Studio Header & Quick Intelligence Stats -->
+      <div class="panel-header studio-header">
         <div class="panel-title-wrap">
-          <i class="ri-radar-line text-accent"></i>
-          <h3>Live Global Attack Map & Threat Telemetry</h3>
+          <div class="radar-live-indicator">
+            <span class="live-dot"></span>
+            <i class="ri-radar-line text-accent"></i>
+          </div>
+          <div>
+            <h3>Live Global Threat Map & Forensic Telemetry</h3>
+            <p class="text-xs text-subtle">Pemetaan geolokasi presisi serangan web, identifikasi perangkat, dan penindakan 1-klik</p>
+          </div>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick={loadEvents} disabled={loadingEvents}>
-          <i class="ri-refresh-line {loadingEvents ? 'spin' : ''}"></i> Refresh Log Serangan
-        </button>
+
+        <div class="studio-stats-pills">
+          <div class="stat-pill">
+            <span class="stat-pill-label">Total Serangan</span>
+            <span class="stat-pill-val danger">{events.length}</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-pill-label">IP Unik</span>
+            <span class="stat-pill-val warning">{new Set(events.map((e) => e.client_ip)).size}</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-pill-label">Negara Asal</span>
+            <span class="stat-pill-val info">{countryStats.length}</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick={loadEvents} disabled={loadingEvents}>
+            <i class="ri-refresh-line {loadingEvents ? 'spin' : ''}"></i> Segarkan
+          </button>
+        </div>
       </div>
 
-      <div class="large-map-container">
-        <svg viewBox="0 0 1000 500" class="world-map-svg full" preserveAspectRatio="xMidYMid meet">
-          <rect width="1000" height="500" fill="#080f14" rx="12" />
-          <defs>
-            <pattern id="grid-large" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
-            </pattern>
-          </defs>
-          <rect width="1000" height="500" fill="url(#grid-large)" />
+      <!-- Studio Filter Toolbar -->
+      <div class="studio-toolbar">
+        <div class="search-input-wrap">
+          <i class="ri-search-line search-icon"></i>
+          <input
+            type="text"
+            bind:value={mapSearchQuery}
+            placeholder="Cari IP, negara, kota, ISP, path target, atau perangkat..."
+            class="input-dark search-input"
+          />
+          {#if mapSearchQuery}
+            <button class="clear-search-btn" aria-label="Bersihkan pencarian" onclick={() => mapSearchQuery = ''}>&times;</button>
+          {/if}
+        </div>
 
-          <!-- Benua -->
-          <path d="M160,80 Q220,70 300,100 Q260,160 220,200 Q260,250 280,320 Q240,430 200,380 Q180,300 160,220 Z" fill="#131e28" stroke="#1d2e3e" stroke-width="1" />
-          <path d="M460,80 Q580,60 820,90 Q880,180 820,260 Q720,280 620,220 Q540,240 480,160 Z" fill="#131e28" stroke="#1d2e3e" stroke-width="1" />
-          <path d="M480,200 Q560,200 580,280 Q540,380 480,360 Q440,280 480,200 Z" fill="#131e28" stroke="#1d2e3e" stroke-width="1" />
-          <path d="M780,320 Q880,310 880,380 Q800,420 760,360 Z" fill="#131e28" stroke="#1d2e3e" stroke-width="1" />
+        <div class="toolbar-selects">
+          <select bind:value={attackTypeFilter} class="input-dark select-sm">
+            <option value="all">Semua Jenis Serangan</option>
+            <option value="SQL Injection">SQL Injection</option>
+            <option value="Sensitive File Probe">Sensitive File Probe</option>
+            <option value="Vulnerability Scanner">Vulnerability Scanner</option>
+            <option value="Path Traversal">Path Traversal</option>
+            <option value="XSS Attack">XSS Attack</option>
+            <option value="CC Flood">CC Flood</option>
+            <option value="Remote Code Execution (RCE)">RCE / Binary Exploit</option>
+            <option value="Bad Bot">Bad Bot</option>
+            <option value="Blocked Probe">Blocked Probe</option>
+            <option value="Malicious Probe">Malicious Probe</option>
+          </select>
+        </div>
 
-          <!-- Arcs / Sinar Laser Serangan -->
-          {#each events as ev}
-            {@const orig = projectCoordinates(ev.latitude, ev.longitude)}
-            <path
-              d="M {orig.x},{orig.y} Q {(orig.x + hostServerCoords.x) / 2},{(orig.y + hostServerCoords.y) / 2 - 55} {hostServerCoords.x},{hostServerCoords.y}"
-              fill="none"
-              stroke={ev.action === 'block' ? 'rgba(239, 68, 68, 0.75)' : 'rgba(245, 158, 11, 0.65)'}
-              stroke-width="2"
-              class="laser-beam"
-            />
-            <circle cx={orig.x} cy={orig.y} r="5" fill="#ef4444" />
-            <circle cx={orig.x} cy={orig.y} r="10" fill="none" stroke="rgba(239, 68, 68, 0.4)" class="pulse-ring" />
+        <div class="toolbar-actions">
+          <button class="btn btn-secondary btn-sm" onclick={flyToServer} title="Pusatkan peta ke server host FikPanel">
+            <i class="ri-focus-3-line text-accent"></i> Host Server
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick={resetMapView} title="Kembalikan tampilan peta global">
+            <i class="ri-globe-line"></i> Reset Zoom
+          </button>
+        </div>
+      </div>
+
+      <!-- Country Breakdown Chips -->
+      {#if countryStats.length > 0}
+        <div class="country-chips-bar">
+          <span class="chips-label"><i class="ri-map-pin-line"></i> Asal Serangan:</span>
+          <button
+            class="country-chip {!countryFilter ? 'active' : ''}"
+            onclick={() => countryFilter = ''}
+          >
+            Semua ({events.length})
+          </button>
+          {#each countryStats.slice(0, 8) as c}
+            <button
+              class="country-chip {countryFilter === c.code ? 'active' : ''}"
+              onclick={() => {
+                countryFilter = countryFilter === c.code ? '' : c.code;
+                if (c.lat && c.lng) flyToCountry(c.lat, c.lng);
+              }}
+            >
+              <span class="flag-code">{c.code}</span>
+              <span>{c.name}</span>
+              <span class="chip-badge">{c.count}</span>
+            </button>
           {/each}
+        </div>
+      {/if}
 
-          <!-- Server Destination -->
-          <circle cx={hostServerCoords.x} cy={hostServerCoords.y} r="8" fill="#00d084" />
-          <circle cx={hostServerCoords.x} cy={hostServerCoords.y} r="16" fill="none" stroke="rgba(0, 208, 132, 0.5)" class="pulse-ring" />
-          <text x={hostServerCoords.x + 14} y={hostServerCoords.y + 4} fill="#00d084" font-size="12" font-weight="bold" font-family="monospace">
-            PROTECTED SERVER HOST
-          </text>
-        </svg>
+      <!-- Interactive Map Studio & Telemetry Drawer Container -->
+      <div class="map-studio-viewport">
+        <!-- Canvas Peta Leaflet (Dukungan zoom penuh hingga level jalan) -->
+        <div class="attack-map-canvas" use:attackMapAction></div>
+
+        <!-- Telemetry Inspector Drawer (Muncul saat marker atau baris log diklik) -->
+        {#if selectedEvent}
+          <div class="telemetry-inspector-drawer">
+            <div class="drawer-header">
+              <div class="drawer-title-wrap">
+                <span class="badge-action {selectedEvent.action}">{selectedEvent.action.toUpperCase()}</span>
+                <div>
+                  <h4 class="drawer-ip mono">{selectedEvent.client_ip}</h4>
+                  <span class="drawer-type text-subtle text-xs">{selectedEvent.attack_type}</span>
+                </div>
+              </div>
+              <button class="btn-close" aria-label="Tutup inspeksi" onclick={() => selectedEvent = null}>&times;</button>
+            </div>
+
+            <div class="drawer-body">
+              <!-- 1. Geolokasi Presisi -->
+              <div class="drawer-card">
+                <div class="drawer-card-title"><i class="ri-map-pin-2-line text-accent"></i> Lokasi & Geolokasi Presisi</div>
+                <div class="drawer-info-grid">
+                  <div class="info-row">
+                    <span class="info-lbl">Negara:</span>
+                    <span class="info-val"><span class="flag-code">{selectedEvent.country_code}</span> {selectedEvent.country}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Provinsi/Region:</span>
+                    <span class="info-val">{selectedEvent.region || '-'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Kota:</span>
+                    <span class="info-val font-semibold">{selectedEvent.city || '-'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Koordinat GPS:</span>
+                    <span class="info-val mono text-xs">{selectedEvent.latitude.toFixed(4)}, {selectedEvent.longitude.toFixed(4)}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">ISP / AS Provider:</span>
+                    <span class="info-val text-xs text-subtle">{selectedEvent.isp || 'Autonomous System'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Fingerprint Perangkat & Klien -->
+              <div class="drawer-card">
+                <div class="drawer-card-title"><i class="ri-computer-line text-info"></i> Fingerprint Perangkat & Klien</div>
+                <div class="drawer-info-grid">
+                  <div class="info-row">
+                    <span class="info-lbl">Perangkat:</span>
+                    <span class="info-val">{selectedEvent.device || 'Desktop (PC)'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Sistem Operasi:</span>
+                    <span class="info-val">{selectedEvent.os || 'Linux'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Peramban/Alat:</span>
+                    <span class="info-val font-semibold">{selectedEvent.browser || 'Unknown'}</span>
+                  </div>
+                  <div class="info-col">
+                    <span class="info-lbl">Raw User-Agent:</span>
+                    <div class="ua-box mono text-2xs">{selectedEvent.user_agent || '-'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. Forensik Vektor Serangan -->
+              <div class="drawer-card">
+                <div class="drawer-card-title"><i class="ri-shield-flash-line text-danger"></i> Forensik Vektor Serangan</div>
+                <div class="drawer-info-grid">
+                  <div class="info-row">
+                    <span class="info-lbl">Target Situs:</span>
+                    <span class="info-val mono text-accent">{selectedEvent.site_name}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Metode HTTP:</span>
+                    <span class="info-val mono font-bold">{selectedEvent.method || 'GET'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Status Kode:</span>
+                    <span class="info-val mono">{selectedEvent.status_code}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-lbl">Waktu Deteksi:</span>
+                    <span class="info-val text-xs mono">{formatTime(selectedEvent.created_at)}</span>
+                  </div>
+                  <div class="info-col">
+                    <span class="info-lbl">Path URL / Query:</span>
+                    <div class="payload-box mono text-xs">{selectedEvent.url_path}</div>
+                  </div>
+                  <div class="info-col">
+                    <span class="info-lbl">Aturan Pencegatan:</span>
+                    <div class="rule-box text-xs">{selectedEvent.rule_name || 'Firewall Policy Rule Engine'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="drawer-actions">
+              <button
+                class="btn btn-danger btn-sm w-full"
+                onclick={() => { quickBlockIP(selectedEvent.client_ip, selectedEvent.attack_type); selectedEvent = null; }}
+              >
+                <i class="ri-shield-cross-line"></i> Blokir IP ke Blacklist
+              </button>
+              <button
+                class="btn btn-secondary btn-sm"
+                onclick={() => flyToCountry(selectedEvent.latitude, selectedEvent.longitude)}
+              >
+                <i class="ri-focus-3-line"></i> Pusatkan Peta ke Lokasi
+              </button>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <!-- Real-time Attack Incidents Table -->
       <div class="panel-header mt-6">
-        <h4><i class="ri-history-line"></i> Feed Insiden Serangan Terkini</h4>
+        <div class="panel-title-wrap">
+          <i class="ri-history-line text-accent"></i>
+          <h4>Feed Insiden Serangan Terkini ({filteredEvents.length} peristiwa)</h4>
+        </div>
       </div>
       <div class="table-responsive">
         <table class="waf-main-table">
           <thead>
             <tr>
               <th>Waktu</th>
-              <th>IP Penyerang</th>
-              <th>Negara</th>
+              <th>IP Penyerang & ISP</th>
+              <th>Lokasi Presisi</th>
+              <th>Perangkat / OS</th>
               <th>Target Situs</th>
               <th>Jenis Serangan</th>
               <th>Path URL</th>
               <th>Tindakan</th>
+              <th class="text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {#if events.length === 0}
+            {#if filteredEvents.length === 0}
               <tr>
-                <td colspan="7" class="text-center p-4 text-muted">Belum ada rekaman serangan baru.</td>
+                <td colspan="9" class="text-center p-6 text-muted">
+                  Tidak ada rekaman serangan yang sesuai dengan filter pencarian.
+                </td>
               </tr>
             {:else}
-              {#each events as ev}
-                <tr>
+              {#each filteredEvents as ev}
+                <tr class="threat-row {selectedEvent?.id === ev.id ? 'row-selected' : ''}">
                   <td class="text-muted text-xs mono">{formatTime(ev.created_at)}</td>
-                  <td class="mono font-bold">{ev.client_ip}</td>
                   <td>
-                    <span class="flag-code">{ev.country_code}</span> {ev.country}
+                    <div class="mono font-bold">{ev.client_ip}</div>
+                    {#if ev.isp}
+                      <div class="text-2xs text-subtle truncate max-w-xs">{ev.isp}</div>
+                    {/if}
                   </td>
-                  <td class="mono text-accent">{ev.site_name}</td>
+                  <td>
+                    <div class="geo-cell">
+                      <span class="flag-code">{ev.country_code}</span>
+                      <span class="geo-city font-medium">{ev.city ? `${ev.city}, ` : ''}{ev.country}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="device-cell">
+                      <span class="text-xs font-semibold">{ev.device || 'Desktop'}</span>
+                      <div class="text-2xs text-subtle">{ev.os || 'Linux'} · {ev.browser || 'Browser'}</div>
+                    </div>
+                  </td>
+                  <td class="mono text-accent">
+                    <span class="method-tag">{ev.method || 'GET'}</span> {ev.site_name}
+                  </td>
                   <td>
                     <span class="badge-attack-tag">{ev.attack_type}</span>
                   </td>
@@ -845,6 +1270,22 @@
                   </td>
                   <td>
                     <span class="badge-action {ev.action}">{ev.action.toUpperCase()}</span>
+                  </td>
+                  <td class="text-right table-action-cell">
+                    <button
+                      class="btn-icon-xs text-accent"
+                      title="Inspeksi Telemetri Detail"
+                      onclick={() => { selectedEvent = ev; flyToCountry(ev.latitude, ev.longitude); }}
+                    >
+                      <i class="ri-search-eye-line"></i>
+                    </button>
+                    <button
+                      class="btn-icon-xs text-danger"
+                      title="Blokir IP ke Blacklist"
+                      onclick={() => quickBlockIP(ev.client_ip, ev.attack_type)}
+                    >
+                      <i class="ri-shield-cross-line"></i>
+                    </button>
                   </td>
                 </tr>
               {/each}
@@ -1632,36 +2073,542 @@
     color: var(--text);
   }
 
-  /* World Map SVG */
+  /* Leaflet Map Containers */
   .world-map-wrapper {
     position: relative;
     border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--bg-inset);
   }
-  .world-map-svg {
+  .overview-leaflet-container {
     width: 100%;
-    height: auto;
-    display: block;
+    height: 300px;
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
   }
-  .world-map-svg.full {
-    height: 380px;
+  .panel-header-badges {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .attribution-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .country-name {
+    font-weight: 500;
+    color: var(--text);
+  }
+  .attribution-isp {
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+    margin-top: 2px;
   }
 
-  .laser-beam {
-    stroke-dashoffset: 100;
+  /* Attack Studio Panel */
+  .attack-studio-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .studio-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0;
+  }
+  .radar-live-indicator {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    background: var(--tint-accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .live-dot {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .studio-stats-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .stat-pill {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+  }
+  .stat-pill-label {
+    color: var(--text-subtle);
+  }
+  .stat-pill-val {
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+  .stat-pill-val.danger { color: var(--danger); }
+  .stat-pill-val.warning { color: var(--warning); }
+  .stat-pill-val.info { color: var(--info); }
+
+  /* Studio Toolbar */
+  .studio-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: var(--bg-inset);
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+  .search-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    align-items: center;
+  }
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--text-subtle);
+    pointer-events: none;
+  }
+  .search-input {
+    padding-left: 2.25rem;
+    padding-right: 2rem;
+    width: 100%;
+  }
+  .clear-search-btn {
+    position: absolute;
+    right: 0.75rem;
+    background: transparent;
+    border: none;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  .select-sm {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Country Chips Bar */
+  .country-chips-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    padding: 0.25rem 0;
+  }
+  .chips-label {
+    font-size: 0.75rem;
+    color: var(--text-subtle);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .country-chip {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.15s ease;
+  }
+  .country-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .country-chip.active {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .chip-badge {
+    background: var(--bg-surface);
+    color: var(--danger);
+    font-weight: 700;
+    font-size: 0.65rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 9999px;
+  }
+
+  /* Map Viewport & Telemetry Drawer */
+  .map-studio-viewport {
+    position: relative;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .attack-map-canvas {
+    width: 100%;
+    height: 520px;
+    background: var(--bg-inset);
+  }
+
+  /* Drawer Telemetri Melayang */
+  .telemetry-inspector-drawer {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    width: 380px;
+    max-width: calc(100% - 2rem);
+    background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 36px rgb(0 0 0 / 0.5);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideInRight 0.25s ease-out;
+  }
+  @keyframes slideInRight {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+  .drawer-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .drawer-ip {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  .drawer-body {
+    padding: 1rem 1.25rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    flex: 1;
+  }
+  .drawer-card {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.85rem;
+  }
+  .drawer-card-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .drawer-info-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .info-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+  }
+  .info-lbl {
+    color: var(--text-subtle);
+  }
+  .info-val {
+    color: var(--text);
+    text-align: right;
+  }
+  .ua-box, .payload-box, .rule-box {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    padding: 0.4rem 0.55rem;
+    border-radius: 4px;
+    word-break: break-all;
+    color: var(--text-muted);
+  }
+  .payload-box {
+    color: var(--warning-strong);
+  }
+  .drawer-actions {
+    padding: 0.85rem 1.25rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-raised);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* Leaflet Marker Beacons & Laser Arcs */
+  :global(.leaflet-server-icon), :global(.leaflet-threat-icon),
+  :global(.leaflet-server-full), :global(.leaflet-threat-full) {
+    background: transparent !important;
+    border: none !important;
+  }
+  :global(.server-beacon-dot), :global(.threat-beacon-dot) {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :global(.server-beacon-dot .dot-core) {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  :global(.threat-beacon-dot.blocked .dot-core) {
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--danger);
+  }
+  :global(.threat-beacon-dot.warn .dot-core) {
+    width: 8px;
+    height: 8px;
+    background: var(--warning);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--warning);
+  }
+
+  :global(.server-host-beacon) {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :global(.server-core-icon) {
+    width: 22px;
+    height: 22px;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    box-shadow: 0 0 12px var(--accent);
+    z-index: 10;
+  }
+  :global(.server-host-label) {
+    position: absolute;
+    top: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-surface);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+  }
+
+  :global(.threat-marker-beacon) {
+    position: relative;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  :global(.threat-dot-inner) {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    z-index: 5;
+  }
+  :global(.threat-danger .threat-dot-inner) {
+    background: var(--danger);
+    box-shadow: 0 0 10px var(--danger);
+  }
+  :global(.threat-warning .threat-dot-inner) {
+    background: var(--warning);
+    box-shadow: 0 0 10px var(--warning);
+  }
+
+  :global(.pulse-ring) {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    animation: pulseScale 2.2s infinite ease-out;
+  }
+  :global(.pulse-green) {
+    border: 2px solid var(--accent);
+  }
+  :global(.pulse-red) {
+    border: 2px solid var(--danger);
+  }
+  :global(.pulse-amber) {
+    border: 2px solid var(--warning);
+  }
+  @keyframes pulseScale {
+    0% { transform: scale(0.4); opacity: 1; }
+    100% { transform: scale(2.0); opacity: 0; }
+  }
+
+  :global(.laser-arc-danger) {
+    stroke: var(--danger) !important;
+    stroke-dasharray: 6, 5;
+    animation: dashLaser 2.5s linear infinite;
+  }
+  :global(.laser-arc-warn) {
+    stroke: var(--warning) !important;
+    stroke-dasharray: 6, 5;
     animation: dashLaser 2.5s linear infinite;
   }
   @keyframes dashLaser {
-    from { stroke-dashoffset: 100; }
+    from { stroke-dashoffset: 44; }
     to { stroke-dashoffset: 0; }
   }
-  .pulse-ring {
-    animation: pulseScale 2s infinite ease-out;
+
+  :global(.dark-map-tooltip) {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-strong) !important;
+    color: var(--text) !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 0.4rem 0.6rem !important;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5) !important;
+    font-size: 0.74rem !important;
   }
-  @keyframes pulseScale {
-    0% { transform: scale(0.6); opacity: 1; }
-    100% { transform: scale(1.6); opacity: 0; }
+  :global(.dark-map-tooltip::before) {
+    border-top-color: var(--border-strong) !important;
+  }
+  :global(.map-tooltip-content) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  :global(.badge-tag-xs) {
+    background: var(--tint-danger);
+    color: var(--danger);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+
+  /* Leaflet Controls & Tile Styling */
+  :global(.leaflet-container) {
+    background: var(--bg-inset) !important;
+    font-family: var(--font-sans) !important;
+  }
+  :global(.leaflet-control-zoom a) {
+    background: var(--bg-surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  :global(.leaflet-control-zoom a:hover) {
+    background: var(--bg-hover) !important;
+    color: var(--accent) !important;
+  }
+
+  /* Table additions */
+  .threat-row {
+    transition: background 0.15s ease;
+  }
+  .threat-row:hover {
+    background: var(--bg-hover);
+  }
+  .threat-row.row-selected {
+    background: var(--bg-active);
+  }
+  .geo-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .geo-city {
+    color: var(--text);
+  }
+  .device-cell {
+    display: flex;
+    flex-direction: column;
+  }
+  .method-tag {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
+  .btn-icon-xs {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.2rem 0.35rem;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+  }
+  .btn-icon-xs:hover {
+    background: var(--bg-hover);
+  }
+  .table-action-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
   }
 
   /* Compact Table */
