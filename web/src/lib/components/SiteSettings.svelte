@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { apiFetch } from '../api';
+  import { apiFetch, apiFetchText } from '../api';
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
   import type { DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
@@ -73,6 +73,28 @@
 
   // Tab Error Pages
   let errorPreviewCode = $state('404');
+  let errorPreviewHtml = $state('');
+  let errorPreviewLoading = $state(false);
+
+  // Memuat konten HTML template galat untuk pratinjau langsung
+  async function loadErrorPreview(code: string) {
+    errorPreviewCode = code;
+    errorPreviewLoading = true;
+    try {
+      errorPreviewHtml = await apiFetchText(`/api/sites/error-pages/preview?code=${code}`);
+    } catch (err) {
+      errorPreviewHtml = `<div style="color:var(--danger-strong);padding:2rem;font-family:monospace;">Gagal terhubung: ${(err as Error).message}</div>`;
+    } finally {
+      errorPreviewLoading = false;
+    }
+  }
+
+  // Muat pratinjau saat tab error_pages pertama kali dibuka
+  $effect(() => {
+    if (active === 'error_pages' && !errorPreviewHtml) {
+      loadErrorPreview(errorPreviewCode);
+    }
+  });
 
   // 6. Tab Config (Raw Vhost)
   let vhost = $state('');
@@ -846,10 +868,10 @@
 
         <div class="ep-nav-row">
           <div class="sub-nav">
-            <button class="sub-btn" class:active={errorPreviewCode === '404'} onclick={() => (errorPreviewCode = '404')}>404 Not Found</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '403'} onclick={() => (errorPreviewCode = '403')}>403 Forbidden</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '502'} onclick={() => (errorPreviewCode = '502')}>502 Bad Gateway</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '200'} onclick={() => (errorPreviewCode = '200')}>200 Welcome</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '404'} onclick={() => loadErrorPreview('404')}>404 Not Found</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '403'} onclick={() => loadErrorPreview('403')}>403 Forbidden</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '502'} onclick={() => loadErrorPreview('502')}>502 Bad Gateway</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '200'} onclick={() => loadErrorPreview('200')}>200 Welcome</button>
           </div>
           <a
             href="/api/sites/error-pages/preview?code={errorPreviewCode}"
@@ -864,7 +886,7 @@
 
         <div class="ep-frame-wrap">
           <iframe
-            src="/api/sites/error-pages/preview?code={errorPreviewCode}"
+            srcdoc={errorPreviewHtml}
             title="Pratinjau Halaman Galat"
             class="ep-iframe"
           ></iframe>
@@ -1235,7 +1257,7 @@
   }
   .ep-link-btn:hover { background: var(--bg-active); border-color: var(--accent); }
   .ep-frame-wrap {
-    width: 100%; height: 380px; border-radius: 9px; overflow: hidden;
+    width: 100%; height: 520px; border-radius: 9px; overflow: hidden;
     border: 1px solid var(--border); background: var(--bg-app);
   }
   .ep-iframe { width: 100%; height: 100%; border: none; display: block; }

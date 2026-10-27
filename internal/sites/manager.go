@@ -201,9 +201,6 @@ func (m *Manager) Remove(ctx context.Context, domain string) error {
 	return m.nginx.ApplyChange(ctx)
 }
 
-// defaultIndex adalah halaman sambutan gelap modern untuk situs static/php baru
-const defaultIndex = tplWelcome
-
 // EnsureRoot membuat direktori proyek dan berkas awal sesuai runtime bila belum ada
 func (m *Manager) EnsureRoot(site *store.Site) error {
 	if m.mock || site.RootPath == "" {
