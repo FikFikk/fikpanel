@@ -51,12 +51,8 @@
   // Filter daftar situs berdasarkan tab dan pencarian
   let filteredSites = $derived.by(() => {
     let result = sites;
-    if (activeTab === 'php') {
-      result = result.filter(s => s.kind === 'php');
-    } else if (activeTab === 'static') {
-      result = result.filter(s => s.kind === 'static');
-    } else if (activeTab === 'proxy') {
-      result = result.filter(s => s.kind === 'proxy');
+    if (activeTab !== 'all') {
+      result = result.filter(s => s.kind === activeTab);
     }
 
     if (searchQuery.trim()) {
@@ -495,7 +491,19 @@
                     </button>
 
                     <span class="badge-runtime {s.kind}">
-                      {s.kind === 'php' ? (s.php_version || 'PHP') : s.kind === 'static' ? 'Static' : 'Proxy'}
+                      {#if s.kind === 'php'}
+                        {s.php_version ? `PHP ${s.php_version}` : 'PHP'}
+                      {:else if s.kind === 'node'}
+                        Node.js
+                      {:else if s.kind === 'go'}
+                        Golang
+                      {:else if s.kind === 'python'}
+                        Python
+                      {:else if s.kind === 'static'}
+                        Static
+                      {:else}
+                        Proxy
+                      {/if}
                     </span>
                   </div>
                 </td>

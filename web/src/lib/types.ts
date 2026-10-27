@@ -11,7 +11,7 @@ export interface MetricPoint {
   load_avg: number;
 }
 
-export type SiteKind = 'proxy' | 'static' | 'php';
+export type SiteKind = 'proxy' | 'static' | 'php' | 'node' | 'go' | 'python';
 export type SSLStatus = 'none' | 'pending' | 'issued' | 'failed';
 
 export interface Site {

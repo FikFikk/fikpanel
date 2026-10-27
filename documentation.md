@@ -265,9 +265,9 @@ flowchart TD
 | `id` | Primary Key, Auto Increment | Identifikasi unik site |
 | `domain` | Wajib RFC1123, non-wildcard, unik (termasuk terhadap alias situs lain) | Domain utama = baris non-wildcard pertama; juga nama file vhost |
 | `aliases` | JSON Array domain valid, tanpa duplikat | Boleh wildcard (`*.x.com`); `www.` ditambahkan otomatis untuk domain apex bila opsi aktif |
-| `kind` | Wajib salah satu: `'proxy'`, `'static'`, `'php'` | Aplikasi Node/Go/Python memakai `proxy` |
-| `upstream` | Wajib URL `http(s)://host[:port]` jika `kind='proxy'` | Karakter `; { } ' "` dan spasi ditolak |
-| `root_path` | Wajib path absolut jika `kind='static'/'php'` | Default `/var/www/<domain>/public_html`; `..`, karakter khusus, dan direktori sistem (`/`, `/etc`, `/usr`, `/root`, dst.) ditolak |
+| `kind` | Wajib salah satu: `'php'`, `'node'`, `'go'`, `'python'`, `'static'`, `'proxy'` | Standar multi-runtime resmi FikPanel |
+| `upstream` | Wajib URL `http(s)://host[:port]` jika `kind` bernilai `'proxy'`, `'node'`, `'go'`, atau `'python'` | Karakter `; { } ' "` dan spasi ditolak |
+| `root_path` | Wajib path absolut untuk kind selain `'proxy'` | Standar FikPanel: `/home/<user>/web/<domain>/public` (PHP), `/home/<user>/node/<domain>` (Node.js), `/home/<user>/go/<domain>` (Go), `/home/<user>/python/<domain>` (Python), `/home/<user>/static/<domain>/public` (Static). Direktori sistem (`/`, `/etc`, `/usr`, `/root`, dst.) ditolak |
 | `php_version` | Format `X.Y`, hanya untuk `kind='php'` | Menentukan socket `/run/php/phpX.Y-fpm.sock` |
 | `description` | Maks 200 karakter, opsional | Catatan bebas untuk operator |
 | `ssl_mode` | `'none'` atau `'letsencrypt'` | Selalu `none` saat dibuat; diubah hanya dari tab SSL |

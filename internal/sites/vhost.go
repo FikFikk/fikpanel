@@ -61,7 +61,7 @@ server {
 {{define "body"}}
     access_log {{.LogDir}}/{{.Domain}}.access.log;
     error_log  {{.LogDir}}/{{.Domain}}.error.log;
-{{- if eq .Kind "proxy"}}
+{{- if or (eq .Kind "proxy") (eq .Kind "node") (eq .Kind "go") (eq .Kind "python")}}
 
     location / {
         proxy_pass {{.Upstream}};

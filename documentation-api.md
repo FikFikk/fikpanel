@@ -140,9 +140,9 @@
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `domains` (string, wajib, satu per baris), `add_www` (bool), `kind` (string, wajib: proxy/static/php), `upstream` (string, wajib jika proxy), `root_path` (string, opsional, default `/var/www/<domain>/public_html`), `php_version` (string `X.Y`, untuk php), `description` (string, maks 200) |
+| Request Body | `domains` (string, wajib, satu per baris), `add_www` (bool), `kind` (string, wajib: `php`, `node`, `go`, `python`, `static`, `proxy`), `user` (string, opsional, default `fikpanel`), `upstream` (string, wajib jika proxy/node/go/python), `root_path` (string, opsional, default `/home/<user>/<runtime>/<domain>`), `php_version` (string `X.Y`, untuk php), `description` (string, maks 200) |
 | Response | HTTP 201 objek `Site` (`id`, `domain`, `aliases`, `kind`, `root_path`, `ssl_status`=none, ...); HTTP 400 validasi gagal |
-| Notes | Tanpa opsi SSL (SSL diaktifkan setelah dibuat). Membuat web root + index.html, render vhost port 80 + lokasi ACME, `nginx -t`, reload. Gagal = baris DB dihapus & file dipulihkan. Dicatat audit `site.create`. |
+| Notes | Tanpa opsi SSL (SSL diaktifkan setelah dibuat). Membuat direktori `/home/<user>/<runtime>/<domain>` dengan berkas starter sesuai runtime (package.json+server.js untuk Node, main.go untuk Go, main.py untuk Python, index.html untuk Static/PHP), render vhost port 80 + lokasi ACME, `nginx -t`, reload. Gagal = baris DB dihapus & file dipulihkan. Dicatat audit `site.create`. |
 
 | Field | Detail |
 |---|---|

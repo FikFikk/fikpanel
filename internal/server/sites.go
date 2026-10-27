@@ -53,6 +53,7 @@ type SiteInput struct {
 	Domains     string `json:"domains"`
 	AddWWW      bool   `json:"add_www"`
 	Kind        string `json:"kind"`
+	User        string `json:"user"`
 	Upstream    string `json:"upstream"`
 	RootPath    string `json:"root_path"`
 	PHPVersion  string `json:"php_version"`
@@ -130,14 +131,34 @@ func (s *Server) buildSite(r *http.Request, in SiteInput, base *store.Site) (*st
 	site.Kind = in.Kind
 	site.Upstream, site.RootPath, site.PHPVersion = "", "", ""
 	switch in.Kind {
-	case "proxy":
-		if site.Upstream, err = sites.ValidateUpstream(in.Upstream); err != nil {
+	case "proxy", "node", "go", "python":
+		ups := in.Upstream
+		if strings.TrimSpace(ups) == "" {
+			switch in.Kind {
+			case "node":
+				ups = "http://127.0.0.1:3000"
+			case "go":
+				ups = "http://127.0.0.1:8080"
+			case "python":
+				ups = "http://127.0.0.1:8000"
+			default:
+				ups = "http://127.0.0.1:3000"
+			}
+		}
+		if site.Upstream, err = sites.ValidateUpstream(ups); err != nil {
+			return nil, &sites.ValidationError{Msg: err.Error()}
+		}
+		root := in.RootPath
+		if strings.TrimSpace(root) == "" {
+			root = sites.DefaultRoot(rep.Primary, in.Kind, in.User)
+		}
+		if site.RootPath, err = sites.ValidateRootPath(root); err != nil {
 			return nil, &sites.ValidationError{Msg: err.Error()}
 		}
 	case "static", "php":
 		root := in.RootPath
 		if strings.TrimSpace(root) == "" {
-			root = sites.DefaultRoot(rep.Primary)
+			root = sites.DefaultRoot(rep.Primary, in.Kind, in.User)
 		}
 		if site.RootPath, err = sites.ValidateRootPath(root); err != nil {
 			return nil, &sites.ValidationError{Msg: err.Error()}
@@ -149,7 +170,7 @@ func (s *Server) buildSite(r *http.Request, in SiteInput, base *store.Site) (*st
 			site.PHPVersion = in.PHPVersion
 		}
 	default:
-		return nil, &sites.ValidationError{Msg: "jenis situs harus static, php, atau proxy"}
+		return nil, &sites.ValidationError{Msg: "jenis situs harus static, php, node, go, python, atau proxy"}
 	}
 	return &site, nil
 }

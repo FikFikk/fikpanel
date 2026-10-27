@@ -13,21 +13,26 @@
   let { onClose, onCreated, onOpenSSL, onNotify }: Props = $props();
 
   const KINDS: { id: SiteKind; label: string; desc: string; icon: string }[] = [
-    { id: 'static', label: 'Static', desc: 'HTML, SPA build, landing page', icon: 'ri-html5-line' },
     { id: 'php', label: 'PHP', desc: 'Laravel, WordPress, CMS PHP', icon: 'ri-code-s-slash-line' },
-    { id: 'proxy', label: 'Proxy / App', desc: 'Node, Go, Python, Docker', icon: 'ri-share-forward-line' }
+    { id: 'node', label: 'Node.js', desc: 'Next.js, Express, Nuxt, Nest', icon: 'ri-nodejs-line' },
+    { id: 'go', label: 'Golang', desc: 'Gin, Fiber, biner app', icon: 'ri-terminal-box-line' },
+    { id: 'python', label: 'Python', desc: 'Django, FastAPI, Flask', icon: 'ri-code-box-line' },
+    { id: 'static', label: 'Static', desc: 'HTML, SPA React/Vue build', icon: 'ri-html5-line' },
+    { id: 'proxy', label: 'Custom Proxy', desc: 'Forward port / Docker upstream', icon: 'ri-share-forward-line' }
   ];
   const UPSTREAM_PRESETS = [
-    { label: 'Node', url: 'http://127.0.0.1:3000' },
-    { label: 'Go', url: 'http://127.0.0.1:8080' },
-    { label: 'Python', url: 'http://127.0.0.1:8000' }
+    { label: 'Node :3000', url: 'http://127.0.0.1:3000' },
+    { label: 'Go :8080', url: 'http://127.0.0.1:8080' },
+    { label: 'Python :8000', url: 'http://127.0.0.1:8000' },
+    { label: 'Custom :5000', url: 'http://127.0.0.1:5000' }
   ];
 
   // State form
   let domains = $state('');
   let addWWW = $state(true);
   let description = $state('');
-  let kind = $state<SiteKind>('static');
+  let kind = $state<SiteKind>('php');
+  let user = $state('fikpanel');
   let upstream = $state('http://127.0.0.1:3000');
   let rootPath = $state('');
   let rootTouched = $state(false);
@@ -45,18 +50,53 @@
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let abortCtl: AbortController | undefined;
 
-  // Root path mengikuti domain utama sampai pengguna mengubahnya sendiri
-  let defaultRoot = $derived(report?.primary ? `/var/www/${report.primary}/public_html` : '');
+  // Root path mengikuti domain utama & standar direktori FikPanel (/home/<user>/<runtime>/<domain>)
+  let defaultRoot = $derived.by(() => {
+    if (!report?.primary) return '';
+    const d = report.primary;
+    const u = user.trim() || 'fikpanel';
+    switch (kind) {
+      case 'php':
+        return `/home/${u}/web/${d}/public`;
+      case 'node':
+        return `/home/${u}/node/${d}`;
+      case 'go':
+        return `/home/${u}/go/${d}`;
+      case 'python':
+        return `/home/${u}/python/${d}`;
+      case 'static':
+        return `/home/${u}/static/${d}/public`;
+      case 'proxy':
+        return '';
+      default:
+        return `/home/${u}/web/${d}/public`;
+    }
+  });
+
   $effect(() => {
     if (!rootTouched) rootPath = defaultRoot;
   });
+
+  function selectKind(k: SiteKind) {
+    kind = k;
+    if (k === 'node' && (upstream === 'http://127.0.0.1:8080' || upstream === 'http://127.0.0.1:8000')) {
+      upstream = 'http://127.0.0.1:3000';
+    } else if (k === 'go' && (upstream === 'http://127.0.0.1:3000' || upstream === 'http://127.0.0.1:8000')) {
+      upstream = 'http://127.0.0.1:8080';
+    } else if (k === 'python' && (upstream === 'http://127.0.0.1:3000' || upstream === 'http://127.0.0.1:8080')) {
+      upstream = 'http://127.0.0.1:8000';
+    }
+  }
 
   let checks = $derived(report?.checks ?? []);
   let dnsMap = $derived(new Map((report?.dns ?? []).map((d) => [d.domain, d])));
   let canSubmit = $derived(
     !!report?.valid && !checking && !submitting && domains.trim() !== '' &&
-      (kind !== 'proxy' || upstream.trim() !== '') &&
-      (kind === 'proxy' || rootPath.trim() !== '')
+      (kind === 'proxy'
+        ? upstream.trim() !== ''
+        : kind === 'static' || kind === 'php'
+          ? rootPath.trim() !== ''
+          : rootPath.trim() !== '' && upstream.trim() !== '')
   );
 
   onMount(() => {
@@ -116,9 +156,10 @@
           domains,
           add_www: addWWW,
           kind,
-          upstream: kind === 'proxy' ? upstream.trim() : '',
+          upstream: (kind === 'proxy' || kind === 'node' || kind === 'go' || kind === 'python') ? upstream.trim() : '',
           root_path: kind === 'proxy' ? '' : rootPath.trim(),
           php_version: kind === 'php' ? phpVersion : '',
+          user: user.trim() || 'fikpanel',
           description: description.trim()
         })
       });
@@ -166,6 +207,9 @@
         <dl class="done-grid">
           <dt>Jenis</dt><dd>{KINDS.find((k) => k.id === created!.kind)?.label}</dd>
           {#if created.kind === 'proxy'}
+            <dt>Upstream</dt><dd class="mono">{created.upstream}</dd>
+          {:else if created.kind === 'node' || created.kind === 'go' || created.kind === 'python'}
+            <dt>Direktori</dt><dd class="mono">{created.root_path}</dd>
             <dt>Upstream</dt><dd class="mono">{created.upstream}</dd>
           {:else}
             <dt>Direktori</dt><dd class="mono">{created.root_path}</dd>
@@ -261,8 +305,20 @@
             <input id="as-desc" type="text" maxlength="200" placeholder="Website company profile" bind:value={description} />
           </label>
 
-          <!-- Pilihan jenis situs -->
-          <span class="fld-label">Jenis situs</span>
+          <!-- Pilihan jenis situs & user -->
+          <div class="row-between">
+            <span class="fld-label">Jenis situs</span>
+            <div class="user-inline">
+              <span class="fld-label">User Linux:</span>
+              <input
+                id="as-user"
+                class="mono user-input"
+                type="text"
+                placeholder="fikpanel"
+                bind:value={user}
+              />
+            </div>
+          </div>
           <div class="kinds" role="radiogroup" aria-label="Jenis situs">
             {#each KINDS as k (k.id)}
               <button
@@ -272,7 +328,7 @@
                 id="as-kind-{k.id}"
                 class="kind"
                 class:active={kind === k.id}
-                onclick={() => (kind = k.id)}
+                onclick={() => selectKind(k.id)}
               >
                 <i class={k.icon}></i>
                 <b>{k.label}</b>
@@ -289,7 +345,35 @@
             <div class="presets">
               {#each UPSTREAM_PRESETS as p (p.label)}
                 <button type="button" class="preset" class:active={upstream === p.url} onclick={() => (upstream = p.url)}>
-                  {p.label} <span class="mono">:{p.url.split(':').pop()}</span>
+                  {p.label}
+                </button>
+              {/each}
+            </div>
+          {:else if kind === 'node' || kind === 'go' || kind === 'python'}
+            <label class="fld" for="as-root">
+              <span class="fld-label">
+                Direktori proyek
+                {#if rootTouched && defaultRoot}
+                  <button type="button" class="link" onclick={() => { rootTouched = false; }}>reset</button>
+                {/if}
+              </span>
+              <input
+                id="as-root"
+                class="mono"
+                type="text"
+                placeholder="/home/fikpanel/{kind}/contoh.com"
+                bind:value={rootPath}
+                oninput={() => (rootTouched = true)}
+              />
+            </label>
+            <label class="fld" for="as-upstream">
+              <span class="fld-label">Upstream Aplikasi (Reverse Proxy Nginx)</span>
+              <input id="as-upstream" class="mono" type="text" placeholder="http://127.0.0.1:3000" bind:value={upstream} />
+            </label>
+            <div class="presets">
+              {#each UPSTREAM_PRESETS as p (p.label)}
+                <button type="button" class="preset" class:active={upstream === p.url} onclick={() => (upstream = p.url)}>
+                  {p.label}
                 </button>
               {/each}
             </div>
@@ -306,7 +390,7 @@
                   id="as-root"
                   class="mono"
                   type="text"
-                  placeholder="/var/www/contoh.com/public_html"
+                  placeholder="/home/fikpanel/web/contoh.com/public"
                   bind:value={rootPath}
                   oninput={() => (rootTouched = true)}
                 />
@@ -421,6 +505,9 @@
   .chip.bad small { color: var(--danger-strong); }
   .tag { font-size: 0.62rem; font-weight: 600; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-strong); text-transform: uppercase; letter-spacing: 0.03em; }
   .ip-note { margin: 0; font-size: 0.72rem; color: var(--text-subtle); display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+
+  .user-inline { display: flex; align-items: center; gap: 0.45rem; }
+  .user-input { width: 120px; padding: 0.25rem 0.5rem; font-size: 0.76rem; border-radius: 6px; }
 
   .kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55rem; }
   .kind {

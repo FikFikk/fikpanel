@@ -201,21 +201,31 @@ main{text-align:center}h1{font-size:2rem;margin:0 0 .5rem}p{color:#8b95a5}b{colo
 <body><main><h1>%[1]s</h1><p>Situs berhasil dibuat dengan <b>FikPanel</b>. Unggah berkas Anda ke folder ini.</p></main></body></html>
 `
 
-// EnsureRoot membuat direktori web root dan struktur direktori proyek modern bila belum ada
+// EnsureRoot membuat direktori proyek dan berkas awal sesuai runtime bila belum ada
 func (m *Manager) EnsureRoot(site *store.Site) error {
-	if m.mock || site.Kind == "proxy" || site.RootPath == "" {
+	if m.mock || site.RootPath == "" {
 		return nil
 	}
 	if err := os.MkdirAll(site.RootPath, 0o755); err != nil {
 		return fmt.Errorf("gagal membuat direktori situs: %w", err)
 	}
 
-	// Buat sub-struktur proyek (app, logs, conf) jika root berada dalam folder public
+	// Pastikan direktori induk hingga folder proyek dapat diakses oleh worker Nginx (www-data)
+	if runtime.GOOS == "linux" && strings.HasPrefix(site.RootPath, "/home/") {
+		parts := strings.Split(strings.TrimPrefix(site.RootPath, "/"), "/")
+		curr := ""
+		for _, part := range parts {
+			curr += "/" + part
+			_ = os.Chmod(curr, 0o755)
+		}
+	}
+
+	// Buat folder logs di sebelah root atau di dalam direktori proyek
 	parent := filepath.Dir(site.RootPath)
 	if filepath.Base(site.RootPath) == "public" {
-		_ = os.MkdirAll(filepath.Join(parent, "app"), 0o755)
 		_ = os.MkdirAll(filepath.Join(parent, "logs"), 0o755)
-		_ = os.MkdirAll(filepath.Join(parent, "conf"), 0o755)
+	} else {
+		_ = os.MkdirAll(filepath.Join(site.RootPath, "logs"), 0o755)
 	}
 
 	entries, err := os.ReadDir(site.RootPath)
@@ -225,10 +235,65 @@ func (m *Manager) EnsureRoot(site *store.Site) error {
 	if len(entries) > 0 {
 		return nil
 	}
-	index := filepath.Join(site.RootPath, "index.html")
-	if err := os.WriteFile(index, []byte(fmt.Sprintf(defaultIndex, site.Domain)), 0o644); err != nil {
-		return fmt.Errorf("gagal menulis index.html: %w", err)
+
+	// Berikan template awal ramah developer sesuai runtime
+	switch site.Kind {
+	case "node":
+		pkg := fmt.Sprintf(`{
+  "name": "%s",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
+`, site.Domain)
+		_ = os.WriteFile(filepath.Join(site.RootPath, "package.json"), []byte(pkg), 0o644)
+		serverJS := fmt.Sprintf(`const http = require('http');
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end('<h1>%s</h1><p>Aplikasi Node.js aktif di <b>FikPanel</b>.</p>');
+});
+server.listen(3000, () => console.log('Server berjalan pada port 3000'));
+`, site.Domain)
+		_ = os.WriteFile(filepath.Join(site.RootPath, "server.js"), []byte(serverJS), 0o644)
+	case "go":
+		mainGo := fmt.Sprintf(`package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<h1>%s</h1><p>Aplikasi Golang aktif di <b>FikPanel</b>.</p>")
+	})
+	http.ListenAndServe(":8080", nil)
+}
+`, site.Domain)
+		_ = os.WriteFile(filepath.Join(site.RootPath, "main.go"), []byte(mainGo), 0o644)
+	case "python":
+		appPy := fmt.Sprintf(`from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+class Handler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b'<h1>%s</h1><p>Aplikasi Python aktif di <b>FikPanel</b>.</p>')
+
+if __name__ == '__main__':
+    server = HTTPServer(('127.0.0.1', 8000), Handler)
+    print("Python app running on port 8000...")
+    server.serve_forever()
+`, site.Domain)
+		_ = os.WriteFile(filepath.Join(site.RootPath, "main.py"), []byte(appPy), 0o644)
+	default:
+		index := filepath.Join(site.RootPath, "index.html")
+		_ = os.WriteFile(index, []byte(fmt.Sprintf(defaultIndex, site.Domain)), 0o644)
 	}
+
 	return nil
 }
 
@@ -254,10 +319,26 @@ func (m *Manager) PHPVersions() []string {
 	return out
 }
 
-// DefaultRoot menghasilkan direktori web root standar untuk domain dengan struktur terorganisir
-func DefaultRoot(domain string) string {
+// DefaultRoot menghasilkan direktori web root standar untuk domain sesuai runtime dan user
+func DefaultRoot(domain, kind, user string) string {
 	clean := strings.TrimPrefix(domain, "*.")
-	return "/www/sites/" + clean + "/public"
+	if user == "" {
+		user = "fikpanel"
+	}
+	switch kind {
+	case "php":
+		return fmt.Sprintf("/home/%s/web/%s/public", user, clean)
+	case "static":
+		return fmt.Sprintf("/home/%s/static/%s/public", user, clean)
+	case "node":
+		return fmt.Sprintf("/home/%s/node/%s", user, clean)
+	case "go":
+		return fmt.Sprintf("/home/%s/go/%s", user, clean)
+	case "python":
+		return fmt.Sprintf("/home/%s/python/%s", user, clean)
+	default:
+		return fmt.Sprintf("/home/%s/web/%s/public", user, clean)
+	}
 }
 
 // GetCertPair membaca file sertifikat fullchain dan privkey domain jika ada
