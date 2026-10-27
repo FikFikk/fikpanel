@@ -442,6 +442,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddWAFRule)))
 	s.mux.Handle("DELETE /api/waf/rules/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWAFRule)))
 	s.mux.Handle("GET /api/waf/events", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFEvents)))
+	s.mux.Handle("GET /api/waf/tiles/{z}/{x}/{y}", http.HandlerFunc(s.handleWAFMapTile))
 
 	// Integrasi Cloudflare API v4 & DNS Pointing
 	s.mux.Handle("GET /api/cloudflare/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetCloudflareConfig)))
@@ -477,7 +478,7 @@ func (s *Server) registerRoutes() {
 
 		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
 		setCSP := func() {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		}
 
 		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)

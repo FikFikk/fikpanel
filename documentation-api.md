@@ -2494,6 +2494,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "events": [{"id": 1, "ts": 1771747200, "client_ip": "103.145.13.22", "country_code": "VN", "country_name": "Vietnam", "region": "Hanoi", "city": "Hanoi", "isp": "VNPT", "latitude": 21.0285, "longitude": 105.8542, "device": "Bot / Scanner", "os": "Linux", "browser": "LeakIX Scanner", "attack_type": "Sensitive File Probe", "rule_name": "Sensitive File Probe", "request_path": "/.env", "http_method": "GET", "action_taken": "block"}]}` |
 | Notes | Menghasilkan daftar kronologis log ancaman lengkap dengan telemetri geolokasi akurat hingga koordinat latitude/longitude, ISP, perangkat klien, OS, peramban, serta vektor serangan. Digunakan oleh Leaflet Attack Map Studio untuk merender laser busur trajektori dan beacon animasi. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/tiles/{z}/{x}/{y}` |
+| Auth Required | No (Public proxy tile cache) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `image/png` / `image/jpeg` data biner tile peta |
+| Notes | Proxy dan in-memory LRU cache tile peta dunia gelap (Esri World Dark Gray Base dengan fallback OSM). Memungkinkan pemuatan peta secara instan, bebas API key, dan mematuhi Content Security Policy `'self'`. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

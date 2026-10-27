@@ -469,9 +469,15 @@
       scrollWheelZoom: false,
     }).setView([20, 10], 1);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18,
-      subdomains: 'abcd',
+    // Gunakan Esri World Dark Gray Base + Reference (Bebas API Key, tampilan dark elegan tanpa watermark)
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      errorTileUrl: '/api/waf/tiles/{z}/{x}/{y}.png',
+    }).addTo(map);
+
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      opacity: 0.85,
     }).addTo(map);
 
     overviewMapInstance = map;
@@ -512,6 +518,10 @@
 
     updateLayers();
 
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
+
     return {
       update() {
         updateLayers();
@@ -529,12 +539,18 @@
       zoomControl: false,
       attributionControl: false,
       minZoom: 2,
-      maxZoom: 18,
+      maxZoom: 16,
     }).setView([22, 15], 2);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18,
-      subdomains: 'abcd',
+    // Gunakan Esri World Dark Gray Base + Reference (Bebas API Key, tampilan dark elegan tanpa watermark)
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      errorTileUrl: '/api/waf/tiles/{z}/{x}/{y}.png',
+    }).addTo(map);
+
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      opacity: 0.85,
     }).addTo(map);
 
     L.control.zoom({ position: 'topright' }).addTo(map);
