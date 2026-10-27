@@ -52,15 +52,23 @@ func StorePmaSSOSession(token, db, username, password string) {
 	}
 }
 
-// ConsumePmaSSOSession mengambil dan langsung memusnahkan sesi SSO dari RAM (burn-after-reading / single-use)
-func ConsumePmaSSOSession(token string) (PmaSSOSession, bool) {
-	ssoMu.Lock()
-	defer ssoMu.Unlock()
+// GetPmaSSOSession mengambil sesi SSO selama masih dalam masa berlaku (2 menit)
+func GetPmaSSOSession(token string) (PmaSSOSession, bool) {
+	ssoMu.RLock()
+	defer ssoMu.RUnlock()
 	s, found := ssoSessions[token]
-	if found {
-		delete(ssoSessions, token)
+	if !found {
+		return PmaSSOSession{}, false
 	}
-	return s, found
+	if time.Since(s.CreatedAt) > 2*time.Minute {
+		return PmaSSOSession{}, false
+	}
+	return s, true
+}
+
+// ConsumePmaSSOSession mengambil sesi SSO
+func ConsumePmaSSOSession(token string) (PmaSSOSession, bool) {
+	return GetPmaSSOSession(token)
 }
 
 // PhpMyAdminDaemon mengelola siklus hidup proses PHP built-in server untuk phpMyAdmin resmi
@@ -407,8 +415,15 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
       if (u && p && u.value === tUser && p.value === tPass) {
         window.__pma_sso_submitted = true;
         setTimeout(function() {
-          form.submit();
-        }, 120);
+          var btn = document.getElementById('input_go');
+          if (btn && typeof btn.click === 'function') {
+            btn.click();
+          } else if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        }, 100);
       }
     }
   }
@@ -419,7 +434,7 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
   }
   setTimeout(syncPma, 50);
   setTimeout(syncPma, 150);
-  setTimeout(syncPma, 400);
+  setTimeout(syncPma, 350);
 })();
 </script>`, targetUser, targetPass, targetDb, targetRoute)
 

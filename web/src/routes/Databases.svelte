@@ -655,6 +655,46 @@
     }
   }
 
+  // Buka phpMyAdmin Web GUI dengan autentikasi SSO sekali klik langsung dari baris database
+  async function launchWebGui(db: DatabaseItem) {
+    let newTab: Window | null = null;
+    try {
+      newTab = window.open('about:blank', '_blank');
+      if (newTab) {
+        newTab.opener = null;
+      }
+    } catch {}
+
+    try {
+      const res = await apiFetch<{ ok: boolean; url: string; installed: boolean; message?: string }>('/api/databases/webgui/sso', {
+        method: 'POST',
+        body: JSON.stringify({
+          database: db.name,
+          username: db.username || db.name,
+          password: db.password || '',
+          access_mode: 'panel',
+        }),
+      });
+
+      if (!res.installed) {
+        if (newTab && !newTab.closed) newTab.close();
+        notify('Layanan phpMyAdmin belum terpasang di server. Pasang paket phpMyAdmin terlebih dahulu.', 'warning');
+        return;
+      }
+
+      notify(`Membuka antarmuka phpMyAdmin untuk basis data ${db.name}...`, 'success');
+
+      if (newTab && !newTab.closed) {
+        newTab.location.href = res.url;
+      } else {
+        window.open(res.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e: any) {
+      if (newTab && !newTab.closed) newTab.close();
+      notify(e.message || 'Gagal membuka sesi SSO Web GUI', 'error');
+    }
+  }
+
   // Buka URL Publik phpMyAdmin langsung di tab baru
   function openWebGuiPublic() {
     const publicUrl = getComputedPublicUrl();
@@ -1061,8 +1101,8 @@
                     </button>
                     <button
                       class="action-link"
-                      onclick={() => openWebGuiModal(db)}
-                      title="Buka phpMyAdmin Web GUI"
+                      onclick={() => launchWebGui(db)}
+                      title="Buka phpMyAdmin langsung ke basis data ini (Akses Bebas Sandi)"
                     >
                       Web GUI
                     </button>

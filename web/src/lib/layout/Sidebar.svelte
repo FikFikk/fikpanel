@@ -8,7 +8,7 @@
     onNavigate: () => void;
   }
 
-  let { current, open, version = '0.1.9', onNavigate }: Props = $props();
+  let { current, open, version = '0.2.0', onNavigate }: Props = $props();
 
   const groups = [
     { id: 'utama', label: 'Kelola' },
