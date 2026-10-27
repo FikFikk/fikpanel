@@ -147,6 +147,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/sites", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSite)))
 	s.mux.Handle("GET /api/sites/meta", s.AuthMiddleware(http.HandlerFunc(s.handleSiteMeta)))
 	s.mux.Handle("POST /api/sites/check-domains", s.AuthMiddleware(http.HandlerFunc(s.handleCheckDomains)))
+	s.mux.Handle("GET /api/sites/error-pages/preview", s.AuthMiddleware(http.HandlerFunc(s.handlePreviewErrorPage)))
 	s.mux.Handle("GET /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetSite)))
 	s.mux.Handle("PUT /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSite)))
 	s.mux.Handle("GET /api/sites/{id}/vhost", s.AuthMiddleware(http.HandlerFunc(s.handleSiteVhost)))

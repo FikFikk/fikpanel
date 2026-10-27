@@ -31,6 +31,21 @@ flowchart TD
     Reset --> AktifkanSSL
 ```
 
+### 1.1a Siklus Penanganan Halaman Galat (Error Pages)
+
+```mermaid
+flowchart TD
+    Req[Pengunjung Mengakses URL yang Galat: 403, 404, 502, 503] --> DeteksiStatus{Kode Status Nginx}
+    
+    DeteksiStatus --> CekFileProyek{Ada Berkas di Root Proyek? /error/404.html atau /404.html}
+    CekFileProyek -- Ya --> LayaniProyek[Layani Berkas Kustom Milik Proyek Pengguna]
+    CekFileProyek -- Tidak Ada --> FallbackSistem[Arahkan ke /var/lib/fikpanel/error_pages/*.html]
+    
+    FallbackSistem --> RenderDark[Render Template Pitch Black dengan Telemetri Diagnostik]
+    RenderDark --> InfoPengunjung[Tampilkan Pesan Ramah Pengunjung & Tombol Muat Ulang/Kembali]
+    RenderDark --> TelemetriOwner[Sediakan Payload Diagnostik Host, Path, Trace ID, & Solusi Teknis]
+```
+
 ### 1.2 Siklus Hidup Sesi Pengguna & Sudo Mode
 
 ```mermaid

@@ -136,6 +136,16 @@
 
 | Field | Detail |
 |---|---|
+| Method + Endpoint | `GET /api/sites/error-pages/preview` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `code` (string: "403", "404", "502", "200") |
+| Request Body | Tidak ada |
+| Response | HTTP 200 format HTML `text/html; charset=utf-8` |
+| Notes | Menyajikan pratinjau langsung template halaman galat pitch-black FikPanel dengan telemetri diagnostik dinamis dan panduan teknis. |
+
+| Field | Detail |
+|---|---|
 | Method + Endpoint | `POST /api/sites` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |

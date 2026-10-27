@@ -61,11 +61,62 @@ server {
 {{define "body"}}
     access_log {{.LogDir}}/{{.Domain}}.access.log;
     error_log  {{.LogDir}}/{{.Domain}}.error.log;
+
+    # Halaman galat (Prioritas: /error/*.html di proyek -> fallback bawaan FikPanel)
+    error_page 403 /_fik_error_403;
+    error_page 404 /_fik_error_404;
+    error_page 500 502 503 504 /_fik_error_50x;
+
+    location = /_fik_error_403 {
+{{- if .Root}}
+        root {{.Root}};
+        try_files /error/403.html /403.html @fallback_403;
+{{- else}}
+        root {{.ErrorDir}};
+        rewrite ^ /403.html break;
+{{- end}}
+        internal;
+    }
+    location @fallback_403 {
+        root {{.ErrorDir}};
+        rewrite ^ /403.html break;
+    }
+
+    location = /_fik_error_404 {
+{{- if .Root}}
+        root {{.Root}};
+        try_files /error/404.html /404.html @fallback_404;
+{{- else}}
+        root {{.ErrorDir}};
+        rewrite ^ /404.html break;
+{{- end}}
+        internal;
+    }
+    location @fallback_404 {
+        root {{.ErrorDir}};
+        rewrite ^ /404.html break;
+    }
+
+    location = /_fik_error_50x {
+{{- if .Root}}
+        root {{.Root}};
+        try_files /error/50x.html /50x.html /error/500.html /500.html @fallback_50x;
+{{- else}}
+        root {{.ErrorDir}};
+        rewrite ^ /50x.html break;
+{{- end}}
+        internal;
+    }
+    location @fallback_50x {
+        root {{.ErrorDir}};
+        rewrite ^ /50x.html break;
+    }
 {{- if or (eq .Kind "proxy") (eq .Kind "node") (eq .Kind "go") (eq .Kind "python")}}
 
     location / {
         proxy_pass {{.Upstream}};
         proxy_http_version 1.1;
+        proxy_intercept_errors on;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -118,6 +169,7 @@ type vhostData struct {
 	ExtraConf   string
 	LogDir      string
 	ACMEWebroot string
+	ErrorDir    string
 	SSL         bool
 	ForceHTTPS  bool
 	HSTS        bool
@@ -161,6 +213,7 @@ func (m *Manager) Render(site *store.Site, cert *store.Certificate) (string, err
 		ExtraConf:   strings.TrimSpace(site.ExtraConf),
 		LogDir:      filepath.ToSlash(m.paths.LogDir),
 		ACMEWebroot: filepath.ToSlash(m.paths.ACMEWebroot),
+		ErrorDir:    filepath.ToSlash(m.paths.ErrorDir),
 		SSL:         sslReady,
 		ForceHTTPS:  site.ForceHTTPS == 1,
 		HSTS:        site.HSTS == 1,

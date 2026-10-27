@@ -22,6 +22,7 @@
     { id: 'limit_access', label: 'Limit Access', icon: 'ri-shield-keyhole-line' },
     { id: 'rewrite', label: 'URL Rewrite', icon: 'ri-shuffle-line' },
     { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
+    { id: 'error_pages', label: 'Error Pages', icon: 'ri-file-warning-line' },
     { id: 'conf', label: 'Config', icon: 'ri-file-code-line' },
     { id: 'ssl', label: 'SSL', icon: 'ri-lock-line' },
     { id: 'php', label: 'PHP Version', icon: 'ri-terminal-window-line' },
@@ -69,6 +70,9 @@
   // 5. Tab Default Document
   let defaultDocs = $state('index.php index.html index.htm default.html');
   let defaultDocSaving = $state(false);
+
+  // Tab Error Pages
+  let errorPreviewCode = $state('404');
 
   // 6. Tab Config (Raw Vhost)
   let vhost = $state('');
@@ -816,6 +820,57 @@
         </div>
       </section>
 
+    <!-- TAB: ERROR PAGES & DIAGNOSTICS -->
+    {:else if tab === 'error_pages'}
+      <section class="ss-sec">
+        <div class="sec-title">
+          <h4>Halaman Galat (Error Pages) & Diagnostik</h4>
+          <p class="ss-desc">Konfigurasi dan pratinjau halaman galat saat pengunjung menemui kendala (404, 403, 502, 503). Nginx otomatis memprioritaskan berkas proyek jika tersedia.</p>
+        </div>
+
+        <div class="error-info-card">
+          <div class="eic-header">
+            <i class="ri-information-line"></i>
+            <b>Cara Menggunakan Halaman Kustom Sendiri</b>
+          </div>
+          <p class="eic-text">
+            Secara default, FikPanel melayani template galat gelap modern dengan telemetri diagnostik. Jika proyek Anda memiliki halaman galat sendiri, cukup letakkan berkas di root proyek:
+          </p>
+          <div class="eic-tags">
+            <code>/error/404.html</code>
+            <code>/error/403.html</code>
+            <code>/error/50x.html</code>
+            <code>/404.html</code>
+          </div>
+        </div>
+
+        <div class="ep-nav-row">
+          <div class="sub-nav">
+            <button class="sub-btn" class:active={errorPreviewCode === '404'} onclick={() => (errorPreviewCode = '404')}>404 Not Found</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '403'} onclick={() => (errorPreviewCode = '403')}>403 Forbidden</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '502'} onclick={() => (errorPreviewCode = '502')}>502 Bad Gateway</button>
+            <button class="sub-btn" class:active={errorPreviewCode === '200'} onclick={() => (errorPreviewCode = '200')}>200 Welcome</button>
+          </div>
+          <a
+            href="/api/sites/error-pages/preview?code={errorPreviewCode}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="ep-link-btn"
+            title="Buka pratinjau penuh di tab baru"
+          >
+            <i class="ri-external-link-line"></i> Buka di Tab Baru
+          </a>
+        </div>
+
+        <div class="ep-frame-wrap">
+          <iframe
+            src="/api/sites/error-pages/preview?code={errorPreviewCode}"
+            title="Pratinjau Halaman Galat"
+            class="ep-iframe"
+          ></iframe>
+        </div>
+      </section>
+
     <!-- 6. TAB: CONFIG (RAW VHOST) -->
     {:else if tab === 'conf'}
       <section class="ss-sec fill">
@@ -1157,6 +1212,33 @@
   .meta-row { display: flex; justify-content: space-between; align-items: center; }
   .meta-row span { color: var(--text-subtle); }
   .meta-row b { color: var(--text-secondary); }
+
+  .error-info-card {
+    display: flex; flex-direction: column; gap: 0.5rem; padding: 0.85rem 1rem;
+    border-radius: 9px; background: color-mix(in srgb, var(--info) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+    color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5;
+  }
+  .eic-header { display: flex; align-items: center; gap: 0.45rem; color: var(--info); font-size: 0.82rem; }
+  .eic-text { margin: 0; color: var(--text-muted); }
+  .eic-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.2rem; }
+  .eic-tags code {
+    font-family: 'Fira Code', monospace; font-size: 0.72rem; padding: 0.15rem 0.45rem;
+    border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--accent-strong);
+  }
+  .ep-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
+  .ep-link-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 600;
+    color: var(--accent-strong); text-decoration: none; padding: 0.35rem 0.65rem; border-radius: 6px;
+    background: var(--bg-raised); border: 1px solid var(--border); transition: all 0.15s ease;
+  }
+  .ep-link-btn:hover { background: var(--bg-active); border-color: var(--accent); }
+  .ep-frame-wrap {
+    width: 100%; height: 380px; border-radius: 9px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--bg-app);
+  }
+  .ep-iframe { width: 100%; height: 100%; border: none; display: block; }
 
   .cert-overview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; padding: 0.85rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid var(--border); font-size: 0.78rem; }
   .cov-item { display: flex; flex-direction: column; gap: 0.15rem; }

@@ -604,3 +604,24 @@ func boolInt(b bool) int {
 	}
 	return 0
 }
+
+// handlePreviewErrorPage menyajikan pratinjau template halaman kesalahan standar FikPanel
+func (s *Server) handlePreviewErrorPage(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	var content string
+	switch code {
+	case "403":
+		content = sites.Tpl403()
+	case "500", "502", "503", "504":
+		content = sites.Tpl50x()
+	case "200", "welcome":
+		content = sites.RenderWelcomePage("contoh-domain.com")
+	default:
+		content = sites.Tpl404()
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(content))
+}
+

@@ -26,6 +26,7 @@ type Paths struct {
 	ACMEWebroot string
 	CertDir     string
 	AccountKey  string
+	ErrorDir    string
 }
 
 // DefaultPaths mengembalikan lokasi standar Linux atau folder dev-data di non-Linux
@@ -36,6 +37,7 @@ func DefaultPaths() Paths {
 		ACMEWebroot: "/var/lib/fikpanel/acme-webroot",
 		CertDir:     "/etc/fikpanel/ssl",
 		AccountKey:  "/var/lib/fikpanel/acme/account.key",
+		ErrorDir:    "/var/lib/fikpanel/error_pages",
 	}
 	if runtime.GOOS != "linux" {
 		base := filepath.Join("dev-data", "nginx")
@@ -45,6 +47,7 @@ func DefaultPaths() Paths {
 			ACMEWebroot: filepath.Join(base, "acme-webroot"),
 			CertDir:     filepath.Join(base, "ssl"),
 			AccountKey:  filepath.Join(base, "acme", "account.key"),
+			ErrorDir:    filepath.Join(base, "error_pages"),
 		}
 	}
 	if v := os.Getenv("FIKPANEL_VHOST_DIR"); v != "" {
@@ -52,6 +55,9 @@ func DefaultPaths() Paths {
 	}
 	if v := os.Getenv("FIKPANEL_CERT_DIR"); v != "" {
 		p.CertDir = v
+	}
+	if v := os.Getenv("FIKPANEL_ERROR_DIR"); v != "" {
+		p.ErrorDir = v
 	}
 	return p
 }
@@ -79,6 +85,9 @@ func NewManager(p Paths, ngx *nginx.Manager, st *store.Store) *Manager {
 		_ = os.Chmod(filepath.Dir(p.ACMEWebroot), 0o755)
 		_ = os.Chmod(p.ACMEWebroot, 0o755)
 	}
+	// Pastikan berkas template error sistem tersedia
+	_ = EnsureErrorPages(p.ErrorDir)
+
 	return &Manager{
 		paths: p,
 		nginx: ngx,
@@ -192,14 +201,8 @@ func (m *Manager) Remove(ctx context.Context, domain string) error {
 	return m.nginx.ApplyChange(ctx)
 }
 
-// defaultIndex adalah halaman sambutan untuk situs static/php baru
-const defaultIndex = `<!doctype html>
-<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>%[1]s</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0e15;color:#e2e8f0;font-family:system-ui,sans-serif}
-main{text-align:center}h1{font-size:2rem;margin:0 0 .5rem}p{color:#8b95a5}b{color:#10b981}</style></head>
-<body><main><h1>%[1]s</h1><p>Situs berhasil dibuat dengan <b>FikPanel</b>. Unggah berkas Anda ke folder ini.</p></main></body></html>
-`
+// defaultIndex adalah halaman sambutan gelap modern untuk situs static/php baru
+const defaultIndex = tplWelcome
 
 // EnsureRoot membuat direktori proyek dan berkas awal sesuai runtime bila belum ada
 func (m *Manager) EnsureRoot(site *store.Site) error {
@@ -291,7 +294,7 @@ if __name__ == '__main__':
 		_ = os.WriteFile(filepath.Join(site.RootPath, "main.py"), []byte(appPy), 0o644)
 	default:
 		index := filepath.Join(site.RootPath, "index.html")
-		_ = os.WriteFile(index, []byte(fmt.Sprintf(defaultIndex, site.Domain)), 0o644)
+		_ = os.WriteFile(index, []byte(RenderWelcomePage(site.Domain)), 0o644)
 	}
 
 	return nil
