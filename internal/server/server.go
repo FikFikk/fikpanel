@@ -241,8 +241,20 @@ func (s *Server) registerRoutes() {
 
 	// PHP Multi-version & FPM
 	s.mux.Handle("GET /api/php/versions", s.AuthMiddleware(http.HandlerFunc(s.handleListPHPVersions)))
+	s.mux.Handle("GET /api/php/versions/{version}/detail", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPVersionDetail)))
+	s.mux.Handle("POST /api/php/versions/{version}/service", s.AuthMiddleware(http.HandlerFunc(s.handleControlPHPService)))
 	s.mux.Handle("POST /api/php/versions/{version}/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartPHPFPM)))
 	s.mux.Handle("POST /api/php/versions/{version}/settings", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePHPSetting)))
+	s.mux.Handle("POST /api/php/versions/{version}/save-config", s.AuthMiddleware(http.HandlerFunc(s.handleSavePHPConfigBatch)))
+	s.mux.Handle("POST /api/php/versions/{version}/save-fpm", s.AuthMiddleware(http.HandlerFunc(s.handleSavePHPFpmBatch)))
+	s.mux.Handle("POST /api/php/versions/{version}/disabled-functions", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePHPDisabledFunctions)))
+	s.mux.Handle("GET /api/php/versions/{version}/raw-ini", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPRawIni)))
+	s.mux.Handle("POST /api/php/versions/{version}/raw-ini", s.AuthMiddleware(http.HandlerFunc(s.handleSavePHPRawIni)))
+	s.mux.Handle("GET /api/php/versions/{version}/raw-fpm", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPRawFpm)))
+	s.mux.Handle("POST /api/php/versions/{version}/raw-fpm", s.AuthMiddleware(http.HandlerFunc(s.handleSavePHPRawFpm)))
+	s.mux.Handle("GET /api/php/versions/{version}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPLogs)))
+	s.mux.Handle("POST /api/php/versions/{version}/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearPHPLogs)))
+	s.mux.Handle("GET /api/php/versions/{version}/phpinfo", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPInfo)))
 
 	// Webhooks & Alerts
 	s.mux.Handle("GET /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleListWebhooks)))

@@ -2206,6 +2206,140 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.27 Pengelolaan Runtime PHP (PHP Manager Multi-Version & Editor php.ini)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `[{"version": "8.5", "display_name": "PHP 8.5", "installed": true, "running": true, "socket": "/run/php/php8.5-fpm.sock", "ini_path": "/etc/php/8.5/fpm/php.ini", "fpm_conf_path": "/etc/php/8.5/fpm/pool.d/www.conf"}]` |
+| Notes | Mendeteksi instalasi multi-versi PHP host, status FPM socket, path konfigurasi, dan status daemon systemd. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/detail` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"version": "8.5", "running": true, "pid": 1234, "uptime": "2d 4h", "memory_usage": "34.2 MB", "directives": {"upload_max_filesize": "100M", "memory_limit": "512M", ...}, "pool_settings": {"pm": "dynamic", "pm.max_children": "50", ...}, "disabled_functions": ["exec", "shell_exec"], "opcache": {"enabled": true, ...}, "extensions": [...]}` |
+| Notes | Mengembalikan inspeksi lengkap runtime PHP FPM tertentu mencakup status proses, nilai konfigurasi parser, pool worker, daftar ekstensi terpasang via `php -m`, dan OPcache. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/service` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `action` (string, wajib: `start`, `stop`, `restart`, `reload`) |
+| Response | HTTP 200 `{"ok": true, "message": "Layanan PHP 8.5 berhasil di-restart"}` |
+| Notes | Mengendalikan daemon systemd `php{version}-fpm` dan merekam riwayat aksi ke tabel audit log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/save-config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `directives` (map string-to-string, contoh: `{"upload_max_filesize": "128M", "memory_limit": "1024M", "max_execution_time": "300"}`) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi PHP 8.5 berhasil disimpan & direload"}` |
+| Notes | Memperbarui baris direktif secara atomik pada berkas fisik `php.ini`, membuat cadangan `.bak`, dan me-reload layanan FPM. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/save-fpm` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `settings` (map string-to-string, contoh: `{"pm": "dynamic", "pm.max_children": "60", "pm.start_servers": "10"}`) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi FPM Pool PHP 8.5 berhasil disimpan & direload"}` |
+| Notes | Memodifikasi parameter worker pool pada `pool.d/www.conf` secara atomik dengan backup `.bak` dan reload FPM. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/disabled-functions` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `functions` (array of strings, contoh: `["exec", "system", "passthru", "shell_exec", "proc_open"]`) |
+| Response | HTTP 200 `{"ok": true, "message": "Daftar fungsi terlarang PHP 8.5 berhasil diperbarui"}` |
+| Notes | Mengatur nilai `disable_functions` pada `php.ini` dan memicu reload FPM agar fungsi berbahaya dinonaktifkan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/raw-ini` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"content": "[PHP]\nengine = On\n...", "path": "/etc/php/8.5/fpm/php.ini"}` |
+| Notes | Mengambil isi mentah berkas konfigurasi fisik `php.ini` untuk editor kode antarmuka. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/raw-ini` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `content` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Berkas php.ini PHP 8.5 berhasil disimpan & layanan direload"}` |
+| Notes | Menyimpan isi mentah berkas `php.ini` ke disk host, otomatis mencadangkan ke file `.bak`, lalu me-reload service FPM. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/raw-fpm` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"content": "[www]\nuser = www-data\n...", "path": "/etc/php/8.5/fpm/pool.d/www.conf"}` |
+| Notes | Mengambil isi mentah berkas konfigurasi pool FPM `www.conf`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/raw-fpm` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `content` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Berkas www.conf PHP 8.5 berhasil disimpan & layanan direload"}` |
+| Notes | Menyimpan isi berkas pool FPM `www.conf`, mencadangkan file `.bak`, dan me-reload daemon FPM. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `type` (string, opsional: `error` atau `slow`, default `error`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"log": "[27-Oct-2026 04:30:00] NOTICE: fpm is running...", "path": "/var/log/php8.5-fpm.log"}` |
+| Notes | Mengambil 250 baris terakhir log FPM atau slow log untuk pemantauan runtime langsung di panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/logs/clear` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `type` (string, opsional: `error` atau `slow`) |
+| Response | HTTP 200 `{"ok": true, "message": "Log PHP 8.5 berhasil dikosongkan"}` |
+| Notes | Mengosongkan berkas log FPM di `/var/log/` secara aman (truncate) tanpa menghapus file handle OS. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/phpinfo` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"html": "<!DOCTYPE html>...phpinfo()..."}` |
+| Notes | Menghasilkan render diagnostik resmi `phpinfo()` via biner CLI PHP host untuk pemecahan masalah modul. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |

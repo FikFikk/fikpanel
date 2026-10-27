@@ -449,6 +449,38 @@ export interface DNSRecord {
 }
 
 // ── PHP Versions ──────────────────────────────────────────────────────────
+export interface PHPExtensionInfo {
+  name: string;
+  type: string;
+  description: string;
+  installed: boolean;
+  enabled: boolean;
+}
+
+export interface PHPVersionDetail {
+  version: string;
+  installed: boolean;
+  running: boolean;
+  fpm_socket: string;
+  ini_path: string;
+  pool_conf_path: string;
+  log_path: string;
+  slow_log_path: string;
+  service_status: {
+    active?: boolean;
+    pid?: string | number;
+    memory?: string;
+    uptime?: string;
+    since?: string;
+  };
+  settings: Record<string, string>;
+  fpm_settings: Record<string, string>;
+  opcache_settings: Record<string, string>;
+  disabled_functions: string[];
+  loaded_extensions: string[];
+  all_extensions: PHPExtensionInfo[];
+}
+
 export interface PHPVersionInfo {
   version: string;
   installed: boolean;
