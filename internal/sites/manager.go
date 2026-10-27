@@ -289,6 +289,12 @@ if __name__ == '__main__':
     server.serve_forever()
 `, site.Domain)
 		_ = os.WriteFile(filepath.Join(site.RootPath, "main.py"), []byte(appPy), 0o644)
+	case "php":
+		// Buat berkas index.php dan index.html selamat datang agar langsung melayani traffic via PHP-FPM
+		indexPHP := filepath.Join(site.RootPath, "index.php")
+		_ = os.WriteFile(indexPHP, []byte(RenderWelcomePage(site.Domain)), 0o644)
+		indexHTML := filepath.Join(site.RootPath, "index.html")
+		_ = os.WriteFile(indexHTML, []byte(RenderWelcomePage(site.Domain)), 0o644)
 	default:
 		index := filepath.Join(site.RootPath, "index.html")
 		_ = os.WriteFile(index, []byte(RenderWelcomePage(site.Domain)), 0o644)
