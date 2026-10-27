@@ -25,7 +25,6 @@ func EnsureErrorPages(dir string) error {
 
 	for name, content := range files {
 		target := filepath.Join(dir, name)
-		// Selalu perbarui agar template sistem tetap sinkron dengan rilis terbaru
 		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("gagal menulis template %s: %w", name, err)
 		}
@@ -53,58 +52,96 @@ func RenderWelcomePage(domain string) string {
 	return strings.ReplaceAll(tplWelcome, "{{DOMAIN}}", domain)
 }
 
-// buildEdgePageTemplate menghasilkan dokumen HTML tunggal lengkap persis sesuai mockup FikPanel Edge
-func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
+// buildCleanEdgePage menghasilkan dokumen HTML mandiri (tanpa dependensi CDN eksternal) dengan estetika gelap edge
+func buildCleanEdgePage(code, badgeText, badgeSub, dotColor, textColor, title, desc, hint, defaultDomain string) string {
 	return `<!DOCTYPE html>
 <html class="dark" lang="id">
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>` + defaultCode + ` — Halaman Status | FikPanel Edge</title>
-  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-  <link href="https://fonts.googleapis.com" rel="preconnect"/>
-  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
-  <script id="tailwind-config">
-    tailwind.config = {
-      darkMode: "class",
-      theme: {
-        extend: {
-          colors: {
-            obsidian: {
-              DEFAULT: '#090a0f',
-              surface: '#11131a',
-              raised: '#171a23',
-              border: 'rgba(255, 255, 255, 0.08)',
-              borderHover: 'rgba(255, 255, 255, 0.16)',
-            }
-          },
-          fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'SFMono-Regular', 'Menlo', 'monospace']
-          }
-        }
-      }
-    };
-  </script>
+  <title>` + code + ` — ` + title + ` | FikPanel Edge</title>
   <style>
-    /* Vignette halus dan pendaran latar belakang radial */
-    .hero-glow {
-      background: radial-gradient(circle at 50% 45%, rgba(99, 102, 241, 0.08) 0%, rgba(6, 182, 212, 0.03) 40%, transparent 75%);
+    /* Reset & Variabel Warna Obsidian */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #090a0f;
+      --surface: #11131a;
+      --raised: #171a23;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.16);
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --white: #ffffff;
+      --status-color: ` + textColor + `;
     }
 
-    /* Animasi putaran gradasi konik pelangi (rainbow conic spin) */
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow-x: hidden;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Vignette Radial Ambien Latar Belakang */
+    .hero-glow {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 45%, rgba(99, 102, 241, 0.08) 0%, rgba(6, 182, 212, 0.03) 40%, transparent 75%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Kontainer Utama Terpusat Secara Vertikal & Horizontal */
+    .main-wrap {
+      position: relative;
+      z-index: 10;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 3rem 1.25rem;
+      min-height: calc(100vh - 60px);
+    }
+
+    .hero-card {
+      width: 100%;
+      max-width: 40rem;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Animasi Conic Rainbow Spin */
     @keyframes spin-rainbow {
-      0% {
-        transform: rotate(0deg);
-      }
-      100% {
-        transform: rotate(360deg);
-      }
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .rainbow-pill-wrap {
+      position: relative;
+      padding: 1.5px;
+      border-radius: 9999px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      margin-bottom: 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .rainbow-conic-spin {
+      position: absolute;
+      inset: -150%;
       background: conic-gradient(
         hsl(0, 95%, 65%),
         hsl(45, 95%, 65%),
@@ -116,9 +153,12 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
         hsl(360, 95%, 65%)
       );
       animation: spin-rainbow 5s linear infinite;
+      opacity: 0.9;
     }
 
     .rainbow-glow-ambient {
+      position: absolute;
+      inset: -20px;
       background: conic-gradient(
         from 180deg at 50% 50%,
         rgba(255, 99, 132, 0.35),
@@ -130,207 +170,464 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
       );
       animation: spin-rainbow 8s linear infinite;
       filter: blur(24px);
+      opacity: 0.5;
+    }
+
+    .badge-content {
+      position: relative;
+      z-index: 10;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 9999px;
+      background: rgba(13, 15, 22, 0.96);
+      backdrop-filter: blur(12px);
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      color: var(--text);
+    }
+
+    .badge-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: ` + dotColor + `;
+      flex-shrink: 0;
+      box-shadow: 0 0 8px ` + dotColor + `;
+    }
+
+    .badge-title {
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .badge-sub {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+    }
+
+    /* Tipografi Utama */
+    .error-code {
+      font-size: clamp(4.5rem, 12vw, 6.5rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--white);
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      line-height: 1;
+      user-select: none;
+      margin-bottom: 0.75rem;
+    }
+
+    .error-title {
+      font-size: clamp(1.4rem, 4vw, 1.85rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--white);
+      margin-bottom: 0.75rem;
+    }
+
+    .error-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+      max-width: 32rem;
+      margin: 0 auto;
+    }
+
+    .error-desc code {
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+
+    /* Tombol Aksi */
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 2rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--white);
+      color: #090a0f;
+      border: 1px solid var(--white);
+      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+    }
+    .btn-primary:hover {
+      background: #e2e8f0;
+      transform: translateY(-1px);
+    }
+
+    .btn-surface {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-surface:hover {
+      background: var(--raised);
+      color: var(--white);
+      border-color: var(--border-hover);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+    }
+    .btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    /* Accordion Telemetri Diagnostik */
+    .telemetry-container {
+      width: 100%;
+      max-width: 36rem;
+      margin-top: 2rem;
+      text-align: left;
+    }
+
+    .telemetry-toggle {
+      width: 100%;
+      padding: 0.65rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(17, 19, 26, 0.7);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: all 0.15s ease;
+    }
+    .telemetry-toggle:hover {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border-hover);
+    }
+
+    .telemetry-toggle-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .telemetry-drawer {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .telemetry-drawer.hidden {
+      display: none;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+    }
+    @media (min-width: 640px) {
+      .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .tel-card {
+      padding: 0.65rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: rgba(17, 19, 26, 0.9);
+    }
+
+    .tel-label {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    .tel-val {
+      color: var(--text);
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+    }
+    .tel-val.status {
+      color: var(--status-color);
+      font-weight: 600;
+    }
+
+    .info-box {
+      padding: 0.75rem 0.9rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(17, 19, 26, 0.8);
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .info-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+    .info-header strong {
+      color: var(--text);
+      font-weight: 400;
+    }
+
+    .guide-box {
+      padding: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(17, 19, 26, 0.5);
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .guide-title {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+
+    .guide-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .guide-num {
+      color: #818cf8;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .guide-step strong { color: var(--text); }
+    .guide-step code {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+    }
+
+    /* Footer */
+    footer {
+      width: 100%;
+      border-top: 1px solid var(--border);
+      background: rgba(9, 10, 15, 0.9);
+      padding: 0.9rem 1.25rem;
+      margin-top: auto;
+      font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    .footer-inner {
+      max-width: 64rem;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    @media (min-width: 640px) {
+      .footer-inner { flex-direction: row; }
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .footer-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      display: inline-block;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .footer-links a:hover {
+      color: var(--text);
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col bg-[#090a0f] text-slate-200 font-sans selection:bg-indigo-500/30 selection:text-white antialiased relative overflow-x-hidden">
-  <!-- Vignette Halus & Pendaran Ambien -->
-  <div class="fixed inset-0 hero-glow pointer-events-none z-0"></div>
+<body>
+  <!-- Pendaran Latar Belakang -->
+  <div class="hero-glow"></div>
 
-  <!-- Kontainer Utama -->
-  <div class="relative z-10 flex flex-col min-h-screen">
-    <!-- Header Minimalis Bersih FikPanel Edge -->
-    <header class="w-full border-b border-obsidian-border bg-[#090a0f]/80 backdrop-blur-md sticky top-0 z-50">
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        <!-- Kiri: Logo & Identitas Host -->
-        <div class="flex items-center space-x-3 shrink-0">
-          <a class="flex items-center space-x-2 group" href="#">
-            <span class="w-6 h-6 rounded bg-slate-800 border border-white/10 flex items-center justify-center text-slate-300 font-mono text-[11px] font-semibold group-hover:border-white/25 transition">
-              <i class="fa-solid fa-cube text-[10px] text-indigo-400"></i>
-            </span>
-            <span class="font-medium text-sm tracking-tight text-white font-mono">FikPanel</span>
-          </a>
-          <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/5">v3.2 Edge</span>
-          <span class="hidden md:inline-flex items-center text-[11px] font-mono text-slate-400 px-2 py-0.5 rounded bg-slate-900/60 border border-white/5">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>
-            <span class="domain-host-label">` + defaultDomain + `</span>
-          </span>
-        </div>
-
-        <!-- Tengah: Switcher Status Minimalis -->
-        <div class="hidden lg:flex items-center bg-obsidian-surface border border-obsidian-border rounded-full p-1 font-mono text-xs shadow-inner">
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="403" onclick="setErrorCode('403')">403</button>
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="404" onclick="setErrorCode('404')">404</button>
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="500" onclick="setErrorCode('500')">500</button>
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="502" onclick="setErrorCode('502')">502</button>
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="503" onclick="setErrorCode('503')">503</button>
-          <button class="code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition" data-code="ready" onclick="setErrorCode('ready')">Ready</button>
-        </div>
-
-        <!-- Kanan: Tautan Dokumentasi & Panel -->
-        <div class="flex items-center space-x-2 shrink-0">
-          <a class="hidden sm:inline-flex items-center space-x-1.5 text-xs font-mono text-slate-400 hover:text-slate-200 px-2.5 py-1.5 rounded transition" href="https://github.com/fikfikk/fikpanel" target="_blank" rel="noopener noreferrer">
-            <i class="fa-regular fa-file-lines text-[11px]"></i>
-            <span>Dokumentasi</span>
-          </a>
-          <a id="panel-link" class="inline-flex items-center space-x-1.5 text-xs font-mono text-slate-200 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-md transition" href="#">
-            <span>Buka Panel</span>
-            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400"></i>
-          </a>
+  <!-- Area Konten Utama -->
+  <main class="main-wrap">
+    <div class="hero-card">
+      <!-- Badge Pill Pelangi Berputar -->
+      <div class="rainbow-pill-wrap">
+        <div class="rainbow-conic-spin"></div>
+        <div class="rainbow-glow-ambient"></div>
+        <div class="badge-content">
+          <span class="badge-dot"></span>
+          <span class="badge-title">` + badgeText + `</span>
+          <span style="color: var(--text-dim);">•</span>
+          <span class="badge-sub">` + badgeSub + `</span>
         </div>
       </div>
 
-      <!-- Switcher Bar Khusus Layar Seluler -->
-      <div class="lg:hidden flex items-center justify-between px-4 py-2 border-t border-obsidian-border bg-obsidian-surface/60 text-xs font-mono overflow-x-auto gap-1">
-        <span class="text-[11px] text-slate-500 uppercase shrink-0 mr-1">Status:</span>
-        <div class="flex items-center gap-1">
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="403" onclick="setErrorCode('403')">403</button>
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="404" onclick="setErrorCode('404')">404</button>
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="500" onclick="setErrorCode('500')">500</button>
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="502" onclick="setErrorCode('502')">502</button>
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="503" onclick="setErrorCode('503')">503</button>
-          <button class="code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5" data-code="ready" onclick="setErrorCode('ready')">200</button>
-        </div>
+      <!-- Tipografi Status & Galat -->
+      <h1 class="error-code">` + code + `</h1>
+      <h2 class="error-title">` + title + `</h2>
+      <p class="error-desc">` + desc + `</p>
+
+      <!-- Tombol Aksi Utama -->
+      <div class="btn-group">
+        <a class="btn btn-primary" href="/" onclick="goHomeOrBack(event)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          <span>Kembali ke Beranda</span>
+        </a>
+        <button class="btn btn-surface" onclick="window.location.reload()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+          <span>Muat Ulang Halaman</span>
+        </button>
+        <button class="btn btn-ghost" onclick="copyDiagnostics()">
+          <svg id="copy-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copy-text">Salin Info Diagnostik</span>
+        </button>
       </div>
-    </header>
 
-    <!-- Konten Pahlawan (Hero) Rata Tengah -->
-    <main class="flex-1 min-h-[calc(100vh-140px)] flex flex-col items-center justify-center text-center px-4 sm:px-6 py-12">
-      <div class="max-w-2xl w-full mx-auto flex flex-col items-center justify-center">
-        <!-- Badge Pill Berputar Bergradasi Pelangi -->
-        <div class="relative p-[1.5px] rounded-full overflow-hidden shadow-lg mb-6 group inline-flex items-center justify-center">
-          <div class="absolute inset-[-150%] rainbow-conic-spin opacity-90 group-hover:opacity-100 transition-opacity"></div>
-          <div class="absolute inset-[-20px] rainbow-glow-ambient opacity-50 group-hover:opacity-80 transition-opacity"></div>
-          <div class="relative z-10 inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#0d0f16]/95 backdrop-blur-md text-xs font-mono text-slate-300" id="badge-wrapper">
-            <span class="w-2 h-2 rounded-full bg-amber-400 shrink-0" id="badge-dot"></span>
-            <span class="tracking-wide uppercase font-medium" id="badge-text">HTTP 404 NOT FOUND</span>
-            <span class="text-slate-600">•</span>
-            <span class="text-slate-400 text-[11px]" id="badge-sub">Edge Router</span>
+      <!-- Accordion Telemetri Server -->
+      <div class="telemetry-container">
+        <button class="telemetry-toggle" onclick="toggleTelemetry()">
+          <div class="telemetry-toggle-left">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>Tampilkan Detail Diagnostik &amp; Server</span>
           </div>
-        </div>
+          <svg id="telemetry-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
 
-        <!-- Tipografi Judul & Deskripsi Galat -->
-        <div class="space-y-3 max-w-xl mx-auto">
-          <div class="relative inline-block">
-            <h1 class="text-7xl sm:text-8xl font-bold tracking-tight text-white font-mono select-none" id="error-title-code">
-              ` + defaultCode + `
-            </h1>
+        <div class="telemetry-drawer" id="telemetry-drawer">
+          <div class="grid-4">
+            <div class="tel-card">
+              <span class="tel-label">Host</span>
+              <span class="tel-val domain-host-label" title="` + defaultDomain + `">` + defaultDomain + `</span>
+            </div>
+            <div class="tel-card">
+              <span class="tel-label">Response Code</span>
+              <span class="tel-val status">` + code + ` ` + title + `</span>
+            </div>
+            <div class="tel-card">
+              <span class="tel-label">Edge Node</span>
+              <span class="tel-val">sg-edge-01 (SIN)</span>
+            </div>
+            <div class="tel-card">
+              <span class="tel-label">Trace ID</span>
+              <span class="tel-val" id="trace-id">8f3d9b4c0e21a7</span>
+            </div>
           </div>
-          <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-100" id="main-domain-heading">
-            Halaman Tidak Ditemukan
-          </h2>
-          <p class="text-slate-400 text-sm sm:text-base leading-relaxed pt-1 max-w-lg mx-auto" id="error-description">
-            URL atau berkas yang Anda minta tidak tersedia di direktori web hosting server <code class="font-mono text-slate-300 bg-white/5 px-1.5 py-0.5 rounded border border-white/5 text-xs domain-host-label">` + defaultDomain + `</code>.
-          </p>
-        </div>
 
-        <!-- Tombol Aksi Utama -->
-        <div class="flex flex-wrap items-center justify-center gap-3 mt-8">
-          <a class="px-4 py-2.5 rounded-md bg-white hover:bg-slate-200 text-slate-950 font-medium text-xs font-mono transition shadow-md flex items-center space-x-2" href="/" onclick="goHomeOrBack(event)">
-            <i class="fa-solid fa-arrow-left text-[11px]"></i>
-            <span>Kembali ke Beranda</span>
-          </a>
-          <button class="px-4 py-2.5 rounded-md bg-obsidian-surface hover:bg-obsidian-raised text-slate-200 hover:text-white border border-obsidian-border font-medium text-xs font-mono transition flex items-center space-x-2" onclick="window.location.reload()">
-            <i class="fa-solid fa-rotate-right text-[11px] text-slate-400"></i>
-            <span>Muat Ulang Halaman</span>
-          </button>
-          <button class="px-4 py-2.5 rounded-md bg-transparent hover:bg-white/5 text-slate-400 hover:text-slate-200 border border-transparent hover:border-obsidian-border font-medium text-xs font-mono transition flex items-center space-x-2" id="btn-copy-diag" onclick="copyDiagnostics()">
-            <i class="fa-regular fa-copy text-[11px]" id="copy-icon"></i>
-            <span id="copy-text">Salin Info Diagnostik</span>
-          </button>
-        </div>
-
-        <!-- Accordion Telemetri Diagnostik yang Dapat Dilipat -->
-        <div class="w-full max-w-xl mt-8">
-          <button class="w-full py-2.5 px-4 rounded-md border border-obsidian-border bg-obsidian-surface/60 hover:bg-obsidian-surface text-slate-400 hover:text-slate-200 text-xs font-mono flex items-center justify-between transition group backdrop-blur-sm" id="telemetry-toggle-btn" onclick="toggleTelemetry()">
-            <span class="flex items-center space-x-2">
-              <i class="fa-solid fa-terminal text-[11px] text-indigo-400"></i>
-              <span>Tampilkan Detail Diagnostik &amp; Konfigurasi Server</span>
-            </span>
-            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 group-hover:text-slate-300 transition-transform duration-200" id="telemetry-chevron"></i>
-          </button>
-
-          <!-- Isi Laci Panel Telemetri -->
-          <div class="hidden text-left mt-3 space-y-3" id="telemetry-drawer">
-            <!-- Grid 4 Kartu Telemetri Cepat -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-              <div class="p-2.5 rounded border border-obsidian-border bg-obsidian-surface/90">
-                <span class="text-[10px] text-slate-500 block uppercase">Host</span>
-                <span class="text-slate-200 font-medium truncate block domain-host-label" title="` + defaultDomain + `">` + defaultDomain + `</span>
-              </div>
-              <div class="p-2.5 rounded border border-obsidian-border bg-obsidian-surface/90">
-                <span class="text-[10px] text-slate-500 block uppercase">Response Code</span>
-                <span class="text-amber-400 font-medium block" id="card-status-code">404 Not Found</span>
-              </div>
-              <div class="p-2.5 rounded border border-obsidian-border bg-obsidian-surface/90">
-                <span class="text-[10px] text-slate-500 block uppercase">Edge Node</span>
-                <span class="text-slate-300 block" id="card-edge-node">sg-edge-01 (SIN)</span>
-              </div>
-              <div class="p-2.5 rounded border border-obsidian-border bg-obsidian-surface/90">
-                <span class="text-[10px] text-slate-500 block uppercase">Trace ID</span>
-                <span class="text-slate-300 font-medium truncate block" id="trace-id">8f3d9b4c0e21a7</span>
-              </div>
+          <div class="info-box">
+            <div class="info-header">
+              <span>Web Server Engine: <strong>Nginx 1.28.x / FikPanel Edge</strong></span>
+              <span>TLS: <strong>1.3</strong></span>
             </div>
+            <div>` + hint + `</div>
+          </div>
 
-            <!-- Bilah Engine Web Server & Petunjuk Pemecahan Masalah -->
-            <div class="p-3 rounded border border-obsidian-border bg-obsidian-surface/80 text-xs font-mono text-slate-300">
-              <div class="flex items-center justify-between text-[11px] text-slate-500 pb-1 mb-1 border-b border-white/5">
-                <span>Web Server Engine: <strong class="text-slate-300 font-normal">Nginx 1.28.x / FikPanel Edge</strong></span>
-                <span>TLS: <strong class="text-slate-300 font-normal">1.3</strong></span>
-              </div>
-              <div class="text-slate-400 text-xs mt-1 leading-relaxed" id="troubleshoot-hint">
-                Pastikan berkas <code class="text-slate-200 bg-white/5 px-1 py-0.5 rounded">index.html</code> atau <code class="text-slate-200 bg-white/5 px-1 py-0.5 rounded">index.php</code> telah diunggah ke folder root target di FikPanel File Manager.
-              </div>
+          <div class="guide-box">
+            <div class="guide-title">Panduan Pemilik Situs</div>
+            <div class="guide-step">
+              <span class="guide-num">1.</span>
+              <span>Buka menu <strong>File Manager</strong> pada panel FikPanel dan navigasi ke direktori root target situs.</span>
             </div>
-
-            <!-- Panduan Ringkas Pemilik Situs -->
-            <div class="p-3.5 rounded border border-obsidian-border bg-obsidian-surface/50 space-y-2 text-xs font-mono">
-              <div class="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Panduan Pemilik Situs</div>
-              <div class="flex items-start space-x-2 text-slate-400">
-                <span class="text-indigo-400 font-bold shrink-0">1.</span>
-                <span>Buka menu <strong>File Manager</strong> pada panel FikPanel dan navigasi ke direktori root situs yang dituju.</span>
-              </div>
-              <div class="flex items-start space-x-2 text-slate-400">
-                <span class="text-indigo-400 font-bold shrink-0">2.</span>
-                <span>Unggah berkas aplikasi atau build website ke direktori publik yang sesuai.</span>
-              </div>
-              <div class="flex items-start space-x-2 text-slate-400">
-                <span class="text-indigo-400 font-bold shrink-0">3.</span>
-                <span>Pastikan permission berkas diatur ke <code class="text-slate-300">0644</code> dan direktori ke <code class="text-slate-300">0755</code>.</span>
-              </div>
+            <div class="guide-step">
+              <span class="guide-num">2.</span>
+              <span>Unggah berkas aplikasi atau build website ke direktori publik yang sesuai.</span>
+            </div>
+            <div class="guide-step">
+              <span class="guide-num">3.</span>
+              <span>Pastikan permission berkas diatur ke <code>0644</code> dan direktori ke <code>0755</code>.</span>
             </div>
           </div>
         </div>
       </div>
-    </main>
+    </div>
+  </main>
 
-    <!-- Footer Status & Metadata -->
-    <footer class="w-full border-t border-obsidian-border bg-[#090a0f]/90 py-4 mt-auto">
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 font-mono gap-3">
-        <div class="flex items-center space-x-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-          <span class="text-slate-400">FikPanel Cloud Infrastructure</span>
-          <span class="text-slate-700">·</span>
-          <span class="text-slate-500" id="utc-time">UTC --:--:--</span>
-        </div>
-        <div class="flex items-center space-x-5 text-slate-400">
-          <a class="hover:text-slate-200 transition" href="#">Status Jaringan</a>
-          <a class="hover:text-slate-200 transition" href="#">Dokumentasi Edge</a>
-          <a class="hover:text-slate-200 transition" href="#">Dukungan Teknis</a>
-        </div>
+  <!-- Footer Status & Jam UTC -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-left">
+        <span class="footer-dot"></span>
+        <span style="color: var(--text-muted);">FikPanel Cloud Infrastructure</span>
+        <span style="color: var(--border);">·</span>
+        <span id="utc-time">UTC --:--:--</span>
       </div>
-    </footer>
-  </div>
+      <div class="footer-links">
+        <a href="https://github.com/fikfikk/fikpanel" target="_blank" rel="noopener noreferrer">Dokumentasi Edge</a>
+        <a href="https://github.com/fikfikk/fikpanel/issues" target="_blank" rel="noopener noreferrer">Dukungan Teknis</a>
+      </div>
+    </div>
+  </footer>
 
-  <!-- Skrip Interaktif & Manajemen Status Halaman -->
   <script>
-    // Buka/tutup laci informasi diagnostik
+    // Buka/tutup laci diagnostik
     function toggleTelemetry() {
       const drawer = document.getElementById('telemetry-drawer');
       const chevron = document.getElementById('telemetry-chevron');
       if (!drawer || !chevron) return;
       const isHidden = drawer.classList.contains('hidden');
-
       if (isHidden) {
         drawer.classList.remove('hidden');
         chevron.style.transform = 'rotate(180deg)';
@@ -340,7 +637,7 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
       }
     }
 
-    // Jam UTC langsung (Live UTC Clock)
+    // Jam UTC langsung
     function updateClock() {
       const now = new Date();
       const utcString = now.toUTCString().split(' ')[4] + ' UTC';
@@ -350,7 +647,7 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
     setInterval(updateClock, 1000);
     updateClock();
 
-    // Navigasi kembali ke halaman sebelumnya atau beranda
+    // Navigasi kembali ke riwayat sebelumnya jika tersedia
     function goHomeOrBack(e) {
       if (window.history.length > 1 && document.referrer && new URL(document.referrer).hostname === window.location.hostname) {
         e.preventDefault();
@@ -358,144 +655,12 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
       }
     }
 
-    // Konfigurasi status galat dan halaman siap pakai
-    const errorConfigs = {
-      '403': {
-        code: '403',
-        badge: 'HTTP 403 FORBIDDEN',
-        badgeSub: 'Security Guard',
-        badgeColor: 'bg-rose-400',
-        textColor: 'text-rose-400',
-        title: 'Akses Ditolak (Forbidden)',
-        desc: 'Server memahami permintaan Anda, namun menolak untuk memberikan izin akses ke berkas atau direktori ini di host ',
-        statusCard: '403 Forbidden',
-        hint: 'Periksa permission folder (standar 0755) atau periksa apakah aturan pembatasan akses / basic auth memblokir IP/request Anda.'
-      },
-      '404': {
-        code: '404',
-        badge: 'HTTP 404 NOT FOUND',
-        badgeSub: 'Edge Router',
-        badgeColor: 'bg-amber-400',
-        textColor: 'text-amber-400',
-        title: 'Halaman Tidak Ditemukan',
-        desc: 'URL atau berkas yang Anda minta tidak tersedia di direktori web hosting server ',
-        statusCard: '404 Not Found',
-        hint: 'Pastikan berkas index.html atau index.php telah diunggah ke folder root target di FikPanel File Manager.'
-      },
-      '500': {
-        code: '500',
-        badge: 'HTTP 500 INTERNAL SERVER ERROR',
-        badgeSub: 'Runtime Engine',
-        badgeColor: 'bg-rose-400',
-        textColor: 'text-rose-400',
-        title: 'Kesalahan Internal Server',
-        desc: 'Terjadi kegagalan pemrosesan skrip pada server atau kesalahan sintaks pada berkas konfigurasi runtime aplikasi di host ',
-        statusCard: '500 Internal Error',
-        hint: 'Periksa log galat di menu Response Logs situs, periksa sintaks berkas konfigurasi, atau aktifkan log debugging aplikasi.'
-      },
-      '502': {
-        code: '502',
-        badge: 'HTTP 502 BAD GATEWAY',
-        badgeSub: 'Upstream Offline',
-        badgeColor: 'bg-rose-400',
-        textColor: 'text-rose-400',
-        title: 'Bad Gateway (Koneksi Upstream Gagal)',
-        desc: 'Server gateway Nginx menerima respon yang tidak valid dari proses backend hulu (PHP-FPM, Node.js port, atau backend daemon) di host ',
-        statusCard: '502 Bad Gateway',
-        hint: 'Pastikan backend service (PHP-FPM pool atau application daemon port) berjalan aktif dan memori RAM server tidak kehabisan kuota.'
-      },
-      '503': {
-        code: '503',
-        badge: 'HTTP 503 SERVICE UNAVAILABLE',
-        badgeSub: 'Maintenance Mode',
-        badgeColor: 'bg-amber-400',
-        textColor: 'text-amber-400',
-        title: 'Layanan Sedang Pemeliharaan',
-        desc: 'Server saat ini tidak dapat menangani permintaan karena beban lalu lintas puncak sementara atau sedang dalam mode pemeliharaan di host ',
-        statusCard: '503 Maintenance',
-        hint: 'Tunggu beberapa saat atau periksa status penggunaan resource di FikPanel untuk memastikan batas alokasi CPU/RAM tidak tercapai.'
-      },
-      'ready': {
-        code: '200',
-        badge: 'HTTP 200 OK — SITE READY',
-        badgeSub: 'Virtual Host Ready',
-        badgeColor: 'bg-emerald-400',
-        textColor: 'text-emerald-400',
-        title: 'Situs Berhasil Dikonfigurasi',
-        desc: 'Selamat! Domain telah aktif pada klaster FikPanel Edge. Silakan mulai mengunggah file produksi website Anda ke folder publik di host ',
-        statusCard: '200 OK (Active)',
-        hint: 'Hapus file halaman placeholder ini atau ganti dengan berkas aplikasi website Anda pada direktori publik / root situs.'
-      }
-    };
-
-    function setErrorCode(key) {
-      const data = errorConfigs[key];
-      if (!data) return;
-
-      const host = window.location.hostname || '` + defaultDomain + `';
-      document.title = data.code + ' — ' + data.title + ' | FikPanel Edge';
-
-      const errTitle = document.getElementById('error-title-code');
-      if (errTitle) errTitle.textContent = data.code;
-
-      const badgeText = document.getElementById('badge-text');
-      if (badgeText) badgeText.textContent = data.badge;
-
-      const badgeSub = document.getElementById('badge-sub');
-      if (badgeSub) badgeSub.textContent = data.badgeSub;
-
-      const mainHeading = document.getElementById('main-domain-heading');
-      if (mainHeading) mainHeading.textContent = data.title;
-
-      const descEl = document.getElementById('error-description');
-      if (descEl) {
-        descEl.innerHTML = data.desc + '<code class="font-mono text-slate-300 bg-white/5 px-1.5 py-0.5 rounded border border-white/5 text-xs domain-host-label">' + host + '</code>.';
-      }
-
-      const cardStatus = document.getElementById('card-status-code');
-      if (cardStatus) {
-        cardStatus.textContent = data.statusCard;
-        cardStatus.className = data.textColor + ' font-medium block';
-      }
-
-      const badgeDot = document.getElementById('badge-dot');
-      if (badgeDot) {
-        badgeDot.className = 'w-2 h-2 rounded-full ' + data.badgeColor + ' shrink-0';
-      }
-
-      const hintEl = document.getElementById('troubleshoot-hint');
-      if (hintEl) hintEl.innerHTML = data.hint;
-
-      // Perbarui Trace ID acak
-      const randomHex = Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 8);
-      const traceEl = document.getElementById('trace-id');
-      if (traceEl) traceEl.textContent = randomHex;
-
-      // Perbarui tombol desktop switcher
-      document.querySelectorAll('.code-btn').forEach(btn => {
-        if (btn.getAttribute('data-code') === key) {
-          btn.className = 'code-btn px-2.5 py-1 rounded-full bg-slate-800 text-white font-medium border border-white/10 shadow-sm';
-        } else {
-          btn.className = 'code-btn px-2.5 py-1 rounded-full text-slate-400 hover:text-slate-200 transition';
-        }
-      });
-
-      // Perbarui tombol mobile switcher
-      document.querySelectorAll('.code-btn-m').forEach(btn => {
-        if (btn.getAttribute('data-code') === key) {
-          btn.className = 'code-btn-m px-2.5 py-0.5 rounded-full bg-slate-800 text-white font-medium border border-white/10';
-        } else {
-          btn.className = 'code-btn-m px-2.5 py-0.5 rounded-full text-slate-400 bg-white/5';
-        }
-      });
-    }
-
-    // Salin diagnostik ke clipboard pengguna
+    // Salin info diagnostik
     function copyDiagnostics() {
-      const code = document.getElementById('error-title-code')?.textContent.trim() || '` + defaultCode + `';
+      const code = '` + code + `';
       const trace = document.getElementById('trace-id')?.textContent.trim() || '8f3d9b4c0e21a7';
       const host = window.location.hostname || '` + defaultDomain + `';
-      const node = document.getElementById('card-edge-node')?.textContent.trim() || 'sg-edge-01 (SIN)';
+      const node = 'sg-edge-01 (SIN)';
       const utc = document.getElementById('utc-time')?.textContent.trim() || 'UTC';
 
       const payload = '[FikPanel Edge Diagnostic]\n' +
@@ -508,37 +673,23 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
 
       navigator.clipboard.writeText(payload).then(() => {
         const copyText = document.getElementById('copy-text');
-        const copyIcon = document.getElementById('copy-icon');
         if (copyText) copyText.textContent = 'Info Tersalin!';
-        if (copyIcon) copyIcon.className = 'fa-solid fa-check text-[11px] text-emerald-400';
         setTimeout(() => {
           if (copyText) copyText.textContent = 'Salin Info Diagnostik';
-          if (copyIcon) copyIcon.className = 'fa-regular fa-copy text-[11px]';
         }, 2000);
       });
     }
 
-    // Inisialisasi awal saat DOM siap dimuat
+    // Inisialisasi awal hostname dinamis & trace ID acak
     document.addEventListener('DOMContentLoaded', () => {
       const curHost = window.location.hostname || '` + defaultDomain + `';
       document.querySelectorAll('.domain-host-label').forEach(el => {
         el.textContent = curHost;
       });
 
-      // Arahkan tautan panel ke port default 1405
-      const panelLink = document.getElementById('panel-link');
-      if (panelLink) {
-        panelLink.href = window.location.protocol + '//' + curHost + ':1405';
-      }
-
-      // Deteksi query param code (?code=403 / 502 / ready)
-      const urlParams = new URLSearchParams(window.location.search);
-      const reqCode = urlParams.get('code');
-      if (reqCode && errorConfigs[reqCode]) {
-        setErrorCode(reqCode);
-      } else {
-        setErrorCode('` + defaultCode + `');
-      }
+      const randomHex = Math.random().toString(16).substring(2, 10) + Math.random().toString(16).substring(2, 8);
+      const traceEl = document.getElementById('trace-id');
+      if (traceEl) traceEl.textContent = randomHex;
     });
   </script>
 </body>
@@ -546,8 +697,51 @@ func buildEdgePageTemplate(defaultCode, defaultDomain string) string {
 }
 
 var (
-	tpl403     = buildEdgePageTemplate("403", "contoh-domain.com")
-	tpl404     = buildEdgePageTemplate("404", "contoh-domain.com")
-	tpl50x     = buildEdgePageTemplate("502", "contoh-domain.com")
-	tplWelcome = buildEdgePageTemplate("ready", "{{DOMAIN}}")
+	tpl404 = buildCleanEdgePage(
+		"404",
+		"HTTP 404 NOT FOUND",
+		"Edge Router",
+		"#fbbf24",
+		"#fbbf24",
+		"Halaman Tidak Ditemukan",
+		`URL atau berkas yang Anda minta tidak tersedia di direktori web hosting server <code class="domain-host-label">contoh-domain.com</code>. Pastikan alamat URL yang dimasukkan sudah benar.`,
+		`Pastikan berkas <code style="color:#f1f5f9;background:rgba(255,255,255,0.06);padding:0.1rem 0.3rem;border-radius:3px;">index.html</code> atau <code style="color:#f1f5f9;background:rgba(255,255,255,0.06);padding:0.1rem 0.3rem;border-radius:3px;">index.php</code> telah diunggah ke folder root target di FikPanel File Manager.`,
+		"contoh-domain.com",
+	)
+
+	tpl403 = buildCleanEdgePage(
+		"403",
+		"HTTP 403 FORBIDDEN",
+		"Security Guard",
+		"#fb7185",
+		"#fb7185",
+		"Akses Ditolak (Forbidden)",
+		`Server memahami permintaan Anda, namun menolak untuk memberikan izin akses ke berkas atau direktori ini di host <code class="domain-host-label">contoh-domain.com</code>.`,
+		`Periksa permission folder (standar 0755) atau periksa apakah aturan pembatasan akses / basic auth memblokir IP/request Anda.`,
+		"contoh-domain.com",
+	)
+
+	tpl50x = buildCleanEdgePage(
+		"502",
+		"HTTP 502 BAD GATEWAY",
+		"Upstream Offline",
+		"#fb7185",
+		"#fb7185",
+		"Bad Gateway (Koneksi Upstream Gagal)",
+		`Server gateway Nginx menerima respon yang tidak valid dari proses backend hulu (PHP-FPM, Node.js port, atau backend daemon) di host <code class="domain-host-label">contoh-domain.com</code>.`,
+		`Pastikan backend service (PHP-FPM pool atau application daemon port) berjalan aktif dan memori RAM server tidak melampaui kuota.`,
+		"contoh-domain.com",
+	)
+
+	tplWelcome = buildCleanEdgePage(
+		"200",
+		"HTTP 200 OK — SITE READY",
+		"Virtual Host Ready",
+		"#34d399",
+		"#34d399",
+		"Situs Berhasil Dikonfigurasi",
+		`Selamat! Domain telah aktif pada klaster FikPanel Edge. Silakan mulai mengunggah file produksi website Anda ke folder publik di host <code class="domain-host-label">{{DOMAIN}}</code>.`,
+		`Hapus file halaman placeholder ini atau ganti dengan berkas aplikasi website Anda pada direktori publik / root situs.`,
+		"{{DOMAIN}}",
+	)
 )
