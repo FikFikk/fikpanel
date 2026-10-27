@@ -455,6 +455,10 @@ export interface PHPExtensionInfo {
   description: string;
   installed: boolean;
   enabled: boolean;
+  package_name?: string;
+  install_command?: string;
+  uninstall_command?: string;
+  is_core?: boolean;
 }
 
 export interface PHPVersionDetail {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"fikpanel/internal/store"
 )
@@ -307,6 +308,68 @@ func (s *Server) handleGetPHPInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "version": ver, "info": info})
+}
+
+type PHPExtensionActionRequest struct {
+	Extension string `json:"extension"`
+}
+
+func (s *Server) handleInstallPHPExtension(w http.ResponseWriter, r *http.Request) {
+	ver := r.PathValue("version")
+	var req PHPExtensionActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+	ext := strings.TrimSpace(req.Extension)
+	if ext == "" {
+		http.Error(w, `{"error":"nama ekstensi tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	out, err := s.phpMgr.InstallExtension(r.Context(), ver, ext)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "php.extension.install", ver, true, fmt.Sprintf("Memasang ekstensi %s untuk PHP %s", ext, ver), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Ekstensi %s berhasil dipasang untuk PHP %s", ext, ver),
+		"output":  out,
+	})
+}
+
+func (s *Server) handleUninstallPHPExtension(w http.ResponseWriter, r *http.Request) {
+	ver := r.PathValue("version")
+	var req PHPExtensionActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+	ext := strings.TrimSpace(req.Extension)
+	if ext == "" {
+		http.Error(w, `{"error":"nama ekstensi tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	out, err := s.phpMgr.UninstallExtension(r.Context(), ver, ext)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "php.extension.uninstall", ver, true, fmt.Sprintf("Mencopot ekstensi %s dari PHP %s", ext, ver), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Ekstensi %s berhasil dicopot dari PHP %s", ext, ver),
+		"output":  out,
+	})
 }
 
 // Webhooks Routes

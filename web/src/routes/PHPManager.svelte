@@ -68,6 +68,9 @@
   // State Extensions
   let extSearch = $state('');
   let extList = $state<PHPExtensionInfo[]>([]);
+  let actionExtName = $state<string | null>(null);
+  let sshModalExt = $state<PHPExtensionInfo | null>(null);
+  let showSshModal = $state(false);
 
   // State OPcache
   let opcacheEnable = $state('1');
@@ -447,6 +450,105 @@
       savingOpcache = false;
     }
   }
+
+  // Pasang ekstensi PHP secara otomatis (1-Klik via Panel)
+  async function installExtension(ext: PHPExtensionInfo) {
+    if (!activeVersion) return;
+    const pkg = ext.package_name || `php${activeVersion}-${ext.name}`;
+    const ok = await confirmDialog({
+      title: `Pasang Ekstensi ${ext.name}?`,
+      message: `Pasang paket ${pkg} untuk runtime PHP ${activeVersion}? Paket akan diinstal otomatis via APT dan layanan php${activeVersion}-fpm akan di-reload seketika.`,
+      confirmLabel: 'Mulai Pasang',
+      variant: 'primary',
+    });
+    if (!ok) return;
+
+    actionExtName = ext.name;
+    try {
+      notify(`Memasang ekstensi ${ext.name} (PHP ${activeVersion})...`, 'info');
+      const res = await apiFetch<{ ok: boolean; message: string }>(
+        `/api/php/versions/${activeVersion}/extensions/install`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ extension: ext.name }),
+        }
+      );
+      notify(res.message || `Ekstensi ${ext.name} berhasil dipasang!`, 'success');
+      await fetchVersionDetail(activeVersion);
+    } catch (err: any) {
+      notify(err.message || `Gagal memasang ekstensi ${ext.name}`, 'error');
+    } finally {
+      actionExtName = null;
+    }
+  }
+
+  // Copot ekstensi PHP dan reload FPM
+  async function uninstallExtension(ext: PHPExtensionInfo) {
+    if (!activeVersion) return;
+    const pkg = ext.package_name || `php${activeVersion}-${ext.name}`;
+    const ok = await confirmDialog({
+      title: `Copot Ekstensi ${ext.name}?`,
+      message: `Apakah Anda yakin ingin mencopot paket ${pkg} dari PHP ${activeVersion}? Aplikasi web yang membutuhkan ekstensi ini mungkin akan mengalami error.`,
+      confirmLabel: 'Copot Sekarang',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    actionExtName = ext.name;
+    try {
+      notify(`Mencopot ekstensi ${ext.name}...`, 'info');
+      const res = await apiFetch<{ ok: boolean; message: string }>(
+        `/api/php/versions/${activeVersion}/extensions/uninstall`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ extension: ext.name }),
+        }
+      );
+      notify(res.message || `Ekstensi ${ext.name} berhasil dicopot!`, 'success');
+      await fetchVersionDetail(activeVersion);
+    } catch (err: any) {
+      notify(err.message || `Gagal mencopot ekstensi ${ext.name}`, 'error');
+    } finally {
+      actionExtName = null;
+    }
+  }
+
+  // Buka modal opsi perintah terminal SSH
+  function openSshModal(ext: PHPExtensionInfo) {
+    sshModalExt = ext;
+    showSshModal = true;
+  }
+
+  // Salin perintah SSH ke clipboard dengan fallback aman universal
+  function copyToClipboard(text: string, label = 'Perintah SSH') {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(() => {
+        notify(`${label} berhasil disalin ke papan klip!`, 'success');
+      }).catch(() => {
+        fallbackCopy(text, label);
+      });
+    } else {
+      fallbackCopy(text, label);
+    }
+  }
+
+  function fallbackCopy(text: string, label: string) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      notify(`${label} berhasil disalin ke papan klip!`, 'success');
+    } catch {
+      notify(`Gagal menyalin ${label}`, 'error');
+    }
+    document.body.removeChild(ta);
+  }
+
 
   // Ambil Log PHP-FPM
   async function fetchLogs(ver: string, type: 'fpm' | 'slow') {
@@ -1337,7 +1439,8 @@
                       <th>Kategori</th>
                       <th>Deskripsi</th>
                       <th>Status</th>
-                      <th>Tindakan</th>
+                      <th>Paket APT</th>
+                      <th>Tindakan & Opsi SSH</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1356,11 +1459,54 @@
                           {/if}
                         </td>
                         <td>
-                          {#if ext.installed}
-                            <span class="text-xs text-accent font-semibold">Aktif di Runtime</span>
-                          {:else}
-                            <code class="apt-hint mono">apt install php{activeVersion}-{ext.name}</code>
-                          {/if}
+                          <code class="apt-hint mono">{ext.package_name || 'php' + activeVersion + '-' + ext.name}</code>
+                        </td>
+                        <td>
+                          <div class="ext-action-group flex items-center gap-2">
+                            {#if ext.installed}
+                              <span class="badge-active-runtime">
+                                <i class="ri-checkbox-circle-fill"></i> Aktif
+                              </span>
+                              {#if !ext.is_core}
+                                <button
+                                  type="button"
+                                  class="btn btn-xs btn-danger-subtle"
+                                  onclick={() => uninstallExtension(ext)}
+                                  disabled={actionExtName === ext.name}
+                                  title="Copot paket ekstensi {ext.name}"
+                                >
+                                  {#if actionExtName === ext.name}
+                                    <i class="ri-loader-4-line spin"></i>
+                                  {:else}
+                                    <i class="ri-delete-bin-line"></i> Copot
+                                  {/if}
+                                </button>
+                              {/if}
+                            {:else}
+                              <button
+                                type="button"
+                                class="btn btn-xs btn-success"
+                                onclick={() => installExtension(ext)}
+                                disabled={actionExtName === ext.name}
+                                title="Pasang ekstensi {ext.name} secara otomatis (1-Klik via Panel)"
+                              >
+                                {#if actionExtName === ext.name}
+                                  <i class="ri-loader-4-line spin"></i> Memasang...
+                                {:else}
+                                  <i class="ri-download-2-line"></i> Install
+                                {/if}
+                              </button>
+                            {/if}
+
+                            <button
+                              type="button"
+                              class="btn btn-xs btn-terminal-opt"
+                              onclick={() => openSshModal(ext)}
+                              title="Lihat & Salin Perintah Instalasi via Terminal / SSH"
+                            >
+                              <i class="ri-terminal-box-line"></i> Perintah SSH
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     {/each}
@@ -1491,6 +1637,121 @@
             </div>
           {/if}
         </main>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showSshModal && sshModalExt}
+  <div class="modal-backdrop" onclick={() => (showSshModal = false)}>
+    <div class="ssh-modal-card" onclick={(e) => e.stopPropagation()}>
+      <div class="ssh-modal-head flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <div class="ssh-modal-icon">
+            <i class="ri-terminal-box-line"></i>
+          </div>
+          <div>
+            <h3 class="ssh-modal-title">Perintah Terminal / SSH: {sshModalExt.name}</h3>
+            <p class="ssh-modal-sub">
+              Ekstensi PHP {activeVersion} &bull; Paket APT: <span class="mono text-accent">{sshModalExt.package_name || `php${activeVersion}-${sshModalExt.name}`}</span>
+            </p>
+          </div>
+        </div>
+        <button type="button" class="btn-close-modal" onclick={() => (showSshModal = false)} aria-label="Tutup">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="ssh-modal-body">
+        <div class="ssh-notice">
+          <i class="ri-information-line"></i>
+          <span>
+            Jika Anda ingin menginstal atau mengelola ekstensi ini langsung melalui sesi terminal SSH server, gunakan perintah siap-pakai berikut:
+          </span>
+        </div>
+
+        <!-- Perintah Install -->
+        <div class="terminal-cmd-box">
+          <div class="terminal-cmd-header flex justify-between items-center">
+            <span class="cmd-type-label"><i class="ri-download-2-line"></i> Perintah Instalasi (Install)</span>
+            <button
+              type="button"
+              class="btn btn-xs btn-ghost-copy"
+              onclick={() =>
+                copyToClipboard(
+                  sshModalExt?.install_command ||
+                    `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
+                  'Perintah Install'
+                )}
+            >
+              <i class="ri-file-copy-line"></i> Salin Perintah
+            </button>
+          </div>
+          <pre class="terminal-snippet mono"><code>{sshModalExt.install_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
+        </div>
+
+        <!-- Perintah Uninstall (Jika bukan core) -->
+        {#if !sshModalExt.is_core}
+          <div class="terminal-cmd-box mt-3">
+            <div class="terminal-cmd-header flex justify-between items-center">
+              <span class="cmd-type-label text-warning"><i class="ri-delete-bin-line"></i> Perintah Copot (Uninstall)</span>
+              <button
+                type="button"
+                class="btn btn-xs btn-ghost-copy"
+                onclick={() =>
+                  copyToClipboard(
+                    sshModalExt?.uninstall_command ||
+                      `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
+                    'Perintah Uninstall'
+                  )}
+              >
+                <i class="ri-file-copy-line"></i> Salin Perintah
+              </button>
+            </div>
+            <pre class="terminal-snippet mono"><code>{sshModalExt.uninstall_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
+          </div>
+        {/if}
+
+        <!-- Pilihan Instalasi Otomatis 1-Klik -->
+        <div class="one-click-promo mt-4">
+          <div class="flex justify-between items-center flex-wrap gap-2">
+            <div>
+              <span class="font-semibold text-text text-sm">Tidak ingin repot buka terminal SSH?</span>
+              <p class="text-xs text-subtle">FikPanel dapat mengeksekusi instalasi paket ini secara otomatis di latar belakang.</p>
+            </div>
+            {#if sshModalExt.installed}
+              {#if !sshModalExt.is_core}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-danger"
+                  onclick={() => {
+                    const ext = sshModalExt;
+                    showSshModal = false;
+                    if (ext) uninstallExtension(ext);
+                  }}
+                >
+                  <i class="ri-delete-bin-line"></i> Copot via Panel
+                </button>
+              {/if}
+            {:else}
+              <button
+                type="button"
+                class="btn btn-sm btn-success"
+                onclick={() => {
+                  const ext = sshModalExt;
+                  showSshModal = false;
+                  if (ext) installExtension(ext);
+                }}
+              >
+                <i class="ri-download-2-line"></i> Pasang Otomatis Sekarang
+              </button>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="ssh-modal-foot flex justify-end">
+        <button type="button" class="btn btn-ghost" onclick={() => (showSshModal = false)}>Tutup</button>
       </div>
     </div>
   </div>
@@ -2194,5 +2455,164 @@
     gap: 0.75rem;
     min-height: 300px;
     color: var(--text-muted);
+  }
+
+  /* Ekstensi Actions & SSH Modal */
+  .badge-active-runtime {
+    color: var(--success);
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .btn-danger-subtle {
+    background: var(--tint-danger);
+    color: var(--danger);
+    border: 1px solid var(--border-subtle);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-danger-subtle:hover:not(:disabled) {
+    background: var(--danger);
+    color: var(--bg-surface);
+  }
+  .btn-terminal-opt {
+    background: var(--bg-inset);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s;
+  }
+  .btn-terminal-opt:hover:not(:disabled) {
+    background: var(--bg-overlay);
+    color: var(--accent);
+    border-color: var(--border-strong);
+  }
+  .ext-action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .ssh-modal-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    width: min(650px, 94vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 64px var(--tint-accent);
+    animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ssh-modal-head {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .ssh-modal-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-lg);
+    background: var(--tint-accent);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .ssh-modal-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+  }
+  .ssh-modal-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0.2rem 0 0 0;
+  }
+  .ssh-modal-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .ssh-notice {
+    background: var(--tint-accent);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    font-size: 0.825rem;
+    color: var(--text-muted);
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    line-height: 1.4;
+  }
+  .terminal-cmd-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .terminal-cmd-header {
+    background: var(--bg-surface);
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .cmd-type-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .btn-ghost-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-ghost-copy:hover {
+    background: var(--tint-accent);
+  }
+  .terminal-snippet {
+    padding: 0.85rem 1rem;
+    margin: 0;
+    font-size: 0.825rem;
+    color: var(--text);
+    background: var(--bg-inset);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .one-click-promo {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+  }
+  .ssh-modal-foot {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
   }
 </style>

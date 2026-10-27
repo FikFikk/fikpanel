@@ -2338,6 +2338,26 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"html": "<!DOCTYPE html>...phpinfo()..."}` |
 | Notes | Menghasilkan render diagnostik resmi `phpinfo()` via biner CLI PHP host untuk pemecahan masalah modul. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/extensions/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `extension` (string, wajib, contoh: "redis", "imagick", "memcached") |
+| Response | HTTP 200 `{"ok": true, "message": "Ekstensi redis berhasil dipasang untuk PHP 8.5", "output": "..."}` |
+| Notes | Menjalankan instalasi paket APT `php<version>-<ext>` secara otomatis di host dan me-restart daemon PHP-FPM untuk mengaktifkan modul. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/extensions/uninstall` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `extension` (string, wajib, contoh: "redis", "imagick") |
+| Response | HTTP 200 `{"ok": true, "message": "Ekstensi redis berhasil dicopot dari PHP 8.5", "output": "..."}` |
+| Notes | Mencopot paket modul ekstensi non-inti via APT `apt-get remove` dan me-restart daemon PHP-FPM. Menolak pencopotan modul inti (core). |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

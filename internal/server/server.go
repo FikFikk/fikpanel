@@ -255,6 +255,8 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/php/versions/{version}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPLogs)))
 	s.mux.Handle("POST /api/php/versions/{version}/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearPHPLogs)))
 	s.mux.Handle("GET /api/php/versions/{version}/phpinfo", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPInfo)))
+	s.mux.Handle("POST /api/php/versions/{version}/extensions/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallPHPExtension)))
+	s.mux.Handle("POST /api/php/versions/{version}/extensions/uninstall", s.AuthMiddleware(http.HandlerFunc(s.handleUninstallPHPExtension)))
 
 	// Webhooks & Alerts
 	s.mux.Handle("GET /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleListWebhooks)))

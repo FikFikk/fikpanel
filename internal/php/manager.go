@@ -218,11 +218,15 @@ func (m *Manager) ListVersions(ctx context.Context) ([]PHPVersionInfo, error) {
 }
 
 type PHPExtensionInfo struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`        // "cache", "database", "graphics", "network", "system", "general"
-	Description string `json:"description"`
-	Installed   bool   `json:"installed"`
-	Enabled     bool   `json:"enabled"`
+	Name             string `json:"name"`
+	Type             string `json:"type"` // "cache", "database", "graphics", "network", "system", "general"
+	Description      string `json:"description"`
+	Installed        bool   `json:"installed"`
+	Enabled          bool   `json:"enabled"`
+	PackageName      string `json:"package_name"`
+	InstallCommand   string `json:"install_command"`
+	UninstallCommand string `json:"uninstall_command"`
+	IsCore           bool   `json:"is_core"`
 }
 
 type PHPVersionDetail struct {
@@ -339,7 +343,7 @@ func (m *Manager) GetVersionDetail(ctx context.Context, ver string) (*PHPVersion
 		detail.Running = true
 		detail.DisabledFunctions = []string{"exec", "passthru", "shell_exec", "system", "proc_open", "popen"}
 		detail.LoadedExtensions = []string{"Core", "date", "libxml", "openssl", "pcre", "zlib", "filter", "hash", "json", "SPL", "session", "standard", "mysqlnd", "PDO", "pdo_mysql", "curl", "fileinfo", "gd", "mbstring", "Zend OPcache"}
-		detail.AllExtensions = m.getDefaultExtensionList(detail.LoadedExtensions)
+		detail.AllExtensions = m.getDefaultExtensionList(ver, detail.LoadedExtensions)
 		detail.ServiceStatus["active"] = true
 		detail.ServiceStatus["pid"] = 18726
 		detail.ServiceStatus["memory"] = "14.2 MB"
@@ -449,12 +453,37 @@ func (m *Manager) GetVersionDetail(ctx context.Context, ver string) (*PHPVersion
 		}
 	}
 
-	detail.AllExtensions = m.getDefaultExtensionList(detail.LoadedExtensions)
+	detail.AllExtensions = m.getDefaultExtensionList(ver, detail.LoadedExtensions)
 	return detail, nil
 }
 
-// getDefaultExtensionList menyusun katalog ekstensi populer beserta status aktifnya
-func (m *Manager) getDefaultExtensionList(loaded []string) []PHPExtensionInfo {
+// ResolveExtensionPackage memetakan nama ekstensi ke nama paket APT dan menentukan apakah modul merupakan modul inti PHP
+func ResolveExtensionPackage(version, extName string) (string, bool) {
+	coreModules := map[string]bool{
+		"core": true, "date": true, "pcre": true, "reflection": true,
+		"spl": true, "hash": true, "standard": true, "fileinfo": true,
+		"json": true, "filter": true, "session": true, "tokenizer": true,
+		"opcache": true,
+	}
+	ext := strings.ToLower(extName)
+	if coreModules[ext] {
+		return fmt.Sprintf("php%s-common", version), true
+	}
+
+	switch ext {
+	case "pdo_mysql", "mysqli", "mysql":
+		return fmt.Sprintf("php%s-mysql", version), false
+	case "pdo_pgsql", "pgsql":
+		return fmt.Sprintf("php%s-pgsql", version), false
+	case "sqlite3", "pdo_sqlite":
+		return fmt.Sprintf("php%s-sqlite3", version), false
+	default:
+		return fmt.Sprintf("php%s-%s", version, ext), false
+	}
+}
+
+// getDefaultExtensionList menyusun katalog ekstensi populer beserta status aktif dan perintah SSH
+func (m *Manager) getDefaultExtensionList(ver string, loaded []string) []PHPExtensionInfo {
 	loadedMap := make(map[string]bool)
 	for _, l := range loaded {
 		loadedMap[strings.ToLower(l)] = true
@@ -491,12 +520,21 @@ func (m *Manager) getDefaultExtensionList(loaded []string) []PHPExtensionInfo {
 		if c.name == "opcache" && (loadedMap["zend opcache"] || loadedMap["opcache"]) {
 			isLoaded = true
 		}
+
+		pkg, isCore := ResolveExtensionPackage(ver, c.name)
+		installCmd := fmt.Sprintf("sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y %s && sudo systemctl restart php%s-fpm", pkg, ver)
+		uninstallCmd := fmt.Sprintf("sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y %s && sudo systemctl restart php%s-fpm", pkg, ver)
+
 		res = append(res, PHPExtensionInfo{
-			Name:        c.name,
-			Type:        c.typ,
-			Description: c.desc,
-			Installed:   isLoaded,
-			Enabled:     isLoaded,
+			Name:             c.name,
+			Type:             c.typ,
+			Description:      c.desc,
+			Installed:        isLoaded,
+			Enabled:          isLoaded,
+			PackageName:      pkg,
+			InstallCommand:   installCmd,
+			UninstallCommand: uninstallCmd,
+			IsCore:           isCore,
 		})
 	}
 	return res
@@ -790,4 +828,57 @@ func (m *Manager) GetPhpInfo(ctx context.Context, ver string) (string, error) {
 // UpdateSetting memperbarui satu setting pada php.ini (kompatibilitas handler lama)
 func (m *Manager) UpdateSetting(ctx context.Context, ver string, key string, val string) error {
 	return m.SaveConfigBatch(ctx, ver, map[string]string{key: val})
+}
+
+// InstallExtension memasang paket ekstensi PHP menggunakan manajer paket APT dan me-restart layanan FPM
+func (m *Manager) InstallExtension(ctx context.Context, version, extName string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan terpasang.", extName, version), nil
+	}
+
+	pkg, _ := ResolveExtensionPackage(version, extName)
+
+	// Jalankan apt-get update & install
+	cmd := exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", pkg)
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Jika paket spesifik versi gagal, coba fallback ke paket generik php-<ext>
+		altPkg := fmt.Sprintf("php-%s", strings.ToLower(extName))
+		cmdAlt := exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", altPkg)
+		cmdAlt.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+		outAlt, errAlt := cmdAlt.CombinedOutput()
+		if errAlt != nil {
+			return string(out), fmt.Errorf("gagal memasang paket %s: %s (%w)", pkg, strings.TrimSpace(string(outAlt)), err)
+		}
+		pkg = altPkg
+		out = outAlt
+	}
+
+	// Restart layanan FPM agar modul langsung aktif
+	_ = m.ControlService(ctx, version, "restart")
+	return fmt.Sprintf("Paket %s berhasil dipasang. %s", pkg, strings.TrimSpace(string(out))), nil
+}
+
+// UninstallExtension mencopot paket ekstensi PHP dan me-restart layanan FPM
+func (m *Manager) UninstallExtension(ctx context.Context, version, extName string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan dicopot.", extName, version), nil
+	}
+
+	pkg, isCore := ResolveExtensionPackage(version, extName)
+	if isCore {
+		return "", fmt.Errorf("ekstensi %s merupakan modul inti PHP dan tidak dapat dicopot secara mandiri", extName)
+	}
+
+	cmd := exec.CommandContext(ctx, "apt-get", "remove", "-y", pkg)
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("gagal mencopot paket %s: %s (%w)", pkg, strings.TrimSpace(string(out)), err)
+	}
+
+	// Restart layanan FPM agar modul dinonaktifkan
+	_ = m.ControlService(ctx, version, "restart")
+	return fmt.Sprintf("Paket %s berhasil dicopot. %s", pkg, strings.TrimSpace(string(out))), nil
 }
