@@ -1058,4 +1058,51 @@ export interface GlobalPackage {
   description: string;
   installed: boolean;
 }
+
+// ── Web Terminal, Remote SSH & Command Shortcuts ───────────────────────────
+export interface TerminalServer {
+  id: number;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  auth_type: 'password' | 'key';
+  has_password?: boolean;
+  has_key?: boolean;
+  password?: string;
+  private_key?: string;
+  passphrase?: string;
+  remarks: string;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface TerminalCommand {
+  id: number;
+  name: string;
+  content: string;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface TerminalHistoryItem {
+  command: string;
+  output: string;
+  time: string;
+  ok?: boolean;
+}
+
+export interface TerminalTab {
+  id: string;
+  serverId: number; // 0 = lokal
+  name: string;
+  host: string;
+  username: string;
+  connected: boolean;
+  history: TerminalHistoryItem[];
+  commandInput: string;
+  historyIndex: number;
+  executing: boolean;
+}
+
 

@@ -2038,6 +2038,110 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.25 Konsol Terminal, Remote Server SSH & Pintasan Perintah
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/exec` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `command` (string, wajib), `server_id` (int64, opsional: 0/kosong = server lokal) |
+| Response | HTTP 200 `{"ok": true, "command": "uptime", "output": "...", "server_id": 0, "server_name": "Local server", "prompt_user": "root", "prompt_host": "fikpanel"}` |
+| Notes | Menjalankan perintah pada server lokal (`bash -c` / `cmd /c`) atau pada server SSH remote jika `server_id > 0`. Timeout 15 detik, pembatasan buffer 64KB, mendukung prompt username/host dinamis. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/terminal/servers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `[{"id": 1, "name": "AWS Node", "host": "10.0.0.1", "port": 22, "username": "ubuntu", "auth_type": "password", "has_password": true, "has_key": false, "remarks": "Production"}]` |
+| Notes | Mengambil daftar seluruh remote server yang tersimpan; kredensial sensitif disensor (`has_password`, `has_key`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/servers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string), `host` (string, wajib), `port` (int), `username` (string), `auth_type` (`password`\|`key`), `password` (string), `private_key` (string), `passphrase` (string), `remarks` (string) |
+| Response | HTTP 201 `{"ok": true, "id": 1}` |
+| Notes | Menyimpan konfigurasi remote server baru ke dalam database SQLite. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/terminal/servers/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name`, `host`, `port`, `username`, `auth_type`, `password`, `private_key`, `passphrase`, `remarks` |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Memperbarui konfigurasi remote server. Jika password/key kosong pada request update, sistem mempertahankan kredensial yang tersimpan sebelumnya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/terminal/servers/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Menghapus konfigurasi server remote dari database panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/servers/test` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `server_id` (opsional jika menguji server tersimpan) ATAU `host`, `port`, `username`, `auth_type`, `password`, `private_key`, `passphrase` |
+| Response | HTTP 200 `{"ok": true, "latency_ms": 32, "banner": "Linux 6.8.0-45-generic", "message": "Koneksi berhasil (32 ms)"}` |
+| Notes | Menguji konektivitas SSH live dengan timeout 6 detik, mengukur latensi roundtrip (ms), dan mengambil banner sistem remote. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/terminal/commands` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `[{"id": 1, "name": "Uptime & Load Average", "content": "uptime", "created_at": ...}]` |
+| Notes | Mengembalikan daftar pintasan perintah shell yang tersimpan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/commands` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `content` (string, wajib) |
+| Response | HTTP 201 `{"ok": true, "id": 1}` |
+| Notes | Menyimpan pintasan perintah shell baru. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/terminal/commands/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `content` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Memperbarui nama dan konten pintasan perintah yang ada. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/terminal/commands/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Menghapus pintasan perintah dari database panel. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |

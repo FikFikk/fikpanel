@@ -1,13 +1,10 @@
 package server
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -291,66 +288,6 @@ func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs": logs,
-	})
-}
-
-// ═══ Terminal Bridge ═══
-
-type TerminalExecRequest struct {
-	Command string `json:"command"`
-}
-
-func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
-	var req TerminalExecRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload tidak valid"}`, http.StatusBadRequest)
-		return
-	}
-
-	cmdClean := strings.TrimSpace(req.Command)
-	if cmdClean == "" {
-		http.Error(w, `{"error":"perintah kosong"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Real execution di Linux dengan timeout 10 detik
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/c", cmdClean)
-	} else {
-		cmd = exec.CommandContext(ctx, "bash", "-c", cmdClean)
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	output := stdout.String()
-	if stderr.Len() > 0 {
-		if len(output) > 0 {
-			output += "\n--- STDERR ---\n"
-		}
-		output += stderr.String()
-	}
-
-	if err != nil && len(output) == 0 {
-		output = fmt.Sprintf("Error: %v", err)
-	}
-
-	// Batasi ukuran output 64KB
-	if len(output) > 65536 {
-		output = output[:65536] + "\n... [output dipotong 64KB]"
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"command": cmdClean,
-		"output":  output,
 	})
 }
 

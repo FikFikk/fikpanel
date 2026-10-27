@@ -161,8 +161,17 @@ func (s *Server) registerRoutes() {
 	// Audit Log Keamanan
 	s.mux.Handle("GET /api/audit", s.AuthMiddleware(http.HandlerFunc(s.handleListAudit)))
 
-	// Terminal Web Aman
+	// Terminal Web Aman & Remote SSH Manager
 	s.mux.Handle("POST /api/terminal/exec", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExec)))
+	s.mux.Handle("GET /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleListTerminalServers)))
+	s.mux.Handle("POST /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleCreateTerminalServer)))
+	s.mux.Handle("PUT /api/terminal/servers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateTerminalServer)))
+	s.mux.Handle("DELETE /api/terminal/servers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteTerminalServer)))
+	s.mux.Handle("POST /api/terminal/servers/test", s.AuthMiddleware(http.HandlerFunc(s.handleTestTerminalServer)))
+	s.mux.Handle("GET /api/terminal/commands", s.AuthMiddleware(http.HandlerFunc(s.handleListTerminalCommands)))
+	s.mux.Handle("POST /api/terminal/commands", s.AuthMiddleware(http.HandlerFunc(s.handleCreateTerminalCommand)))
+	s.mux.Handle("PUT /api/terminal/commands/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateTerminalCommand)))
+	s.mux.Handle("DELETE /api/terminal/commands/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteTerminalCommand)))
 
 	// Penjadwal Tugas (Cron Jobs)
 	s.mux.Handle("GET /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronJobs)))
