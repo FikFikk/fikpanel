@@ -117,42 +117,15 @@ func (tm *TaskManager) executeInstall(taskID, engine, version, mode string) {
 	time.Sleep(300 * time.Millisecond)
 
 	if engine == "phpmyadmin" {
-		logLine("Langkah 1/8: Memeriksa ketersediaan web server Nginx dan PHP-FPM...")
-		time.Sleep(350 * time.Millisecond)
-		logLine("Dependensi PHP ditemukan: php8.2-fpm, php-mysql, php-mbstring, php-zip (Status: OK).")
-		time.Sleep(300 * time.Millisecond)
+		targetDir, err := InstallPhpMyAdminFiles(context.Background(), version, logLine)
+		if err != nil {
+			logLine(fmt.Sprintf("==> [GAGAL] Instalasi paket phpMyAdmin gagal: %v", err))
+			_ = tm.store.AppendTaskLog(context.Background(), taskID, "failed", err.Error())
+			tm.Broadcast(taskID, "TASK_COMPLETE_FAILED")
+			return
+		}
 
-		logLine(fmt.Sprintf("Langkah 2/8: Mengunduh arsip resmi phpMyAdmin %s dari https://files.phpmyadmin.net/phpMyAdmin/%s/phpMyAdmin-%s-all-languages.tar.gz...", version, version, version))
-		time.Sleep(450 * time.Millisecond)
-		logLine("HTTP/2 200 OK - Ukuran paket: 14.8 MB. Mengunduh: 100% [====================>]")
-		time.Sleep(350 * time.Millisecond)
-
-		logLine("Langkah 3/8: Memverifikasi hash integritas berkas (sha256sum)... Valid.")
-		time.Sleep(300 * time.Millisecond)
-
-		logLine("Langkah 4/8: Mengekstrak paket arsip ke direktori /usr/share/phpmyadmin...")
-		time.Sleep(400 * time.Millisecond)
-
-		logLine("Langkah 5/8: Membuat direktori upload/save session temporer /var/lib/phpmyadmin/tmp...")
-		time.Sleep(300 * time.Millisecond)
-		logLine("Mengatur kepemilikan izin berkas: chown -R www-data:www-data /usr/share/phpmyadmin")
-		time.Sleep(300 * time.Millisecond)
-
-		logLine("Langkah 6/8: Menghasilkan 32-byte Blowfish Secret acak untuk proteksi enkripsi cookie sesi...")
-		time.Sleep(350 * time.Millisecond)
-		logLine("Mengonfigurasi /usr/share/phpmyadmin/config.inc.php (autentikasi: cookie, host: 127.0.0.1:3306)...")
-		time.Sleep(350 * time.Millisecond)
-
-		logLine("Langkah 7/8: Mendaftarkan konfigurasi vhost Nginx /etc/nginx/conf.d/phpmyadmin.conf...")
-		time.Sleep(350 * time.Millisecond)
-		logLine("Menguji sintaks konfigurasi web server: nginx -t (syntax is ok, test is successful).")
-		time.Sleep(300 * time.Millisecond)
-
-		logLine("Langkah 8/8: Memuat ulang layanan daemon Nginx (systemctl reload nginx)...")
-		time.Sleep(300 * time.Millisecond)
-
-		logLine(fmt.Sprintf("==> [SELESAI] Layanan resmi phpMyAdmin %s berhasil dipasang di server!", version))
-
+		_ = targetDir
 		SetEngineInstalled("phpmyadmin", version, true)
 		_ = tm.store.AppendTaskLog(context.Background(), taskID, "success", "")
 		tm.Broadcast(taskID, "TASK_COMPLETE_SUCCESS")

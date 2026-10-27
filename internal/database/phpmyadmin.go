@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -185,6 +186,27 @@ func (d *PhpMyAdminDaemon) startServer() error {
 	return nil
 }
 
+// EnsurePhpMyAdminAvailable memastikan berkas fisik phpMyAdmin tersedia di server, mengunduhnya secara otomatis jika belum ada
+func EnsurePhpMyAdminAvailable(ctx context.Context) (docRoot string, folder string, fullPath string, err error) {
+	docRoot, folder, fullPath, found := FindPhpMyAdminLocation()
+	if found {
+		return docRoot, folder, fullPath, nil
+	}
+
+	// Unduh dan pasang berkas fisik phpMyAdmin secara mandiri
+	_, err = InstallPhpMyAdminFiles(ctx, "5.2.1", nil)
+	if err != nil {
+		return "", "", "", fmt.Errorf("gagal mengunduh dan menyiapkan berkas resmi phpMyAdmin: %w", err)
+	}
+
+	docRoot, folder, fullPath, found = FindPhpMyAdminLocation()
+	if !found {
+		return "", "", "", fmt.Errorf("direktori fisik paket resmi phpMyAdmin tidak ditemukan setelah instalasi")
+	}
+
+	return docRoot, folder, fullPath, nil
+}
+
 // GetPhpMyAdminProxy mengembalikan ReverseProxy aktif yang mengarah ke instance resmi phpMyAdmin
 func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 	globalPmaDaemon.mu.Lock()
@@ -192,7 +214,11 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
 
 	docRoot, folder, _, found := FindPhpMyAdminLocation()
 	if !found {
-		return nil, fmt.Errorf("direktori fisik paket resmi phpMyAdmin tidak ditemukan di server")
+		var err error
+		docRoot, folder, _, err = EnsurePhpMyAdminAvailable(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("direktori fisik paket resmi phpMyAdmin tidak ditemukan di server: %w", err)
+		}
 	}
 
 	globalPmaDaemon.docRoot = docRoot

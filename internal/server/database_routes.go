@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -887,7 +888,111 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "<div style='font-family:sans-serif;padding:2rem;color:#c0392b;'><h3>Gagal Menghubungkan ke phpMyAdmin</h3><p>%v</p><p><a href=\"/\">Kembali ke Panel FikPanel</a></p></div>", err)
+		errPage := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gagal Menghubungkan ke phpMyAdmin - FikPanel</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #090a0f;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1.5rem;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #0e1119;
+      border: 1px solid #dc2626;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin: 0 0 0.75rem;
+    }
+    .error-msg {
+      background: #181c27;
+      border: 1px solid #283145;
+      color: #fca5a5;
+      font-family: monospace;
+      font-size: 0.825rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin: 1rem 0 1.5rem;
+      text-align: left;
+      word-break: break-word;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-block;
+      background: #10b981;
+      color: #04130d;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #059669;
+    }
+    .btn-secondary {
+      background: #1f2738;
+      color: #e2e8f0;
+    }
+    .btn-secondary:hover {
+      background: #2a354b;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">&#9888; Inisialisasi Layanan Terkendala</div>
+    <h1>Gagal Menghubungkan ke phpMyAdmin</h1>
+    <div class="error-msg">%s</div>
+    <p>Server sedang berupaya menyiapkan berkas paket resmi atau dependensi biner PHP belum aktif sepenuhnya. Pastikan paket biner PHP (php-cli, php-mysql, php-mbstring) tersedia di server sistem.</p>
+    <div class="actions">
+      <a href="javascript:location.reload()" class="btn">Muat Ulang Halaman</a>
+      <a href="/" class="btn btn-secondary">Kembali ke FikPanel</a>
+    </div>
+  </div>
+</body>
+</html>`, html.EscapeString(err.Error()))
+		w.Write([]byte(errPage))
 		return
 	}
 

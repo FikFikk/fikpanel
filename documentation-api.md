@@ -2142,6 +2142,50 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
+### 1.26 Mesin Database, Quick Install & Web GUI phpMyAdmin
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/engines` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `[{"name": "mysql", "displayName": "MySQL / MariaDB", "installed": true, "version": "10.11", "running": true, ...}]` |
+| Notes | Mendeteksi ketersediaan layanan engine database di sistem host beserta jumlah database yang terkelola. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `engine` (string, wajib, misal "phpmyadmin"), `version` (string, misal "5.2.1"), `mode` (string, misal "fast" atau "native") |
+| Response | HTTP 202 `{"task_id": "task_install_phpmyadmin_177...", "message": "Instalasi phpmyadmin 5.2.1 telah dimulai di latar belakang"}` |
+| Notes | Mendaftarkan background task instalasi. Untuk phpMyAdmin, melakukan pengunduhan fisik arsip resmi, ekstraksi native dengan flattening folder, dan pembuatan Blowfish Secret acak. Kemajuan tugas dialirkan melalui Server-Sent Events (SSE) `GET /api/system/tasks/{id}/stream`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/webgui/sso` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `database` (string), `mode` (string, misal "domain" atau "builtin"), `domain` (string, opsional) |
+| Response | HTTP 200 `{"url": "/phpmyadmin/index.php?sso_token=...&db=coba&user=coba_user", "token": "...", "message": "Sesi SSO phpMyAdmin berhasil dibuat, mengalihkan..."}` |
+| Notes | Menghasilkan sesi login otomatis satu kali pakai (burn-after-reading) dengan masa berlaku 5 menit untuk akses phpMyAdmin tanpa input password manual. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /phpmyadmin/` (dan `/pma/`, `/phpMyAdmin/`) |
+| Auth Required | No (Proteksi autentikasi internal phpMyAdmin & SSO) |
+| Headers | Sesuai protokol HTTP browser |
+| Query Params | `route` (string, opsional), `db` (string, opsional), `sso_token` (string, opsional), `user` (string, opsional) |
+| Request Body | Form POST standar phpMyAdmin |
+| Response | HTTP 200 / HTTP 302 HTML & aset resmi phpMyAdmin |
+| Notes | Reverse proxy terintegrasi ke proses daemon PHP internal (`127.0.0.1:8885`). Dilengkapi auto-fill kredensial SSO, normalisasi cookie path, proteksi CSP, serta mekanisme auto-recovery on-demand jika berkas fisik belum terpasang di disk. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
