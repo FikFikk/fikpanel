@@ -57,6 +57,7 @@ type SiteInput struct {
 	RootPath    string `json:"root_path"`
 	PHPVersion  string `json:"php_version"`
 	Description string `json:"description"`
+	ExtraConf   string `json:"extra_conf"`
 }
 
 // domainReport adalah hasil analisis daftar domain untuk validasi realtime di UI
@@ -124,6 +125,7 @@ func (s *Server) buildSite(r *http.Request, in SiteInput, base *store.Site) (*st
 	if len(site.Description) > 200 {
 		return nil, &sites.ValidationError{Msg: "deskripsi maksimal 200 karakter"}
 	}
+	site.ExtraConf = strings.TrimSpace(in.ExtraConf)
 
 	site.Kind = in.Kind
 	site.Upstream, site.RootPath, site.PHPVersion = "", "", ""
@@ -390,6 +392,128 @@ func (s *Server) handleSiteVhost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"content": content})
+}
+
+// handleSaveSiteVhost menyimpan vhost Nginx mentah setelah lolos uji sintaks
+func (s *Server) handleSaveSiteVhost(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+	}
+	if !decodeNginxBody(w, r, &req) {
+		return
+	}
+	if err := s.sites.SaveRawVhost(r.Context(), site, req.Content); err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	s.auditSite(r, "site.vhost.save", site.Domain, true, "Konfigurasi vhost mentah berhasil disimpan")
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// handleSiteLogs membaca potongan baris log akses atau error domain
+func (s *Server) handleSiteLogs(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	logType := r.URL.Query().Get("type")
+	if logType != "error" {
+		logType = "access"
+	}
+	content, err := s.sites.GetLog(site.Domain, logType, 200)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"domain":  site.Domain,
+		"type":    logType,
+		"content": content,
+	})
+}
+
+// handleClearSingleSiteLogs mengosongkan riwayat log akses dan error spesifik situs
+func (s *Server) handleClearSingleSiteLogs(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	if err := s.sites.ClearLog(site.Domain); err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	s.auditSite(r, "site.logs.clear", site.Domain, true, "Log akses dan error situs dikosongkan")
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// handleSiteCustomSSL menerima kunci privat dan sertifikat TLS kustom
+func (s *Server) handleSiteCustomSSL(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	var req struct {
+		Key  string `json:"key"`
+		Cert string `json:"cert"`
+	}
+	if !decodeNginxBody(w, r, &req) {
+		return
+	}
+	cert, err := s.sites.SaveCustomCert(r.Context(), id, site.Domain, req.Key, req.Cert)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	s.auditSite(r, "ssl.custom", site.Domain, true, fmt.Sprintf("Sertifikat kustom dipasang: issuer=%s", cert.Issuer))
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "certificate": cert})
+}
+
+// handleSiteGetCerts mengambil kunci privat dan sertifikat tersimpan untuk domain
+func (s *Server) handleSiteGetCerts(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	certData, keyData, _ := s.sites.GetCertPair(site.Domain)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"cert": certData,
+		"key":  keyData,
+	})
 }
 
 func (s *Server) handleSiteSSL(w http.ResponseWriter, r *http.Request) {

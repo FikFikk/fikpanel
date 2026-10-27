@@ -5,6 +5,7 @@ bin/
 *.dll
 *.so
 *.dylib
+fikpanel-*
 
 # Test artifacts
 *.out

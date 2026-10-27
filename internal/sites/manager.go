@@ -2,6 +2,9 @@ package sites
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/store"
@@ -69,6 +73,12 @@ type Manager struct {
 
 // NewManager membuat manager situs
 func NewManager(p Paths, ngx *nginx.Manager, st *store.Store) *Manager {
+	if runtime.GOOS == "linux" {
+		// Pastikan permission direktori ACMEWebroot dan parent-nya 0755 agar dapat dibaca Nginx (www-data)
+		_ = os.MkdirAll(p.ACMEWebroot, 0o755)
+		_ = os.Chmod(filepath.Dir(p.ACMEWebroot), 0o755)
+		_ = os.Chmod(p.ACMEWebroot, 0o755)
+	}
 	return &Manager{
 		paths: p,
 		nginx: ngx,
@@ -191,7 +201,7 @@ main{text-align:center}h1{font-size:2rem;margin:0 0 .5rem}p{color:#8b95a5}b{colo
 <body><main><h1>%[1]s</h1><p>Situs berhasil dibuat dengan <b>FikPanel</b>. Unggah berkas Anda ke folder ini.</p></main></body></html>
 `
 
-// EnsureRoot membuat direktori web root dan index.html sambutan bila folder masih kosong
+// EnsureRoot membuat direktori web root dan struktur direktori proyek modern bila belum ada
 func (m *Manager) EnsureRoot(site *store.Site) error {
 	if m.mock || site.Kind == "proxy" || site.RootPath == "" {
 		return nil
@@ -199,6 +209,15 @@ func (m *Manager) EnsureRoot(site *store.Site) error {
 	if err := os.MkdirAll(site.RootPath, 0o755); err != nil {
 		return fmt.Errorf("gagal membuat direktori situs: %w", err)
 	}
+
+	// Buat sub-struktur proyek (app, logs, conf) jika root berada dalam folder public
+	parent := filepath.Dir(site.RootPath)
+	if filepath.Base(site.RootPath) == "public" {
+		_ = os.MkdirAll(filepath.Join(parent, "app"), 0o755)
+		_ = os.MkdirAll(filepath.Join(parent, "logs"), 0o755)
+		_ = os.MkdirAll(filepath.Join(parent, "conf"), 0o755)
+	}
+
 	entries, err := os.ReadDir(site.RootPath)
 	if err != nil {
 		return fmt.Errorf("gagal membaca direktori situs: %w", err)
@@ -235,7 +254,149 @@ func (m *Manager) PHPVersions() []string {
 	return out
 }
 
-// DefaultRoot menghasilkan direktori web root standar untuk domain
+// DefaultRoot menghasilkan direktori web root standar untuk domain dengan struktur terorganisir
 func DefaultRoot(domain string) string {
-	return "/var/www/" + strings.TrimPrefix(domain, "*.") + "/public_html"
+	clean := strings.TrimPrefix(domain, "*.")
+	return "/www/sites/" + clean + "/public"
+}
+
+// GetCertPair membaca file sertifikat fullchain dan privkey domain jika ada
+func (m *Manager) GetCertPair(domain string) (string, string, error) {
+	certPath, keyPath := m.certFiles(domain)
+	certData, err := os.ReadFile(certPath)
+	if err != nil {
+		return "", "", err
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return string(certData), "", err
+	}
+	return string(certData), string(keyData), nil
+}
+
+// SaveCustomCert memvalidasi dan menyimpan sertifikat kustom pengguna
+func (m *Manager) SaveCustomCert(ctx context.Context, siteID int64, domain, keyPEM, certPEM string) (*store.Certificate, error) {
+	keyPEM = strings.TrimSpace(keyPEM)
+	certPEM = strings.TrimSpace(certPEM)
+	if keyPEM == "" || certPEM == "" {
+		return nil, &ValidationError{Msg: "kunci privat dan sertifikat CRT/PEM wajib diisi"}
+	}
+
+	// Validasi pasangan kunci dan sertifikat TLS
+	tlsCert, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
+	if err != nil {
+		return nil, &ValidationError{Msg: fmt.Sprintf("pasangan sertifikat/kunci tidak valid: %v", err)}
+	}
+	if len(tlsCert.Certificate) == 0 {
+		return nil, &ValidationError{Msg: "sertifikat tidak memuat blok data X.509"}
+	}
+
+	leaf, err := x509.ParseCertificate(tlsCert.Certificate[0])
+	if err != nil {
+		return nil, &ValidationError{Msg: fmt.Sprintf("gagal membedah sertifikat X.509: %v", err)}
+	}
+
+	certPath, keyPath := m.certFiles(domain)
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o700); err != nil {
+		return nil, fmt.Errorf("gagal membuat folder sertifikat: %w", err)
+	}
+
+	if err := atomicWrite(keyPath, []byte(keyPEM), 0o600); err != nil {
+		return nil, fmt.Errorf("gagal menulis kunci privat: %w", err)
+	}
+	if err := atomicWrite(certPath, []byte(certPEM), 0o644); err != nil {
+		return nil, fmt.Errorf("gagal menulis sertifikat: %w", err)
+	}
+
+	sans, _ := json.Marshal(leaf.DNSNames)
+	issuer := leaf.Issuer.CommonName
+	if issuer == "" && len(leaf.Issuer.Organization) > 0 {
+		issuer = leaf.Issuer.Organization[0]
+	}
+	if issuer == "" {
+		issuer = leaf.Issuer.String()
+	}
+
+	cert := &store.Certificate{
+		SiteID:    siteID,
+		Status:    "issued",
+		Issuer:    issuer,
+		NotBefore: leaf.NotBefore.Unix(),
+		NotAfter:  leaf.NotAfter.Unix(),
+		Domains:   string(sans),
+		Signature: leaf.SignatureAlgorithm.String(),
+		KeyType:   leaf.PublicKeyAlgorithm.String(),
+		RenewedAt: time.Now().Unix(),
+	}
+
+	if err := m.store.UpsertCertificate(ctx, cert); err != nil {
+		return nil, err
+	}
+
+	site, err := m.store.GetSite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	site.SSLMode = "custom"
+	if err := m.store.UpdateSite(ctx, site); err != nil {
+		return nil, err
+	}
+	if err := m.Apply(ctx, site, ""); err != nil {
+		return nil, fmt.Errorf("gagal menerapkan vhost SSL: %w", err)
+	}
+
+	return cert, nil
+}
+
+// GetLog membaca baris terakhir log akses atau error untuk domain
+func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
+	if logType != "access" && logType != "error" {
+		logType = "access"
+	}
+	path := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, logType))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), nil
+		}
+		return "", err
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// ClearLog mengosongkan log akses dan error untuk domain
+func (m *Manager) ClearLog(domain string) error {
+	for _, t := range []string{"access", "error"} {
+		path := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, t))
+		_ = os.WriteFile(path, []byte{}, 0o644)
+	}
+	return nil
+}
+
+// SaveRawVhost menguji sintaks Nginx lalu menyimpan konfigurasi vhost mentah domain
+func (m *Manager) SaveRawVhost(ctx context.Context, site *store.Site, content string) error {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+
+	if err := nginx.CheckSyntax(content); err != nil {
+		return err
+	}
+
+	active, _ := m.vhostFiles(site.Domain)
+	snap := snapshot(active)
+
+	if err := os.WriteFile(active, []byte(content), 0o644); err != nil {
+		snap.restore()
+		return fmt.Errorf("gagal menulis file vhost: %w", err)
+	}
+
+	if err := m.nginx.ApplyChange(ctx); err != nil {
+		snap.restore()
+		return fmt.Errorf("konfigurasi vhost gagal dimuat: %w", err)
+	}
+	return nil
 }

@@ -150,7 +150,12 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetSite)))
 	s.mux.Handle("PUT /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSite)))
 	s.mux.Handle("GET /api/sites/{id}/vhost", s.AuthMiddleware(http.HandlerFunc(s.handleSiteVhost)))
+	s.mux.Handle("POST /api/sites/{id}/vhost", s.AuthMiddleware(http.HandlerFunc(s.handleSaveSiteVhost)))
+	s.mux.Handle("GET /api/sites/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleSiteLogs)))
+	s.mux.Handle("POST /api/sites/{id}/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearSingleSiteLogs)))
 	s.mux.Handle("POST /api/sites/{id}/ssl", s.AuthMiddleware(http.HandlerFunc(s.handleSiteSSL)))
+	s.mux.Handle("POST /api/sites/{id}/ssl/custom", s.AuthMiddleware(http.HandlerFunc(s.handleSiteCustomSSL)))
+	s.mux.Handle("GET /api/sites/{id}/ssl/certs", s.AuthMiddleware(http.HandlerFunc(s.handleSiteGetCerts)))
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))
 

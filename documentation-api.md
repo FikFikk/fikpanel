@@ -204,6 +204,56 @@
 | Response | HTTP 200 `{"ok": true, "issuing": bool, "ssl_job": {...}}`; HTTP 400 DNS belum siap / wildcard; HTTP 409 job masih berjalan |
 | Notes | Penerbitan berjalan async (ACME HTTP-01 via `x/crypto/acme`, staging bila `FIKPANEL_ACME_STAGING=1`). Otomatis menerbitkan bila `enabled=true` dan belum `issued`. Mode non-Linux disimulasikan ±4 detik. Audit `ssl.settings` & `ssl.issue`. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/vhost` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `content` (string, wajib, isi vhost Nginx lengkap) |
+| Response | HTTP 200 `{"ok": true}`; HTTP 400 sintaks Nginx tidak valid |
+| Notes | Memvalidasi sintaks dengan `nginx -t` sebelum menulis berkas aktif dan me-reload Nginx. Menyediakan rollback otomatis jika reload gagal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/ssl/custom` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `key` (string, wajib, format PEM), `cert` (string, wajib, format PEM / fullchain) |
+| Response | HTTP 200 `{"ok": true, "certificate": {...}}`; HTTP 400 pasangan sertifikat/kunci tidak cocok |
+| Notes | Memvalidasi pasangan kunci privat dan sertifikat TLS melalui Go `crypto/tls`, mengekstrak metadata masa aktif, menyimpan berkas ke direktori SSL domain, mengaktifkan `ssl_mode=custom`, dan me-reload Nginx. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/ssl/certs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"cert": string, "key": string}` |
+| Notes | Mengembalikan isi berkas `fullchain.pem` dan `privkey.pem` yang terpasang pada domain untuk keperluan inspeksi atau cadangan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `type` (string, opsional: "access" atau "error", default "access") |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "domain": "example.com", "type": "access", "content": string}` |
+| Notes | Membaca potongan 200 baris terakhir dari berkas log Nginx domain (`/var/log/nginx/<domain>.<type>.log`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/logs/clear` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Mengosongkan berkas log akses dan error untuk domain terpilih secara instan. |
+
 ---
 
 ### 1.3a Nginx Manager
