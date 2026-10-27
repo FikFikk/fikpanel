@@ -88,6 +88,7 @@
   let dbAccessHost = $state('localhost');
   let dbNote = $state('');
   let creatingDb = $state(false);
+  let userManuallyEdited = $state(false);
 
   // State Form Root Password
   let rootPassword = $state('P@ssw0rdRoot_Fik2026!');
@@ -723,6 +724,7 @@
     dbName = '';
     dbCharset = 'utf8mb4';
     dbUser = '';
+    userManuallyEdited = false;
     dbPermission = 'localhost';
     customIp = '';
     dbNote = '';
@@ -730,12 +732,18 @@
     showAddModal = true;
   }
 
-  // Sinkronkan nama user otomatis saat nama database diketik
+  // Sinkronkan nama user otomatis dengan akhiran "_user" saat nama database diketik
   function onDbNameInput(val: string) {
     dbName = val;
-    if (!dbUser || dbUser === val.slice(0, -1)) {
-      dbUser = val;
+    if (!userManuallyEdited) {
+      dbUser = val.trim() ? `${val.trim()}_user` : '';
     }
+  }
+
+  // Catat jika username diedit secara manual oleh pengguna
+  function onDbUserInput(val: string) {
+    dbUser = val;
+    userManuallyEdited = true;
   }
 
   // Simpan pembuatan database baru
@@ -1374,7 +1382,8 @@
             type="text"
             class="form-input"
             placeholder="Username database"
-            bind:value={dbUser}
+            value={dbUser}
+            oninput={(e) => onDbUserInput((e.target as HTMLInputElement).value)}
             disabled={creatingDb}
           />
         </div>
