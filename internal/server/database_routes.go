@@ -144,9 +144,15 @@ func (s *Server) handleCreateDatabase(w http.ResponseWriter, r *http.Request) {
 		Note:        req.Note,
 	}
 
+	// Lakukan provisi database, user, dan hak akses secara riil di engine database fisik (mis. MySQL)
+	if err := database.ProvisionDatabase(r.Context(), engine, req.Name, req.Username, req.Password, req.AccessHost); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal memprovisi database fisik %s: %v"}`, engine, err), http.StatusInternalServerError)
+		return
+	}
+
 	created, err := s.store.CreateDatabase(r.Context(), dbRecord)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"gagal membuat database: %v"}`, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"gagal membuat record database: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
 
@@ -170,10 +176,17 @@ func (s *Server) handleDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil username sebelum dihapus untuk pembersihan akun pengguna database terkait
+	var dbUsername string
+	_ = s.store.DB().QueryRowContext(r.Context(), "SELECT username FROM databases WHERE engine = ? AND name = ? LIMIT 1", engine, name).Scan(&dbUsername)
+
 	if err := s.store.DeleteDatabase(r.Context(), engine, name); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"gagal menghapus database: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
+
+	// Hapus database dan pengguna terkait dari engine database fisik
+	_ = database.DeprovisionDatabase(r.Context(), engine, name, dbUsername)
 
 	_ = s.store.RecordAudit(r.Context(), "user", "database.delete", fmt.Sprintf("%s:%s", engine, name), true,
 		fmt.Sprintf("Menghapus database %s pada engine %s", name, engine), nil)
@@ -888,7 +901,7 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		errPage := fmt.Sprintf(`<!DOCTYPE html>
+		errTemplate := `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -983,7 +996,7 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
   <div class="card">
     <div class="badge">&#9888; Inisialisasi Layanan Terkendala</div>
     <h1>Gagal Menghubungkan ke phpMyAdmin</h1>
-    <div class="error-msg">%s</div>
+    <div class="error-msg">{{ERROR}}</div>
     <p>Server sedang berupaya menyiapkan berkas paket resmi atau dependensi biner PHP belum aktif sepenuhnya. Pastikan paket biner PHP (php-cli, php-mysql, php-mbstring) tersedia di server sistem.</p>
     <div class="actions">
       <a href="javascript:location.reload()" class="btn">Muat Ulang Halaman</a>
@@ -991,7 +1004,8 @@ func (s *Server) handleBuiltinWebGuiClient(w http.ResponseWriter, r *http.Reques
     </div>
   </div>
 </body>
-</html>`, html.EscapeString(err.Error()))
+</html>`
+		errPage := strings.ReplaceAll(errTemplate, "{{ERROR}}", html.EscapeString(err.Error()))
 		w.Write([]byte(errPage))
 		return
 	}

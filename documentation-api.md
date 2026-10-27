@@ -2156,6 +2156,26 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 | Field | Detail |
 |---|---|
+| Method + Endpoint | `POST /api/databases/{engine}/create` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `username` (string, wajib), `password` (string, wajib), `access_host` (string, opsional default "localhost"), `note` (string, opsional) |
+| Response | HTTP 201 `{"ok": true, "database": {"id": 1, "name": "coba", "username": "coba_user", ...}}` |
+| Notes | Memprovisi skema database fisik, akun pengguna, dan hak akses di server database (MySQL), lalu mencatatnya ke SQLite panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/databases/{engine}/{name}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Database coba berhasil dihapus"}` |
+| Notes | Menghapus database dan akun pengguna terkait dari engine database fisik secara atomik serta membersihkan baris dari SQLite panel. |
+
+| Field | Detail |
+|---|---|
 | Method + Endpoint | `POST /api/databases/install` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
