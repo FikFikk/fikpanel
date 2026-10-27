@@ -618,8 +618,8 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 	}
 	pass := strings.TrimSpace(req.Password)
 	if targetDb != "" {
-		var dbUser, dbPass string
-		err := s.store.DB().QueryRowContext(r.Context(), "SELECT username, password FROM databases WHERE name = ? LIMIT 1", targetDb).Scan(&dbUser, &dbPass)
+		var dbUser, dbPass, dbLoc string
+		err := s.store.DB().QueryRowContext(r.Context(), "SELECT username, password, location FROM databases WHERE name = ? LIMIT 1", targetDb).Scan(&dbUser, &dbPass, &dbLoc)
 		if err == nil {
 			if userName == "" || userName == targetDb {
 				userName = dbUser
@@ -627,6 +627,8 @@ func (s *Server) handleWebGuiSSO(w http.ResponseWriter, r *http.Request) {
 			if pass == "" {
 				pass = dbPass
 			}
+			// Pastikan akun MySQL fisik selalu aktif dan hak aksesnya valid sebelum diarahkan ke phpMyAdmin
+			_ = database.ProvisionDatabase(r.Context(), "mysql", targetDb, userName, pass, dbLoc)
 		}
 	}
 

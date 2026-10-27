@@ -401,6 +401,16 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
         }
       }
     } catch (e) {}
+
+    // Auto-submit formulir masuk secara instan saat kredensial SSO tersedia
+    if (tUser && tPass && form && !window.__pma_sso_submitted) {
+      if (u && p && u.value === tUser && p.value === tPass) {
+        window.__pma_sso_submitted = true;
+        setTimeout(function() {
+          form.submit();
+        }, 120);
+      }
+    }
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', syncPma);
@@ -408,8 +418,8 @@ func GetPhpMyAdminProxy() (*httputil.ReverseProxy, error) {
     syncPma();
   }
   setTimeout(syncPma, 50);
-  setTimeout(syncPma, 200);
-  setTimeout(syncPma, 600);
+  setTimeout(syncPma, 150);
+  setTimeout(syncPma, 400);
 })();
 </script>`, targetUser, targetPass, targetDb, targetRoute)
 

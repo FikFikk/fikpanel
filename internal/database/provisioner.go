@@ -24,11 +24,14 @@ func executeMysqlQuery(ctx context.Context, sqlQuery string) error {
 
 	// Cek apakah berkas debian.cnf tersedia (standar Debian / Ubuntu)
 	if _, err := os.Stat("/etc/mysql/debian.cnf"); err == nil {
-		cmd = exec.CommandContext(ctx, "mysql", "--defaults-file=/etc/mysql/debian.cnf", "-e", sqlQuery)
+		cmd = exec.CommandContext(ctx, "mysql", "--defaults-file=/etc/mysql/debian.cnf")
 	} else {
 		// Fallback ke koneksi root via UNIX socket auth_socket bawaan
-		cmd = exec.CommandContext(ctx, "mysql", "-u", "root", "-e", sqlQuery)
+		cmd = exec.CommandContext(ctx, "mysql", "-u", "root")
 	}
+
+	// Alirkan kueri SQL melalui Stdin agar karakter khusus dalam password tidak rusak oleh argument parsing
+	cmd.Stdin = strings.NewReader(sqlQuery)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
