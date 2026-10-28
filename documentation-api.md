@@ -2681,8 +2681,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"connected": true, "mode": "pat", "username": "FikFikk", "name": "Fikri", "avatar_url": "https://avatars.githubusercontent.com/...", "scopes": "repo, read:user"}` |
-| Notes | Memeriksa status koneksi akun GitHub yang tersimpan di server panel (`pat` untuk akses penuh Public & Private, atau `public` untuk mode username publik). |
+| Response | HTTP 200 `{"connected": true, "mode": "token", "username": "FikFikk", "avatar_url": "/api/sites/git/avatar?u=FikFikk"}` |
+| Notes | Memeriksa status koneksi akun GitHub yang tersimpan di server panel (`token` untuk akses penuh Public & Private, atau `public` untuk mode username publik). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/git/avatar` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `u` (string, opsional, username GitHub) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `image/png` / `image/jpeg` (data biner foto profil GitHub dengan `Cache-Control: public, max-age=3600`) |
+| Notes | Mem-proxy foto profil GitHub melalui origin server panel sendiri (`'self'`) agar tidak diblokir oleh `Content-Security-Policy` peramban. |
 
 | Field | Detail |
 |---|---|

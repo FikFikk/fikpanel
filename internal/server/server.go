@@ -151,6 +151,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/sites/meta", s.AuthMiddleware(http.HandlerFunc(s.handleSiteMeta)))
 	s.mux.Handle("POST /api/sites/check-domains", s.AuthMiddleware(http.HandlerFunc(s.handleCheckDomains)))
 	s.mux.Handle("GET /api/sites/git/status", s.AuthMiddleware(http.HandlerFunc(s.handleGitStatus)))
+	s.mux.Handle("GET /api/sites/git/avatar", s.AuthMiddleware(http.HandlerFunc(s.handleGitAvatar)))
 	s.mux.Handle("POST /api/sites/git/connect", s.AuthMiddleware(http.HandlerFunc(s.handleGitConnect)))
 	s.mux.Handle("POST /api/sites/git/device/start", s.AuthMiddleware(http.HandlerFunc(s.handleGitDeviceStart)))
 	s.mux.Handle("POST /api/sites/git/device/poll", s.AuthMiddleware(http.HandlerFunc(s.handleGitDevicePoll)))
@@ -494,7 +495,7 @@ func (s *Server) registerRoutes() {
 
 		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
 		setCSP := func() {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		}
 
 		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)

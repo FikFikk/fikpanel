@@ -164,6 +164,7 @@
 
   let gitSource = $state<'github' | 'url'>('github');
   let gitStatus = $state<GitStatus>({ connected: false });
+  let avatarBroken = $state(false);
   let gitConnectOpen = $state(false);
   let gitAuthMode = $state<'pat' | 'device' | 'public'>('pat');
   let gitTokenInput = $state('');
@@ -386,6 +387,7 @@
   async function loadGitStatus() {
     try {
       const st = await apiFetch<GitStatus>('/api/sites/git/status');
+      avatarBroken = false;
       gitStatus = st;
       if (st.connected) {
         await loadGitRepos();
@@ -1064,8 +1066,13 @@
                   {:else}
                     <div class="gh-card connected">
                       <div class="gh-card-left">
-                        {#if gitStatus.avatar_url}
-                          <img src={gitStatus.avatar_url} alt={gitStatus.username} class="gh-avatar" />
+                        {#if gitStatus.avatar_url && !avatarBroken}
+                          <img
+                            src={gitStatus.avatar_url}
+                            alt={gitStatus.username}
+                            class="gh-avatar"
+                            onerror={() => (avatarBroken = true)}
+                          />
                         {:else}
                           <span class="gh-logo"><i class="ri-github-fill"></i></span>
                         {/if}
@@ -1074,7 +1081,9 @@
                             <b>@{gitStatus.username}</b>
                             {#if gitStatus.name}<span>({gitStatus.name})</span>{/if}
                             <span class="tag-accent">
-                              {gitStatus.mode === 'pat' ? 'Full Access · Public & Private' : 'Public Repos'}
+                              {gitStatus.mode === 'token' || gitStatus.mode === 'pat'
+                                ? 'Full Access · Public & Private'
+                                : 'Public Repos'}
                             </span>
                           </div>
                           <small>{gitRepos.length} repositori ditemukan · Pilih repo untuk auto-detect bahasa & branch.</small>

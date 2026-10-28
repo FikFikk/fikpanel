@@ -95,16 +95,59 @@ func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 	sshKey, _ := readOrGenerateSSHDeployKey(false)
 
 	connected := username != "" && (mode == "token" && token != "" || mode == "public")
+	avatarProxy := avatar
+	if username != "" {
+		avatarProxy = "/api/sites/git/avatar?u=" + url.QueryEscape(username)
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":              true,
 		"connected":       connected,
 		"username":        username,
-		"avatar_url":      avatar,
+		"avatar_url":      avatarProxy,
 		"mode":            mode, // "token" (Public + Private) atau "public" (Public repos saja)
 		"has_token":       token != "",
 		"oauth_client_id": clientID,
 		"ssh_public_key":  sshKey,
 	})
+}
+
+// handleGitAvatar mem-proxy foto profil GitHub melalui origin panel sendiri agar lolos aturan CSP ketat
+func (s *Server) handleGitAvatar(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	targetURL, _ := s.store.GetSetting(ctx, "github_avatar")
+	u := strings.TrimSpace(r.URL.Query().Get("u"))
+	if targetURL == "" && u != "" {
+		targetURL = "https://github.com/" + url.PathEscape(u) + ".png?size=96"
+	}
+	if targetURL == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	req.Header.Set("User-Agent", "FikPanel-Server")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		http.NotFound(w, r)
+		return
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "image/png"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 2*1024*1024))
 }
 
 // handleGitConnect menghubungkan akun GitHub via Personal Access Token (mendukung repo Private & Public) atau Username Publik
