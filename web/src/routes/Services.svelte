@@ -20,10 +20,18 @@
     stopped: number;
     failed: number;
     total_memory: number;
+    categories?: Record<string, number>;
   }
 
-  let servicesList = $state<Service[]>([]);
-  let counts = $state<ServiceCounts>({ total: 0, running: 0, stopped: 0, failed: 0, total_memory: 0 });
+  let allServicesList = $state<Service[]>([]);
+  let counts = $state<ServiceCounts>({
+    total: 0,
+    running: 0,
+    stopped: 0,
+    failed: 0,
+    total_memory: 0,
+    categories: {},
+  });
   let loading = $state<boolean>(false);
   let actionLoading = $state<string | null>(null);
 
@@ -31,6 +39,24 @@
   let scope = $state<'running' | 'all'>('running');
   let selectedCategory = $state<string>('all');
   let searchQuery = $state<string>('');
+
+  // Filtering reaktif otomatis: instan 0ms tanpa loading spinner atau kedipan network
+  let displayedServices = $derived.by(() => {
+    let list = allServicesList;
+    if (selectedCategory !== 'all') {
+      list = list.filter((s) => s.category === selectedCategory);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (s) =>
+          s.unit.toLowerCase().includes(q) ||
+          (s.label && s.label.toLowerCase().includes(q)) ||
+          (s.description && s.description.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  });
 
   // State modal Nginx
   let showNginxManager = $state<boolean>(false);
@@ -59,18 +85,12 @@
     { id: 'system', label: 'Sistem & Daemon', icon: 'ri-server-line' },
   ];
 
-  // Muat daftar layanan dengan filter aktif dari API backend
+  // Muat seluruh daftar layanan dalam cakupan (scope) aktif dari API backend
   async function loadServices(silent = false) {
     if (!silent) loading = true;
     try {
       const params = new URLSearchParams();
       params.set('scope', scope);
-      if (selectedCategory !== 'all') {
-        params.set('category', selectedCategory);
-      }
-      if (searchQuery.trim()) {
-        params.set('search', searchQuery.trim());
-      }
 
       const res = await apiFetch<{
         services: Service[];
@@ -78,7 +98,7 @@
         scope: string;
       }>(`/api/services?${params.toString()}`);
 
-      servicesList = res.services || [];
+      allServicesList = res.services || [];
       if (res.counts) {
         counts = res.counts;
       }
@@ -174,11 +194,13 @@
     }
   }
 
-  // Hitung jumlah unit per kategori untuk label pill
+  // Hitung jumlah unit per kategori untuk label pill secara konsisten dan independen
   function getCategoryCount(catId: string): number {
-    if (catId === 'all') return counts.total;
-    // Jika filter kategori aktif, tampilkan hitungan hasil filter saat ini
-    return servicesList.filter((s) => s.category === catId).length;
+    if (counts.categories && typeof counts.categories[catId] === 'number') {
+      return counts.categories[catId];
+    }
+    if (catId === 'all') return counts.total || allServicesList.length;
+    return allServicesList.filter((s) => s.category === catId).length;
   }
 
   // Muat data saat komponen pertama kali diinisialisasi
@@ -310,7 +332,6 @@
             class="cat-tab {selectedCategory === cat.id ? 'active' : ''}"
             onclick={() => {
               selectedCategory = cat.id;
-              loadServices();
             }}
           >
             <i class="{cat.icon}"></i>
@@ -326,11 +347,10 @@
           type="text"
           placeholder="Cari nama unit, deskripsi, atau proses..."
           bind:value={searchQuery}
-          oninput={() => loadServices(true)}
           class="search-input"
         />
         {#if searchQuery}
-          <button class="search-clear" onclick={() => { searchQuery = ''; loadServices(true); }}>
+          <button class="search-clear" onclick={() => { searchQuery = ''; }}>
             <i class="ri-close-line"></i>
           </button>
         {/if}
@@ -353,22 +373,22 @@
           </tr>
         </thead>
         <tbody>
-          {#if loading && servicesList.length === 0}
+          {#if loading && allServicesList.length === 0}
             <tr>
               <td colspan="8" class="empty-state">
                 <i class="ri-loader-4-line spin"></i>
                 <p>Memindai seluruh unit layanan sistem...</p>
               </td>
             </tr>
-          {:else if servicesList.length === 0}
+          {:else if displayedServices.length === 0}
             <tr>
               <td colspan="8" class="empty-state">
                 <i class="ri-inbox-line"></i>
-                <p>Tidak ada unit layanan yang sesuai dengan kriteria pencarian.</p>
+                <p>Tidak ada unit layanan yang sesuai dengan kriteria filter ({selectedCategory !== 'all' ? selectedCategory : 'semua'}).</p>
               </td>
             </tr>
           {:else}
-            {#each servicesList as s (s.unit)}
+            {#each displayedServices as s (s.unit)}
               <tr class="{s.active_state === 'failed' ? 'row-failed' : ''}">
                 <!-- Kolom Unit & Label Deskriptif -->
                 <td>

@@ -39,11 +39,12 @@ type ServiceInfo struct {
 
 // ServiceCounts merepresentasikan ringkasan kuantitatif status layanan pada sistem
 type ServiceCounts struct {
-	Total       int    `json:"total"`
-	Running     int    `json:"running"`
-	Stopped     int    `json:"stopped"`
-	Failed      int    `json:"failed"`
-	TotalMemory uint64 `json:"total_memory"`
+	Total       int            `json:"total"`
+	Running     int            `json:"running"`
+	Stopped     int            `json:"stopped"`
+	Failed      int            `json:"failed"`
+	TotalMemory uint64         `json:"total_memory"`
+	Categories  map[string]int `json:"categories"`
 }
 
 // CategoryStat merepresentasikan agregasi kuantitas per kategori layanan
@@ -364,7 +365,16 @@ func (m *Manager) ListServices(ctx context.Context) ([]ServiceInfo, error) {
 
 // ListServicesFiltered mengambil daftar layanan secara mendalam dengan dukungan scope, kategori, dan pencarian
 func (m *Manager) ListServicesFiltered(ctx context.Context, scope, category, search string) ([]ServiceInfo, ServiceCounts, error) {
-	var counts ServiceCounts
+	counts := ServiceCounts{
+		Categories: map[string]int{
+			"all":        0,
+			"web":        0,
+			"database":   0,
+			"security":   0,
+			"supervisor": 0,
+			"system":     0,
+		},
+	}
 
 	// Di lingkungan non-Linux, berikan data tiruan realistis untuk pengujian antarmuka
 	if runtime.GOOS != "linux" {
@@ -532,6 +542,8 @@ func (m *Manager) ListServicesFiltered(ctx context.Context, scope, category, sea
 			counts.Stopped++
 		}
 		counts.TotalMemory += s.MemoryCurrent
+		counts.Categories[s.Category]++
+		counts.Categories["all"]++
 
 		// Terapkan filter kategori
 		if category != "" && category != "all" && s.Category != category {
@@ -890,7 +902,16 @@ func (m *Manager) mockServicesData(scope, category, search string) ([]ServiceInf
 	}
 
 	var filtered []ServiceInfo
-	var counts ServiceCounts
+	counts := ServiceCounts{
+		Categories: map[string]int{
+			"all":        0,
+			"web":        0,
+			"database":   0,
+			"security":   0,
+			"supervisor": 0,
+			"system":     0,
+		},
+	}
 
 	for _, s := range mocks {
 		counts.Total++
@@ -902,6 +923,8 @@ func (m *Manager) mockServicesData(scope, category, search string) ([]ServiceInf
 			counts.Stopped++
 		}
 		counts.TotalMemory += s.MemoryCurrent
+		counts.Categories[s.Category]++
+		counts.Categories["all"]++
 
 		if category != "" && category != "all" && s.Category != category {
 			continue
