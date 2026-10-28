@@ -2672,6 +2672,120 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.20 Site Builder Dinamis, Integrasi GitHub, Batch Create & Backup Restore
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/git/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"connected": true, "mode": "pat", "username": "FikFikk", "name": "Fikri", "avatar_url": "https://avatars.githubusercontent.com/...", "scopes": "repo, read:user"}` |
+| Notes | Memeriksa status koneksi akun GitHub yang tersimpan di server panel (`pat` untuk akses penuh Public & Private, atau `public` untuk mode username publik). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/git/connect` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `mode` (`"pat"` \| `"public"`), `token` (string, wajib jika `mode="pat"`), `username` (string, wajib jika `mode="public"`) |
+| Response | HTTP 200 `{"ok": true, "mode": "pat", "username": "FikFikk", "name": "Fikri", "avatar_url": "...", "scopes": "repo"}` |
+| Notes | Memvalidasi token atau profil GitHub langsung ke `https://api.github.com` dan menyimpannya ke pengaturan terenkripsi/persisten panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/git/device/start` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `client_id` (string, wajib, Client ID GitHub OAuth App) |
+| Response | HTTP 200 `{"device_code": "...", "user_code": "ABCD-1234", "verification_uri": "https://github.com/login/device", "expires_in": 900, "interval": 5}` |
+| Notes | Memulai alur otorisasi GitHub OAuth Device Flow tanpa memerlukan Callback URL publik. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/git/device/poll` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `client_id` (string, wajib), `device_code` (string, wajib) |
+| Response | HTTP 200 `{"status": "connected", "username": "FikFikk", "avatar_url": "..."}` atau `{"status": "pending"}` |
+| Notes | Memeriksa apakah pengguna sudah menekan tombol *Authorize* di halaman `github.com/login/device`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/git/disconnect` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `{}` |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus token dan profil GitHub yang terhubung dari pengaturan server. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/git/repos` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"repos": [{"name": "app", "full_name": "FikFikk/app", "private": true, "clone_url": "https://github.com/FikFikk/app.git", "ssh_url": "git@github.com:FikFikk/app.git", "default_branch": "main", "language": "PHP"}]}` |
+| Notes | Mengambil hingga 100 repositori terbaru (termasuk repositori Private bila terhubung menggunakan mode Token Akses / OAuth). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/git/branches` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `repo` (string, wajib, format `owner/repo`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"branches": ["main", "develop", "production"]}` |
+| Notes | Mengambil daftar seluruh branch dari repositori GitHub terpilih. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/git/ssh-key` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `{}` |
+| Response | HTTP 200 `{"public_key": "ssh-ed25519 AAAAC3Nza... fikpanel@server", "path": "/root/.ssh/id_ed25519.pub"}` |
+| Notes | Membaca atau men-generate kunci publik SSH Ed25519 server untuk dipasang sebagai Deploy Key pada GitHub/GitLab/Bitbucket. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/backups/archives` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"archives": [{"name": "site-backup.tar.gz", "path": "/var/backups/fikpanel/site-backup.tar.gz", "size": 1048576, "mod_time": "2026-10-28 15:00:00"}]}` |
+| Notes | Memindai berkas arsip `.tar.gz`, `.tgz`, dan `.zip` pada direktori backup standar server untuk fitur *Create from backup*. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/backups/upload` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: multipart/form-data`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Form field `file` (berkas `.tar.gz`, `.tgz`, atau `.zip`, maks 512 MB) |
+| Response | HTTP 200 `{"ok": true, "path": "/var/backups/fikpanel/uploads/site.tar.gz", "name": "site.tar.gz", "size": 1048576}` |
+| Notes | Mengunggah arsip backup dari komputer lokal pengguna ke server untuk langsung dipulihkan menjadi situs baru. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/batch` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `lines` (string multi-baris format `domain\|root_path\|kind\|php_or_port\|create_db`), `auto_ssl` (bool) |
+| Response | HTTP 200 `{"ok": true, "created_count": 3, "total_lines": 3, "results": [{"domain": "app1.example.com", "kind": "php", "ok": true, "message": "Situs aktif di Nginx..."}]}` |
+| Notes | Memproses pembuatan banyak situs sekaligus beserta database MySQL dan penjadwalan SSL Let's Encrypt otomatis. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |

@@ -50,15 +50,25 @@ func (s *Server) auditSite(r *http.Request, action, target string, ok bool, deta
 
 // SiteInput adalah payload pembuatan/perubahan situs
 type SiteInput struct {
-	Domains     string `json:"domains"`
-	AddWWW      bool   `json:"add_www"`
-	Kind        string `json:"kind"`
-	User        string `json:"user"`
-	Upstream    string `json:"upstream"`
-	RootPath    string `json:"root_path"`
-	PHPVersion  string `json:"php_version"`
-	Description string `json:"description"`
-	ExtraConf   string `json:"extra_conf"`
+	Domains        string `json:"domains"`
+	AddWWW         bool   `json:"add_www"`
+	Kind           string `json:"kind"`
+	User           string `json:"user"`
+	Upstream       string `json:"upstream"`
+	RootPath       string `json:"root_path"`
+	PHPVersion     string `json:"php_version"`
+	Description    string `json:"description"`
+	ExtraConf      string `json:"extra_conf"`
+	AutoSSL        bool   `json:"auto_ssl"`
+	CreateDB       bool   `json:"create_db"`
+	DBName         string `json:"db_name"`
+	DBUser         string `json:"db_user"`
+	DBPass         string `json:"db_pass"`
+	DeployTemplate string `json:"deploy_template"`
+	GitRepoURL     string `json:"git_repo_url"`
+	GitBranch      string `json:"git_branch"`
+	GitPostCmd     string `json:"git_post_cmd"`
+	BackupArchive  string `json:"backup_archive"`
 }
 
 // domainReport adalah hasil analisis daftar domain untuk validasi realtime di UI
@@ -258,6 +268,12 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+
+	var uid *int64
+	if u := GetUserFromContext(r.Context()); u != nil {
+		uid = &u.ID
+	}
+	_ = s.applyPostSiteProvisioning(r.Context(), created, in, uid)
 
 	s.auditSite(r, "site.create", created.Domain, true,
 		fmt.Sprintf("kind=%s alias=%s", created.Kind, created.Aliases))
