@@ -524,9 +524,11 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case fileSet["composer.json"] || fileSet["artisan"]:
 				detectedKind = "php"
-				detectedPostCmd = "composer install --no-interaction --prefer-dist"
+				needsDB = true
 				if fileSet["artisan"] {
-					needsDB = true
+					detectedPostCmd = "composer install --no-interaction --prefer-dist --optimize-autoloader && php artisan key:generate --force && php artisan migrate --force"
+				} else {
+					detectedPostCmd = "composer install --no-interaction --prefer-dist"
 				}
 			case fileSet["go.mod"]:
 				detectedKind = "go"
@@ -830,7 +832,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 	}
 
-	// Injeksi file .env otomatis apabila belum ada atau database otomatis diaktifkan
+	// Injeksi file .env otomatis (salin dari .env.example bila ada agar variabel kustom aplikasi/Filament tetap utuh)
 	envPath := filepath.Join(targetDir, ".env")
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		var envLines []string
@@ -840,6 +842,9 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		envLines = append(envLines, "APP_ENV=production")
 		envLines = append(envLines, "APP_DEBUG=false")
 		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
+		envLines = append(envLines, "APP_KEY=")
+		envLines = append(envLines, "SESSION_DRIVER=file")
+		envLines = append(envLines, "CACHE_STORE=file")
 		if createDB && dbName != "" && dbUser != "" {
 			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", dbUser, dbPass, dbName))
 			envLines = append(envLines, "DB_CONNECTION=mysql")
@@ -848,6 +853,28 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			envLines = append(envLines, fmt.Sprintf("DB_DATABASE=%s", dbName))
 			envLines = append(envLines, fmt.Sprintf("DB_USERNAME=%s", dbUser))
 			envLines = append(envLines, fmt.Sprintf("DB_PASSWORD=%s", dbPass))
+		}
+		// Pertahankan variabel tambahan dari .env.example yang belum didefinisikan di atas
+		if rawExample, err := os.ReadFile(filepath.Join(targetDir, ".env.example")); err == nil {
+			definedKeys := map[string]bool{
+				"PORT": true, "NODE_ENV": true, "APP_NAME": true, "APP_ENV": true,
+				"APP_DEBUG": true, "APP_URL": true, "APP_KEY": true, "SESSION_DRIVER": true,
+				"CACHE_STORE": true, "DATABASE_URL": true, "DB_CONNECTION": true,
+				"DB_HOST": true, "DB_PORT": true, "DB_DATABASE": true, "DB_USERNAME": true, "DB_PASSWORD": true,
+			}
+			for _, line := range strings.Split(string(rawExample), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+				if eqIdx := strings.IndexByte(trimmed, '='); eqIdx > 0 {
+					k := strings.TrimSpace(trimmed[:eqIdx])
+					if !definedKeys[k] {
+						envLines = append(envLines, trimmed)
+						definedKeys[k] = true
+					}
+				}
+			}
 		}
 		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o640)
 	}
@@ -859,7 +886,23 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 	}
 
-	if postCmd != "" {
+	// Siapkan struktur folder wajib Laravel / Filament (storage & bootstrap/cache)
+	hasArtisan := false
+	if _, err := os.Stat(filepath.Join(targetDir, "artisan")); err == nil {
+		hasArtisan = true
+		for _, sub := range []string{
+			"storage/framework/sessions",
+			"storage/framework/views",
+			"storage/framework/cache/data",
+			"storage/logs",
+			"storage/app/public",
+			"bootstrap/cache",
+		} {
+			_ = os.MkdirAll(filepath.Join(targetDir, sub), 0o775)
+		}
+	}
+
+	if postCmd != "" || hasArtisan {
 		// Sisipkan otomatis npx drizzle-kit push apabila repo memakai Drizzle ORM dan DB diaktifkan
 		hasDrizzle := false
 		if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.ts")); err == nil {
@@ -875,11 +918,35 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
-		bctx, bcancel := context.WithTimeout(ctx, 150*time.Second)
+		// Otomasi penuh proyek PHP Laravel & Filament (termasuk kompatibilitas lintas versi PHP 8.3 -> 8.5 via --ignore-platform-reqs)
+		if hasArtisan {
+			laravelPipeline := strings.Join([]string{
+				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs)",
+				"if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (npm install && npm run build) || true; fi",
+				"php artisan key:generate --force",
+				"(php artisan storage:link --force || true)",
+				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
+				"(php artisan filament:upgrade || php artisan filament:assets || true)",
+				"(php artisan optimize:clear || true)",
+				"(chown -R www-data:www-data storage bootstrap/cache database 2>/dev/null || true)",
+				"(chmod -R 775 storage bootstrap/cache 2>/dev/null || true)",
+				"(chmod 755 /home/fikpanel /home/fikpanel/web . public 2>/dev/null || true)",
+			}, " && ")
+			postCmd = laravelPipeline
+		} else if strings.Contains(postCmd, "composer install") && !strings.Contains(postCmd, "--ignore-platform-reqs") {
+			postCmd = "(" + postCmd + " || composer install --no-interaction --prefer-dist --ignore-platform-reqs)"
+		}
+
+		bctx, bcancel := context.WithTimeout(ctx, 180*time.Second)
 		defer bcancel()
 		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+" && (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
 		buildCmd.Dir = targetDir
-		buildCmd.Env = append(os.Environ(), "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "CI=true")
+		buildCmd.Env = append(os.Environ(),
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"CI=true",
+			"COMPOSER_ALLOW_SUPERUSER=1",
+			"COMPOSER_MEMORY_LIMIT=-1",
+		)
 		out, _ := buildCmd.CombinedOutput()
 		_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
 	}
