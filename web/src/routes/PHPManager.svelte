@@ -17,8 +17,9 @@
   let showManageModal = $state(false);
 
   // Sub-tab aktif di modal manajemen (aaPanel style)
-  type ManageTab = 'service' | 'config' | 'raw_ini' | 'fpm_pool' | 'raw_fpm' | 'disabled_func' | 'extensions' | 'opcache' | 'logs' | 'phpinfo';
+  type ManageTab = 'service' | 'sites' | 'config' | 'raw_ini' | 'fpm_pool' | 'raw_fpm' | 'disabled_func' | 'extensions' | 'opcache' | 'logs' | 'phpinfo';
   let activeTab = $state<ManageTab>('config');
+  let switchingSiteId = $state<number | null>(null);
 
   // State Form Visual Parameter (Screenshot 1 aaPanel)
   let formMaxExec = $state('300');
@@ -621,6 +622,35 @@
     }
   }
 
+  // Alihkan versi PHP untuk suatu situs secara instan
+  async function switchSitePHP(siteId: number, domain: string, newVersion: string) {
+    if (!newVersion || newVersion === activeVersion) return;
+    const ok = await confirmDialog({
+      title: `Alihkan Versi PHP ${domain}`,
+      message: `Apakah Anda yakin ingin mengalihkan runtime PHP untuk situs "${domain}" ke PHP ${newVersion}? Konfigurasi virtual host Nginx akan dirender ulang secara instan tanpa mematikan server.`,
+      confirmLabel: `Alihkan ke PHP ${newVersion}`,
+      variant: 'primary',
+    });
+    if (!ok) return;
+
+    switchingSiteId = siteId;
+    try {
+      const res = await apiFetch<{ ok: boolean; message: string }>(`/api/php/sites/${siteId}/switch`, {
+        method: 'POST',
+        body: JSON.stringify({ php_version: newVersion }),
+      });
+      notify(res.message || `PHP untuk ${domain} berhasil dialihkan`, 'success');
+      await loadPHPVersions();
+      if (activeVersion) {
+        await fetchVersionDetail(activeVersion);
+      }
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengalihkan versi PHP situs', 'error');
+    } finally {
+      switchingSiteId = null;
+    }
+  }
+
   // Penanganan tombol pintas keyboard di Editor php.ini (Ctrl+S, Ctrl+F, Tab)
   function handleEditorKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -752,6 +782,54 @@
               <span class="meta-lbl">Upload Max:</span>
               <span class="meta-val">{v.settings?.['upload_max_filesize'] || '64M'}</span>
             </div>
+
+            <!-- Bagian Situs Terhubung (HestiaCP / aaPanel Style) -->
+            <div class="connected-section">
+              <div class="connected-header">
+                <span class="connected-label">
+                  <i class="ri-global-line"></i> Situs Terhubung
+                </span>
+                {#if (v.sites_count || 0) > 0}
+                  <button
+                    type="button"
+                    class="site-count-badge"
+                    onclick={() => openManageModal(v.version, 'sites')}
+                    title="Buka daftar situs terhubung"
+                  >
+                    {v.sites_count} Situs
+                  </button>
+                {:else}
+                  <span class="site-count-zero">0 Situs</span>
+                {/if}
+              </div>
+
+              {#if v.sites && v.sites.length > 0}
+                <div class="site-chips-list">
+                  {#each v.sites.slice(0, 3) as site (site.id)}
+                    <a
+                      href="#/sites"
+                      class="site-chip"
+                      title="Situs: {site.domain} | Pengguna: {site.user} | Path: {site.root_path}"
+                    >
+                      <span class="site-user-badge"><i class="ri-user-line"></i> {site.user}</span>
+                      <span class="site-domain-text">{site.domain}</span>
+                    </a>
+                  {/each}
+                  {#if v.sites.length > 3}
+                    <button
+                      type="button"
+                      class="site-chip site-chip-more"
+                      onclick={() => openManageModal(v.version, 'sites')}
+                      title="Lihat semua {v.sites.length} situs yang terhubung"
+                    >
+                      +{v.sites.length - 3} lainnya…
+                    </button>
+                  {/if}
+                </div>
+              {:else}
+                <p class="site-empty-hint">Belum ada situs yang terhubung</p>
+              {/if}
+            </div>
           {:else}
             <p class="text-subtle text-xs">
               Tersedia di repositori sistem operasi. Dapat dipasang dalam 1-klik melalui antrean APT.
@@ -838,6 +916,16 @@
               onclick={() => switchTab('service')}
             >
               <i class="ri-pulse-line"></i> Service
+            </button>
+
+            <button
+              class="nav-item {activeTab === 'sites' ? 'active' : ''}"
+              onclick={() => switchTab('sites')}
+            >
+              <i class="ri-global-line"></i> Situs Terhubung
+              {#if activeDetail?.sites_count}
+                <span class="nav-badge">{activeDetail.sites_count}</span>
+              {/if}
             </button>
 
             <button
@@ -965,6 +1053,96 @@
                   {/if}
                 </div>
               </div>
+            </div>
+
+          <!-- ================= TAB: SITUS TERHUBUNG (HESTIACP / AAPANEL STYLE) ================= -->
+          {:else if activeTab === 'sites'}
+            <div class="tab-pane">
+              <div class="section-title-wrap flex justify-between items-center">
+                <div>
+                  <h4 class="section-title">Situs Terhubung: PHP {activeVersion}</h4>
+                  <p class="section-desc">
+                    Daftar seluruh virtual host web di server yang mengeksekusi skrip PHP melalui socket php{activeVersion}-fpm.
+                  </p>
+                </div>
+                <a href="#/sites" class="btn btn-ghost btn-sm">
+                  <i class="ri-external-link-line"></i> Buka Menu Websites
+                </a>
+              </div>
+
+              {#if activeDetail?.sites && activeDetail.sites.length > 0}
+                <div class="sites-table-card">
+                  <table class="sites-table">
+                    <thead>
+                      <tr>
+                        <th>Domain Situs</th>
+                        <th>Pengguna Linux</th>
+                        <th>Direktori Root</th>
+                        <th>Status</th>
+                        <th>Ganti Versi PHP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each activeDetail.sites as site (site.id)}
+                        <tr>
+                          <td>
+                            <div class="flex items-center gap-2">
+                              <span class="status-indicator {site.enabled ? 'active' : 'disabled'}"></span>
+                              <span class="domain-title font-semibold">{site.domain}</span>
+                              <a href="http://{site.domain}" target="_blank" rel="noopener noreferrer" class="link-external" title="Kunjungi website">
+                                <i class="ri-external-link-line"></i>
+                              </a>
+                            </div>
+                          </td>
+                          <td>
+                            <span class="user-pill"><i class="ri-user-line"></i> {site.user}</span>
+                          </td>
+                          <td>
+                            <span class="mono text-xs text-subtle truncate max-w-xs" title={site.root_path}>{site.root_path}</span>
+                          </td>
+                          <td>
+                            {#if site.enabled}
+                              <span class="badge badge-success">Aktif</span>
+                            {:else}
+                              <span class="badge badge-subtle">Nonaktif</span>
+                            {/if}
+                          </td>
+                          <td>
+                            <div class="inline-flex items-center gap-2">
+                              <select
+                                class="form-select form-select-sm"
+                                value={activeVersion}
+                                onchange={(e) => switchSitePHP(site.id, site.domain, e.currentTarget.value)}
+                                disabled={switchingSiteId === site.id}
+                              >
+                                {#each versions.filter((ver) => ver.installed) as pv (pv.version)}
+                                  <option value={pv.version}>PHP {pv.version} {pv.running ? '(FPM Aktif)' : ''}</option>
+                                {/each}
+                              </select>
+                              {#if switchingSiteId === site.id}
+                                <i class="ri-loader-4-line spin text-accent"></i>
+                              {/if}
+                            </div>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {:else}
+                <div class="empty-sites-box">
+                  <div class="empty-icon-ring">
+                    <i class="ri-global-line"></i>
+                  </div>
+                  <h5 class="empty-title">Belum Ada Situs Terhubung</h5>
+                  <p class="empty-desc">
+                    Saat ini belum ada virtual host yang dikonfigurasi untuk mengeksekusi skrip melalui PHP {activeVersion}. Anda dapat memilih versi ini saat menambah situs baru atau mengalihkan situs yang ada di menu Websites.
+                  </p>
+                  <a href="#/sites" class="btn btn-primary btn-sm mt-3">
+                    <i class="ri-arrow-right-line"></i> Buka Menu Websites
+                  </a>
+                </div>
+              {/if}
             </div>
 
           <!-- ================= TAB 2: CONFIGURATION (VISUAL ALA GAMBAR 1) ================= -->
@@ -1851,6 +2029,230 @@
   .meta-val {
     color: var(--text);
   }
+
+  /* ═══ Bagian Situs Terhubung (Card Grid) ═══ */
+  .connected-section {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .connected-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .connected-label {
+    font-size: 0.72rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .connected-label i {
+    color: var(--accent);
+    font-size: 0.8rem;
+  }
+  .site-count-badge {
+    font-size: 0.65rem;
+    font-weight: var(--weight-bold);
+    color: var(--accent);
+    background: var(--tint-accent);
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    cursor: pointer;
+    transition: all var(--duration-fast) ease;
+  }
+  .site-count-badge:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .site-count-zero {
+    font-size: 0.65rem;
+    color: var(--text-disabled);
+    background: var(--bg-raised);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+  }
+  .site-chips-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .site-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--text);
+    transition: all var(--duration-fast) ease;
+  }
+  .site-chip:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    transform: translateX(2px);
+  }
+  .site-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.62rem;
+    font-weight: var(--weight-medium);
+    color: var(--text-subtle);
+    background: var(--bg-inset);
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+  }
+  .site-domain-text {
+    font-size: 0.72rem;
+    font-weight: var(--weight-semibold);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .site-chip-more {
+    font-size: 0.68rem;
+    color: var(--accent);
+    background: transparent;
+    border: 1px dashed var(--border);
+    cursor: pointer;
+    justify-content: center;
+    padding: 0.2rem;
+  }
+  .site-chip-more:hover {
+    background: var(--tint-accent);
+    border-color: var(--accent);
+  }
+  .site-empty-hint {
+    font-size: 0.7rem;
+    color: var(--text-disabled);
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* ═══ Modal: Situs Terhubung Tab & Table ═══ */
+  .nav-badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: var(--weight-bold);
+    background: var(--tint-accent);
+    color: var(--accent);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+  }
+  .sites-table-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .sites-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.82rem;
+  }
+  .sites-table th {
+    background: var(--bg-raised);
+    padding: 0.75rem 1rem;
+    color: var(--text-muted);
+    font-weight: var(--weight-semibold);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+  }
+  .sites-table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+  }
+  .sites-table tbody tr:hover {
+    background: var(--bg-hover);
+  }
+  .status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .status-indicator.active {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .status-indicator.disabled {
+    background: var(--text-disabled);
+  }
+  .domain-title {
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  .link-external {
+    color: var(--text-subtle);
+    transition: color var(--duration-fast) ease;
+  }
+  .link-external:hover {
+    color: var(--accent);
+  }
+  .user-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .empty-sites-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 1.5rem;
+    background: var(--bg-surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .empty-icon-ring {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--tint-accent);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .empty-title {
+    font-size: 1.05rem;
+    font-weight: var(--weight-bold);
+    color: var(--text);
+    margin: 0 0 0.4rem 0;
+  }
+  .empty-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    max-width: 440px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
   .v-actions {
     display: flex;
     gap: 0.5rem;

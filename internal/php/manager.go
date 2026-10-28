@@ -14,13 +14,25 @@ import (
 	"strings"
 )
 
+// AttachedSite merepresentasikan situs web yang terhubung ke versi PHP tertentu
+type AttachedSite struct {
+	ID       int64  `json:"id"`
+	Domain   string `json:"domain"`
+	User     string `json:"user"`
+	RootPath string `json:"root_path"`
+	Enabled  bool   `json:"enabled"`
+	SSLMode  string `json:"ssl_mode,omitempty"`
+}
+
 type PHPVersionInfo struct {
-	Version   string            `json:"version"`   // misal: "8.5", "8.3", "8.2", "8.1"
-	Installed bool              `json:"installed"` // true/false
-	Running   bool              `json:"running"`   // FPM running
-	FpmSocket string            `json:"fpm_socket"`
-	IniPath   string            `json:"ini_path"`
-	Settings  map[string]string `json:"settings"` // upload_max_filesize, memory_limit, max_execution_time
+	Version    string            `json:"version"`   // misal: "8.5", "8.3", "8.2", "8.1"
+	Installed  bool              `json:"installed"` // true/false
+	Running    bool              `json:"running"`   // FPM running
+	FpmSocket  string            `json:"fpm_socket"`
+	IniPath    string            `json:"ini_path"`
+	Settings   map[string]string `json:"settings"` // upload_max_filesize, memory_limit, max_execution_time
+	Sites      []AttachedSite    `json:"sites"`
+	SitesCount int               `json:"sites_count"`
 }
 
 type Manager struct{}
@@ -245,6 +257,8 @@ type PHPVersionDetail struct {
 	DisabledFunctions []string               `json:"disabled_functions"`
 	LoadedExtensions  []string               `json:"loaded_extensions"`
 	AllExtensions     []PHPExtensionInfo     `json:"all_extensions"`
+	Sites             []AttachedSite         `json:"sites"`
+	SitesCount        int                    `json:"sites_count"`
 }
 
 func (m *Manager) RestartFPM(ctx context.Context, ver string) error {

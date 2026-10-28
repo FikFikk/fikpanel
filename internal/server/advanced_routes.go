@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fikpanel/internal/php"
 	"fikpanel/internal/store"
 )
 
@@ -89,6 +90,19 @@ func (s *Server) handleDeleteDNSRecord(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 }
 
+// extractSiteUser mengekstrak username Linux pemilik situs dari root_path
+func extractSiteUser(rootPath string) string {
+	if strings.HasPrefix(rootPath, "/home/") {
+		parts := strings.Split(rootPath, "/")
+		if len(parts) >= 3 && parts[2] != "" {
+			return parts[2]
+		}
+	} else if strings.HasPrefix(rootPath, "/var/www") {
+		return "www-data"
+	}
+	return "fikpanel"
+}
+
 // PHP Management Routes
 func (s *Server) handleListPHPVersions(w http.ResponseWriter, r *http.Request) {
 	versions, err := s.phpMgr.ListVersions(r.Context())
@@ -96,6 +110,45 @@ func (s *Server) handleListPHPVersions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"gagal memeriksa instalasi PHP"}`, http.StatusInternalServerError)
 		return
 	}
+
+	// Ambil seluruh situs dari database untuk memetakan situs terhubung ke masing-masing versi PHP
+	allSites, _ := s.store.ListSites(r.Context())
+	siteMap := make(map[string][]php.AttachedSite)
+
+	for _, st := range allSites {
+		if st.Kind != "php" {
+			continue
+		}
+		ver := strings.TrimPrefix(st.PHPVersion, "php")
+		if ver == "" {
+			ver = "default"
+		}
+
+		user := extractSiteUser(st.RootPath)
+		att := php.AttachedSite{
+			ID:       st.ID,
+			Domain:   st.Domain,
+			User:     user,
+			RootPath: st.RootPath,
+			Enabled:  st.Enabled == 1,
+			SSLMode:  st.SSLMode,
+		}
+		siteMap[ver] = append(siteMap[ver], att)
+	}
+
+	for i := range versions {
+		v := versions[i].Version
+		matched := siteMap[v]
+		if len(matched) == 0 && siteMap["default"] != nil && versions[i].Running {
+			matched = append(matched, siteMap["default"]...)
+		}
+		if matched == nil {
+			matched = []php.AttachedSite{}
+		}
+		versions[i].Sites = matched
+		versions[i].SitesCount = len(matched)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "versions": versions})
 }
@@ -135,8 +188,85 @@ func (s *Server) handleGetPHPVersionDetail(w http.ResponseWriter, r *http.Reques
 		http.Error(w, fmt.Sprintf(`{"error":"gagal memuat detail PHP: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
+
+	// Lampirkan daftar situs yang terhubung
+	allSites, _ := s.store.ListSites(r.Context())
+	var attached []php.AttachedSite
+	for _, st := range allSites {
+		if st.Kind != "php" {
+			continue
+		}
+		siteVer := strings.TrimPrefix(st.PHPVersion, "php")
+		if siteVer == ver || (siteVer == "" && detail.Running) {
+			attached = append(attached, php.AttachedSite{
+				ID:       st.ID,
+				Domain:   st.Domain,
+				User:     extractSiteUser(st.RootPath),
+				RootPath: st.RootPath,
+				Enabled:  st.Enabled == 1,
+				SSLMode:  st.SSLMode,
+			})
+		}
+	}
+	if attached == nil {
+		attached = []php.AttachedSite{}
+	}
+	detail.Sites = attached
+	detail.SitesCount = len(attached)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "detail": detail})
+}
+
+// handleSwitchSitePHPVersion mengalihkan versi PHP suatu situs langsung dari PHP Manager
+func (s *Server) handleSwitchSitePHPVersion(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("site_id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"ID situs tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		PHPVersion string `json:"php_version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PHPVersion == "" {
+		http.Error(w, `{"error":"versi PHP tujuan tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	current, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		http.Error(w, `{"error":"situs tidak ditemukan"}`, http.StatusNotFound)
+		return
+	}
+	if current.Kind != "php" {
+		http.Error(w, `{"error":"situs bukan merupakan aplikasi jenis PHP"}`, http.StatusBadRequest)
+		return
+	}
+
+	targetVer := strings.TrimPrefix(req.PHPVersion, "php")
+	next := *current
+	next.PHPVersion = targetVer
+
+	if err := s.store.UpdateSite(r.Context(), &next); err != nil {
+		writeSiteError(w, err)
+		return
+	}
+
+	if err := s.sites.Apply(r.Context(), &next, current.Domain); err != nil {
+		_ = s.store.UpdateSite(r.Context(), current)
+		s.auditSite(r, "php.switch", current.Domain, false, err.Error())
+		writeSiteError(w, err)
+		return
+	}
+
+	s.auditSite(r, "php.switch", current.Domain, true, "Mengalihkan versi PHP ke "+targetVer)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Versi PHP untuk %s berhasil dialihkan ke PHP %s", current.Domain, targetVer),
+	})
 }
 
 func (s *Server) handleControlPHPService(w http.ResponseWriter, r *http.Request) {

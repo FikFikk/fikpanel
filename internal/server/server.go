@@ -266,6 +266,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/php/versions/{version}/phpinfo", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPInfo)))
 	s.mux.Handle("POST /api/php/versions/{version}/extensions/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallPHPExtension)))
 	s.mux.Handle("POST /api/php/versions/{version}/extensions/uninstall", s.AuthMiddleware(http.HandlerFunc(s.handleUninstallPHPExtension)))
+	s.mux.Handle("POST /api/php/sites/{site_id}/switch", s.AuthMiddleware(http.HandlerFunc(s.handleSwitchSitePHPVersion)))
 
 	// Webhooks & Alerts
 	s.mux.Handle("GET /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleListWebhooks)))

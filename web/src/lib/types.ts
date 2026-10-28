@@ -500,6 +500,17 @@ export interface PHPVersionDetail {
   disabled_functions: string[];
   loaded_extensions: string[];
   all_extensions: PHPExtensionInfo[];
+  sites?: AttachedSite[];
+  sites_count?: number;
+}
+
+export interface AttachedSite {
+  id: number;
+  domain: string;
+  user: string;
+  root_path: string;
+  enabled: boolean;
+  ssl_mode?: string;
 }
 
 export interface PHPVersionInfo {
@@ -509,6 +520,8 @@ export interface PHPVersionInfo {
   fpm_socket: string;
   ini_path: string;
   settings: Record<string, string>;
+  sites?: AttachedSite[];
+  sites_count?: number;
 }
 
 // ── Webhooks & Alerts ─────────────────────────────────────────────────────

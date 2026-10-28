@@ -1639,8 +1639,28 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "versions": [{"version": "8.5", "installed": true, "running": true, "fpm_socket": "/run/php/php8.5-fpm.sock", "settings": {...}}]}` |
-| Notes | Memindai versi PHP dinamis di host OS (8.5, 8.4, 8.3, dst.) beserta status FPM socket dan konfigurasi php.ini. |
+| Response | HTTP 200 `{"ok": true, "versions": [{"version": "8.5", "installed": true, "running": true, "fpm_socket": "/run/php/php8.5-fpm.sock", "settings": {...}, "sites": [{"id": 2, "domain": "yuha.fikfikk.my.id", "user": "fikpanel", "root_path": "/home/fikpanel/web/yuha.fikfikk.my.id/public", "enabled": true}], "sites_count": 1}]}` |
+| Notes | Memindai versi PHP dinamis di host OS (8.5, 8.4, 8.3, dst.) beserta status FPM socket, konfigurasi php.ini, dan pemetaan daftar situs virtual host yang terhubung (`sites`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/php/versions/{version}/detail` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "detail": {"version": "8.5", "installed": true, "running": true, "settings": {...}, "fpm_settings": {...}, "sites": [...], "sites_count": 1}}` |
+| Notes | Mengembalikan detail komprehensif versi PHP untuk modal manajemen (service status, php.ini, fpm pool, ekstensi, dan daftar situs terhubung). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/sites/{site_id}/switch` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `php_version` (string, wajib: misalnya `"8.5"`, `"8.3"`) |
+| Response | HTTP 200 `{"ok": true, "message": "Versi PHP untuk yuha.fikfikk.my.id berhasil dialihkan ke PHP 8.5"}` |
+| Notes | Mengalihkan runtime PHP suatu situs virtual host ke versi PHP target, memperbarui record database, dan merender ulang blok Nginx fastcgi vhost tanpa downtime. |
 
 | Field | Detail |
 |---|---|
