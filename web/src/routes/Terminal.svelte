@@ -7,7 +7,6 @@
 
   // State auto-complete Tab & Tab 2x
   let completionMatches = $state<TerminalCompletionItem[]>([]);
-  let completionHint = $state('');
   let tabPressCount = $state(0);
   let lastTabCommand = $state('');
   let completing = $state(false);
@@ -203,7 +202,6 @@
   // Reset state kandidat auto-complete
   function resetCompletionState() {
     completionMatches = [];
-    completionHint = '';
     tabPressCount = 0;
   }
 
@@ -320,8 +318,8 @@
     activeTab.history = [
       ...activeTab.history,
       {
-        command: `${activeTab.commandInput || '(direktori aktif)'}`,
-        output: `total ${completionMatches.length} kandidat cocok (Tab 2x ls -la):\n${detailLines}`,
+        command: activeTab.commandInput,
+        output: detailLines,
         time: now,
         ok: true,
         cwd: activeTab.cwd || '~',
@@ -329,15 +327,6 @@
       },
     ];
     scrollToBottom();
-    focusInput();
-  }
-
-  // Pilih satu kandidat auto-complete secara langsung dari chip
-  function applyCandidateCompletion(item: TerminalCompletionItem) {
-    if (!activeTab) return;
-    activeTab.commandInput = item.replacement;
-    lastTabCommand = item.replacement;
-    resetCompletionState();
     focusInput();
   }
 
@@ -382,9 +371,7 @@
 
       const matches = res.matches || [];
       if (matches.length === 0) {
-        completionMatches = [];
-        completionHint = 'Tidak ada file atau folder yang cocok di direktori ini';
-        tabPressCount = 0;
+        resetCompletionState();
       } else if (matches.length === 1) {
         // 1 kandidat tunggal -> langsung lengkapi otomatis (misal: cd da -> cd data/)
         currentTab.commandInput = res.completed_command;
@@ -396,7 +383,6 @@
         lastTabCommand = res.completed_command;
         completionMatches = matches;
         tabPressCount = 1;
-        completionHint = `${matches.length} kandidat cocok — Tekan Tab sekali lagi (Tab 2x) untuk menampilkan ls -la`;
       }
     } catch {
       // Abaikan error jaringan sementara saat auto-complete
@@ -405,19 +391,6 @@
       scrollToBottom();
       focusInput();
     }
-  }
-
-  // Salin path direktori kerja aktif ke clipboard
-  async function copyCurrentCwd() {
-    if (!activeTab) return;
-    const pathText = activeTab.cwd || '~';
-    try {
-      await navigator.clipboard.writeText(pathText);
-      toast.success(`Path disalin: ${pathText}`);
-    } catch {
-      toast.info(pathText);
-    }
-    focusInput();
   }
 
   // Tangani tombol Tab, Ctrl+C, Enter, dan Panah Atas/Bawah (seperti bash shell asli)
@@ -491,7 +464,6 @@
     } else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
       // Reset hitungan Tab saat pengguna mengetik karakter baru
       tabPressCount = 0;
-      completionHint = '';
     }
   }
 
@@ -990,53 +962,6 @@
         </div>
       </div>
 
-      <!-- Sub-header Konteks Direktori & Pintasan Keyboard -->
-      {#if activeTab}
-        <div class="terminal-context-bar">
-          <div class="cwd-nav-group">
-            <button
-              type="button"
-              class="cwd-badge"
-              onclick={copyCurrentCwd}
-              title="Klik untuk menyalin path direktori kerja saat ini"
-            >
-              <i class="ri-folder-open-line cwd-icon"></i>
-              <span class="mono">{activeTab.cwd || '~'}</span>
-              <i class="ri-file-copy-line cwd-copy-icon"></i>
-            </button>
-
-            <div class="cwd-quick-actions">
-              <button
-                type="button"
-                class="cwd-quick-btn mono"
-                onclick={() => runCommand('cd ..')}
-                disabled={activeTab.executing}
-                title="Naik satu direktori (cd ..)"
-              >
-                <i class="ri-corner-left-up-line"></i> cd ..
-              </button>
-              <button
-                type="button"
-                class="cwd-quick-btn mono"
-                onclick={() => runCommand('ls -la')}
-                disabled={activeTab.executing}
-                title="Tampilkan daftar file detail (ls -la)"
-              >
-                <i class="ri-list-check-2"></i> ls -la
-              </button>
-            </div>
-          </div>
-
-          <div class="kbd-hints">
-            <span class="kbd-item"><kbd>Tab</kbd> Auto-complete</span>
-            <span class="kbd-item"><kbd>Tab 2x</kbd> ls -la</span>
-            <span class="kbd-item"><kbd>&uarr;&darr;</kbd> History</span>
-            <span class="kbd-item"><kbd>Ctrl+C</kbd> Cancel</span>
-            <span class="kbd-item"><kbd>Ctrl+L</kbd> Clear</span>
-          </div>
-        </div>
-      {/if}
-
       <!-- Area Tampilan Konsol Terminal -->
       <div
         class="terminal-viewport"
@@ -1053,31 +978,24 @@
           <p class="welcome-meta">
             Host: <span class="text-white">{activeTab?.host}</span> &middot;
             User: <span class="text-white">{activeTab?.username}</span> &middot;
-            CWD: <span class="text-violet mono">{activeTab?.cwd || '~'}</span> &middot;
             Tipe: <span class="text-accent">{activeTab?.serverId === 0 ? 'Local Node' : 'Remote SSH Node'}</span>
           </p>
           <p class="welcome-hint">
-            Gunakan <b>Tab</b> untuk auto-complete path otomatis, atau <b>Tab 2x</b> jika terdapat lebih dari 1 kandidat untuk menampilkan daftar <code>ls -la</code>.
+            Ketik perintah shell di bawah atau klik <b>Run / Paste</b> pada panel pintasan Commands.
           </p>
         </div>
 
         <!-- Riwayat Eksekusi Perintah -->
         {#if activeTab}
           {#each activeTab.history as item}
-            <div class="term-entry" class:term-entry--completion={item.isCompletionList}>
+            <div class="term-entry">
               <div class="prompt-line">
                 <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{item.cwd || activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
                 <span class="prompt-cmd">{item.command}</span>
-                {#if item.isCompletionList}
-                  <span class="completion-tag">Tab 2x &middot; ls -la</span>
-                {/if}
                 <span class="prompt-time">{item.time}</span>
               </div>
               {#if item.output}
-                <pre
-                  class="term-output"
-                  class:term-output--error={!item.ok}
-                  class:term-output--completion={item.isCompletionList}>{item.output}</pre>
+                <pre class="term-output" class:term-output--error={!item.ok}>{item.output}</pre>
               {/if}
             </div>
           {/each}
@@ -1090,7 +1008,6 @@
               bind:this={inputPromptEl}
               bind:value={activeTab.commandInput}
               onkeydown={handleInputKeydown}
-              placeholder={activeTab.executing ? 'Sedang mengeksekusi...' : 'Ketik perintah shell (Tekan Tab untuk auto-complete)...'}
               readonly={activeTab.executing}
               spellcheck="false"
               autocomplete="off"
@@ -1100,45 +1017,6 @@
               <span class="spinner spinner--sm"></span>
             {/if}
           </div>
-
-          <!-- Panel Kandidat Auto-Complete Interaktif (Muncul saat >1 kandidat pada Tab ke-1) -->
-          {#if completionMatches.length > 1}
-            <div class="autocomplete-tray" onclick={(e) => e.stopPropagation()} role="region" aria-label="Kandidat auto-complete">
-              <div class="autocomplete-tray-header">
-                <span class="tray-title">
-                  <i class="ri-sparkling-2-line"></i>
-                  {completionHint}
-                </span>
-                <button
-                  type="button"
-                  class="tray-ls-btn mono"
-                  onclick={triggerDoubleTabListing}
-                >
-                  <i class="ri-terminal-line"></i> Cetak ls -la (Tab 2x)
-                </button>
-              </div>
-              <div class="autocomplete-chips">
-                {#each completionMatches as cand}
-                  <button
-                    type="button"
-                    class="cand-chip mono"
-                    class:cand-chip--dir={cand.is_dir}
-                    onclick={() => applyCandidateCompletion(cand)}
-                    title={cand.detail}
-                  >
-                    <i class={cand.is_dir ? 'ri-folder-3-fill' : 'ri-file-code-line'}></i>
-                    <span class="cand-name">{cand.display}</span>
-                    <span class="cand-meta">{cand.mode}</span>
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {:else if completionHint}
-            <div class="autocomplete-empty-hint">
-              <i class="ri-information-line"></i>
-              <span>{completionHint}</span>
-            </div>
-          {/if}
         {/if}
       </div>
     </div>
@@ -1865,104 +1743,6 @@
     color: var(--text);
   }
 
-  /* ── Sub-header Konteks Direktori & Pintasan Keyboard ─────────────────── */
-  .terminal-context-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: 0.35rem var(--space-4);
-    background: var(--bg-app);
-    border-bottom: 1px solid var(--border-subtle);
-    flex-wrap: wrap;
-    user-select: none;
-  }
-
-  .cwd-nav-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  .cwd-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--violet);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
-  }
-  .cwd-badge:hover {
-    background: var(--bg-hover);
-    border-color: var(--violet);
-  }
-  .cwd-icon {
-    color: var(--accent);
-    font-size: 0.85rem;
-  }
-  .cwd-copy-icon {
-    color: var(--text-subtle);
-    font-size: 0.75rem;
-  }
-
-  .cwd-quick-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .cwd-quick-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 7px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: var(--text-2xs);
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
-  }
-  .cwd-quick-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .cwd-quick-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .kbd-hints {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .kbd-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-  }
-  .kbd-item kbd {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    padding: 1px 5px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-secondary);
-  }
-
   /* ── Layar Terminal Konsol ─────────────────────────────────────────────── */
   .terminal-viewport {
     flex: 1;
@@ -1994,18 +1774,9 @@
     color: var(--text-subtle);
     margin-top: var(--space-1);
   }
-  .text-violet {
-    color: var(--violet);
-  }
 
   .term-entry {
     margin-bottom: var(--space-3);
-  }
-  .term-entry--completion {
-    padding: var(--space-2) var(--space-3);
-    background: var(--bg-surface);
-    border-left: 2px solid var(--accent);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .prompt-line {
     display: flex;
@@ -2029,16 +1800,6 @@
     color: var(--text);
     font-weight: var(--weight-medium);
   }
-  .completion-tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 6px;
-    margin-left: var(--space-2);
-    font-size: var(--text-2xs);
-    color: var(--accent);
-    background: var(--tint-accent);
-    border-radius: var(--radius-sm);
-  }
   .prompt-time {
     color: var(--text-subtle);
     font-size: var(--text-2xs);
@@ -2057,10 +1818,6 @@
   .term-output--error {
     color: var(--danger-strong);
   }
-  .term-output--completion {
-    color: var(--text);
-    font-size: var(--text-xs);
-  }
 
   .input-line {
     display: flex;
@@ -2078,102 +1835,6 @@
     font-size: var(--text-sm);
     margin-left: 2px;
     caret-color: var(--accent);
-  }
-
-  /* ── Panel Kandidat Auto-Complete Interaktif ───────────────────────────── */
-  .autocomplete-tray {
-    margin-top: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    cursor: default;
-  }
-  .autocomplete-tray-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-    padding-bottom: var(--space-1);
-    border-bottom: 1px solid var(--border-subtle);
-    flex-wrap: wrap;
-  }
-  .tray-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-  }
-  .tray-title i {
-    color: var(--accent);
-  }
-  .tray-ls-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    background: var(--tint-accent);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-sm);
-    color: var(--accent-strong);
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    transition: background var(--duration-fast) ease;
-  }
-  .tray-ls-btn:hover {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-
-  .autocomplete-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .cand-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 9px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: var(--text-xs);
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease, transform var(--duration-fast) ease;
-  }
-  .cand-chip:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-    transform: translateY(-1px);
-  }
-  .cand-chip--dir {
-    color: var(--accent);
-    border-color: var(--border-strong);
-  }
-  .cand-chip--dir i {
-    color: var(--accent);
-  }
-  .cand-name {
-    font-weight: var(--weight-semibold);
-  }
-  .cand-meta {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-  }
-
-  .autocomplete-empty-hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: var(--space-1);
-    padding: 2px 8px;
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
   }
 
   /* ── Tombol Pembagi Collapse/Expand Sidebar ────────────────────────────── */
