@@ -67,8 +67,8 @@
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.1.5", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}}` |
-| Notes | Menyediakan ringkasan status sistem, ringkasan jumlah resource, metrik terkini, dan nomor versi rilis FikPanel yang aktif. |
+| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.2.0", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}, "server_time": {"unix": 1793160893, "timezone_name": "UTC", "offset_sec": 0}}` |
+| Notes | Menyediakan ringkasan status sistem, ringkasan jumlah resource, metrik terkini, nomor versi rilis FikPanel yang aktif, serta objek `server_time` (waktu epoch unix, nama timezone, dan offset detik) untuk sinkronisasi live clock global di header Topbar. |
 
 | Field | Detail |
 |---|---|

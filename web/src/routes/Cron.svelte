@@ -642,23 +642,9 @@
   <!-- Header Bar -->
   <header class="page-head">
     <div class="page-title-wrap">
-      <div class="title-with-pill">
-        <h1 class="page-title">
-          <i class="ri-time-line"></i> Penjadwal Tugas (Cron Manager)
-        </h1>
-        <!-- Live Server Time Pill di Header Atas dengan Monospace/Tabular-nums -->
-        <div class="time-pill">
-          <span class="time-item">
-            <i class="ri-server-line"></i>
-            <strong>Server:</strong> <span class="time-text tabular">{formatDate(serverNow)}, {formatTime(serverNow)}</span> <span class="tz-badge">{serverTimeInfo?.timezone_name || 'UTC'}</span>
-          </span>
-          <span class="time-sep">|</span>
-          <span class="time-item">
-            <i class="ri-user-location-line"></i>
-            <strong>Anda:</strong> <span class="time-text tabular">{formatTime(clientNow)}</span> <span class="tz-badge highlight">{getClientTimezoneLabel()}</span>
-          </span>
-        </div>
-      </div>
+      <h1 class="page-title">
+        <i class="ri-time-line"></i> Penjadwal Tugas (Cron Manager)
+      </h1>
       <p class="page-sub">
         Jadwalkan eksekusi skrip background, backup otomatis, dan maintenance server dengan sinkronisasi zona waktu WIB dan server UTC.
       </p>

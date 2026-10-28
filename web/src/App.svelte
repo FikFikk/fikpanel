@@ -216,7 +216,13 @@
 {:else}
   <a href="#main-content" class="skip-link">Lewati ke konten</a>
   <div class="shell">
-    <Sidebar current={currentRoute} open={menuOpen} version={overview?.system?.version} onNavigate={() => (menuOpen = false)} />
+    <Sidebar
+      current={currentRoute}
+      open={menuOpen}
+      version={overview?.system?.version}
+      onNavigate={() => (menuOpen = false)}
+      onLogout={handleLogout}
+    />
     {#if menuOpen}
       <div class="shell__scrim" role="presentation" onclick={() => (menuOpen = false)}></div>
     {/if}
@@ -225,12 +231,8 @@
       <Topbar
         {overview}
         user={currentUser}
-        live={sseConnected}
         {menuOpen}
-        {refreshing}
         onToggleMenu={() => (menuOpen = !menuOpen)}
-        onRefresh={loadInitialData}
-        onLogout={handleLogout}
       />
 
       <main class="shell__content" id="main-content" tabindex="-1">

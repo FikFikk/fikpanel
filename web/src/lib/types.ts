@@ -159,6 +159,11 @@ export interface OverviewData {
     database_engine: string;
     security_risk: number;
   };
+  server_time?: {
+    unix: number;
+    timezone_name: string;
+    offset_sec: number;
+  };
   latest_metric: MetricPoint;
 }
 

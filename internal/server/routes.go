@@ -156,6 +156,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		osDisplay = "Linux (amd64 / arm64)"
 	}
 
+	now := time.Now()
+	zoneName, zoneOffset := now.Zone()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"system": map[string]interface{}{
@@ -164,8 +167,13 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"kernel":     runtime.Version(),
 			"version":    s.Version(),
 			"cpu_cores":  runtime.NumCPU(),
-			"uptime_sec": time.Now().Unix(),
+			"uptime_sec": now.Unix(),
 			"ip":         getIP(r),
+		},
+		"server_time": map[string]interface{}{
+			"unix":          now.Unix(),
+			"timezone_name": zoneName,
+			"offset_sec":    zoneOffset,
 		},
 		"counts": map[string]interface{}{
 			"sites_total":     len(sites),

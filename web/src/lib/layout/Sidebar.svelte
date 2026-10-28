@@ -6,9 +6,10 @@
     open: boolean;
     version?: string;
     onNavigate: () => void;
+    onLogout?: () => void;
   }
 
-  let { current, open, version = '0.2.0', onNavigate }: Props = $props();
+  let { current, open, version = '0.2.0', onNavigate, onLogout }: Props = $props();
 
   const groups = [
     { id: 'utama', label: 'Kelola' },
@@ -47,7 +48,15 @@
     {/each}
   </nav>
 
-  <div class="sidebar__foot">{version.startsWith('v') ? version : `v${version}`}</div>
+  <div class="sidebar__foot">
+    <span class="sidebar__version">{version.startsWith('v') ? version : `v${version}`}</span>
+    {#if onLogout}
+      <button class="sidebar__logout-btn" onclick={onLogout} title="Keluar dari sesi FikPanel">
+        <i class="ri-logout-box-r-line" aria-hidden="true"></i>
+        <span>Keluar</span>
+      </button>
+    {/if}
+  </div>
 </aside>
 
 <style>
@@ -133,10 +142,41 @@
     background: var(--accent);
   }
   .sidebar__foot {
-    padding: var(--space-3) var(--space-5);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--border-subtle);
     font-size: var(--text-2xs);
     color: var(--text-disabled);
+  }
+  .sidebar__version {
+    font-family: var(--font-mono);
+    color: var(--text-subtle);
+    font-size: 0.72rem;
+  }
+  .sidebar__logout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.25rem 0.55rem;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition: all var(--duration-fast) ease;
+  }
+  .sidebar__logout-btn:hover {
+    background: var(--tint-danger);
+    color: var(--danger-strong);
+    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  }
+  .sidebar__logout-btn i {
+    font-size: 0.95rem;
   }
 
   /* Tablet: sidebar ringkas ikon saja */
@@ -145,9 +185,11 @@
     .sidebar__name,
     .sidebar__group,
     .sidebar__item span,
-    .sidebar__foot { display: none; }
+    .sidebar__version,
+    .sidebar__logout-btn span { display: none; }
     .sidebar__brand { justify-content: center; padding: 0; }
     .sidebar__item { justify-content: center; padding: 0; }
+    .sidebar__foot { justify-content: center; padding: var(--space-3) var(--space-1); }
   }
   /* Mobile: drawer tersembunyi, dibuka lewat tombol menu di topbar */
   @media (max-width: 768px) {
