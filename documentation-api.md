@@ -2504,6 +2504,98 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `image/png` / `image/jpeg` data biner tile peta |
 | Notes | Proxy dan in-memory LRU cache tile peta dunia gelap (Esri World Dark Gray Base dengan fallback OSM). Memungkinkan pemuatan peta secara instan, bebas API key, dan mematuhi Content Security Policy `'self'`. |
 
+### 1.18 Penjadwal Tugas (Cron Jobs)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "jobs": [{"id": 1, "name": "...", "spec": "0 2 * * *", "command": "...", "enabled": true, "save_log": true, "log_file": "..."}], "server_time": {"unix": 1771747200, "iso": "...", "timezone_name": "UTC", "offset_sec": 0}}` |
+| Notes | Mengembalikan daftar seluruh tugas terjadwal beserta waktu dan zona waktu server aktual untuk sinkronisasi waktu klien. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `schedule_type` (string, wajib), `spec` (string 5 kolom crontab, wajib), `command` (string, wajib), `save_log` (bool, default true), `log_file` (string, opsional), `timeout_sec` (int, default 3600) |
+| Response | HTTP 201 `{"ok": true, "job": {"id": 2, "name": "...", ...}}` |
+| Notes | Mendaftarkan tugas cron baru ke database dan mencatat audit log `cron.create`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/cron/jobs/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `schedule_type` (string, wajib), `spec` (string 5 kolom crontab, wajib), `command` (string, wajib), `save_log` (bool), `log_file` (string), `timeout_sec` (int) |
+| Response | HTTP 200 `{"ok": true, "job": {"id": 1, ...}}` |
+| Notes | Memperbarui in-place konfigurasi tugas cron terjadwal yang sudah ada dan mencatat audit log `cron.update`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/toggle` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "id": 1, "enabled": false}` |
+| Notes | Mengaktifkan atau menjeda eksekusi tugas cron tanpa menghapus jadwal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/cron/jobs/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1}` |
+| Notes | Menghapus tugas cron dan seluruh riwayat eksekusi terkait dari tabel `cron_logs`. Dicatat di audit log `cron.delete`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/run` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "log": {"id": 10, "job_id": 1, "status": "success", "exit_code": 0, "duration_ms": 1420}}` |
+| Notes | Memaksa eksekusi tugas cron seketika di latar belakang secara asinkron dan mengembalikan hasil log eksekusi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "logs": [{"id": 1, "status": "success", "output": "...", "exit_code": 0, "started_at": 1771747200}]}` |
+| Notes | Mengambil 50 catatan riwayat eksekusi database terbaru untuk tugas cron terkait. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/jobs/{id}/file-log` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "path": "/var/cronlog/task.log", "content": "..."}` |
+| Notes | Membaca isi berkas log fisik dari disk hingga ukuran 256KB terakhir. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/file-log/clear` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "path": "/var/cronlog/task.log"}` |
+| Notes | Mengosongkan (truncate) berkas log pada disk menjadi 0 byte tanpa menghapus file. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

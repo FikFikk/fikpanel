@@ -182,6 +182,7 @@ func (s *Server) registerRoutes() {
 	// Penjadwal Tugas (Cron Jobs)
 	s.mux.Handle("GET /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronJobs)))
 	s.mux.Handle("POST /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleCreateCronJob)))
+	s.mux.Handle("PUT /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCronJob)))
 	s.mux.Handle("DELETE /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunCronJobNow)))

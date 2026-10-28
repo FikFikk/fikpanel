@@ -257,6 +257,35 @@ flowchart TD
     CatatAudit --> KembaliView[Kembali ke Tampilan Tabel Inbound Rules & Refresh Data]
 ```
 
+### 1.8 Siklus Hidup Penjadwal Tugas (Cron Jobs)
+
+```mermaid
+flowchart TD
+    Mulai[Pengguna Membuat atau Mengedit Tugas Cron] --> ValidasiForm{Validasi Nama & Perintah Shell Tidak Kosong}
+    ValidasiForm -- Kosong --> TolakReq[Tolak HTTP 400 Bad Request]
+    ValidasiForm -- Valid --> FormatCrontab[Sintesis 5-Kolom Crontab m h dom mon dow]
+    FormatCrontab --> KonversiWaktu[Konversi Jam Lokal WIB ke Jam Server UTC]
+    KonversiWaktu --> SimpanDB[(Simpan / Perbarui Baris DB di cron_jobs)]
+    SimpanDB --> CatatAudit[Catat Audit Log cron.create / cron.update]
+    
+    SimpanDB --> SchedulerLoop{Daemon Cron Manager Cek Tiap 60 Detik}
+    SchedulerLoop --> CekStatus{Tugas Aktif enabled == 1?}
+    CekStatus -- Dijeda / Paused --> Lewati[Lewati Pengecekan Menit Ini]
+    CekStatus -- Aktif --> EvaluasiSpec{Waktu Server Saat Ini Cocok dengan Pola Crontab?}
+    EvaluasiSpec -- Tidak Cocok --> Lewati
+    EvaluasiSpec -- Cocok --> EksekusiPerintah[Spawn Subproses Shell dengan Batas Waktu Timeout]
+    
+    EksekusiPerintah --> HasilEksekusi[Perintah Selesai: Ambil Output, Status, Exit Code, Durasi]
+    HasilEksekusi --> UpdateStatusJob[Perbarui last_run_at & last_status di cron_jobs]
+    UpdateStatusJob --> OpsiLogDB{Simpan Log ke Database save_log == 1?}
+    OpsiLogDB -- Ya --> CatatLogDB[(Simpan Riwayat Eksekusi ke cron_logs)]
+    OpsiLogDB -- Tidak --> CekFileLog
+    CatatLogDB --> CekFileLog{Jalur Berkas Log log_file Terisi?}
+    CekFileLog -- Ya --> TulisFileLog[Buat Folder Otomatis & Tulis Append ke Berkas .log]
+    CekFileLog -- Tidak --> Selesai[Selesai Menunggu Jadwal Menit Berikutnya]
+    TulisFileLog --> Selesai
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -337,6 +366,22 @@ flowchart TD
 | `Compose Stack`| `name`, `yaml` | Berkas disimpan di `/www/dk_project/<name>/docker-compose.yml`; mendukung kontrol siklus hidup up/down terpadu |
 | `Daemon Config`| `registry_mirrors`, `log-opts`, `live-restore` | Konfigurasi disimpan di `/etc/docker/daemon.json`; perubahan memerlukan reload atau restart daemon Docker |
 
+### 2.7 Entitas `cron_jobs` & `cron_logs`
+
+| Kolom | Aturan Validasi | Catatan Bisnis |
+|---|---|---|
+| `id` | Primary Key, Auto Increment | Identitas unik tugas terjadwal |
+| `name` | String 1-255 karakter, tidak boleh kosong | Nama deskriptif tugas, misal Backup MySQL atau Laravel Artisan |
+| `schedule_type` | Wajib salah satu: `'minutes'`, `'hourly'`, `'daily'`, `'weekly'`, `'monthly'`, `'custom'` | Jenis preset interval antarmuka generator crontab |
+| `spec` | Format 5 kolom crontab (`m h dom mon dow`), valid | Pola jadwal eksekusi Linux crontab |
+| `command` | String shell command tidak boleh kosong | Perintah Linux yang dieksekusi; dilarang menjalankan perintah perusak fatal (misal `shutdown`, `init 0`, `mkfs`) |
+| `enabled` | Integer boolean (0 atau 1) | Menandakan status aktif (1) atau jeda sementara (0) |
+| `save_log` | Integer boolean (0 atau 1) | Menyimpan histori eksekusi ke tabel `cron_logs` |
+| `log_file` | String path file `.log`, opsional | Jalur berkas log fisik kustom pada disk (misal `/var/cronlog/task.log`) |
+| `timeout_sec` | Integer > 0 (default 3600) | Batas waktu maksimal eksekusi sebelum subproses dihentikan paksa (SIGKILL) |
+| `last_run_at` | Timestamp Unix, nullable | Waktu terakhir tugas berhasil atau gagal dieksekusi |
+| `last_status` | String (`'success'`, `'failed'`, `'running'`), nullable | Status eksekusi terakhir |
+
 ---
 
 ## 3. Matriks Transisi Status Entitas
@@ -399,6 +444,19 @@ flowchart TD
 | `paused` | Permintaan unpause (`POST .../unpause`)| `running` | Proses dicairkan kembali dan melanjutkan eksekusi |
 | `running` | Kontainer mengalami crash / OOM | `exited` | Jika kebijakan restart `always` atau `unless-stopped`, daemon akan menyalakan ulang otomatis |
 | `exited` / `created` | Permintaan hapus kontainer | `deleted` | Kontainer dihapus; volume persisten yang di-mount tetap aman di host |
+
+### 3.6 Transisi Status Tugas Terjadwal (Cron Job)
+
+| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
+|---|---|---|---|
+| `None` | User membuat tugas baru (`POST /api/cron/jobs`) | `active` | Jadwal dicatat di database, diikutsertakan dalam loop pengecekan tiap menit |
+| `active` | User klik jeda tugas (`POST .../toggle` enabled=false) | `paused` | Tugas dilewati oleh scheduler; riwayat eksekusi dan konfigurasi tetap aman |
+| `paused` | User klik aktifkan (`POST .../toggle` enabled=true) | `active` | Tugas kembali dievaluasi setiap menit oleh scheduler daemon |
+| `active`/`paused` | User mengedit konfigurasi (`PUT /api/cron/jobs/{id}`) | `active`/`paused` | Nilai `spec`, `command`, `timeout_sec`, dan opsi log diperbarui in-place tanpa mengubah ID tugas |
+| `active`/`paused` | Pemicu jadwal tiba atau user klik 'Jalankan Sekarang' | `running` | Perintah dieksekusi di background thread; status UI menampilkan animasi loader |
+| `running` | Eksekusi selesai dengan exit code 0 | `success` | Durasi dan output dicatat; status diperbarui menjadi 'Berhasil' |
+| `running` | Eksekusi selesai dengan exit code != 0 atau timeout | `failed` | Error code dan pesan stderr dicatat; status diperbarui menjadi 'Gagal' |
+| `active`/`paused` | User menghapus tugas (`DELETE /api/cron/jobs/{id}`) | `deleted` | Data tugas dan riwayat di `cron_logs` dihapus permanen |
 
 ---
 
@@ -474,6 +532,7 @@ flowchart TD
 | **BR-66** | Arsitektur Direktori Standar Multi-Runtime Terpadu FikPanel (`/www/sites/<domain>/`) | Pembuatan situs baru atau penataan berkas situs di server | Mengeliminasi kelemahan HestiaCP (yang memisahkan berkas web di `/home/user/web/` dan konfigurasi di `/home/user/conf/web/` secara berjauhan). FikPanel menyatukan seluruh komponen situs dalam satu direktori induk mandiri (`/www/sites/<domain>/`) dengan sub-struktur terisolasi: `public/` (document root Nginx untuk Static, SPA build, atau Laravel `public`), `app/` (aplikasi backend Node.js, Go biner, Python venv, atau PHP core), `conf/` (konfigurasi vhost Nginx terisolasi, `rewrite.conf`, dan `custom.conf`), dan `logs/` (log akses dan kesalahan per-situs). Nginx `/etc/nginx/conf.d/` langsung merujuk ke konfigurasi ini, dan izin folder ACME dijamin `0755` agar validasi HTTP-01 Let's Encrypt tidak terhalang permission denied kernel Linux. |
 | **BR-67** | Modal Modifikasi Situs Komprehensif 13 Sub-Tab (aaPanel Enhanced) | Pengguna mengklik pengaturan atau nama situs di tabel Sites | Menyajikan 13 sub-tab modular: (1) Domain Manager (manajemen multi-domain & validasi DNS live), (2) Directory (Site Directory, Running Directory selector `/`, `/public`, `/dist`, `/build`, `/public_html`, `/app`, dan toggle anti-XSS `open_basedir`), (3) Limit Access (Basic Auth, Deny file sensitif `.env`/`.git`, dan Traffic Control rate limiting), (4) URL Rewrite (editor rules dengan preset Laravel, WordPress, SPA React/Vue, ThinkPHP, CodeIgniter), (5) Default Document (urutan index files), (6) Config (editor raw Nginx vhost dengan validasi sintaks atomik `nginx -t`), (7) SSL (3 sub-tab: Deployed Certs dengan tampilan kunci/sertifikat aktif, Custom Cert paste PEM, dan Let's Encrypt 1-klik), (8) PHP Version Switcher (alih versi PHP-FPM dan isolasi session), (9) Reverse Proxy (target upstream, websocket upgrade, dan timeout), (10) Redirect (pengalihan 301/302), (11) Hotlink Protection (whitelist domain dan proteksi ekstensi media), (12) Maintenance Mode (toggle pemeliharaan 503), dan (13) Response Logs (penampil log akses & error real-time dengan tombol pengosongan berkas). |
 | **BR-68** | Telemetri Forensik WAF Real-Time, Geolokasi Presisi & Studio Peta Leaflet | Pengguna memantau percobaan serangan atau mengakses tab Attack Map di menu WAF | Pemindai log Nginx latar belakang (`waf.LogWatcher`) memindai berkas log akses secara real-time setiap 4 detik untuk mengekstraksi alamat IP klien, klasifikasi pola serangan OWASP (SQLi, XSS, Path Traversal, Sensitive File Probe, RCE, Bad Bot Scanner), status HTTP, dan User-Agent. Resolusi geolokasi presisi melacak negara, provinsi, kota, ISP/organisasi, dan koordinat GPS (lat/lng), dipadukan dengan parser fingerprint perangkat (Desktop/Mobile/Tablet/Bot, OS, dan Browser). Antarmuka Attack Map menyajikan studio peta interaktif penuh berbasis Leaflet dan CartoDB Dark Matter dengan dukungan zoom mulus hingga level jalan, lintasan kurva laser serangan real-time ke host server, filter pencarian multi-dimensi, chip filter negara asal serangan, serta laci inspeksi forensik detail dengan tombol blokir IP 1-klik ke blacklist. |
+| **BR-69** | Pembaruan Konfigurasi & Penjadwalan Tugas Cron (In-Place Edit) serta Penstabilan Waktu Header Tabular | Pengguna memperbarui tugas cron atau mengamati live clock pada header Cron Manager | Antarmuka menyediakan tombol aksi Edit (`ri-edit-line`) pada tabel tugas untuk memuat dan memodifikasi konfigurasi tugas yang sudah ada via `PUT /api/cron/jobs/{id}` secara in-place tanpa perlu menghapus tugas. Tampilan jam server dan waktu klien diposisikan di header atas secara mandiri dengan styling monospace `tabular-nums` agar lebar karakter seragam, mengeliminasi goyangan layout ("maju mundur") pada tombol aksi (Refresh / Tambah Tugas) saat detik berganti. |
 
 
 

@@ -87,6 +87,67 @@ func (s *Server) handleCreateCronJob(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleUpdateCronJob memperbarui data konfigurasi tugas cron yang sudah ada
+func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":"ID tugas tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	existing, err := s.store.GetCronJob(r.Context(), id)
+	if err != nil {
+		http.Error(w, `{"error":"gagal mencari data cron job"}`, http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		http.Error(w, `{"error":"tugas cron tidak ditemukan"}`, http.StatusNotFound)
+		return
+	}
+
+	var req CreateCronJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" || req.Command == "" {
+		http.Error(w, `{"error":"nama dan perintah eksekusi wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	if req.TimeoutSec <= 0 {
+		req.TimeoutSec = 3600
+	}
+
+	existing.Name = req.Name
+	existing.ScheduleType = req.ScheduleType
+	existing.Spec = req.Spec
+	existing.Command = req.Command
+	existing.SaveLog = req.SaveLog
+	existing.LogFile = req.LogFile
+	existing.TimeoutSec = req.TimeoutSec
+
+	if err := s.store.UpdateCronJob(r.Context(), existing); err != nil {
+		http.Error(w, `{"error":"gagal memperbarui tugas cron"}`, http.StatusInternalServerError)
+		return
+	}
+
+	user := GetUserFromContext(r.Context())
+	var uid *int64
+	if user != nil {
+		uid = &user.ID
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "cron.update", req.Name, true, "Memperbarui konfigurasi tugas cron", uid)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":  true,
+		"job": existing,
+	})
+}
+
 func (s *Server) handleToggleCronJob(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)

@@ -8,6 +8,7 @@
   let jobs = $state<CronJob[]>([]);
   let loading = $state(true);
   let showCreateModal = $state(false);
+  let editingJob = $state<CronJob | null>(null);
   let showLogModal = $state(false);
   let selectedJob = $state<CronJob | null>(null);
   let logs = $state<CronLog[]>([]);
@@ -359,7 +360,8 @@
     }
   }
 
-  async function handleCreateJob() {
+  // Tangani simpan tugas cron (tambah baru atau pembaruan konfigurasi)
+  async function handleSubmitJob() {
     if (!formName.trim() || !formCommand.trim()) {
       notify('Nama tugas dan perintah eksekusi wajib diisi', 'warning');
       return;
@@ -367,31 +369,103 @@
 
     try {
       submitting = true;
-      await apiFetch('/api/cron/jobs', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: formName,
-          schedule_type: activeTab === 'custom' ? 'custom' : activeTab,
-          spec: fullCronExpression,
-          command: formCommand,
-          timeout_sec: formTimeout,
-          save_log: formSaveLog,
-          log_file: formSaveLogFile ? formLogFile.trim() : '',
-        }),
-      });
+      const payload = {
+        name: formName.trim(),
+        schedule_type: activeTab === 'custom' ? 'custom' : activeTab,
+        spec: fullCronExpression,
+        command: formCommand.trim(),
+        timeout_sec: formTimeout,
+        save_log: formSaveLog,
+        log_file: formSaveLogFile ? formLogFile.trim() : '',
+      };
 
-      notify('Tugas cron berhasil dijadwalkan!', 'success');
+      if (editingJob) {
+        await apiFetch(`/api/cron/jobs/${editingJob.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        notify('Tugas cron berhasil diperbarui!', 'success');
+      } else {
+        await apiFetch('/api/cron/jobs', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        notify('Tugas cron berhasil dijadwalkan!', 'success');
+      }
+
       showCreateModal = false;
+      editingJob = null;
       resetForm();
       await loadJobs();
     } catch (err: any) {
-      notify(err.message || 'Gagal menambahkan tugas cron', 'error');
+      notify(err.message || (editingJob ? 'Gagal memperbarui tugas cron' : 'Gagal menambahkan tugas cron'), 'error');
     } finally {
       submitting = false;
     }
   }
 
+  // Buka modal untuk mengedit tugas cron yang dipilih
+  function openEditModal(job: CronJob) {
+    editingJob = job;
+    formName = job.name;
+    formCommand = job.command;
+    formTimeout = job.timeout_sec || 3600;
+    formSaveLog = job.save_log;
+    formSaveLogFile = !!job.log_file;
+    formLogFile = job.log_file || '';
+
+    // Muat 5 kolom crontab dari spec
+    const parts = job.spec.trim().split(/\s+/);
+    if (parts.length === 5) {
+      fieldMinute = parts[0];
+      fieldHour = parts[1];
+      fieldDay = parts[2];
+      fieldMonth = parts[3];
+      fieldDow = parts[4];
+    }
+
+    // Tentukan tab aktif berdasarkan tipe jadwal tersimpan
+    if (job.schedule_type && ['minutes', 'hourly', 'daily', 'weekly', 'monthly', 'custom'].includes(job.schedule_type)) {
+      activeTab = job.schedule_type as TabType;
+    } else {
+      activeTab = 'custom';
+    }
+
+    // Gunakan basis server saat mengedit agar nilai tidak bergeser secara tidak sengaja
+    timezoneBasis = 'server';
+    if (parts.length === 5) {
+      if (activeTab === 'minutes' && parts[0].startsWith('*/')) {
+        genMinuteInterval = parseInt(parts[0].replace('*/', ''), 10) || 15;
+      } else if (activeTab === 'hourly') {
+        genHourlyMinute = parseInt(parts[0], 10) || 0;
+      } else if (activeTab === 'daily') {
+        genDailyHour = parseInt(parts[1], 10) || 0;
+        genDailyMinute = parseInt(parts[0], 10) || 0;
+      } else if (activeTab === 'weekly') {
+        genWeeklyHour = parseInt(parts[1], 10) || 0;
+        genWeeklyMinute = parseInt(parts[0], 10) || 0;
+        genWeeklyDay = parseInt(parts[4], 10) || 1;
+      } else if (activeTab === 'monthly') {
+        genMonthlyDate = parseInt(parts[2], 10) || 1;
+        genMonthlyHour = parseInt(parts[1], 10) || 0;
+        genMonthlyMinute = parseInt(parts[0], 10) || 0;
+      }
+    }
+
+    // Deteksi kesesuaian preset perintah
+    selectedPreset = 'custom';
+    for (const [k, cmd] of Object.entries(PRESETS)) {
+      if (cmd && job.command.trim() === cmd.trim()) {
+        selectedPreset = k;
+        break;
+      }
+    }
+
+    showCreateModal = true;
+  }
+
   function resetForm() {
+    editingJob = null;
     formName = '';
     activeTab = 'daily';
     timezoneBasis = 'client';
@@ -568,27 +642,28 @@
   <!-- Header Bar -->
   <header class="page-head">
     <div class="page-title-wrap">
-      <h1 class="page-title">
-        <i class="ri-time-line"></i> Penjadwal Tugas (Cron Manager)
-      </h1>
+      <div class="title-with-pill">
+        <h1 class="page-title">
+          <i class="ri-time-line"></i> Penjadwal Tugas (Cron Manager)
+        </h1>
+        <!-- Live Server Time Pill di Header Atas dengan Monospace/Tabular-nums -->
+        <div class="time-pill">
+          <span class="time-item">
+            <i class="ri-server-line"></i>
+            <strong>Server:</strong> <span class="time-text tabular">{formatDate(serverNow)}, {formatTime(serverNow)}</span> <span class="tz-badge">{serverTimeInfo?.timezone_name || 'UTC'}</span>
+          </span>
+          <span class="time-sep">|</span>
+          <span class="time-item">
+            <i class="ri-user-location-line"></i>
+            <strong>Anda:</strong> <span class="time-text tabular">{formatTime(clientNow)}</span> <span class="tz-badge highlight">{getClientTimezoneLabel()}</span>
+          </span>
+        </div>
+      </div>
       <p class="page-sub">
         Jadwalkan eksekusi skrip background, backup otomatis, dan maintenance server dengan sinkronisasi zona waktu WIB dan server UTC.
       </p>
     </div>
     <div class="page-actions">
-      <!-- Live Server Time Pill (ala HestiaCP) -->
-      <div class="time-pill">
-        <span class="time-item">
-          <i class="ri-server-line"></i>
-          <strong>Server Time:</strong> {formatDate(serverNow)}, {formatTime(serverNow)} <span class="tz-badge">{serverTimeInfo?.timezone_name || 'UTC'}</span>
-        </span>
-        <span class="time-sep">|</span>
-        <span class="time-item">
-          <i class="ri-user-location-line"></i>
-          <strong>Waktu Anda:</strong> {formatTime(clientNow)} <span class="tz-badge highlight">{getClientTimezoneLabel()}</span>
-        </span>
-      </div>
-
       <button class="btn btn-ghost" onclick={loadJobs} disabled={loading}>
         <i class="ri-refresh-line {loading ? 'spin' : ''}"></i> Refresh
       </button>
@@ -677,6 +752,9 @@
                   <button class="btn-icon" title={job.enabled ? 'Jeda Tugas' : 'Aktifkan'} onclick={() => toggleJob(job)}>
                     <i class={job.enabled ? 'ri-pause-line' : 'ri-play-circle-line'}></i>
                   </button>
+                  <button class="btn-icon" title="Edit Tugas" onclick={() => openEditModal(job)}>
+                    <i class="ri-edit-line"></i>
+                  </button>
                   <button class="btn-icon" title="Riwayat Log" onclick={() => viewLogs(job)}>
                     <i class="ri-file-list-3-line"></i>
                   </button>
@@ -700,16 +778,16 @@
     role="dialog"
     aria-modal="true"
     tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) showCreateModal = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showCreateModal = false; }}
+    onclick={(e) => { if (e.target === e.currentTarget) { showCreateModal = false; editingJob = null; } }}
+    onkeydown={(e) => { if (e.key === 'Escape') { showCreateModal = false; editingJob = null; } }}
   >
     <div class="modal-card modal-wide">
       <div class="modal-head">
         <div class="modal-title-wrap">
           <i class="ri-time-line"></i>
           <div>
-            <h3>Tambah Tugas Terjadwal (Cron Job)</h3>
-            <span class="modal-sub">Konfigurasi otomatisasi skrip server dengan konversi zona waktu real-time.</span>
+            <h3>{editingJob ? 'Edit Tugas Terjadwal (Cron Job)' : 'Tambah Tugas Terjadwal (Cron Job)'}</h3>
+            <span class="modal-sub">{editingJob ? 'Perbarui jadwal eksekusi, perintah shell, atau konfigurasi pencatatan log.' : 'Konfigurasi otomatisasi skrip server dengan konversi zona waktu real-time.'}</span>
           </div>
         </div>
         <div class="modal-head-right">
@@ -717,11 +795,11 @@
             <i class="ri-time-line"></i>
             <span>System time: <strong>{formatDate(serverNow)}, {formatTime(serverNow)}</strong></span>
           </div>
-          <button class="btn-close" onclick={() => (showCreateModal = false)}>&times;</button>
+          <button class="btn-close" onclick={() => { showCreateModal = false; editingJob = null; }}>&times;</button>
         </div>
       </div>
 
-      <form onsubmit={(e) => { e.preventDefault(); handleCreateJob(); }} class="form-body">
+      <form onsubmit={(e) => { e.preventDefault(); handleSubmitJob(); }} class="form-body">
         <!-- Nama Tugas -->
         <div class="form-group">
           <label for="form-name">Nama Tugas Terjadwal</label>
@@ -1145,9 +1223,9 @@
 
         <!-- Modal Actions -->
         <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={() => (showCreateModal = false)}>Batal</button>
+          <button type="button" class="btn btn-ghost" onclick={() => { showCreateModal = false; editingJob = null; }}>Batal</button>
           <button type="submit" class="btn btn-primary" disabled={submitting}>
-            {submitting ? 'Menyimpan...' : 'Simpan Tugas Cron'}
+            {submitting ? 'Menyimpan...' : (editingJob ? 'Simpan Perubahan' : 'Simpan Tugas Cron')}
           </button>
         </div>
       </form>
@@ -1290,6 +1368,17 @@
     gap: 1rem;
     flex-wrap: wrap;
   }
+  .page-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .title-with-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+  }
   .page-title {
     font-size: 1.4rem;
     font-weight: 700;
@@ -1302,7 +1391,7 @@
   .page-sub {
     font-size: 0.85rem;
     color: var(--text-muted);
-    margin: 0.25rem 0 0 0;
+    margin: 0;
   }
   .page-actions {
     display: flex;
@@ -1311,20 +1400,26 @@
     flex-wrap: wrap;
   }
   .time-pill {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.6rem;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    padding: 0.4rem 0.8rem;
+    padding: 0.35rem 0.75rem;
     border-radius: var(--radius-lg);
     font-size: 0.76rem;
     color: var(--text-muted);
   }
   .time-item {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.35rem;
+  }
+  .time-text.tabular {
+    font-family: var(--font-mono, monospace);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
   }
   .time-sep {
     color: var(--border);
@@ -1447,6 +1542,13 @@
     color: var(--danger);
   }
   .text-right { text-align: right; }
+  .actions-col {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.2rem;
+  }
   .mono { font-family: var(--font-mono); }
   .text-muted { color: var(--text-muted); }
   .text-subtle { color: var(--text-subtle); }
