@@ -1,4 +1,4 @@
-﻿-- Skema Database Awal fikpanel
+-- Skema Database Awal fikpanel
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY,
   username      TEXT NOT NULL UNIQUE CHECK (length(username) BETWEEN 3 AND 32),
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS sites (
   id          INTEGER PRIMARY KEY,
   domain      TEXT NOT NULL UNIQUE,
   aliases     TEXT NOT NULL DEFAULT '[]',      -- JSON array
-  kind        TEXT NOT NULL CHECK (kind IN ('proxy','static','php')),
+  kind        TEXT NOT NULL CHECK (kind IN ('proxy','static','php','node','go','python')),
   upstream    TEXT,                            -- misal: http://127.0.0.1:3000
   root_path   TEXT,                            -- direktori web root (static/php)
   ssl_mode    TEXT NOT NULL DEFAULT 'none' CHECK (ssl_mode IN ('none','letsencrypt','custom')),
