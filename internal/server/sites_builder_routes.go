@@ -498,9 +498,61 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 		branches = []string{"main", "master"}
 	}
 
+	// Inspeksi struktur berkas root repositori agar deteksi runtime akurat meski GitHub melabeli (CSS/HTML)
+	detectedKind := ""
+	detectedPostCmd := ""
+	needsDB := false
+
+	contentsURL := fmt.Sprintf("https://api.github.com/repos/%s/contents", repo)
+	cReq, _ := http.NewRequestWithContext(ctx, "GET", contentsURL, nil)
+	cReq.Header.Set("Accept", "application/vnd.github+json")
+	cReq.Header.Set("User-Agent", "FikPanel-Server")
+	if token != "" {
+		cReq.Header.Set("Authorization", "Bearer "+token)
+	}
+	if cResp, err := client.Do(cReq); err == nil {
+		defer cResp.Body.Close()
+		var files []struct {
+			Name string `json:"name"`
+		}
+		if json.NewDecoder(cResp.Body).Decode(&files) == nil && len(files) > 0 {
+			fileSet := make(map[string]bool, len(files))
+			for _, f := range files {
+				fileSet[strings.ToLower(f.Name)] = true
+			}
+			switch {
+			case fileSet["composer.json"] || fileSet["artisan"]:
+				detectedKind = "php"
+				detectedPostCmd = "composer install --no-interaction --prefer-dist"
+				if fileSet["artisan"] {
+					needsDB = true
+				}
+			case fileSet["go.mod"]:
+				detectedKind = "go"
+				detectedPostCmd = "go build -o app ."
+			case fileSet["package.json"] || fileSet["ecosystem.config.cjs"] || fileSet["ecosystem.config.js"]:
+				detectedKind = "node"
+				if fileSet["drizzle.config.ts"] || fileSet["drizzle.config.js"] || fileSet["prisma"] {
+					needsDB = true
+				}
+				if fileSet["ecosystem.config.cjs"] {
+					detectedPostCmd = "npm install && npm run build && (pm2 restart ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs)"
+				} else {
+					detectedPostCmd = "npm install && npm run build"
+				}
+			case fileSet["requirements.txt"] || fileSet["pyproject.toml"] || fileSet["manage.py"]:
+				detectedKind = "python"
+				detectedPostCmd = "pip install -r requirements.txt"
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":       true,
-		"branches": branches,
+		"ok":                true,
+		"branches":          branches,
+		"detected_kind":     detectedKind,
+		"detected_post_cmd": detectedPostCmd,
+		"needs_db":          needsDB,
 	})
 }
 

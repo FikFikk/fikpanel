@@ -444,12 +444,25 @@
     }
 
     try {
-      const res = await apiFetch<{ branches: string[] }>(
-        `/api/sites/git/branches?repo=${encodeURIComponent(fullName)}`
-      );
+      const res = await apiFetch<{
+        branches: string[];
+        detected_kind?: SiteKind;
+        detected_post_cmd?: string;
+        needs_db?: boolean;
+      }>(`/api/sites/git/branches?repo=${encodeURIComponent(fullName)}`);
       gitBranches = res.branches || [gitBranch];
       if (gitBranches.length > 0 && !gitBranches.includes(gitBranch)) {
         gitBranch = gitBranches[0];
+      }
+      // Prioritaskan hasil inspeksi file proyek aktual (package.json, composer.json, go.mod, ecosystem.config.cjs)
+      if (res.detected_kind) {
+        selectKind(res.detected_kind);
+      }
+      if (res.detected_post_cmd) {
+        gitPostCmd = res.detected_post_cmd;
+      }
+      if (res.needs_db) {
+        createDB = true;
       }
     } catch {
       gitBranches = [gitBranch];
