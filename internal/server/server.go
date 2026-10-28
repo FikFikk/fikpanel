@@ -141,6 +141,8 @@ func (s *Server) registerRoutes() {
 	// Manajemen Layanan (Services)
 	s.mux.Handle("GET /api/services", s.AuthMiddleware(http.HandlerFunc(s.handleListServices)))
 	s.mux.Handle("POST /api/services/{unit}/action", s.AuthMiddleware(http.HandlerFunc(s.handleServiceAction)))
+	s.mux.Handle("GET /api/services/{unit}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleGetServiceLogs)))
+	s.mux.Handle("GET /api/services/{unit}/inspect", s.AuthMiddleware(http.HandlerFunc(s.handleInspectService)))
 
 	// Manajemen Situs Web (Sites)
 	s.mux.Handle("GET /api/sites", s.AuthMiddleware(http.HandlerFunc(s.handleListSites)))

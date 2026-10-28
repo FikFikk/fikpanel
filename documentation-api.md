@@ -2598,6 +2598,50 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.19 Manajemen Layanan Sistem & Supervisor (Services)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/services` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `scope` (string, opsional, `'running'` \| `'all'` \| `'managed'`, default: `'running'`), `category` (string, opsional, `'web'` \| `'database'` \| `'security'` \| `'supervisor'` \| `'system'`), `search` (string, opsional, pencarian nama unit/label/deskripsi) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"services": [{"unit": "nginx.service", "name": "nginx", "label": "Nginx Reverse Proxy & Web Server", "category": "web", "active_state": "active", "sub_state": "running", "unit_file_state": "enabled", "main_pid": 44753, "memory_current": 7172096, "memory_peak": 10010624, "tasks_current": 3, "uptime": "1d 3h", "exec_start": "/usr/sbin/nginx -g daemon on...", "protected": false}], "counts": {"total": 30, "running": 30, "stopped": 0, "failed": 0, "total_memory": 367722496}, "scope": "running"}` |
+| Notes | Mengembalikan daftar unit systemd host secara dinamis dan super detail dengan agregasi statistik cgroup RAM dan thread. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/services/{unit}/action` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `action` (string, wajib: `'start'`, `'stop'`, `'restart'`, `'reload'`, `'enable'`, `'disable'`) |
+| Response | HTTP 200 `{"ok": true, "unit": "cron.service", "action": "restart"}` atau HTTP 400 `{"error": "layanan fikpanel.service dilindungi sistem (PROTECTED)...", "unit": "fikpanel.service"}` |
+| Notes | Mengeksekusi aksi lifecycle systemd aktual pada server host. Unit terproteksi (`fikpanel.service`, `sshd.service`, `ssh.service`) dilarang di-stop atau di-disable. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/services/{unit}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `lines` (integer, opsional, default 100, max 1000) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "unit": "nginx.service", "lines": 100, "logs": "Oct 28 03:26:45 ... systemd[1]: Started..."}` |
+| Notes | Mengambil log jurnal peristiwa sistem real-time via `journalctl -u <unit> -n <lines> --no-pager`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/services/{unit}/inspect` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "unit": "nginx.service", "properties": {"MainPID": "44753", "Restart": "no", "LoadState": "loaded", "UnitFileState": "enabled", "ExecStart": "...", "TasksCurrent": "3"}}` |
+| Notes | Mengambil metadata teknis lengkap properti bus systemd kernel via `systemctl show <unit>`. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |

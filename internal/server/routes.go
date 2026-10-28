@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -221,15 +222,21 @@ func (s *Server) handleInstallSoftware(w http.ResponseWriter, r *http.Request) {
 // ═══ Services Management ═══
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
-	list, err := s.services.ListServices(r.Context())
+	scope := r.URL.Query().Get("scope")
+	category := r.URL.Query().Get("category")
+	search := r.URL.Query().Get("search")
+
+	list, counts, err := s.services.ListServicesFiltered(r.Context(), scope, category, search)
 	if err != nil {
-		http.Error(w, `{"error":"gagal mengambil daftar service"}`, http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"gagal mengambil daftar service: %s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"services": list,
+		"counts":   counts,
+		"scope":    scope,
 	})
 }
 
@@ -251,7 +258,7 @@ func (s *Server) handleServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Action {
-	case "start", "stop", "restart", "reload":
+	case "start", "stop", "restart", "reload", "enable", "disable":
 	default:
 		http.Error(w, `{"error":"aksi tidak dikenal"}`, http.StatusBadRequest)
 		return
@@ -262,13 +269,77 @@ func (s *Server) handleServiceAction(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		uid = &user.ID
 	}
-	_ = s.store.RecordAudit(r.Context(), "user", "service."+req.Action, unit, true, "Eksekusi aksi service", uid)
+
+	// Eksekusi aksi lifecycle systemd aktual pada host sistem
+	err := s.services.ExecuteAction(r.Context(), unit, req.Action)
+	if err != nil {
+		_ = s.store.RecordAudit(r.Context(), "user", "service."+req.Action, unit, false, err.Error(), uid)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": err.Error(),
+			"unit":  unit,
+		})
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "service."+req.Action, unit, true, "Eksekusi aksi service berhasil", uid)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":     true,
 		"unit":   unit,
 		"action": req.Action,
+	})
+}
+
+func (s *Server) handleGetServiceLogs(w http.ResponseWriter, r *http.Request) {
+	unit := r.PathValue("unit")
+	if unit == "" {
+		http.Error(w, `{"error":"unit tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	lines := 100
+	if lStr := r.URL.Query().Get("lines"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 && l <= 1000 {
+			lines = l
+		}
+	}
+
+	logs, err := s.services.GetServiceLogs(r.Context(), unit, lines)
+	if err != nil && logs == "" {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal membaca log journalctl: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":    true,
+		"unit":  unit,
+		"lines": lines,
+		"logs":  logs,
+	})
+}
+
+func (s *Server) handleInspectService(w http.ResponseWriter, r *http.Request) {
+	unit := r.PathValue("unit")
+	if unit == "" {
+		http.Error(w, `{"error":"unit tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	props, err := s.services.InspectService(r.Context(), unit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal memeriksa unit: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":         true,
+		"unit":       unit,
+		"properties": props,
 	})
 }
 

@@ -286,6 +286,35 @@ flowchart TD
     TulisFileLog --> Selesai
 ```
 
+### 1.9 Siklus Hidup Layanan Sistem (Systemd & Supervisor)
+
+```mermaid
+flowchart TD
+    ScanUnits[Pindai Host Server: systemctl list-units] --> FilterScope{Scope Filter: running vs all}
+    FilterScope -- running --> RunningUnits[Ambil Unit Berstatus running]
+    FilterScope -- all --> AllUnits[Ambil Seluruh Unit Loaded & Installed]
+    
+    RunningUnits --> MergeManaged[Gabungkan Allowlist managed_services SQLite]
+    AllUnits --> MergeManaged
+    
+    MergeManaged --> BatchShow[Batch Query: systemctl show unit1 unit2... per 40 unit]
+    BatchShow --> ParseProps[Ekstraksi PID, RSS Memori, Peak RAM, Threads, Uptime, ExecStart, Boot State]
+    ParseProps --> Categorize[Klasifikasi Otomatis: web, database, security, supervisor, system]
+    Categorize --> EnrichProtected[Tandai Flag Protected: fikpanel, sshd, ssh]
+    EnrichProtected --> RenderUI[Sajikan ke UI dengan Statistik Kartu & Filter Kategori]
+    
+    RenderUI --> UserAction{Aksi Pengguna}
+    UserAction -- Start / Restart / Reload --> ExecSystemctl[Eksekusi systemctl action unit]
+    UserAction -- Stop / Disable --> CekProteksi{Unit Protected?}
+    CekProteksi -- Ya --> TolakAksi[Tolak HTTP 400 Demi Integritas Panel & Remote SSH]
+    CekProteksi -- Tidak --> ExecSystemctl
+    UserAction -- Buka Log --> FetchJournal[journalctl -u unit -n lines --no-pager]
+    UserAction -- Inspeksi Teknis --> FetchInspect[systemctl show unit]
+    
+    ExecSystemctl --> CatatAudit[Catat Riwayat ke Audit Log]
+    CatatAudit --> RefreshStatus[Perbarui Status Runtime Unit]
+```
+
 ---
 
 ## 2. Aturan Bisnis Entitas (Entity Rules)
@@ -382,6 +411,29 @@ flowchart TD
 | `last_run_at` | Timestamp Unix, nullable | Waktu terakhir tugas berhasil atau gagal dieksekusi |
 | `last_status` | String (`'success'`, `'failed'`, `'running'`), nullable | Status eksekusi terakhir |
 
+### 2.8 Entitas `managed_services` & Runtime Systemd Units
+
+| Atribut / Field | Aturan Validasi | Catatan Bisnis |
+|---|---|---|
+| `unit` | Format nama unit systemd valid (berakhiran `.service`), unik | Pengidentifikasi unik unit layanan di tingkat sistem operasi |
+| `name` | String nama pendek tanpa ekstensi `.service` | Nama singkat untuk pemfilteran dan label internal |
+| `label` | String deskriptif ramah pengguna | Judul layanan yang ditampilkan pada antarmuka pengguna |
+| `description` | String metadata asli dari berkas unit systemd | Deskripsi teknis yang disediakan oleh pengembang paket daemon |
+| `category` | Enum: `'web'`, `'database'`, `'security'`, `'supervisor'`, `'system'` | Pengelompokan cerdas fungsional layanan pada arsitektur server |
+| `category_label` | String label Bahasa Indonesia | Label tab dan pill kategori ("Web & App", "Database & Cache", dll.) |
+| `protected` | Boolean (true/false) | Flag proteksi unit kritis (`fikpanel.service`, `sshd.service`, `ssh.service`); dilarang dihentikan (`stop`) atau dinonaktifkan (`disable`) |
+| `load_state` | Nilai status muat systemd (`'loaded'`, `'not-found'`, `'masked'`) | Mengonfirmasi apakah berkas definisi unit tersedia di filesystem host |
+| `active_state` | Nilai status aktivitas (`'active'`, `'inactive'`, `'failed'`, `'activating'`) | Status operasional runtime utama |
+| `sub_state` | Nilai status spesifik (`'running'`, `'exited'`, `'dead'`, `'failed'`) | Status detil cgroup kernel subproses |
+| `unit_file_state` | Nilai startup boot (`'enabled'`, `'disabled'`, `'static'`, `'masked'`) | Konfigurasi apakah layanan otomatis berjalan saat server dinyalakan |
+| `main_pid` | Integer positif atau 0 | Nomor Process ID utama dari daemon yang aktif |
+| `memory_current` | Angka byte unsigned 64-bit | Penggunaan memori RAM aktual yang dikonsumsi cgroup |
+| `memory_peak` | Angka byte unsigned 64-bit | Puncak memori tertinggi yang pernah tercatat sejak unit berjalan |
+| `tasks_current` | Integer jumlah task / threads | Jumlah subproses atau worker threads aktif di dalam cgroup |
+| `uptime` | String durasi ramah manusia | Lama layanan aktif dihitung dari `ActiveEnterTimestamp` |
+| `exec_start` | String perintah bersih | Perintah dan argumen biner yang dieksekusi saat daemon diinisialisasi |
+| `restart` | String policy (`'always'`, `'on-failure'`, `'no'`, dll.) | Kebijakan restart otomatis systemd jika terjadi kegagalan proses |
+
 ---
 
 ## 3. Matriks Transisi Status Entitas
@@ -411,15 +463,20 @@ flowchart TD
 | `issued` | Domain / alias situs diubah | `none` | Record sertifikat dihapus, HTTPS nonaktif sampai terbit ulang |
 | `issued` | User nonaktifkan SSL | `issued` | `ssl_mode=none`, blok 443 dilepas; sertifikat tetap tersimpan |
 
-### 3.3 Transisi Status Layanan (Systemd Unit)
+### 3.3 Transisi Status Layanan (Systemd & Supervisor Units)
 
 | Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
 |---|---|---|---|
-| `inactive` | Permintaan start | `active` | Agent mengeksekusi `systemctl start <unit>` |
-| `active` | Permintaan stop | `inactive` | Ditolak jika unit `protected=1` tanpa konfirmasi |
-| `active` | Permintaan restart | `active` | Agent mengeksekusi `systemctl restart <unit>` |
-| `failed` | Permintaan restart | `active` | Mencoba pemulihan unit yang crash |
-| `active` | Unit mengalami crash | `failed` | Terdeteksi oleh loop polling / supervisor |
+| `inactive` / `dead` | Permintaan `start` | `active` (`running`) | Eksekusi `systemctl start <unit>`, Main PID dan cgroup memory dialokasikan |
+| `active` (`running`) | Permintaan `stop` pada unit biasa | `inactive` (`dead`) | Eksekusi `systemctl stop <unit>`, memory dilepas, PID dinonaktifkan |
+| `active` (`running`) | Permintaan `stop` pada unit dilindungi (`fikpanel.service`, `sshd.service`, `ssh.service`) | (DITOLAK) | Ditolak HTTP 400; perlindungan sistem mutlak agar akses web panel dan remote SSH tidak terputus |
+| `active` / `failed` | Permintaan `restart` | `active` (`running`) | Eksekusi `systemctl restart <unit>`, menyegarkan subproses dan memuat ulang konfigurasi baru |
+| `active` (`running`) | Permintaan `reload` | `active` (`running`) | Eksekusi `systemctl reload <unit>`, sinyal SIGHUP dikirim ke master daemon tanpa memutus koneksi klien aktif |
+| `disabled` (Boot) | Permintaan `enable` | `enabled` | Eksekusi `systemctl enable <unit>`, membuat symlink di `/etc/systemd/system/multi-user.target.wants/` agar berjalan otomatis saat boot |
+| `enabled` (Boot) | Permintaan `disable` pada unit biasa | `disabled` | Eksekusi `systemctl disable <unit>`, melepas symlink startup boot |
+| `enabled` (Boot) | Permintaan `disable` pada unit dilindungi | (DITOLAK) | Ditolak HTTP 400; layanan vital wajib tetap aktif saat server dinyalakan kembali |
+| `active` (`running`) | Proses daemon mengalami crash atau SIGKILL | `failed` | Terdeteksi otomatis via status systemctl show; diprioritaskan di baris teratas antarmuka pengguna |
+| `failed` | Permintaan `restart` pemulihan | `active` (`running`) | Subproses diinisialisasi ulang dari kondisi crash |
 
 ---
 
@@ -533,6 +590,7 @@ flowchart TD
 | **BR-67** | Modal Modifikasi Situs Komprehensif 13 Sub-Tab (aaPanel Enhanced) | Pengguna mengklik pengaturan atau nama situs di tabel Sites | Menyajikan 13 sub-tab modular: (1) Domain Manager (manajemen multi-domain & validasi DNS live), (2) Directory (Site Directory, Running Directory selector `/`, `/public`, `/dist`, `/build`, `/public_html`, `/app`, dan toggle anti-XSS `open_basedir`), (3) Limit Access (Basic Auth, Deny file sensitif `.env`/`.git`, dan Traffic Control rate limiting), (4) URL Rewrite (editor rules dengan preset Laravel, WordPress, SPA React/Vue, ThinkPHP, CodeIgniter), (5) Default Document (urutan index files), (6) Config (editor raw Nginx vhost dengan validasi sintaks atomik `nginx -t`), (7) SSL (3 sub-tab: Deployed Certs dengan tampilan kunci/sertifikat aktif, Custom Cert paste PEM, dan Let's Encrypt 1-klik), (8) PHP Version Switcher (alih versi PHP-FPM dan isolasi session), (9) Reverse Proxy (target upstream, websocket upgrade, dan timeout), (10) Redirect (pengalihan 301/302), (11) Hotlink Protection (whitelist domain dan proteksi ekstensi media), (12) Maintenance Mode (toggle pemeliharaan 503), dan (13) Response Logs (penampil log akses & error real-time dengan tombol pengosongan berkas). |
 | **BR-68** | Telemetri Forensik WAF Real-Time, Geolokasi Presisi & Studio Peta Leaflet | Pengguna memantau percobaan serangan atau mengakses tab Attack Map di menu WAF | Pemindai log Nginx latar belakang (`waf.LogWatcher`) memindai berkas log akses secara real-time setiap 4 detik untuk mengekstraksi alamat IP klien, klasifikasi pola serangan OWASP (SQLi, XSS, Path Traversal, Sensitive File Probe, RCE, Bad Bot Scanner), status HTTP, dan User-Agent. Resolusi geolokasi presisi melacak negara, provinsi, kota, ISP/organisasi, dan koordinat GPS (lat/lng), dipadukan dengan parser fingerprint perangkat (Desktop/Mobile/Tablet/Bot, OS, dan Browser). Antarmuka Attack Map menyajikan studio peta interaktif penuh berbasis Leaflet dan CartoDB Dark Matter dengan dukungan zoom mulus hingga level jalan, lintasan kurva laser serangan real-time ke host server, filter pencarian multi-dimensi, chip filter negara asal serangan, serta laci inspeksi forensik detail dengan tombol blokir IP 1-klik ke blacklist. |
 | **BR-69** | Pembaruan Konfigurasi & Penjadwalan Tugas Cron (In-Place Edit) serta Penstabilan Waktu Header Tabular | Pengguna memperbarui tugas cron atau mengamati live clock pada header Cron Manager | Antarmuka menyediakan tombol aksi Edit (`ri-edit-line`) pada tabel tugas untuk memuat dan memodifikasi konfigurasi tugas yang sudah ada via `PUT /api/cron/jobs/{id}` secara in-place tanpa perlu menghapus tugas. Tampilan jam server dan waktu klien diposisikan di header atas secara mandiri dengan styling monospace `tabular-nums` agar lebar karakter seragam, mengeliminasi goyangan layout ("maju mundur") pada tombol aksi (Refresh / Tambah Tugas) saat detik berganti. |
+| **BR-70** | Manajemen Layanan Super Detail (Systemd & Supervisor), Telemetri Cgroup Kernel, dan Proteksi Unit Kritis | Pengguna memantau, memeriksa log, mengubah status boot, atau mengeksekusi aksi lifecycle layanan pada menu Services | Memindai seluruh layanan yang berjalan di server secara dinamis (`systemctl list-units`) dengan klasifikasi kategori otomatis (`web`, `database`, `security`, `supervisor`, `system`), telemetri cgroup (Main PID, Tasks Current / thread count, Memory RSS & Peak, Uptime presisi, dan ExecStart). Mendukung penampil log jurnal real-time (`journalctl -u <unit> -n <lines> --no-pager`) dan inspeksi teknis metadata bus systemd. Unit vital sistem (`fikpanel.service`, `sshd.service`, `ssh.service`) diproteksi mutlak dari perintah `stop` dan `disable` (ditolak HTTP 400) untuk menjamin kelangsungan koneksi panel dan SSH administrator. |
 
 
 

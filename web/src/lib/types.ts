@@ -108,11 +108,23 @@ export interface SitesData {
 
 export interface Service {
   unit: string;
+  name?: string;
   label: string;
+  description?: string;
+  category?: 'web' | 'database' | 'security' | 'supervisor' | 'system' | string;
+  category_label?: string;
+  load_state?: string;
   active_state: string;
   sub_state: string;
+  unit_file_state?: string;
   main_pid: number;
   memory_current: number;
+  memory_peak?: number;
+  tasks_current?: number;
+  active_enter_timestamp?: string;
+  uptime?: string;
+  exec_start?: string;
+  restart?: string;
   protected: boolean;
 }
 
