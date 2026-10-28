@@ -2660,6 +2660,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "unit": "nginx.service", "properties": {"MainPID": "44753", "Restart": "no", "LoadState": "loaded", "UnitFileState": "enabled", "ExecStart": "...", "TasksCurrent": "3"}}` |
 | Notes | Mengambil metadata teknis lengkap properti bus systemd kernel via `systemctl show <unit>`. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/complete` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `command` (string, baris perintah yang sedang diketik), `cwd` (string, opsional, direktori kerja tab saat ini), `server_id` (int64, opsional, `0` untuk node lokal atau ID server SSH remote) |
+| Response | HTTP 200 `{"ok": true, "cwd": "/opt/fikpanel", "prefix": "da", "common_prefix": "data", "completed_command": "cd data/", "dirs_only": true, "matches": [{"name": "data", "display": "data/", "replacement": "cd data/", "is_dir": true, "mode": "drwxr-xr-x", "size": 4096, "mod_time": "Oct 28 05:02", "detail": "drwxr-xr-x  2 root root     4096 Oct 28 05:02 data/"}]}` |
+| Notes | Menangani auto-complete `Tab` 1x (ekspansi otomatis kandidat tunggal atau Longest Common Prefix) dan `Tab 2x` (daftar format `ls -la`). Bila perintah awal adalah `cd`, `pushd`, atau `rmdir`, hasil otomatis difilter hanya untuk direktori (`dirs_only=true`). |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

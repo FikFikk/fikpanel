@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,10 +19,89 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const (
+	pwdSentinelStart = "__FIK_PWD_START__"
+	pwdSentinelEnd   = "__FIK_PWD_END__"
+)
+
 // TerminalExecRequest mendefinisikan permintaan eksekusi perintah terminal lokal atau remote
 type TerminalExecRequest struct {
 	Command  string `json:"command"`
 	ServerID int64  `json:"server_id,omitempty"` // 0 atau kosong = server lokal
+	Cwd      string `json:"cwd,omitempty"`       // Direktori kerja aktif pada tab terminal
+}
+
+// TerminalCompleteRequest mendefinisikan permintaan auto-complete Tab pada terminal
+type TerminalCompleteRequest struct {
+	Command  string `json:"command"`
+	Cwd      string `json:"cwd,omitempty"`
+	ServerID int64  `json:"server_id,omitempty"`
+}
+
+// TerminalCompletionItem merepresentasikan satu kandidat file/folder hasil Tab completion
+type TerminalCompletionItem struct {
+	Name        string `json:"name"`
+	Display     string `json:"display"`
+	Replacement string `json:"replacement"`
+	IsDir       bool   `json:"is_dir"`
+	Mode        string `json:"mode"`
+	Size        int64  `json:"size"`
+	ModTime     string `json:"mod_time"`
+	Detail      string `json:"detail"`
+}
+
+// shellSingleQuote membungkus string dalam tanda kutip tunggal yang aman untuk POSIX shell
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// buildStatefulBashCommand membungkus perintah agar berpindah ke cwd terlebih dahulu dan mencetak pwd akhir
+func buildStatefulBashCommand(cwd, cmdClean string) string {
+	var sb strings.Builder
+	trimmedCwd := strings.TrimSpace(cwd)
+	if trimmedCwd != "" && trimmedCwd != "~" {
+		if strings.HasPrefix(trimmedCwd, "~/") {
+			sb.WriteString("cd ~ && cd " + shellSingleQuote(trimmedCwd[2:]) + " 2>/dev/null\n")
+		} else {
+			sb.WriteString("cd " + shellSingleQuote(trimmedCwd) + " 2>/dev/null\n")
+		}
+	} else if trimmedCwd == "~" {
+		sb.WriteString("cd ~ 2>/dev/null\n")
+	}
+	sb.WriteString(cmdClean)
+	sb.WriteString("\n__FIK_EC=$?\nprintf \"\\n" + pwdSentinelStart + "%s" + pwdSentinelEnd + "\\n\" \"$(pwd)\"\nexit $__FIK_EC\n")
+	return sb.String()
+}
+
+// extractAndStripPwdSentinel mengekstrak direktori kerja terbaru dari output dan menghapus penanda sentinel
+func extractAndStripPwdSentinel(rawStdout, fallbackCwd string) (string, string) {
+	resolvedCwd := strings.TrimSpace(fallbackCwd)
+	startIdx := strings.LastIndex(rawStdout, pwdSentinelStart)
+	if startIdx == -1 {
+		return rawStdout, resolvedCwd
+	}
+	endIdx := strings.Index(rawStdout[startIdx:], pwdSentinelEnd)
+	if endIdx == -1 {
+		return rawStdout, resolvedCwd
+	}
+	endIdx += startIdx
+
+	extracted := strings.TrimSpace(rawStdout[startIdx+len(pwdSentinelStart) : endIdx])
+	if extracted != "" {
+		resolvedCwd = extracted
+	}
+
+	// Bersihkan baris sentinel beserta newline pembuka/penutupnya
+	prefix := rawStdout[:startIdx]
+	prefix = strings.TrimSuffix(prefix, "\r\n")
+	prefix = strings.TrimSuffix(prefix, "\n")
+
+	suffix := rawStdout[endIdx+len(pwdSentinelEnd):]
+	suffix = strings.TrimPrefix(suffix, "\r\n")
+	suffix = strings.TrimPrefix(suffix, "\n")
+
+	clean := prefix + suffix
+	return clean, resolvedCwd
 }
 
 // ServerTestRequest mendefinisikan permintaan pengujian koneksi SSH remote
@@ -106,6 +188,7 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 				"output":      fmt.Sprintf("Gagal terhubung ke remote server [%s:%d]: %v", srv.Host, srv.Port, err),
 				"server_id":   srv.ID,
 				"server_name": srv.Name,
+				"cwd":         req.Cwd,
 			})
 			return
 		}
@@ -119,6 +202,7 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 				"output":      fmt.Sprintf("Gagal membuka sesi remote SSH: %v", err),
 				"server_id":   srv.ID,
 				"server_name": srv.Name,
+				"cwd":         req.Cwd,
 			})
 			return
 		}
@@ -128,13 +212,14 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 
-		err = session.Run(cmdClean)
-		output := stdout.String()
+		wrappedRemoteCmd := "bash -c " + shellSingleQuote(buildStatefulBashCommand(req.Cwd, cmdClean))
+		err = session.Run(wrappedRemoteCmd)
+		output, resolvedCwd := extractAndStripPwdSentinel(stdout.String(), req.Cwd)
 		if stderr.Len() > 0 {
 			if len(output) > 0 {
-				output += "\n--- STDERR ---\n"
+				output += "\n"
 			}
-			output += stderr.String()
+			output += strings.TrimRight(stderr.String(), "\r\n")
 		}
 
 		if err != nil && len(output) == 0 {
@@ -146,9 +231,10 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"ok":          true,
+			"ok":          err == nil,
 			"command":     cmdClean,
 			"output":      output,
+			"cwd":         resolvedCwd,
 			"server_id":   srv.ID,
 			"server_name": srv.Name,
 			"prompt_user": srv.Username,
@@ -161,11 +247,22 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	baseCwd := strings.TrimSpace(req.Cwd)
+	if baseCwd == "" {
+		if wd, wdErr := os.Getwd(); wdErr == nil {
+			baseCwd = wd
+		}
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/c", cmdClean)
+		if baseCwd != "" && baseCwd != "~" {
+			cmd.Dir = baseCwd
+		}
 	} else {
-		cmd = exec.CommandContext(ctx, "bash", "-c", cmdClean)
+		wrappedLocalCmd := buildStatefulBashCommand(baseCwd, cmdClean)
+		cmd = exec.CommandContext(ctx, "bash", "-c", wrappedLocalCmd)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -173,12 +270,12 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	output := stdout.String()
+	output, resolvedCwd := extractAndStripPwdSentinel(stdout.String(), baseCwd)
 	if stderr.Len() > 0 {
 		if len(output) > 0 {
-			output += "\n--- STDERR ---\n"
+			output += "\n"
 		}
-		output += stderr.String()
+		output += strings.TrimRight(stderr.String(), "\r\n")
 	}
 
 	if err != nil && len(output) == 0 {
@@ -190,13 +287,320 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":          true,
+		"ok":          err == nil,
 		"command":     cmdClean,
 		"output":      output,
+		"cwd":         resolvedCwd,
 		"server_id":   0,
 		"server_name": "Local server",
 		"prompt_user": "root",
 		"prompt_host": "fikpanel",
+	})
+}
+
+// parseCommandCompletionToken memecah baris input perintah menjadi awalan perintah, direktori parsial, dan prefix nama file
+func parseCommandCompletionToken(rawCmd string) (cmdPrefix, rawDirPrefix, filePrefix string, dirsOnly bool) {
+	fields := strings.Fields(rawCmd)
+	hasTrailingSpace := strings.HasSuffix(rawCmd, " ")
+
+	var partialToken string
+	if hasTrailingSpace {
+		cmdPrefix = rawCmd
+		partialToken = ""
+	} else if lastSpace := strings.LastIndexByte(rawCmd, ' '); lastSpace >= 0 {
+		cmdPrefix = rawCmd[:lastSpace+1]
+		partialToken = rawCmd[lastSpace+1:]
+	} else {
+		cmdPrefix = ""
+		partialToken = rawCmd
+	}
+
+	if len(fields) > 0 {
+		firstCmd := fields[0]
+		if (firstCmd == "cd" || firstCmd == "pushd" || firstCmd == "rmdir") && (hasTrailingSpace || len(fields) >= 2) {
+			dirsOnly = true
+		}
+	}
+
+	normalizedToken := strings.ReplaceAll(partialToken, "\\", "/")
+	if lastSlash := strings.LastIndex(normalizedToken, "/"); lastSlash >= 0 {
+		rawDirPrefix = normalizedToken[:lastSlash+1]
+		filePrefix = normalizedToken[lastSlash+1:]
+	} else {
+		rawDirPrefix = ""
+		filePrefix = normalizedToken
+	}
+
+	return cmdPrefix, rawDirPrefix, filePrefix, dirsOnly
+}
+
+// longestCommonPrefix menghitung awalan karakter terpanjang yang sama dari daftar nama kandidat
+func longestCommonPrefix(items []TerminalCompletionItem) string {
+	if len(items) == 0 {
+		return ""
+	}
+	prefix := items[0].Name
+	for _, item := range items[1:] {
+		for !strings.HasPrefix(item.Name, prefix) {
+			if len(prefix) == 0 {
+				return ""
+			}
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+	return prefix
+}
+
+// formatLsMode membentuk representasi permission gaya ls -la (misal drwxr-xr-x atau -rw-r--r--)
+func formatLsMode(mode os.FileMode, isDir bool) string {
+	var b [10]byte
+	if isDir {
+		b[0] = 'd'
+	} else if mode&os.ModeSymlink != 0 {
+		b[0] = 'l'
+	} else {
+		b[0] = '-'
+	}
+	const rwx = "rwxrwxrwx"
+	for i := 0; i < 9; i++ {
+		if mode&(1<<uint(8-i)) != 0 {
+			b[i+1] = rwx[i]
+		} else {
+			b[i+1] = '-'
+		}
+	}
+	return string(b[:])
+}
+
+// handleTerminalComplete menangani fitur auto-complete Tab dan Tab 2x (ls -la kandidat) pada terminal
+func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) {
+	var req TerminalCompleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
+		return
+	}
+
+	cmdPrefix, rawDirPrefix, filePrefix, dirsOnly := parseCommandCompletionToken(req.Command)
+	showHidden := strings.HasPrefix(filePrefix, ".")
+
+	type rawCandidate struct {
+		name    string
+		isDir   bool
+		mode    string
+		size    int64
+		modTime string
+	}
+
+	var rawList []rawCandidate
+	resolvedCwd := strings.TrimSpace(req.Cwd)
+
+	if req.ServerID > 0 {
+		// Auto-complete pada server SSH remote
+		srv, err := s.store.GetTerminalServer(r.Context(), req.ServerID)
+		if err != nil || srv == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server remote tidak ditemukan"})
+			return
+		}
+
+		client, err := dialSSH(srv.Host, srv.Port, srv.Username, srv.AuthType, srv.Password, srv.PrivateKey, srv.Passphrase, 6*time.Second)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":                false,
+				"matches":           []TerminalCompletionItem{},
+				"completed_command": req.Command,
+				"cwd":               resolvedCwd,
+			})
+			return
+		}
+		defer client.Close()
+
+		session, err := client.NewSession()
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":                false,
+				"matches":           []TerminalCompletionItem{},
+				"completed_command": req.Command,
+				"cwd":               resolvedCwd,
+			})
+			return
+		}
+		defer session.Close()
+
+		var script strings.Builder
+		if resolvedCwd != "" && resolvedCwd != "~" {
+			if strings.HasPrefix(resolvedCwd, "~/") {
+				script.WriteString("cd ~ && cd " + shellSingleQuote(resolvedCwd[2:]) + " 2>/dev/null\n")
+			} else {
+				script.WriteString("cd " + shellSingleQuote(resolvedCwd) + " 2>/dev/null\n")
+			}
+		}
+		script.WriteString("pwd\n")
+		if rawDirPrefix != "" {
+			if rawDirPrefix == "~/" {
+				script.WriteString("cd ~ 2>/dev/null || exit 0\n")
+			} else if strings.HasPrefix(rawDirPrefix, "~/") {
+				script.WriteString("cd ~ && cd " + shellSingleQuote(rawDirPrefix[2:]) + " 2>/dev/null || exit 0\n")
+			} else {
+				script.WriteString("cd " + shellSingleQuote(rawDirPrefix) + " 2>/dev/null || exit 0\n")
+			}
+		}
+		script.WriteString("find -L . -maxdepth 1 -mindepth 1 -printf '%f\\t%y\\t%M\\t%s\\t%Tb %Td %TH:%TM\\n' 2>/dev/null\n")
+
+		out, _ := session.Output("bash -c " + shellSingleQuote(script.String()))
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) > 0 && strings.HasPrefix(lines[0], "/") {
+			resolvedCwd = strings.TrimSpace(lines[0])
+			lines = lines[1:]
+		}
+		for _, line := range lines {
+			parts := strings.Split(line, "\t")
+			if len(parts) < 5 {
+				continue
+			}
+			name := parts[0]
+			isDir := parts[1] == "d"
+			mode := parts[2]
+			size, _ := strconv.ParseInt(parts[3], 10, 64)
+			modTime := parts[4]
+			rawList = append(rawList, rawCandidate{
+				name:    name,
+				isDir:   isDir,
+				mode:    mode,
+				size:    size,
+				modTime: modTime,
+			})
+		}
+	} else {
+		// Auto-complete pada server lokal
+		homeDir, _ := os.UserHomeDir()
+		if resolvedCwd == "" {
+			if wd, err := os.Getwd(); err == nil {
+				resolvedCwd = wd
+			}
+		} else if resolvedCwd == "~" {
+			resolvedCwd = homeDir
+		} else if strings.HasPrefix(resolvedCwd, "~/") {
+			resolvedCwd = filepath.Join(homeDir, resolvedCwd[2:])
+		}
+
+		searchDir := resolvedCwd
+		if rawDirPrefix != "" {
+			if rawDirPrefix == "~/" {
+				searchDir = homeDir
+			} else if strings.HasPrefix(rawDirPrefix, "~/") {
+				searchDir = filepath.Join(homeDir, rawDirPrefix[2:])
+			} else if strings.HasPrefix(rawDirPrefix, "/") || filepath.IsAbs(rawDirPrefix) {
+				searchDir = filepath.Clean(rawDirPrefix)
+			} else {
+				searchDir = filepath.Join(resolvedCwd, rawDirPrefix)
+			}
+		}
+
+		entries, err := os.ReadDir(searchDir)
+		if err == nil {
+			for _, entry := range entries {
+				name := entry.Name()
+				info, infoErr := os.Stat(filepath.Join(searchDir, name))
+				if infoErr != nil {
+					info, infoErr = entry.Info()
+				}
+				isDir := entry.IsDir()
+				var mode os.FileMode = 0644
+				var size int64
+				modTime := time.Now().Format("Jan 02 15:04")
+				if infoErr == nil && info != nil {
+					isDir = info.IsDir()
+					mode = info.Mode()
+					size = info.Size()
+					modTime = info.ModTime().Format("Jan 02 15:04")
+				}
+				rawList = append(rawList, rawCandidate{
+					name:    name,
+					isDir:   isDir,
+					mode:    formatLsMode(mode, isDir),
+					size:    size,
+					modTime: modTime,
+				})
+			}
+		}
+	}
+
+	// Filter kandidat berdasarkan prefix & dirsOnly
+	filterMatches := func(caseInsensitive bool) []TerminalCompletionItem {
+		var result []TerminalCompletionItem
+		for _, cand := range rawList {
+			if !showHidden && strings.HasPrefix(cand.name, ".") {
+				continue
+			}
+			if dirsOnly && !cand.isDir {
+				continue
+			}
+			if caseInsensitive {
+				if !strings.HasPrefix(strings.ToLower(cand.name), strings.ToLower(filePrefix)) {
+					continue
+				}
+			} else {
+				if !strings.HasPrefix(cand.name, filePrefix) {
+					continue
+				}
+			}
+
+			display := cand.name
+			replacement := rawDirPrefix + cand.name
+			nlink := 1
+			if cand.isDir {
+				display = cand.name + "/"
+				replacement = rawDirPrefix + cand.name + "/"
+				nlink = 2
+			} else {
+				replacement = rawDirPrefix + cand.name + " "
+			}
+
+			detail := fmt.Sprintf("%s %2d root root %8d %s %s", cand.mode, nlink, cand.size, cand.modTime, display)
+			result = append(result, TerminalCompletionItem{
+				Name:        cand.name,
+				Display:     display,
+				Replacement: cmdPrefix + replacement,
+				IsDir:       cand.isDir,
+				Mode:        cand.mode,
+				Size:        cand.size,
+				ModTime:     cand.modTime,
+				Detail:      detail,
+			})
+		}
+		return result
+	}
+
+	matches := filterMatches(false)
+	if len(matches) == 0 && filePrefix != "" {
+		matches = filterMatches(true)
+	}
+
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Name < matches[j].Name
+	})
+
+	completedCommand := req.Command
+	commonPrefix := filePrefix
+	if len(matches) == 1 {
+		completedCommand = matches[0].Replacement
+		commonPrefix = matches[0].Name
+	} else if len(matches) > 1 {
+		lcp := longestCommonPrefix(matches)
+		commonPrefix = lcp
+		if len(lcp) > len(filePrefix) {
+			completedCommand = cmdPrefix + rawDirPrefix + lcp
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":                true,
+		"cwd":               resolvedCwd,
+		"prefix":            filePrefix,
+		"common_prefix":     commonPrefix,
+		"completed_command": completedCommand,
+		"dirs_only":         dirsOnly,
+		"matches":           matches,
 	})
 }
 

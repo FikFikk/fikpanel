@@ -3,7 +3,14 @@
   import { apiFetch } from '../lib/api';
   import { toast } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
-  import type { TerminalServer, TerminalCommand, TerminalTab, TerminalHistoryItem } from '../lib/types';
+  import type { TerminalServer, TerminalCommand, TerminalTab, TerminalHistoryItem, TerminalCompletionItem } from '../lib/types';
+
+  // State auto-complete Tab & Tab 2x
+  let completionMatches = $state<TerminalCompletionItem[]>([]);
+  let completionHint = $state('');
+  let tabPressCount = $state(0);
+  let lastTabCommand = $state('');
+  let completing = $state(false);
 
   // State daftar server dan perintah
   let servers = $state<TerminalServer[]>([]);
@@ -28,6 +35,7 @@
       name: 'Local server',
       host: 'fikpanel',
       username: 'root',
+      cwd: '~',
       connected: true,
       commandInput: '',
       historyIndex: -1,
@@ -97,6 +105,9 @@
   onMount(() => {
     fetchServers();
     fetchCommands();
+    if (tabs[0]) {
+      initTabSession(tabs[0]);
+    }
 
     const handleGlobalKeydown = (e: KeyboardEvent) => {
       // Pintasan Ctrl+L untuk membersihkan terminal aktif
@@ -159,17 +170,59 @@
     }
   }
 
+  // Reset state kandidat auto-complete
+  function resetCompletionState() {
+    completionMatches = [];
+    completionHint = '';
+    tabPressCount = 0;
+  }
+
+  // Inisialisasi direktori kerja awal (cwd) pada tab tanpa mengotori riwayat perintah
+  async function initTabSession(tab: TerminalTab) {
+    try {
+      const res = await apiFetch<{
+        ok: boolean;
+        cwd?: string;
+      }>('/api/terminal/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          command: '',
+          cwd: tab.cwd && tab.cwd !== '~' ? tab.cwd : '',
+          server_id: tab.serverId,
+        }),
+      });
+      if (res.cwd) {
+        tab.cwd = res.cwd;
+      }
+    } catch {
+      // Abaikan kegagalan inisialisasi direktori awal
+    }
+  }
+
   // Jalankan perintah di tab aktif
   async function runCommand(cmdText: string) {
     const trimmed = cmdText.trim();
     if (!trimmed || !activeTab || activeTab.executing) return;
 
     const currentTab = activeTab;
+    resetCompletionState();
+
+    // Tangani perintah clear/cls langsung di sisi klien seperti shell asli
+    if (trimmed === 'clear' || trimmed === 'cls') {
+      currentTab.history = [];
+      currentTab.commandInput = '';
+      currentTab.historyIndex = -1;
+      focusInput();
+      return;
+    }
+
     currentTab.executing = true;
+    const executedAtCwd = currentTab.cwd || '~';
 
     try {
-      const payload: { command: string; server_id?: number } = {
+      const payload: { command: string; server_id?: number; cwd?: string } = {
         command: trimmed,
+        cwd: currentTab.cwd && currentTab.cwd !== '~' ? currentTab.cwd : '',
       };
       if (currentTab.serverId > 0) {
         payload.server_id = currentTab.serverId;
@@ -179,6 +232,7 @@
         ok: boolean;
         command: string;
         output: string;
+        cwd?: string;
         prompt_user?: string;
         prompt_host?: string;
       }>('/api/terminal/exec', {
@@ -194,12 +248,14 @@
           output: res.output,
           time: now,
           ok: res.ok,
+          cwd: executedAtCwd,
         },
       ];
 
+      if (res.cwd) currentTab.cwd = res.cwd;
       if (res.prompt_user) currentTab.username = res.prompt_user;
       if (res.prompt_host) currentTab.host = res.prompt_host;
-      currentTab.connected = res.ok;
+      currentTab.connected = true;
 
       currentTab.commandInput = '';
       currentTab.historyIndex = -1;
@@ -212,6 +268,7 @@
           output: `Error: ${err.message || 'Gagal mengeksekusi perintah'}`,
           time: now,
           ok: false,
+          cwd: executedAtCwd,
         },
       ];
       currentTab.connected = false;
@@ -222,16 +279,157 @@
     }
   }
 
-  // Tangani tombol panah Atas/Bawah untuk riwayat perintah (seperti bash shell asli)
+  // Cetak daftar kandidat ke riwayat terminal layaknya ls -la pada Tab 2x
+  function triggerDoubleTabListing() {
+    if (!activeTab || completionMatches.length === 0) return;
+    const now = new Date().toLocaleTimeString();
+    const detailLines = completionMatches.map((m) => m.detail).join('\n');
+    activeTab.history = [
+      ...activeTab.history,
+      {
+        command: `${activeTab.commandInput || '(direktori aktif)'}`,
+        output: `total ${completionMatches.length} kandidat cocok (Tab 2x ls -la):\n${detailLines}`,
+        time: now,
+        ok: true,
+        cwd: activeTab.cwd || '~',
+        isCompletionList: true,
+      },
+    ];
+    scrollToBottom();
+    focusInput();
+  }
+
+  // Pilih satu kandidat auto-complete secara langsung dari chip
+  function applyCandidateCompletion(item: TerminalCompletionItem) {
+    if (!activeTab) return;
+    activeTab.commandInput = item.replacement;
+    lastTabCommand = item.replacement;
+    resetCompletionState();
+    focusInput();
+  }
+
+  // Tangani auto-complete Tab (1x = lengkapi otomatis / LCP, 2x = cetak ls -la kandidat)
+  async function handleTabAutocomplete() {
+    if (!activeTab || activeTab.executing || completing) return;
+    const currentTab = activeTab;
+
+    // Jika pengguna menekan Tab ke-2 kalinya pada prefix ambigu yang sama -> cetak daftar ls -la
+    if (
+      tabPressCount >= 1 &&
+      currentTab.commandInput === lastTabCommand &&
+      completionMatches.length > 1
+    ) {
+      tabPressCount++;
+      triggerDoubleTabListing();
+      return;
+    }
+
+    completing = true;
+    try {
+      const res = await apiFetch<{
+        ok: boolean;
+        cwd?: string;
+        prefix: string;
+        common_prefix: string;
+        completed_command: string;
+        dirs_only: boolean;
+        matches: TerminalCompletionItem[];
+      }>('/api/terminal/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          command: currentTab.commandInput,
+          cwd: currentTab.cwd && currentTab.cwd !== '~' ? currentTab.cwd : '',
+          server_id: currentTab.serverId,
+        }),
+      });
+
+      if (res.cwd) {
+        currentTab.cwd = res.cwd;
+      }
+
+      const matches = res.matches || [];
+      if (matches.length === 0) {
+        completionMatches = [];
+        completionHint = 'Tidak ada file atau folder yang cocok di direktori ini';
+        tabPressCount = 0;
+      } else if (matches.length === 1) {
+        // 1 kandidat tunggal -> langsung lengkapi otomatis (misal: cd da -> cd data/)
+        currentTab.commandInput = res.completed_command;
+        lastTabCommand = res.completed_command;
+        resetCompletionState();
+      } else {
+        // Lebih dari 1 kandidat -> lengkapi sampai Longest Common Prefix (LCP), siapkan Tab ke-2
+        currentTab.commandInput = res.completed_command;
+        lastTabCommand = res.completed_command;
+        completionMatches = matches;
+        tabPressCount = 1;
+        completionHint = `${matches.length} kandidat cocok — Tekan Tab sekali lagi (Tab 2x) untuk menampilkan ls -la`;
+      }
+    } catch {
+      // Abaikan error jaringan sementara saat auto-complete
+    } finally {
+      completing = false;
+      scrollToBottom();
+      focusInput();
+    }
+  }
+
+  // Salin path direktori kerja aktif ke clipboard
+  async function copyCurrentCwd() {
+    if (!activeTab) return;
+    const pathText = activeTab.cwd || '~';
+    try {
+      await navigator.clipboard.writeText(pathText);
+      toast.success(`Path disalin: ${pathText}`);
+    } catch {
+      toast.info(pathText);
+    }
+    focusInput();
+  }
+
+  // Tangani tombol Tab, Ctrl+C, Enter, dan Panah Atas/Bawah (seperti bash shell asli)
   function handleInputKeydown(e: KeyboardEvent) {
     if (!activeTab) return;
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      handleTabAutocomplete();
+      return;
+    }
+
+    // Pintasan Ctrl+C untuk membatalkan baris perintah aktif jika tidak ada teks yang diblok
+    if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+      const selectedText = window.getSelection()?.toString() || '';
+      if (!selectedText) {
+        e.preventDefault();
+        const now = new Date().toLocaleTimeString();
+        activeTab.history = [
+          ...activeTab.history,
+          {
+            command: `${activeTab.commandInput}^C`,
+            output: '',
+            time: now,
+            ok: true,
+            cwd: activeTab.cwd || '~',
+          },
+        ];
+        activeTab.commandInput = '';
+        activeTab.historyIndex = -1;
+        resetCompletionState();
+        scrollToBottom();
+        return;
+      }
+    }
 
     if (e.key === 'Enter') {
       e.preventDefault();
       runCommand(activeTab.commandInput);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const pastCommands = activeTab.history.map((h) => h.command);
+      resetCompletionState();
+      const pastCommands = activeTab.history
+        .filter((h) => !h.isCompletionList && !h.command.endsWith('^C'))
+        .map((h) => h.command);
       if (pastCommands.length === 0) return;
 
       if (activeTab.historyIndex === -1) {
@@ -242,7 +440,10 @@
       activeTab.commandInput = pastCommands[activeTab.historyIndex];
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const pastCommands = activeTab.history.map((h) => h.command);
+      resetCompletionState();
+      const pastCommands = activeTab.history
+        .filter((h) => !h.isCompletionList && !h.command.endsWith('^C'))
+        .map((h) => h.command);
       if (activeTab.historyIndex !== -1) {
         if (activeTab.historyIndex < pastCommands.length - 1) {
           activeTab.historyIndex++;
@@ -252,6 +453,12 @@
           activeTab.commandInput = '';
         }
       }
+    } else if (e.key === 'Escape') {
+      resetCompletionState();
+    } else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+      // Reset hitungan Tab saat pengguna mengetik karakter baru
+      tabPressCount = 0;
+      completionHint = '';
     }
   }
 
@@ -259,6 +466,7 @@
   function clearActiveTerminal() {
     if (activeTab) {
       activeTab.history = [];
+      resetCompletionState();
       toast.info('Layar terminal dibersihkan');
       focusInput();
     }
@@ -267,23 +475,24 @@
   // Buka tab baru untuk server lokal
   function openLocalTab() {
     const newId = `local-${Date.now()}`;
-    tabs = [
-      ...tabs,
-      {
-        id: newId,
-        serverId: 0,
-        name: `Local server ${tabs.filter((t) => t.serverId === 0).length + 1}`,
-        host: 'fikpanel',
-        username: 'root',
-        connected: true,
-        commandInput: '',
-        historyIndex: -1,
-        executing: false,
-        history: [],
-      },
-    ];
+    const newTab: TerminalTab = {
+      id: newId,
+      serverId: 0,
+      name: `Local server ${tabs.filter((t) => t.serverId === 0).length + 1}`,
+      host: 'fikpanel',
+      username: 'root',
+      cwd: '~',
+      connected: true,
+      commandInput: '',
+      historyIndex: -1,
+      executing: false,
+      history: [],
+    };
+    tabs = [...tabs, newTab];
     activeTabId = newId;
     showAddTabMenu = false;
+    resetCompletionState();
+    initTabSession(newTab);
     focusInput();
   }
 
@@ -295,6 +504,7 @@
       activeTabId = existing.id;
       toast.info(`Beralih ke tab: ${srv.name || srv.host}`);
       showAddTabMenu = false;
+      resetCompletionState();
       focusInput();
       return;
     }
@@ -306,6 +516,7 @@
       name: srv.name || srv.host,
       host: srv.host,
       username: srv.username || 'root',
+      cwd: '~',
       connected: true,
       commandInput: '',
       historyIndex: -1,
@@ -316,6 +527,7 @@
           output: `Terhubung ke remote node: ${srv.username}@${srv.host}:${srv.port} (${srv.remarks || 'SSH Agent'})\nKetik perintah atau pilih dari panel Commands samping.`,
           time: new Date().toLocaleTimeString(),
           ok: true,
+          cwd: '~',
         },
       ],
     };
@@ -323,6 +535,8 @@
     tabs = [...tabs, newTab];
     activeTabId = newId;
     showAddTabMenu = false;
+    resetCompletionState();
+    initTabSession(newTab);
     toast.success(`Terhubung ke ${srv.name || srv.host}`);
     focusInput();
   }
@@ -743,6 +957,53 @@
         </div>
       </div>
 
+      <!-- Sub-header Konteks Direktori & Pintasan Keyboard -->
+      {#if activeTab}
+        <div class="terminal-context-bar">
+          <div class="cwd-nav-group">
+            <button
+              type="button"
+              class="cwd-badge"
+              onclick={copyCurrentCwd}
+              title="Klik untuk menyalin path direktori kerja saat ini"
+            >
+              <i class="ri-folder-open-line cwd-icon"></i>
+              <span class="mono">{activeTab.cwd || '~'}</span>
+              <i class="ri-file-copy-line cwd-copy-icon"></i>
+            </button>
+
+            <div class="cwd-quick-actions">
+              <button
+                type="button"
+                class="cwd-quick-btn mono"
+                onclick={() => runCommand('cd ..')}
+                disabled={activeTab.executing}
+                title="Naik satu direktori (cd ..)"
+              >
+                <i class="ri-corner-left-up-line"></i> cd ..
+              </button>
+              <button
+                type="button"
+                class="cwd-quick-btn mono"
+                onclick={() => runCommand('ls -la')}
+                disabled={activeTab.executing}
+                title="Tampilkan daftar file detail (ls -la)"
+              >
+                <i class="ri-list-check-2"></i> ls -la
+              </button>
+            </div>
+          </div>
+
+          <div class="kbd-hints">
+            <span class="kbd-item"><kbd>Tab</kbd> Auto-complete</span>
+            <span class="kbd-item"><kbd>Tab 2x</kbd> ls -la</span>
+            <span class="kbd-item"><kbd>&uarr;&darr;</kbd> History</span>
+            <span class="kbd-item"><kbd>Ctrl+C</kbd> Cancel</span>
+            <span class="kbd-item"><kbd>Ctrl+L</kbd> Clear</span>
+          </div>
+        </div>
+      {/if}
+
       <!-- Area Tampilan Konsol Terminal -->
       <div
         class="terminal-viewport"
@@ -754,49 +1015,97 @@
         <!-- Banner Selamat Datang Ubuntu / Sesi -->
         <div class="terminal-welcome">
           <p class="welcome-line">
-            <span class="text-accent">fikpanel v0.1.9</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
+            <span class="text-accent">fikpanel v0.2.0</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
           </p>
           <p class="welcome-meta">
             Host: <span class="text-white">{activeTab?.host}</span> &middot;
             User: <span class="text-white">{activeTab?.username}</span> &middot;
+            CWD: <span class="text-violet mono">{activeTab?.cwd || '~'}</span> &middot;
             Tipe: <span class="text-accent">{activeTab?.serverId === 0 ? 'Local Node' : 'Remote SSH Node'}</span>
           </p>
           <p class="welcome-hint">
-            Ketik perintah shell di bawah atau klik <b>Run / Paste</b> pada panel pintasan Commands.
+            Gunakan <b>Tab</b> untuk auto-complete path otomatis, atau <b>Tab 2x</b> jika terdapat lebih dari 1 kandidat untuk menampilkan daftar <code>ls -la</code>.
           </p>
         </div>
 
         <!-- Riwayat Eksekusi Perintah -->
         {#if activeTab}
           {#each activeTab.history as item}
-            <div class="term-entry">
+            <div class="term-entry" class:term-entry--completion={item.isCompletionList}>
               <div class="prompt-line">
-                <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">~</span>#
+                <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{item.cwd || activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
                 <span class="prompt-cmd">{item.command}</span>
+                {#if item.isCompletionList}
+                  <span class="completion-tag">Tab 2x &middot; ls -la</span>
+                {/if}
                 <span class="prompt-time">{item.time}</span>
               </div>
-              <pre class="term-output" class:term-output--error={!item.ok}>{item.output}</pre>
+              {#if item.output}
+                <pre
+                  class="term-output"
+                  class:term-output--error={!item.ok}
+                  class:term-output--completion={item.isCompletionList}>{item.output}</pre>
+              {/if}
             </div>
           {/each}
 
           <!-- Baris Input Prompt Aktif -->
           <div class="input-line">
-            <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">~</span>#
+            <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
             <input
               type="text"
               bind:this={inputPromptEl}
               bind:value={activeTab.commandInput}
               onkeydown={handleInputKeydown}
-              placeholder={activeTab.executing ? 'Sedang mengeksekusi...' : 'Ketik perintah shell...'}
+              placeholder={activeTab.executing ? 'Sedang mengeksekusi...' : 'Ketik perintah shell (Tekan Tab untuk auto-complete)...'}
               disabled={activeTab.executing}
               spellcheck="false"
               autocomplete="off"
               autofocus
             />
-            {#if activeTab.executing}
+            {#if activeTab.executing || completing}
               <span class="spinner spinner--sm"></span>
             {/if}
           </div>
+
+          <!-- Panel Kandidat Auto-Complete Interaktif (Muncul saat >1 kandidat pada Tab ke-1) -->
+          {#if completionMatches.length > 1}
+            <div class="autocomplete-tray" onclick={(e) => e.stopPropagation()} role="region" aria-label="Kandidat auto-complete">
+              <div class="autocomplete-tray-header">
+                <span class="tray-title">
+                  <i class="ri-sparkling-2-line"></i>
+                  {completionHint}
+                </span>
+                <button
+                  type="button"
+                  class="tray-ls-btn mono"
+                  onclick={triggerDoubleTabListing}
+                >
+                  <i class="ri-terminal-line"></i> Cetak ls -la (Tab 2x)
+                </button>
+              </div>
+              <div class="autocomplete-chips">
+                {#each completionMatches as cand}
+                  <button
+                    type="button"
+                    class="cand-chip mono"
+                    class:cand-chip--dir={cand.is_dir}
+                    onclick={() => applyCandidateCompletion(cand)}
+                    title={cand.detail}
+                  >
+                    <i class={cand.is_dir ? 'ri-folder-3-fill' : 'ri-file-code-line'}></i>
+                    <span class="cand-name">{cand.display}</span>
+                    <span class="cand-meta">{cand.mode}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if completionHint}
+            <div class="autocomplete-empty-hint">
+              <i class="ri-information-line"></i>
+              <span>{completionHint}</span>
+            </div>
+          {/if}
         {/if}
       </div>
     </div>
@@ -1523,6 +1832,104 @@
     color: var(--text);
   }
 
+  /* ── Sub-header Konteks Direktori & Pintasan Keyboard ─────────────────── */
+  .terminal-context-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0.35rem var(--space-4);
+    background: var(--bg-app);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+    user-select: none;
+  }
+
+  .cwd-nav-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .cwd-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--violet);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+  }
+  .cwd-badge:hover {
+    background: var(--bg-hover);
+    border-color: var(--violet);
+  }
+  .cwd-icon {
+    color: var(--accent);
+    font-size: 0.85rem;
+  }
+  .cwd-copy-icon {
+    color: var(--text-subtle);
+    font-size: 0.75rem;
+  }
+
+  .cwd-quick-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .cwd-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+  }
+  .cwd-quick-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .cwd-quick-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .kbd-hints {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+  .kbd-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+  }
+  .kbd-item kbd {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    padding: 1px 5px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-secondary);
+  }
+
   /* ── Layar Terminal Konsol ─────────────────────────────────────────────── */
   .terminal-viewport {
     flex: 1;
@@ -1554,15 +1961,24 @@
     color: var(--text-subtle);
     margin-top: var(--space-1);
   }
+  .text-violet {
+    color: var(--violet);
+  }
 
   .term-entry {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-3);
+  }
+  .term-entry--completion {
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-surface);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .prompt-line {
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: var(--space-1);
+    gap: 2px;
   }
   .prompt-user {
     color: var(--accent);
@@ -1570,10 +1986,25 @@
   }
   .prompt-path {
     color: var(--violet);
+    font-weight: var(--weight-semibold);
+  }
+  .prompt-hash {
+    color: var(--text-muted);
+    margin-right: var(--space-2);
   }
   .prompt-cmd {
     color: var(--text);
     font-weight: var(--weight-medium);
+  }
+  .completion-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    margin-left: var(--space-2);
+    font-size: var(--text-2xs);
+    color: var(--accent);
+    background: var(--tint-accent);
+    border-radius: var(--radius-sm);
   }
   .prompt-time {
     color: var(--text-subtle);
@@ -1593,11 +2024,16 @@
   .term-output--error {
     color: var(--danger-strong);
   }
+  .term-output--completion {
+    color: var(--text);
+    font-size: var(--text-xs);
+  }
 
   .input-line {
     display: flex;
     align-items: center;
     margin-top: var(--space-2);
+    padding: var(--space-1) 0;
   }
   .input-line input {
     flex: 1;
@@ -1607,8 +2043,104 @@
     color: var(--text);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    margin-left: var(--space-2);
+    margin-left: 2px;
     caret-color: var(--accent);
+  }
+
+  /* ── Panel Kandidat Auto-Complete Interaktif ───────────────────────────── */
+  .autocomplete-tray {
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: default;
+  }
+  .autocomplete-tray-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+  }
+  .tray-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+  }
+  .tray-title i {
+    color: var(--accent);
+  }
+  .tray-ls-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--tint-accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--accent-strong);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease;
+  }
+  .tray-ls-btn:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+
+  .autocomplete-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cand-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease, transform var(--duration-fast) ease;
+  }
+  .cand-chip:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .cand-chip--dir {
+    color: var(--accent);
+    border-color: var(--border-strong);
+  }
+  .cand-chip--dir i {
+    color: var(--accent);
+  }
+  .cand-name {
+    font-weight: var(--weight-semibold);
+  }
+  .cand-meta {
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
+  }
+
+  .autocomplete-empty-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--space-1);
+    padding: 2px 8px;
+    font-size: var(--text-2xs);
+    color: var(--text-subtle);
   }
 
   /* ── Tombol Pembagi Collapse/Expand Sidebar ────────────────────────────── */

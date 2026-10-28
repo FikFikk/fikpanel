@@ -1167,11 +1167,24 @@ export interface TerminalCommand {
   updated_at?: number;
 }
 
+export interface TerminalCompletionItem {
+  name: string;
+  display: string;
+  replacement: string;
+  is_dir: boolean;
+  mode: string;
+  size: number;
+  mod_time: string;
+  detail: string;
+}
+
 export interface TerminalHistoryItem {
   command: string;
   output: string;
   time: string;
   ok?: boolean;
+  cwd?: string;
+  isCompletionList?: boolean;
 }
 
 export interface TerminalTab {
@@ -1180,6 +1193,7 @@ export interface TerminalTab {
   name: string;
   host: string;
   username: string;
+  cwd?: string;
   connected: boolean;
   history: TerminalHistoryItem[];
   commandInput: string;

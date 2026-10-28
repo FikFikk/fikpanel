@@ -171,6 +171,7 @@ func (s *Server) registerRoutes() {
 
 	// Terminal Web Aman & Remote SSH Manager
 	s.mux.Handle("POST /api/terminal/exec", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExec)))
+	s.mux.Handle("POST /api/terminal/complete", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalComplete)))
 	s.mux.Handle("GET /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleListTerminalServers)))
 	s.mux.Handle("POST /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleCreateTerminalServer)))
 	s.mux.Handle("PUT /api/terminal/servers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateTerminalServer)))
