@@ -114,12 +114,35 @@
       if (e.ctrlKey && e.key.toLowerCase() === 'l') {
         e.preventDefault();
         clearActiveTerminal();
+        return;
       }
       // Tombol Escape untuk menutup modal atau menu
       if (e.key === 'Escape') {
         if (showServerModal) showServerModal = false;
         if (showCommandModal) showCommandModal = false;
         if (showAddTabMenu) showAddTabMenu = false;
+        return;
+      }
+      // Otomatis arahkan fokus ke input terminal saat pengguna mulai mengetik di halaman Terminal
+      if (!showServerModal && !showCommandModal && inputPromptEl) {
+        const activeEl = document.activeElement;
+        const isTypingInOtherField =
+          activeEl &&
+          activeEl !== inputPromptEl &&
+          (activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.tagName === 'SELECT' ||
+            (activeEl as HTMLElement).isContentEditable);
+        if (
+          !isTypingInOtherField &&
+          activeEl !== inputPromptEl &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
+        ) {
+          inputPromptEl.focus();
+        }
       }
     };
 
@@ -163,10 +186,17 @@
     }
   }
 
-  // Fokus kembali ke input command
-  function focusInput() {
+  // Fokus kembali ke input command setelah siklus update DOM Svelte selesai
+  async function focusInput() {
     if (inputPromptEl) {
       inputPromptEl.focus();
+    }
+    await tick();
+    if (inputPromptEl) {
+      inputPromptEl.focus();
+      requestAnimationFrame(() => {
+        inputPromptEl?.focus();
+      });
     }
   }
 
@@ -218,6 +248,9 @@
 
     currentTab.executing = true;
     const executedAtCwd = currentTab.cwd || '~';
+    currentTab.commandInput = '';
+    currentTab.historyIndex = -1;
+    focusInput();
 
     try {
       const payload: { command: string; server_id?: number; cwd?: string } = {
@@ -1058,7 +1091,7 @@
               bind:value={activeTab.commandInput}
               onkeydown={handleInputKeydown}
               placeholder={activeTab.executing ? 'Sedang mengeksekusi...' : 'Ketik perintah shell (Tekan Tab untuk auto-complete)...'}
-              disabled={activeTab.executing}
+              readonly={activeTab.executing}
               spellcheck="false"
               autocomplete="off"
               autofocus
