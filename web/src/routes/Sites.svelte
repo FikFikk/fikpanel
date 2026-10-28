@@ -26,7 +26,6 @@
   });
   let loading = $state(true);
   let installingNginx = $state(false);
-  let mockNginxInstalled = $state(true);
   let showNginxManager = $state(false);
 
   // Sinkronkan badge web server dengan status terbaru dari Nginx Manager
@@ -41,7 +40,7 @@
 
   // Modal Tambah Situs & Pengaturan Situs (Domain, Situs, SSL, Konfigurasi)
   let showAddModal = $state(false);
-  let settingsTarget = $state<{ id: number; tab: 'domain' | 'site' | 'ssl' | 'conf' } | null>(null);
+  let settingsTarget = $state<{ id: number; tab: string } | null>(null);
 
   // Modal Log Akses / Error Situs
   let showLogModal = $state(false);
@@ -72,8 +71,7 @@
   async function loadSites(silent = false) {
     if (!silent) loading = true;
     try {
-      const mockQuery = mockNginxInstalled ? '' : '?mock_nginx=0';
-      const data = await apiFetch<SitesData>(`/api/sites${mockQuery}`);
+      const data = await apiFetch<SitesData>('/api/sites');
       sites = data.sites || [];
       if (data.web_server) {
         webServer = data.web_server;
@@ -126,15 +124,8 @@
     return Math.max(0, Math.floor((s.ssl_expires * 1000 - Date.now()) / 86400000));
   }
 
-  function openSettings(s: Site, tab: 'domain' | 'site' | 'ssl' | 'conf') {
+  function openSettings(s: Site, tab: string = 'domain') {
     settingsTarget = { id: s.id, tab };
-  }
-
-  // Toggle mode simulasi Nginx (untuk testing tampilan missing dependency)
-  function toggleMockNginx() {
-    mockNginxInstalled = !mockNginxInstalled;
-    loadSites();
-    onNotify(mockNginxInstalled ? 'Mode simulasi: Nginx terpasang' : 'Mode simulasi: Nginx belum terpasang');
   }
 
   // Memicu instalasi 1-klik untuk Nginx
@@ -146,7 +137,6 @@
         body: JSON.stringify({ package: 'nginx' }),
       });
       onNotify('Perintah instalasi Nginx berhasil dikirim ke daemon');
-      mockNginxInstalled = true;
       setTimeout(() => {
         loadSites();
         installingNginx = false;
@@ -296,16 +286,6 @@
           <span>Nginx Belum Terpasang</span>
         </div>
       {/if}
-
-      <!-- Tombol Switcher Pengujian Dev (Bisa toggle mock Nginx terpasang vs belum) -->
-      <button
-        class="btn-mock-toggle"
-        onclick={toggleMockNginx}
-        title="Klik untuk mensimulasikan status Nginx terpasang / belum terpasang"
-      >
-        <i class="ri-flask-line"></i>
-        <span>Uji UI: Nginx {mockNginxInstalled ? 'Ada' : 'Hilang'}</span>
-      </button>
     </div>
 
     <div class="tb-right">
@@ -484,13 +464,18 @@
 
                     <button
                       class="quick-act-btn"
-                      onclick={() => openSettings(s, 'site')}
-                      title="Pengaturan situs (domain, jenis, SSL, konfigurasi)"
+                      onclick={() => openSettings(s, 'domain')}
+                      title="Pengaturan situs (domain, direktori, SSL, konfigurasi)"
                     >
                       <i class="ri-settings-3-line icon-gray"></i>
                     </button>
 
-                    <span class="badge-runtime {s.kind}">
+                    <button
+                      type="button"
+                      class="badge-runtime {s.kind}"
+                      onclick={() => openSettings(s, s.kind === 'php' ? 'php' : s.kind === 'static' ? 'directory' : 'proxy')}
+                      title="Klik untuk mengatur runtime & konfigurasi proyek ini"
+                    >
                       {#if s.kind === 'php'}
                         {s.php_version ? `PHP ${s.php_version}` : 'PHP'}
                       {:else if s.kind === 'node'}
@@ -504,7 +489,7 @@
                       {:else}
                         Proxy
                       {/if}
-                    </span>
+                    </button>
                   </div>
                 </td>
 
@@ -847,24 +832,6 @@
     text-transform: uppercase;
   }
 
-  .btn-mock-toggle {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 0.35rem 0.65rem;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .btn-mock-toggle:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-
   .search-box {
     display: flex;
     align-items: center;
@@ -1148,13 +1115,20 @@
 
   .badge-runtime {
     font-size: 0.68rem;
-    padding: 0.15rem 0.4rem;
+    padding: 0.2rem 0.45rem;
     border-radius: 4px;
-    background: color-mix(in srgb, var(--text) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
     color: var(--text-secondary);
     font-weight: 600;
     font-family: monospace;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .badge-runtime:hover {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+    color: var(--text);
   }
 
   .perpetual-badge {

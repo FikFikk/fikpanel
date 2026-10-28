@@ -257,12 +257,11 @@
 </script>
 
 <div class="telemetry-panel">
-  <!-- Header Strip Bergaya Server Control Panel -->
+  <!-- Header Strip Ringkas -->
   <div class="telemetry-bar">
     <div class="telemetry-status">
-      <span class="pulse-indicator"></span>
-      <span class="status-label">REALTIME TELEMETRY</span>
-      <span class="status-window">{visiblePoints.length}s / {MAX_POINTS}s</span>
+      <span class="status-label">Jendela 60 detik</span>
+      <span class="status-window">{visiblePoints.length} / {MAX_POINTS} sampel</span>
     </div>
 
     <div class="metric-readouts">
@@ -402,21 +401,12 @@
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    font-size: 0.68rem;
-    letter-spacing: 0.04em;
+    font-size: 0.7rem;
     color: var(--text-subtle);
   }
 
-  .pulse-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
-  }
-
   .status-label {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-muted);
   }
 

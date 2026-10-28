@@ -13,25 +13,7 @@
     onNotify: (msg: string) => void;
   }
 
-  let { siteId, initialTab = 'ssl', onClose, onChanged, onNotify }: Props = $props();
-
-  // Tab navigasi lengkap melampaui aaPanel & HestiaCP
-  const TABS: ManagerTab[] = [
-    { id: 'domain', label: 'Domain Manager', icon: 'ri-global-line' },
-    { id: 'directory', label: 'Directory', icon: 'ri-folder-settings-line' },
-    { id: 'limit_access', label: 'Limit Access', icon: 'ri-shield-keyhole-line' },
-    { id: 'rewrite', label: 'URL Rewrite', icon: 'ri-shuffle-line' },
-    { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
-    { id: 'error_pages', label: 'Error Pages', icon: 'ri-file-warning-line' },
-    { id: 'conf', label: 'Config', icon: 'ri-file-code-line' },
-    { id: 'ssl', label: 'SSL', icon: 'ri-lock-line' },
-    { id: 'php', label: 'PHP Version', icon: 'ri-terminal-window-line' },
-    { id: 'proxy', label: 'Reverse Proxy', icon: 'ri-arrow-left-right-line' },
-    { id: 'redirect', label: 'Redirect', icon: 'ri-guide-line' },
-    { id: 'hotlink', label: 'Hotlink Protection', icon: 'ri-shield-check-line' },
-    { id: 'maintenance', label: 'Maintenance Mode', icon: 'ri-tools-line' },
-    { id: 'logs', label: 'Response Logs', icon: 'ri-file-text-line' }
-  ];
+  let { siteId, initialTab = 'domain', onClose, onChanged, onNotify }: Props = $props();
 
   const STEPS = ['Memulai', 'Mendaftarkan akun ACME', 'Validasi HTTP-01 domain', 'Menerbitkan sertifikat', 'Menerapkan HTTPS ke Nginx', 'Selesai'];
 
@@ -40,6 +22,60 @@
   let detail = $state<SiteDetail | null>(null);
   let meta = $state<SiteMeta>({ php_versions: [], server_ips: [] });
   let loadError = $state('');
+
+  // Daftar tab kontekstual sesuai tipe proyek (PHP, Static, Node/Go/Python, atau Reverse Proxy)
+  let visibleTabs = $derived.by<ManagerTab[]>(() => {
+    const kind: SiteKind = detail?.site.kind || 'php';
+    const tabs: ManagerTab[] = [
+      { id: 'domain', label: 'Domain Manager', icon: 'ri-global-line' },
+    ];
+
+    if (kind === 'php') {
+      tabs.push(
+        { id: 'directory', label: 'Directory', icon: 'ri-folder-settings-line' },
+        { id: 'php', label: 'PHP Version', icon: 'ri-code-s-slash-line' },
+        { id: 'rewrite', label: 'URL Rewrite', icon: 'ri-shuffle-line' },
+        { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
+      );
+    } else if (kind === 'static') {
+      tabs.push(
+        { id: 'directory', label: 'Directory', icon: 'ri-folder-settings-line' },
+        { id: 'rewrite', label: 'URL Rewrite (SPA)', icon: 'ri-shuffle-line' },
+        { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
+      );
+    } else if (kind === 'node' || kind === 'go' || kind === 'python') {
+      const runtimeLabel =
+        kind === 'node'
+          ? 'Node.js & Port'
+          : kind === 'go'
+            ? 'Go Runtime & Port'
+            : 'Python & Port';
+      tabs.push({ id: 'proxy', label: runtimeLabel, icon: 'ri-cpu-line' });
+    } else {
+      tabs.push({ id: 'proxy', label: 'Reverse Proxy', icon: 'ri-arrow-left-right-line' });
+    }
+
+    tabs.push(
+      { id: 'ssl', label: 'SSL (HTTPS)', icon: 'ri-lock-line' },
+      { id: 'limit_access', label: 'Limit Access', icon: 'ri-shield-keyhole-line' },
+      { id: 'redirect', label: 'Redirect', icon: 'ri-guide-line' },
+      { id: 'hotlink', label: 'Hotlink Protection', icon: 'ri-shield-check-line' },
+      { id: 'maintenance', label: 'Maintenance Mode', icon: 'ri-tools-line' },
+      { id: 'error_pages', label: 'Error Pages', icon: 'ri-file-warning-line' },
+      { id: 'conf', label: 'Nginx Config', icon: 'ri-file-code-line' },
+      { id: 'logs', label: 'Response Logs', icon: 'ri-file-text-line' },
+    );
+
+    return tabs;
+  });
+
+  // Pastikan tab aktif selalu valid terhadap daftar tab proyek saat ini
+  $effect(() => {
+    const tabs = visibleTabs;
+    if (tabs.length > 0 && !tabs.some((t) => t.id === active)) {
+      active = tabs[0].id;
+    }
+  });
 
   // 1. Tab Domain Manager
   let domainText = $state('');
@@ -192,7 +228,13 @@
     sslForce = d.site.force_https === 1;
     sslHSTS = d.site.hsts === 1;
     hotlinkDomains = d.domains.join(', ');
-    rewriteContent = d.site.extra_conf || 'try_files $uri $uri/ /index.php?$query_string;';
+    if (d.site.kind === 'static') {
+      defaultDocs = 'index.html index.htm default.html';
+      rewriteContent = d.site.extra_conf || 'location / {\n    try_files $uri $uri/ /index.html;\n}';
+    } else {
+      defaultDocs = 'index.php index.html index.htm default.html';
+      rewriteContent = d.site.extra_conf || 'try_files $uri $uri/ /index.php?$query_string;';
+    }
   }
 
   async function load() {
@@ -550,11 +592,23 @@
     if (!detail) return;
     proxySaving = true;
     try {
+      const currentKind = detail.site.kind;
+      const overrides: Record<string, unknown> = {
+        kind: currentKind === 'node' || currentKind === 'go' || currentKind === 'python' ? currentKind : 'proxy',
+        upstream: fUpstream.trim(),
+      };
+      if (currentKind === 'node' || currentKind === 'go' || currentKind === 'python') {
+        overrides.root_path = siteDir.trim() || detail.site.root_path;
+      }
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ kind: 'proxy', upstream: fUpstream.trim() })
+        body: sitePayload(overrides)
       });
-      onNotify('Reverse proxy disimpan & Nginx di-reload');
+      onNotify(
+        currentKind === 'node' || currentKind === 'go' || currentKind === 'python'
+          ? 'Konfigurasi runtime & upstream port disimpan'
+          : 'Reverse proxy disimpan & Nginx di-reload'
+      );
       await load();
       onChanged();
     } catch (err) {
@@ -672,7 +726,7 @@
 <ManagerModal
   title={site ? site.domain : 'Memuat…'}
   subtitle={site ? `${site.kind.toUpperCase()} · ${site.kind === 'proxy' ? site.upstream : site.root_path}` : ''}
-  tabs={TABS}
+  tabs={visibleTabs}
   bind:active
   {onClose}
 >
@@ -730,25 +784,32 @@
       <section class="ss-sec">
         <div class="sec-title">
           <h4>Site Directory & Subdirectory</h4>
-          <p class="ss-desc">Konfigurasi lokasi fisik proyek di server dan direktori eksekusi (running directory) web server.</p>
+          <p class="ss-desc">Konfigurasi lokasi fisik proyek di server dan direktori publik (running directory) yang disajikan Nginx.</p>
         </div>
         <label class="fld" for="ss-site-dir"><span>Site Directory (Root Proyek)</span>
-          <input id="ss-site-dir" class="mono" type="text" bind:value={siteDir} placeholder="/www/sites/domain.com" />
+          <input id="ss-site-dir" class="mono" type="text" bind:value={siteDir} placeholder="/var/www/domain.com" />
         </label>
         <label class="fld" for="ss-run-dir"><span>Running Directory (Folder Publik Nginx)</span>
           <select id="ss-run-dir" bind:value={runDir}>
-            <option value="/">/ (Root Proyek)</option>
-            <option value="/public">/public (Laravel, Static Assets, Vue/Vite)</option>
-            <option value="/public_html">/public_html (Legacy Hosting / Hestia)</option>
-            <option value="/dist">/dist (Frontend Build Output)</option>
-            <option value="/build">/build (Production Bundle)</option>
-            <option value="/app">/app (Node.js / Go / Python Core)</option>
+            {#if detail.site.kind === 'static'}
+              <option value="/">/ (Root Proyek Langsung)</option>
+              <option value="/public_html">/public_html (Standar Web Statis)</option>
+              <option value="/dist">/dist (Build Output Vite / Vue / React)</option>
+              <option value="/build">/build (Production Bundle)</option>
+              <option value="/public">/public (Static Assets)</option>
+            {:else}
+              <option value="/">/ (Root Proyek)</option>
+              <option value="/public">/public (Laravel / Symfony / Modern PHP)</option>
+              <option value="/public_html">/public_html (WordPress / Legacy PHP)</option>
+            {/if}
           </select>
         </label>
-        <label class="toggle-row" for="ss-open-basedir">
-          <div><b>Anti-XSS / PHP open_basedir</b><small>Membatasi eksekusi PHP hanya di dalam direktori situs untuk mencegah akses file sistem lain</small></div>
-          <input id="ss-open-basedir" type="checkbox" bind:checked={openBasedir} /><span class="track"></span>
-        </label>
+        {#if detail.site.kind === 'php'}
+          <label class="toggle-row" for="ss-open-basedir">
+            <div><b>Anti-XSS / PHP open_basedir</b><small>Membatasi eksekusi skrip PHP hanya di dalam direktori situs untuk mencegah akses berkas lintas-situs</small></div>
+            <input id="ss-open-basedir" type="checkbox" bind:checked={openBasedir} /><span class="track"></span>
+          </label>
+        {/if}
         <div class="meta-card">
           <div class="meta-row"><span>Owner Izin:</span><b class="mono">www-data : www-data</b></div>
           <div class="meta-row"><span>Hak Akses Linux:</span><b class="mono">0755 (Direktori) / 0644 (Berkas)</b></div>
@@ -802,21 +863,26 @@
       <section class="ss-sec fill">
         <div class="conf-head">
           <div class="fld-h">
-            <span class="label-inline">Preset Framework:</span>
+            <span class="label-inline">Preset Routing:</span>
             <select bind:value={rewritePreset} onchange={(e) => applyRewritePreset(e.currentTarget.value)}>
               <option value="0.Current">0. Current Configuration</option>
-              <option value="Laravel">Laravel</option>
-              <option value="WordPress">WordPress</option>
-              <option value="SPA">SPA (React / Vue / Vite)</option>
-              <option value="ThinkPHP">ThinkPHP</option>
-              <option value="CodeIgniter">CodeIgniter</option>
-              <option value="Nginx Default">Nginx Default</option>
+              {#if detail.site.kind === 'static'}
+                <option value="SPA">SPA History Mode (React / Vue / Vite / Svelte)</option>
+                <option value="Nginx Default">Static Files Murni (404 jika tidak ada)</option>
+              {:else}
+                <option value="Laravel">Laravel</option>
+                <option value="WordPress">WordPress</option>
+                <option value="SPA">SPA (React / Vue / Vite)</option>
+                <option value="ThinkPHP">ThinkPHP</option>
+                <option value="CodeIgniter">CodeIgniter</option>
+                <option value="Nginx Default">Nginx Default</option>
+              {/if}
             </select>
           </div>
           <button class="btn-mini" onclick={() => copyText(rewriteContent, 'Aturan Rewrite')}><i class="ri-file-copy-line"></i> Salin</button>
         </div>
         <textarea class="code-editor" rows="10" spellcheck="false" bind:value={rewriteContent}></textarea>
-        <p class="hint-text">• Pilih template framework Anda atau tulis aturan kustom Nginx. Sintaks akan divalidasi otomatis saat disimpan.</p>
+        <p class="hint-text">• Pilih template routing yang sesuai dengan proyek Anda atau tulis direktif lokasi Nginx kustom. Sintaks diuji otomatis saat disimpan.</p>
         <div class="ss-actions">
           <button class="btn-primary" onclick={saveRewrite} disabled={rewriteSaving}>
             {#if rewriteSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Rewrite
@@ -834,7 +900,9 @@
         <label class="fld" for="ss-default-doc"><span>Daftar Berkas Index (Dipisahkan Spasi)</span>
           <input id="ss-default-doc" class="mono" type="text" bind:value={defaultDocs} />
         </label>
-        <p class="hint-text">Contoh: index.php index.html index.htm default.html</p>
+        <p class="hint-text">
+          Contoh: {detail.site.kind === 'static' ? 'index.html index.htm default.html' : 'index.php index.html index.htm default.html'}
+        </p>
         <div class="ss-actions">
           <button class="btn-primary" onclick={saveDefaultDoc} disabled={defaultDocSaving}>
             {#if defaultDocSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Dokumen
@@ -1058,30 +1126,48 @@
         </div>
       </section>
 
-    <!-- 9. TAB: REVERSE PROXY -->
+    <!-- 9. TAB: RUNTIME UPSTREAM / REVERSE PROXY -->
     {:else if tab === 'proxy'}
       <section class="ss-sec">
         <div class="sec-title">
-          <h4>Reverse Proxy (Node.js / Go / Python / Container)</h4>
-          <p class="ss-desc">Teruskan lalu lintas Nginx ke aplikasi backend lokal atau remote target.</p>
+          {#if detail.site.kind === 'node'}
+            <h4>Node.js Runtime & Port Upstream</h4>
+            <p class="ss-desc">Atur direktori kerja aplikasi Node.js (PM2 / systemd) dan alamat port HTTP lokal yang diteruskan oleh Nginx.</p>
+          {:else if detail.site.kind === 'go'}
+            <h4>Go Runtime & Port Upstream</h4>
+            <p class="ss-desc">Atur direktori kerja aplikasi Go dan alamat port HTTP lokal yang diteruskan oleh Nginx.</p>
+          {:else if detail.site.kind === 'python'}
+            <h4>Python Runtime & Port Upstream</h4>
+            <p class="ss-desc">Atur direktori kerja aplikasi Python (Gunicorn / Uvicorn) dan alamat port HTTP lokal yang diteruskan oleh Nginx.</p>
+          {:else}
+            <h4>Reverse Proxy Upstream</h4>
+            <p class="ss-desc">Teruskan lalu lintas HTTP/HTTPS Nginx ke layanan backend lokal, container Docker, atau server eksternal.</p>
+          {/if}
         </div>
-        <label class="fld" for="ss-upstream-url"><span>Target Upstream URL</span>
+        {#if detail.site.kind === 'node' || detail.site.kind === 'go' || detail.site.kind === 'python'}
+          <label class="fld" for="ss-runtime-dir"><span>Site Directory (Root Aplikasi)</span>
+            <input id="ss-runtime-dir" class="mono" type="text" bind:value={siteDir} placeholder="/var/www/app" />
+          </label>
+        {/if}
+        <label class="fld" for="ss-upstream-url">
+          <span>{detail.site.kind === 'proxy' ? 'Target Upstream URL' : 'Alamat & Port Layanan Lokal (Upstream)'}</span>
           <input id="ss-upstream-url" class="mono" type="text" bind:value={fUpstream} placeholder="http://127.0.0.1:3000" />
         </label>
-        <label class="fld" for="ss-proxy-timeout"><span>Proxy Timeout</span>
+        <label class="fld" for="ss-proxy-timeout"><span>Proxy Read Timeout</span>
           <select id="ss-proxy-timeout" bind:value={proxyTimeout}>
-            <option value="60s">60 detik (Biasa)</option>
-            <option value="120s">120 detik (Aplikasi Berat)</option>
-            <option value="300s">300 detik (Long Polling / Stream)</option>
+            <option value="60s">60 detik (Standar)</option>
+            <option value="120s">120 detik (Proses Berat)</option>
+            <option value="300s">300 detik (Long Polling / SSE / Stream)</option>
           </select>
         </label>
         <label class="toggle-row" for="ss-proxy-ws">
-          <div><b>WebSocket Upgrade Support</b><small>Meneruskan header Connection $http_connection dan Upgrade $http_upgrade</small></div>
+          <div><b>WebSocket Upgrade Support</b><small>Teruskan header Connection & Upgrade untuk koneksi realtime (Socket.IO / WS)</small></div>
           <input id="ss-proxy-ws" type="checkbox" bind:checked={proxyWs} /><span class="track"></span>
         </label>
         <div class="ss-actions">
           <button class="btn-primary" onclick={saveProxy} disabled={proxySaving}>
-            {#if proxySaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Reverse Proxy
+            {#if proxySaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if}
+            {detail.site.kind === 'proxy' ? 'Simpan Reverse Proxy' : 'Simpan Pengaturan Runtime'}
           </button>
         </div>
       </section>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Gauge from '../lib/components/Gauge.svelte';
   import Chart from '../lib/components/Chart.svelte';
   import { formatBytes, apiFetch } from '../lib/api';
   import { notify } from '../lib/stores/toast.svelte';
@@ -15,7 +14,7 @@
 
   let { overview, currentMetric, history, services, onSvcAction }: Props = $props();
 
-  // Kalkulasi persentase metrik untuk gauge
+  // Kalkulasi persentase metrik untuk kartu resource
   let ramPercent = $derived(
     currentMetric.ram_total > 0
       ? (currentMetric.ram_used / currentMetric.ram_total) * 100
@@ -46,6 +45,19 @@
       ? currentMetric.disk_total - currentMetric.disk_used
       : 0
   );
+
+  // Evaluasi status metrik secara seragam tanpa warna pelangi berlebihan
+  function metricLevel(pct: number, warnAt = 80): 'normal' | 'warn' | 'crit' {
+    if (pct >= 92) return 'crit';
+    if (pct >= warnAt) return 'warn';
+    return 'normal';
+  }
+
+  function metricStatusText(pct: number, warnAt = 80): string {
+    if (pct >= 92) return 'Kritis';
+    if (pct >= warnAt) return 'Waspada';
+    return 'Normal';
+  }
 
   // State Host Discovery & Adoption
   let showDiscoveryModal = $state(false);
@@ -118,76 +130,113 @@
 </script>
 
 <div class="dash-container">
-  <!-- Baris 1: 4 Kartu Circular Gauge Padat, Hidup & Reaktif -->
-  <div class="gauges-grid">
-    <!-- Load Status (Hijau Emerald) -->
-    <Gauge
-      percent={loadPercent}
-      title="Load Status"
-      subtitle="{currentMetric.load_avg.toFixed(2)} / {overview?.system?.cpu_cores || 4} Cores"
-      detailValue="{overview?.system?.cpu_cores || 4} Cores"
-      color="#10b981"
-      icon="ri-dashboard-2-line"
-      warningThreshold={80}
-    />
+  <!-- Baris 1: 4 Kartu Metrik Arsitektural (Tanpa Cincin Neon / AI Slop) -->
+  <div class="metrics-grid">
+    <!-- Kartu 1: System Load -->
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-label"><i class="ri-pulse-line"></i> System Load</span>
+        <span class="metric-status {metricLevel(loadPercent, 80)}">{metricStatusText(loadPercent, 80)}</span>
+      </div>
+      <div class="metric-main">
+        <span class="metric-value tabular">{loadPercent.toFixed(0)}<small>%</small></span>
+        <span class="metric-cap tabular">{currentMetric.load_avg.toFixed(2)} / {overview?.system?.cpu_cores || 4} Cores</span>
+      </div>
+      <div class="metric-track" aria-hidden="true">
+        <div
+          class="metric-fill {metricLevel(loadPercent, 80)}"
+          style="width: {Math.min(Math.max(loadPercent, 0), 100)}%;"
+        ></div>
+      </div>
+      <div class="metric-foot">
+        <span>Kapasitas inti</span>
+        <span class="tabular">{overview?.system?.cpu_cores || 4} vCPU</span>
+      </div>
+    </div>
 
-    <!-- CPU Usage (Sky Blue) -->
-    <Gauge
-      percent={currentMetric.cpu}
-      title="CPU Usage"
-      subtitle="{currentMetric.cpu.toFixed(1)}% Active"
-      detailValue="{overview?.system?.cpu_cores || 4} Cores"
-      color="#38bdf8"
-      icon="ri-cpu-line"
-      warningThreshold={85}
-      showMiniBar={true}
-    />
+    <!-- Kartu 2: CPU Usage -->
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-label"><i class="ri-cpu-line"></i> CPU Usage</span>
+        <span class="metric-status {metricLevel(currentMetric.cpu, 85)}">{metricStatusText(currentMetric.cpu, 85)}</span>
+      </div>
+      <div class="metric-main">
+        <span class="metric-value tabular">{currentMetric.cpu.toFixed(1)}<small>%</small></span>
+        <span class="metric-cap tabular">{currentMetric.cpu.toFixed(1)}% Active</span>
+      </div>
+      <div class="metric-track" aria-hidden="true">
+        <div
+          class="metric-fill {metricLevel(currentMetric.cpu, 85)}"
+          style="width: {Math.min(Math.max(currentMetric.cpu, 0), 100)}%;"
+        ></div>
+      </div>
+      <div class="metric-foot">
+        <span>Alokasi prosesor</span>
+        <span class="tabular">{overview?.system?.cpu_cores || 4} Cores</span>
+      </div>
+    </div>
 
-    <!-- RAM Usage (Indigo) -->
-    <Gauge
-      percent={ramPercent}
-      title="Memory (RAM)"
-      subtitle="{formatBytes(currentMetric.ram_used)} / {formatBytes(currentMetric.ram_total)}"
-      detailValue="Sisa: {formatBytes(freeRAM)}"
-      color="#818cf8"
-      icon="ri-database-2-line"
-      warningThreshold={85}
-      showMiniBar={true}
-    />
+    <!-- Kartu 3: Memory (RAM) -->
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-label"><i class="ri-database-2-line"></i> Memory (RAM)</span>
+        <span class="metric-status {metricLevel(ramPercent, 85)}">{metricStatusText(ramPercent, 85)}</span>
+      </div>
+      <div class="metric-main">
+        <span class="metric-value tabular">{ramPercent.toFixed(0)}<small>%</small></span>
+        <span class="metric-cap tabular">{formatBytes(currentMetric.ram_used)} / {formatBytes(currentMetric.ram_total)}</span>
+      </div>
+      <div class="metric-track" aria-hidden="true">
+        <div
+          class="metric-fill {metricLevel(ramPercent, 85)}"
+          style="width: {Math.min(Math.max(ramPercent, 0), 100)}%;"
+        ></div>
+      </div>
+      <div class="metric-foot">
+        <span>Tersedia</span>
+        <span class="tabular">{formatBytes(freeRAM)}</span>
+      </div>
+    </div>
 
-    <!-- Disk Usage (Amber/Oranye) -->
-    <Gauge
-      percent={diskPercent}
-      title="Disk Storage (/)"
-      subtitle="{formatBytes(currentMetric.disk_used)} / {formatBytes(currentMetric.disk_total)}"
-      detailValue="Sisa: {formatBytes(freeDisk)}"
-      color="#f59e0b"
-      icon="ri-hard-drive-2-line"
-      warningThreshold={85}
-      showMiniBar={true}
-    />
+    <!-- Kartu 4: Disk Storage -->
+    <div class="metric-card">
+      <div class="metric-top">
+        <span class="metric-label"><i class="ri-hard-drive-2-line"></i> Disk Storage (/)</span>
+        <span class="metric-status {metricLevel(diskPercent, 85)}">{metricStatusText(diskPercent, 85)}</span>
+      </div>
+      <div class="metric-main">
+        <span class="metric-value tabular">{diskPercent.toFixed(0)}<small>%</small></span>
+        <span class="metric-cap tabular">{formatBytes(currentMetric.disk_used)} / {formatBytes(currentMetric.disk_total)}</span>
+      </div>
+      <div class="metric-track" aria-hidden="true">
+        <div
+          class="metric-fill {metricLevel(diskPercent, 85)}"
+          style="width: {Math.min(Math.max(diskPercent, 0), 100)}%;"
+        ></div>
+      </div>
+      <div class="metric-foot">
+        <span>Ruang kosong</span>
+        <span class="tabular">{formatBytes(freeDisk)}</span>
+      </div>
+    </div>
   </div>
 
-  <!-- Baris 2: Interactive Bento Overview & Quick Actions -->
+  <!-- Baris 2: Ringkasan Infrastruktur & Aksi Cepat -->
   <div class="bento-panel">
     <div class="panel-header-row">
       <div class="header-left">
-        <h3 class="panel-heading">Overview Sistem</h3>
-        <span class="badge-system">
-          <span class="dot-system"></span>
-          Sistem Terkelola
-        </span>
+        <h3 class="panel-heading">Ringkasan Infrastruktur</h3>
       </div>
 
       <!-- Quick Action Buttons -->
       <div class="quick-actions">
-        <button class="btn-action btn-action-radar" onclick={openDiscoveryModal}>
+        <button class="btn-action" onclick={openDiscoveryModal}>
           <i class="ri-radar-line"></i>
           <span>Pindai Host Server</span>
         </button>
         <a href="#/website" class="btn-action btn-action-primary">
           <i class="ri-add-line"></i>
-          <span>Tambah Site</span>
+          <span>Tambah Situs</span>
         </a>
         <a href="#/services" class="btn-action">
           <i class="ri-server-line"></i>
@@ -200,20 +249,20 @@
       </div>
     </div>
 
-    <!-- 4 Sub-Kartu Interaktif Bento -->
+    <!-- 4 Sub-Kartu Ringkas & Monokromatik -->
     <div class="bento-subcards">
       <!-- Sub-Card 1: Website (Sites) -->
-      <a href="#/website" class="subcard subcard-sites">
+      <a href="#/website" class="subcard">
         <div class="subcard-top">
-          <div class="subcard-icon icon-emerald">
+          <div class="subcard-icon">
             <i class="ri-global-line"></i>
           </div>
-          <span class="subcard-arrow"><i class="ri-arrow-right-line"></i></span>
+          <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
-          <div class="subcard-title">Website (Sites)</div>
+          <div class="subcard-title">Website</div>
           <div class="subcard-stats">
-            <span class="stat-highlight text-emerald">{overview?.counts?.sites_running || 0} Aktif</span>
+            <span class="stat-highlight">{overview?.counts?.sites_running || 0} Aktif</span>
             <span class="stat-sep">&middot;</span>
             <span class="stat-muted">{overview?.counts?.sites_total || 0} Total</span>
           </div>
@@ -221,18 +270,17 @@
       </a>
 
       <!-- Sub-Card 2: Services (Systemd) -->
-      <a href="#/services" class="subcard subcard-services">
+      <a href="#/services" class="subcard">
         <div class="subcard-top">
-          <div class="subcard-icon icon-indigo">
+          <div class="subcard-icon">
             <i class="ri-server-line"></i>
           </div>
-          <span class="subcard-arrow"><i class="ri-arrow-right-line"></i></span>
+          <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
           <div class="subcard-title">Services (Systemd)</div>
           <div class="subcard-stats">
-            <span class="pulse-emerald"></span>
-            <span class="stat-highlight text-indigo">{overview?.counts?.services_active || 0} Berjalan</span>
+            <span class="stat-highlight">{overview?.counts?.services_active || 0} Berjalan</span>
             <span class="stat-sep">&middot;</span>
             <span class="stat-muted">{overview?.counts?.services_total || 0} Total</span>
           </div>
@@ -240,37 +288,37 @@
       </a>
 
       <!-- Sub-Card 3: Database Internal -->
-      <a href="#/settings" class="subcard subcard-db">
+      <a href="#/databases" class="subcard">
         <div class="subcard-top">
-          <div class="subcard-icon icon-cyan">
+          <div class="subcard-icon">
             <i class="ri-database-2-line"></i>
           </div>
-          <span class="subcard-arrow"><i class="ri-arrow-right-line"></i></span>
+          <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
-          <div class="subcard-title">Database Internal</div>
+          <div class="subcard-title">Database Engine</div>
           <div class="subcard-stats">
-            <span class="stat-highlight text-cyan">SQLite (WAL)</span>
+            <span class="stat-highlight">SQLite WAL</span>
             <span class="stat-sep">&middot;</span>
-            <span class="stat-muted">1 DB (panel.db)</span>
+            <span class="stat-muted">panel.db</span>
           </div>
         </div>
       </a>
 
       <!-- Sub-Card 4: Status Keamanan -->
-      <a href="#/security" class="subcard subcard-security">
+      <a href="#/security" class="subcard">
         <div class="subcard-top">
-          <div class="subcard-icon icon-green">
+          <div class="subcard-icon">
             <i class="ri-shield-check-line"></i>
           </div>
-          <span class="subcard-arrow"><i class="ri-arrow-right-line"></i></span>
+          <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
-          <div class="subcard-title">Status Keamanan</div>
+          <div class="subcard-title">Keamanan & WAF</div>
           <div class="subcard-stats">
-            <span class="stat-highlight text-emerald">Risiko: 0</span>
+            <span class="stat-highlight">Proteksi Aktif</span>
             <span class="stat-sep">&middot;</span>
-            <span class="stat-muted">Proteksi Penuh</span>
+            <span class="stat-muted">0 Peringatan</span>
           </div>
         </div>
       </a>
@@ -281,21 +329,18 @@
   <div class="bento-panel">
     <div class="panel-header-row">
       <div>
-        <h3 class="panel-heading">Monitoring Realtime (CPU & RAM)</h3>
-        <p class="panel-subtext">
-          <span class="pulse-live-inline"></span>
-          Streaming SSE 1 detik &middot; Ring Buffer 300 titik
-        </p>
+        <h3 class="panel-heading">Beban CPU & Memori</h3>
+        <p class="panel-subtext">Riwayat penggunaan sumber daya sistem 60 detik terakhir</p>
       </div>
 
-      <!-- Badge Kecepatan Jaringan -->
+      <!-- Indikator Trafik Jaringan Bersih -->
       <div class="traffic-pills">
-        <div class="traffic-pill pill-in">
-          <i class="ri-arrow-down-line"></i>
+        <div class="traffic-pill" title="Lalu lintas jaringan masuk (Inbound)">
+          <i class="ri-arrow-down-line icon-in"></i>
           <span>{formatBytes(currentMetric.net_in)}/s</span>
         </div>
-        <div class="traffic-pill pill-out">
-          <i class="ri-arrow-up-line"></i>
+        <div class="traffic-pill" title="Lalu lintas jaringan keluar (Outbound)">
+          <i class="ri-arrow-up-line icon-out"></i>
           <span>{formatBytes(currentMetric.net_out)}/s</span>
         </div>
       </div>
@@ -304,7 +349,7 @@
     <!-- Komponen Chart dengan Crosshair & Interactive Tooltip -->
     <Chart
       {history}
-      height={220}
+      height={210}
       currentCPU={currentMetric.cpu}
       currentRAM={ramPercent}
     />
@@ -567,26 +612,128 @@
     gap: 1.25rem;
   }
 
-  /* Baris 1: Grid 4 Gauges */
-  .gauges-grid {
+  /* Baris 1: Grid 4 Kartu Metrik Arsitektural */
+  .metrics-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
+    gap: 0.85rem;
+  }
+
+  .metric-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    transition: border-color 0.15s ease;
+  }
+  .metric-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .metric-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .metric-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .metric-label i {
+    font-size: 0.88rem;
+    color: var(--text-subtle);
+  }
+  .metric-status {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.12rem 0.45rem;
+    border-radius: 4px;
+    background: var(--bg-raised);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .metric-status.warn {
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
+  }
+  .metric-status.crit {
+    color: var(--danger-strong);
+    border-color: color-mix(in srgb, var(--danger-strong) 30%, transparent);
+    background: color-mix(in srgb, var(--danger-strong) 8%, transparent);
+  }
+
+  .metric-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.1rem;
+  }
+  .metric-value {
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .metric-value small {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 1px;
+  }
+  .metric-cap {
+    font-size: 0.74rem;
+    font-family: 'Fira Code', monospace;
+    color: var(--text-secondary);
+  }
+
+  .metric-track {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-raised);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .metric-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease;
+  }
+  .metric-fill.warn {
+    background: var(--warning);
+  }
+  .metric-fill.crit {
+    background: var(--danger-strong);
+  }
+
+  .metric-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.71rem;
+    color: var(--text-subtle);
   }
 
   /* Bento Card Surface */
   .bento-panel {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.15rem 1.35rem;
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    transition: border-color 0.15s ease;
-  }
-  .bento-panel:hover {
-    border-color: var(--border);
+    gap: 0.95rem;
   }
 
   /* Header Row di Panel */
@@ -603,43 +750,16 @@
     gap: 0.65rem;
   }
   .panel-heading {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text);
     letter-spacing: -0.01em;
+    margin: 0;
   }
   .panel-subtext {
     font-size: 0.73rem;
     color: var(--text-muted);
-    margin-top: 0.15rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .pulse-live-inline {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
-  }
-
-  .badge-system {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
-    padding: 0.15rem 0.55rem;
-    border-radius: 999px;
-  }
-  .dot-system {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--accent);
+    margin: 0.15rem 0 0;
   }
 
   /* Quick Actions Buttons */
@@ -647,19 +767,21 @@
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    flex-wrap: wrap;
   }
   .btn-action {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.32rem 0.65rem;
+    padding: 0.34rem 0.68rem;
     border-radius: 6px;
-    font-size: 0.72rem;
+    font-size: 0.73rem;
     font-weight: 500;
     text-decoration: none;
     background: var(--bg-raised);
     color: var(--text-secondary);
     border: 1px solid var(--border);
+    cursor: pointer;
     transition: all 0.15s ease;
   }
   .btn-action:hover {
@@ -668,13 +790,15 @@
     border-color: var(--border-strong);
   }
   .btn-action-primary {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 25%, transparent);
-  }
-  .btn-action-primary:hover {
     background: var(--accent);
     color: var(--text-on-accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-action-primary:hover {
+    background: var(--accent-strong);
+    color: var(--text-on-accent);
+    border-color: var(--accent-strong);
   }
 
   /* 4 Bento Sub-Cards */
@@ -687,22 +811,22 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.85rem 0.95rem;
     text-decoration: none;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   .subcard:hover {
-    border-color: var(--border);
-    background: var(--bg-raised);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
   }
   .subcard-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.55rem;
   }
   .subcard-icon {
     width: 26px;
@@ -711,33 +835,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
-    background: var(--bg-raised);
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
     border: 1px solid var(--border);
-  }
-  .icon-emerald {
-    color: var(--accent);
-  }
-  .icon-indigo {
-    color: var(--violet);
-  }
-  .icon-cyan {
-    color: var(--info);
-  }
-  .icon-green {
-    color: var(--accent);
   }
   .subcard-arrow {
     color: var(--text-subtle);
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     transition: transform 0.15s ease, color 0.15s ease;
   }
   .subcard:hover .subcard-arrow {
-    transform: translateX(2px);
-    color: var(--text-secondary);
+    transform: translate(1px, -1px);
+    color: var(--text);
   }
   .subcard-title {
-    font-size: 0.75rem;
+    font-size: 0.73rem;
     font-weight: 500;
     color: var(--text-muted);
     margin-bottom: 0.2rem;
@@ -752,6 +865,7 @@
   }
   .stat-highlight {
     font-weight: 600;
+    color: var(--text);
   }
   .stat-sep {
     color: var(--text-disabled);
@@ -759,21 +873,6 @@
   .stat-muted {
     color: var(--text-subtle);
     font-size: 0.73rem;
-  }
-  .text-emerald {
-    color: var(--accent);
-  }
-  .text-indigo {
-    color: var(--violet);
-  }
-  .text-cyan {
-    color: var(--info);
-  }
-  .pulse-emerald {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
   }
 
   /* Traffic Pills */
@@ -789,19 +888,17 @@
     font-size: 0.72rem;
     font-family: 'Fira Code', monospace;
     font-variant-numeric: tabular-nums;
-    padding: 0.2rem 0.55rem;
+    padding: 0.22rem 0.55rem;
     border-radius: 6px;
-    border: 1px solid transparent;
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
-  .pill-in {
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  .traffic-pill .icon-in {
     color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   }
-  .pill-out {
-    background: color-mix(in srgb, var(--info) 8%, transparent);
-    color: var(--info);
-    border-color: color-mix(in srgb, var(--info) 20%, transparent);
+  .traffic-pill .icon-out {
+    color: var(--text-muted);
   }
 
   /* Layanan Prioritas Table */
