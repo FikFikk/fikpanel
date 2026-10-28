@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -679,47 +680,20 @@ func (s *Server) handleUploadSiteBackupArchive(w http.ResponseWriter, r *http.Re
 }
 
 // applyPostSiteProvisioning menjalankan langkah tambahan setelah situs dibuat:
-// 1. Deploy Template (Laravel, WordPress, Express, Gin, FastAPI, SPA)
-// 2. Git Clone (termasuk repositori privat menggunakan token GitHub tersimpan) + Post-Clone Build Command
-// 3. Ekstraksi Arsip Backup (.tar.gz / .zip)
-// 4. Pembuatan Database MySQL Otomatis
+// 1. Pembuatan Database MySQL Otomatis (dijalankan lebih awal agar siap saat build/migrate Git berjalan)
+// 2. Deploy Template (Laravel, WordPress, Express, Gin, FastAPI, SPA)
+// 3. Git Clone (termasuk repositori privat), injeksi .env otomatis, sinkronisasi port ecosystem.config.cjs, & Post-Clone Build Command
+// 4. Ekstraksi Arsip Backup (.tar.gz / .zip)
 // 5. Penerbitan SSL Let's Encrypt Otomatis
 func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.Site, in SiteInput, uid *int64) map[string]string {
 	notes := map[string]string{}
 
-	// 1. One-Click Deploy Template
-	if tpl := strings.TrimSpace(strings.ToLower(in.DeployTemplate)); tpl != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		if err := provisionDeployTemplate(created, tpl, in.DBName, in.DBUser, in.DBPass); err != nil {
-			notes["template_warning"] = err.Error()
-		} else {
-			notes["template"] = tpl
-		}
-	}
+	dbName := strings.TrimSpace(in.DBName)
+	dbUser := strings.TrimSpace(in.DBUser)
+	dbPass := strings.TrimSpace(in.DBPass)
 
-	// 2. Git Clone Repository
-	if repoURL := strings.TrimSpace(in.GitRepoURL); repoURL != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		token, _ := s.store.GetSetting(ctx, "github_token")
-		if err := cloneGitRepoToSite(ctx, created, repoURL, strings.TrimSpace(in.GitBranch), strings.TrimSpace(in.GitPostCmd), token); err != nil {
-			notes["git_warning"] = err.Error()
-		} else {
-			notes["git"] = "cloned"
-		}
-	}
-
-	// 3. Restore dari Arsip Backup
-	if archivePath := strings.TrimSpace(in.BackupArchive); archivePath != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		if err := extractBackupToSite(ctx, created, archivePath); err != nil {
-			notes["backup_warning"] = err.Error()
-		} else {
-			notes["backup"] = "restored"
-		}
-	}
-
-	// 4. Auto-Create Database MySQL
-	if in.CreateDB && strings.TrimSpace(in.DBName) != "" && strings.TrimSpace(in.DBUser) != "" && strings.TrimSpace(in.DBPass) != "" {
-		dbName := strings.TrimSpace(in.DBName)
-		dbUser := strings.TrimSpace(in.DBUser)
-		dbPass := strings.TrimSpace(in.DBPass)
+	// 1. Auto-Create Database MySQL terlebih dahulu agar skema tersedia saat proses build / migrasi Git
+	if in.CreateDB && dbName != "" && dbUser != "" && dbPass != "" {
 		if err := database.ProvisionDatabase(ctx, "mysql", dbName, dbUser, dbPass, "localhost"); err != nil {
 			notes["db_warning"] = err.Error()
 		} else {
@@ -733,6 +707,34 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 				Note:      "Dibuat otomatis bersama situs " + created.Domain,
 			})
 			notes["database"] = dbName
+		}
+	}
+
+	// 2. One-Click Deploy Template
+	if tpl := strings.TrimSpace(strings.ToLower(in.DeployTemplate)); tpl != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		if err := provisionDeployTemplate(created, tpl, dbName, dbUser, dbPass); err != nil {
+			notes["template_warning"] = err.Error()
+		} else {
+			notes["template"] = tpl
+		}
+	}
+
+	// 3. Git Clone Repository + Auto .env + Sinkronisasi Port Ecosystem PM2 + Build
+	if repoURL := strings.TrimSpace(in.GitRepoURL); repoURL != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		token, _ := s.store.GetSetting(ctx, "github_token")
+		if err := s.cloneGitRepoToSite(ctx, created, repoURL, strings.TrimSpace(in.GitBranch), strings.TrimSpace(in.GitPostCmd), token, in.CreateDB, dbName, dbUser, dbPass); err != nil {
+			notes["git_warning"] = err.Error()
+		} else {
+			notes["git"] = "cloned"
+		}
+	}
+
+	// 4. Restore dari Arsip Backup
+	if archivePath := strings.TrimSpace(in.BackupArchive); archivePath != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		if err := extractBackupToSite(ctx, created, archivePath); err != nil {
+			notes["backup_warning"] = err.Error()
+		} else {
+			notes["backup"] = "restored"
 		}
 	}
 
@@ -752,8 +754,10 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 	return notes
 }
 
-// cloneGitRepoToSite mengkloning repositori Git ke direktori proyek situs
-func cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, postCmd, githubToken string) error {
+var ecosystemPortRegex = regexp.MustCompile(`(?i)\bPORT\s*:\s*['"]?(\d{2,5})['"]?`)
+
+// cloneGitRepoToSite mengkloning repositori Git ke direktori proyek situs, menyiapkan .env, menyelaraskan port PM2, dan menjalankan build
+func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, postCmd, githubToken string, createDB bool, dbName, dbUser, dbPass string) error {
 	targetDir := site.RootPath
 	if filepath.Base(targetDir) == "public" {
 		targetDir = filepath.Dir(targetDir)
@@ -806,6 +810,48 @@ func cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, 
 	}
 	_ = os.RemoveAll(tmpDir)
 
+	// Deteksi otomatis PORT pada ecosystem.config.cjs / ecosystem.config.js dan selaraskan upstream Nginx
+	appPort := "3000"
+	if u, err := url.Parse(site.Upstream); err == nil && u.Port() != "" {
+		appPort = u.Port()
+	}
+	for _, ecoName := range []string{"ecosystem.config.cjs", "ecosystem.config.js"} {
+		if raw, err := os.ReadFile(filepath.Join(targetDir, ecoName)); err == nil {
+			if m := ecosystemPortRegex.FindStringSubmatch(string(raw)); len(m) == 2 && m[1] != "" {
+				appPort = m[1]
+				newUpstream := "http://127.0.0.1:" + appPort
+				if site.Upstream != newUpstream && (site.Kind == "node" || site.Kind == "proxy") {
+					site.Upstream = newUpstream
+					_ = s.store.UpdateSite(ctx, site)
+					_ = s.sites.Apply(ctx, site, "")
+				}
+				break
+			}
+		}
+	}
+
+	// Injeksi file .env otomatis apabila belum ada atau database otomatis diaktifkan
+	envPath := filepath.Join(targetDir, ".env")
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		var envLines []string
+		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
+		envLines = append(envLines, "NODE_ENV=production")
+		envLines = append(envLines, fmt.Sprintf("APP_NAME=\"%s\"", site.Domain))
+		envLines = append(envLines, "APP_ENV=production")
+		envLines = append(envLines, "APP_DEBUG=false")
+		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
+		if createDB && dbName != "" && dbUser != "" {
+			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", dbUser, dbPass, dbName))
+			envLines = append(envLines, "DB_CONNECTION=mysql")
+			envLines = append(envLines, "DB_HOST=127.0.0.1")
+			envLines = append(envLines, "DB_PORT=3306")
+			envLines = append(envLines, fmt.Sprintf("DB_DATABASE=%s", dbName))
+			envLines = append(envLines, fmt.Sprintf("DB_USERNAME=%s", dbUser))
+			envLines = append(envLines, fmt.Sprintf("DB_PASSWORD=%s", dbPass))
+		}
+		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o640)
+	}
+
 	// Pastikan folder public tersedia jika root_path berakhir dengan /public tetapi repo tidak memiliki sub-folder public
 	if strings.HasSuffix(site.RootPath, "/public") {
 		if _, err := os.Stat(site.RootPath); os.IsNotExist(err) {
@@ -814,11 +860,28 @@ func cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, 
 	}
 
 	if postCmd != "" {
-		bctx, bcancel := context.WithTimeout(ctx, 120*time.Second)
+		// Sisipkan otomatis npx drizzle-kit push apabila repo memakai Drizzle ORM dan DB diaktifkan
+		hasDrizzle := false
+		if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.ts")); err == nil {
+			hasDrizzle = true
+		} else if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.js")); err == nil {
+			hasDrizzle = true
+		}
+		if hasDrizzle && createDB && !strings.Contains(postCmd, "drizzle-kit") {
+			if strings.Contains(postCmd, "npm run build") {
+				postCmd = strings.Replace(postCmd, "npm run build", "npm run build && npx drizzle-kit push", 1)
+			} else {
+				postCmd = postCmd + " && npx drizzle-kit push"
+			}
+		}
+
+		bctx, bcancel := context.WithTimeout(ctx, 150*time.Second)
 		defer bcancel()
-		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd)
+		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+" && (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
 		buildCmd.Dir = targetDir
-		_, _ = buildCmd.CombinedOutput()
+		buildCmd.Env = append(os.Environ(), "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "CI=true")
+		out, _ := buildCmd.CombinedOutput()
+		_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
 	}
 
 	return nil

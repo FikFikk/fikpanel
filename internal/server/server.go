@@ -112,8 +112,8 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	srv.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      handler,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 180 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
