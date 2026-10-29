@@ -1757,7 +1757,7 @@
                   </label>
                 </div>
 
-                {#if kind === 'php' && activeTab !== 'git'}
+                {#if kind === 'php'}
                   <div class="admin-auto-divider"></div>
                   <div class="row-between">
                     <label class="check-inline" for="as-create-admin">

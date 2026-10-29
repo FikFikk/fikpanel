@@ -504,12 +504,30 @@ func (s *Server) registerRoutes() {
 		setCSP := func() {
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 			if !strings.HasPrefix(r.URL.Path, "/assets/") {
-				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+				w.Header().Set("Pragma", "no-cache")
+				w.Header().Set("Expires", "0")
 			}
+		}
+
+		// Jika browser memuat chunk JS lama yang hash-nya sudah diganti setelah update binary (mis. /assets/Terminal-old.js),
+		// kembalikan modul ES yang otomatis me-reload halaman agar tab browser langsung memuat bundle terbaru tanpa error.
+		serveStaleChunkReload := func() {
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("window.location.reload();\nexport default {};\n"))
 		}
 
 		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)
 		if stat, err := os.Stat(localDistDir); err == nil && stat.IsDir() {
+			if strings.HasPrefix(r.URL.Path, "/assets/") && strings.HasSuffix(r.URL.Path, ".js") {
+				if _, err := os.Stat(localDistDir + r.URL.Path); err != nil {
+					setCSP()
+					serveStaleChunkReload()
+					return
+				}
+			}
 			setCSP()
 			localFileServer.ServeHTTP(w, r)
 			return
@@ -517,6 +535,14 @@ func (s *Server) registerRoutes() {
 
 		// 3. Fallback biner produksi (disematkan via embed.FS)
 		if embedFileServer != nil {
+			if strings.HasPrefix(r.URL.Path, "/assets/") && strings.HasSuffix(r.URL.Path, ".js") {
+				relPath := strings.TrimPrefix(r.URL.Path, "/")
+				if _, err := fs.Stat(distSub, relPath); err != nil {
+					setCSP()
+					serveStaleChunkReload()
+					return
+				}
+			}
 			setCSP()
 			embedFileServer.ServeHTTP(w, r)
 			return
