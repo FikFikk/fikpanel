@@ -101,6 +101,14 @@
   let terminalScrollEl = $state<HTMLDivElement | null>(null);
   let inputPromptEl = $state<HTMLInputElement | null>(null);
 
+  // State prompt interaktif untuk perintah CLI bertahap (misal: php artisan make:filament-user)
+  let interactivePrompt = $state<{
+    baseCmd: string;
+    step: 'name' | 'email' | 'password';
+    name: string;
+    email: string;
+  } | null>(null);
+
   onMount(() => {
     fetchServers();
     fetchCommands();
@@ -230,10 +238,71 @@
   // Jalankan perintah di tab aktif
   async function runCommand(cmdText: string) {
     const trimmed = cmdText.trim();
-    if (!trimmed || !activeTab || activeTab.executing) return;
+    if (!activeTab || activeTab.executing) return;
 
     const currentTab = activeTab;
     resetCompletionState();
+
+    // Jika sedang berada dalam mode prompt interaktif (make:filament-user), tangkap jawaban per langkah
+    if (interactivePrompt) {
+      const now = new Date().toLocaleTimeString();
+      if (interactivePrompt.step === 'name') {
+        const val = trimmed || 'Super Admin';
+        interactivePrompt.name = val;
+        interactivePrompt.step = 'email';
+        currentTab.history = [
+          ...currentTab.history,
+          { command: `┌ Name: ${val}`, output: '', time: now, ok: true, cwd: currentTab.cwd || '~' },
+        ];
+        currentTab.commandInput = '';
+        scrollToBottom();
+        focusInput();
+        return;
+      }
+      if (interactivePrompt.step === 'email') {
+        const val = trimmed || 'admin@fikfikk.my.id';
+        interactivePrompt.email = val;
+        interactivePrompt.step = 'password';
+        currentTab.history = [
+          ...currentTab.history,
+          { command: `├ Email address: ${val}`, output: '', time: now, ok: true, cwd: currentTab.cwd || '~' },
+        ];
+        currentTab.commandInput = '';
+        scrollToBottom();
+        focusInput();
+        return;
+      }
+      if (interactivePrompt.step === 'password') {
+        const passVal = trimmed || 'admin123';
+        const finalCmd = `${interactivePrompt.baseCmd} --name=${JSON.stringify(interactivePrompt.name)} --email=${JSON.stringify(interactivePrompt.email)} --password=${JSON.stringify(passVal)} --no-interaction`;
+        interactivePrompt = null;
+        currentTab.commandInput = '';
+        await runCommand(finalCmd);
+        return;
+      }
+    }
+
+    if (!trimmed) return;
+
+    // Intersep php artisan make:filament-user tanpa flag agar memunculkan prompt interaktif bertahap
+    if (trimmed.includes('make:filament-user') && !trimmed.includes('--name')) {
+      const now = new Date().toLocaleTimeString();
+      currentTab.history = [
+        ...currentTab.history,
+        {
+          command: trimmed,
+          output: 'Mode Interaktif Filament User — ketik jawaban di bawah lalu tekan Enter (Ctrl+C untuk batal):',
+          time: now,
+          ok: true,
+          cwd: currentTab.cwd || '~',
+        },
+      ];
+      interactivePrompt = { baseCmd: trimmed, step: 'name', name: '', email: '' };
+      currentTab.commandInput = '';
+      scrollToBottom();
+      focusInput();
+      return;
+    }
 
     // Tangani perintah clear/cls langsung di sisi klien seperti shell asli
     if (trimmed === 'clear' || trimmed === 'cls') {
@@ -421,6 +490,7 @@
         ];
         activeTab.commandInput = '';
         activeTab.historyIndex = -1;
+        interactivePrompt = null;
         resetCompletionState();
         scrollToBottom();
         return;
@@ -1002,9 +1072,19 @@
 
           <!-- Baris Input Prompt Aktif -->
           <div class="input-line">
-            <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
+            {#if interactivePrompt}
+              <span class="prompt-user">
+                {interactivePrompt.step === 'name'
+                  ? '┌ Name (default: Super Admin):'
+                  : interactivePrompt.step === 'email'
+                    ? '├ Email address (default: admin@fikfikk.my.id):'
+                    : '└ Password (default: admin123):'}
+              </span>
+            {:else}
+              <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
+            {/if}
             <input
-              type="text"
+              type={interactivePrompt?.step === 'password' ? 'password' : 'text'}
               bind:this={inputPromptEl}
               bind:value={activeTab.commandInput}
               onkeydown={handleInputKeydown}

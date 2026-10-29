@@ -68,8 +68,64 @@ func buildStatefulBashCommand(cwd, cmdClean string) string {
 	} else if trimmedCwd == "~" {
 		sb.WriteString("cd ~ 2>/dev/null\n")
 	}
+
+	// Tangani otomatis php artisan make:filament-user atau pembuatan User via tinker agar tidak gagal NonInteractive & langsung diberi role super_admin
+	isFilamentUserCmd := strings.Contains(cmdClean, "make:filament-user")
+	isTinkerUserCmd := strings.Contains(cmdClean, "tinker") && strings.Contains(cmdClean, "User::")
+	if isFilamentUserCmd && !strings.Contains(cmdClean, "--name") {
+		cmdClean = cmdClean + ` --name="Super Admin" --email="admin@fikpanel.local" --password="password123" --no-interaction`
+	}
+
 	sb.WriteString(cmdClean)
-	sb.WriteString("\n__FIK_EC=$?\nprintf \"\\n" + pwdSentinelStart + "%s" + pwdSentinelEnd + "\\n\" \"$(pwd)\"\nexit $__FIK_EC\n")
+	sb.WriteString("\n__FIK_EC=$?\n")
+
+	if isFilamentUserCmd || isTinkerUserCmd {
+		// Otomatis berikan role super_admin & izin Filament Shield penuh pada user yang baru dibuat agar tidak terkena 403 Forbidden
+		sb.WriteString(`if [ -f artisan ] && [ $__FIK_EC -eq 0 ]; then
+  if [ -f app/Models/User.php ] && ! grep -q "FilamentUser\|canAccessPanel" app/Models/User.php 2>/dev/null; then
+    sed -i 's/^APP_ENV=production/APP_ENV=local/' .env 2>/dev/null || true
+  fi
+  php -r '
+    require "vendor/autoload.php";
+    $app = require_once "bootstrap/app.php";
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    if (class_exists(App\Models\User::class)) {
+      $u = App\Models\User::latest("id")->first();
+      if ($u) {
+        if (class_exists(App\Models\Company::class)) {
+          $comp = App\Models\Company::first();
+          if ($comp && empty($u->company_id)) {
+            $u->company_id = $comp->id;
+            if (array_key_exists("default_company_id", $u->getAttributes())) $u->default_company_id = $comp->id;
+          }
+        }
+        if (array_key_exists("is_multi_company", $u->getAttributes()) || property_exists($u, "is_multi_company")) {
+          $u->is_multi_company = true;
+        }
+        if (method_exists($u, "saveQuietly")) { $u->saveQuietly(); }
+        if (method_exists($u, "assignRole") && class_exists(Spatie\Permission\Models\Role::class)) {
+          $role = Spatie\Permission\Models\Role::firstOrCreate(["name" => "super_admin", "guard_name" => "web"]);
+          if (class_exists(Spatie\Permission\Models\Permission::class)) {
+            $perms = Spatie\Permission\Models\Permission::all();
+            if ($perms->count() > 0) $role->syncPermissions($perms);
+          }
+          $u->assignRole($role);
+          if (class_exists(Spatie\Permission\PermissionRegistrar::class)) {
+            app()[Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+          }
+          echo "\n[FikPanel] Role super_admin & izin akses panel Filament berhasil diberikan ke: " . $u->email . "\n";
+        }
+      }
+    }
+  ' 2>/dev/null || true
+  php artisan optimize:clear >/dev/null 2>&1 || true
+  chown -R www-data:www-data .env storage bootstrap/cache database public 2>/dev/null || true
+  chmod -R 775 storage bootstrap/cache database 2>/dev/null || true
+fi
+`)
+	}
+
+	sb.WriteString("printf \"\\n" + pwdSentinelStart + "%s" + pwdSentinelEnd + "\\n\" \"$(pwd)\"\nexit $__FIK_EC\n")
 	return sb.String()
 }
 

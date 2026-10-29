@@ -865,11 +865,22 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 	}
 	{
+		// Deteksi apakah proyek memakai Filament namun model User belum mengimplementasikan FilamentUser (canAccessPanel)
+		// Pada Filament, jika User tidak mengimplementasikan FilamentUser, APP_ENV selain 'local' otomatis ditolak 403 Forbidden
+		appEnvValue := "production"
+		if rawComp, err := os.ReadFile(filepath.Join(targetDir, "composer.json")); err == nil && strings.Contains(string(rawComp), "filament/filament") {
+			if rawUserModel, err := os.ReadFile(filepath.Join(targetDir, "app", "Models", "User.php")); err == nil {
+				if !strings.Contains(string(rawUserModel), "FilamentUser") && !strings.Contains(string(rawUserModel), "canAccessPanel") {
+					appEnvValue = "local"
+				}
+			}
+		}
+
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
 		envLines = append(envLines, "NODE_ENV=production")
 		envLines = append(envLines, fmt.Sprintf("APP_NAME=\"%s\"", site.Domain))
-		envLines = append(envLines, "APP_ENV=production")
+		envLines = append(envLines, fmt.Sprintf("APP_ENV=%s", appEnvValue))
 		envLines = append(envLines, "APP_DEBUG=false")
 		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
 		envLines = append(envLines, fmt.Sprintf("APP_KEY=%s", existingAppKey))
@@ -957,6 +968,8 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 				"(php artisan storage:link --force || true)",
 				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
 				"(php artisan filament:upgrade || php artisan filament:assets || true)",
+				"(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)",
+				"(php artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || php artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)",
 				"(php artisan optimize:clear || true)",
 				"(chown -R www-data:www-data .env storage bootstrap/cache database public 2>/dev/null || true)",
 				"(chmod 644 .env 2>/dev/null || true)",
