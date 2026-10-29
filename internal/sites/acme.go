@@ -5,11 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,7 +104,7 @@ func (m *Manager) IssueSSL(ctx context.Context, siteID int64, skipDNS bool, onDo
 
 // runIssue mengeksekusi penerbitan, menyimpan metadata, dan menerapkan vhost HTTPS
 func (m *Manager) runIssue(site *store.Site, domains []string, onDone func(ok bool, msg string)) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	var cert *store.Certificate
@@ -113,12 +115,16 @@ func (m *Manager) runIssue(site *store.Site, domains []string, onDone func(ok bo
 		cert, err = m.acmeIssue(ctx, site, domains)
 	}
 
+	// Gunakan context baru untuk penyimpanan DB & reload Nginx agar tetap tereksekusi meskipun ctx ACME sudah timeout
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer dbCancel()
+
 	if err == nil {
 		m.setJob(site.ID, func(j *SSLJob) { j.Step = "Menerapkan HTTPS ke Nginx" })
-		if err = m.store.UpsertCertificate(ctx, cert); err == nil {
+		if err = m.store.UpsertCertificate(dbCtx, cert); err == nil {
 			var fresh *store.Site
-			if fresh, err = m.store.GetSite(ctx, site.ID); err == nil {
-				err = m.Apply(ctx, fresh, "")
+			if fresh, err = m.store.GetSite(dbCtx, site.ID); err == nil {
+				err = m.Apply(dbCtx, fresh, "")
 			}
 		}
 	}
@@ -126,7 +132,7 @@ func (m *Manager) runIssue(site *store.Site, domains []string, onDone func(ok bo
 	msg := "Sertifikat SSL berhasil diterbitkan untuk " + strings.Join(domains, ", ")
 	if err != nil {
 		msg = "Penerbitan SSL gagal: " + err.Error()
-		_ = m.store.UpsertCertificate(ctx, &store.Certificate{
+		_ = m.store.UpsertCertificate(dbCtx, &store.Certificate{
 			SiteID: site.ID, Status: "failed", Domains: "[]", LastError: err.Error(),
 		})
 	}
@@ -201,23 +207,80 @@ func (m *Manager) accountKey() (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
+// tryReuseExistingCert memeriksa apakah pasangan sertifikat & kunci privat yang valid sudah tersedia di disk untuk seluruh domain situs
+func (m *Manager) tryReuseExistingCert(siteID int64, domain string, domains []string, minDays int) (*store.Certificate, bool) {
+	certPath, keyPath := m.certFiles(domain)
+	tlsCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil || len(tlsCert.Certificate) == 0 {
+		return nil, false
+	}
+	leaf, err := x509.ParseCertificate(tlsCert.Certificate[0])
+	if err != nil {
+		return nil, false
+	}
+	if time.Until(leaf.NotAfter) < time.Duration(minDays)*24*time.Hour {
+		return nil, false
+	}
+	for _, d := range domains {
+		if err := leaf.VerifyHostname(d); err != nil {
+			return nil, false
+		}
+	}
+	sans, _ := json.Marshal(leaf.DNSNames)
+	return &store.Certificate{
+		SiteID:    siteID,
+		Status:    "issued",
+		Issuer:    leaf.Issuer.String(),
+		NotBefore: leaf.NotBefore.Unix(),
+		NotAfter:  leaf.NotAfter.Unix(),
+		Domains:   string(sans),
+		Signature: leaf.SignatureAlgorithm.String(),
+		KeyType:   "ECDSA P-256",
+		RenewedAt: time.Now().Unix(),
+	}, true
+}
+
 // acmeIssue menjalankan alur RFC 8555 dengan tantangan HTTP-01 via webroot
 func (m *Manager) acmeIssue(ctx context.Context, site *store.Site, domains []string) (*store.Certificate, error) {
 	step := func(s string) { m.setJob(site.ID, func(j *SSLJob) { j.Step = s }) }
+
+	// Jika sertifikat valid untuk seluruh domain sudah tersedia di disk dengan sisa masa aktif >= 30 hari,
+	// gunakan kembali sertifikat tersebut agar tidak membentur rate limit mingguan Let's Encrypt (5 sertifikat/7 hari)
+	if existing, ok := m.tryReuseExistingCert(site.ID, site.Domain, domains, 30); ok {
+		step("Menerbitkan sertifikat")
+		return existing, nil
+	}
 
 	step("Mendaftarkan akun ACME")
 	key, err := m.accountKey()
 	if err != nil {
 		return nil, err
 	}
-	client := &acme.Client{Key: key, DirectoryURL: acmeDirectory()}
+	client := &acme.Client{
+		Key:          key,
+		DirectoryURL: acmeDirectory(),
+		// Hentikan retry seketika saat Let's Encrypt mengembalikan HTTP 429 (rateLimited) agar tidak menggantung 5 menit
+		RetryBackoff: func(n int, r *http.Request, res *http.Response) time.Duration {
+			if res != nil && (res.StatusCode == http.StatusTooManyRequests || (res.StatusCode >= 400 && res.StatusCode < 500 && res.StatusCode != http.StatusBadRequest)) {
+				return -1
+			}
+			if n > 3 {
+				return -1
+			}
+			return time.Duration(n) * time.Second
+		},
+	}
 	if _, err := client.Register(ctx, &acme.Account{}, acme.AcceptTOS); err != nil && !errors.Is(err, acme.ErrAccountAlreadyExists) {
 		return nil, fmt.Errorf("registrasi akun ACME gagal: %w", err)
 	}
 
-	step("Membuat order sertifikat")
+	step("Validasi HTTP-01 domain")
 	order, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domains...))
 	if err != nil {
+		// Fallback ke sertifikat di disk yang belum kadaluarsa jika terkena rate limit Let's Encrypt
+		if existing, ok := m.tryReuseExistingCert(site.ID, site.Domain, domains, 1); ok {
+			return existing, nil
+		}
 		return nil, fmt.Errorf("gagal membuat order: %w", err)
 	}
 
@@ -247,7 +310,7 @@ func (m *Manager) acmeIssue(ctx context.Context, site *store.Site, domains []str
 			return nil, fmt.Errorf("CA tidak menawarkan tantangan http-01 untuk %s", authz.Identifier.Value)
 		}
 
-		step("Validasi HTTP-01: " + authz.Identifier.Value)
+		step("Validasi HTTP-01 domain")
 		body, err := client.HTTP01ChallengeResponse(chal.Token)
 		if err != nil {
 			return nil, err
@@ -344,8 +407,25 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
-// RenewAllExpiring memindai dan memperpanjang semua sertifikat yang sisa masa aktifnya < 30 hari
+// RenewAllExpiring memindai dan memperpanjang semua sertifikat yang sisa masa aktifnya < 30 hari,
+// sekaligus memulihkan situs yang status sertifikatnya menggantung (pending) jika sertifikat valid sudah tersedia di disk
 func (m *Manager) RenewAllExpiring(ctx context.Context, audit func(ok bool, target, msg string)) (int, int, error) {
+	if sitesList, err := m.store.ListSites(ctx); err == nil {
+		for i := range sitesList {
+			st := &sitesList[i]
+			if st.Enabled == 1 && st.SSLMode != "none" && st.SSLStatus != "issued" && !m.Job(st.ID).Running {
+				if existing, ok := m.tryReuseExistingCert(st.ID, st.Domain, AllDomains(st), 1); ok {
+					if err := m.store.UpsertCertificate(ctx, existing); err == nil {
+						_ = m.Apply(ctx, st, "")
+						if audit != nil {
+							audit(true, st.Domain, "Sertifikat SSL dipulihkan otomatis dari penyimpanan lokal")
+						}
+					}
+				}
+			}
+		}
+	}
+
 	ids, err := m.store.ListExpiringCertificates(ctx, time.Now().Add(30*24*time.Hour).Unix())
 	if err != nil {
 		return 0, 0, err

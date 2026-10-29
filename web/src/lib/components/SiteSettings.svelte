@@ -736,9 +736,9 @@
   {/snippet}
   {#snippet badge()}
     {#if site}
-      <span class="ss-badge" class:on={certIssued} class:pending={cert?.status === 'pending'}>
+      <span class="ss-badge" class:on={certIssued} class:pending={jobRunning || (cert?.status === 'pending' && !job?.finished_at)}>
         <i class={certIssued ? 'ri-lock-fill' : 'ri-lock-unlock-line'}></i>
-        {certIssued ? 'HTTPS' : cert?.status === 'pending' ? 'Menerbitkan…' : 'HTTP'}
+        {certIssued ? 'HTTPS' : jobRunning || (cert?.status === 'pending' && !job?.finished_at) ? 'Menerbitkan…' : 'HTTP'}
       </span>
     {/if}
   {/snippet}
@@ -1079,14 +1079,14 @@
           {#if jobRunning && job}
             <div class="job mt">
               {#each STEPS as st, i (st)}
-                {@const cur = STEPS.indexOf(job.step)}
+                {@const cur = Math.max(0, STEPS.findIndex((s) => job.step?.startsWith(s)))}
                 <div class="step" class:done={i < cur} class:now={i === cur}>
                   <i class={i < cur ? 'ri-check-line' : i === cur ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i>{st}
                 </div>
               {/each}
             </div>
-          {:else if job && !job.ok && job.message}
-            <div class="note bad mt"><i class="ri-close-circle-line"></i><span>{job.message}</span></div>
+          {:else if (job && !job.ok && job.message) || (cert?.status === 'failed' && cert?.last_error)}
+            <div class="note bad mt"><i class="ri-close-circle-line"></i><span>{job?.message || cert?.last_error}</span></div>
           {/if}
           <div class="ss-actions">
             {#if certIssued && sslEnabled}

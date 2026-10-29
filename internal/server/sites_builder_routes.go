@@ -691,6 +691,13 @@ func (s *Server) handleUploadSiteBackupArchive(w http.ResponseWriter, r *http.Re
 // 5. Penerbitan SSL Let's Encrypt Otomatis
 func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.Site, in SiteInput, uid *int64) map[string]string {
 	notes := map[string]string{}
+	// Gunakan context background agar tahapan pasca-clone (seperti Auto-SSL setelah composer install yang memakan waktu > 60 detik)
+	// tidak batal akibat timeout HTTP request dari browser/proxy
+	if s.bgCtx != nil {
+		ctx = s.bgCtx
+	} else {
+		ctx = context.Background()
+	}
 
 	dbName := strings.TrimSpace(in.DBName)
 	dbUser := strings.TrimSpace(in.DBUser)
