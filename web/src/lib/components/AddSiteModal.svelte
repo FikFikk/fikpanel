@@ -1604,7 +1604,7 @@
     animation: fade 0.15s ease;
   }
   .as-card {
-    width: min(820px, 100%);
+    width: min(880px, 100%);
     max-height: 92vh;
     display: flex;
     flex-direction: column;
@@ -1671,23 +1671,27 @@
 
   /* Baris Navigasi 5 Tab */
   .builder-tabs {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.25rem;
+    display: flex;
+    align-items: stretch;
+    gap: 0.3rem;
     padding: 0 1rem;
+    overflow-x: auto;
   }
   .builder-tab {
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.1rem;
-    padding: 0.55rem 0.65rem;
+    justify-content: center;
+    gap: 0.14rem;
+    padding: 0.55rem 0.7rem;
     border: none;
     border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
     text-align: left;
+    white-space: nowrap;
     transition: all 0.14s ease;
   }
   .builder-tab:hover {
@@ -1707,10 +1711,12 @@
     gap: 0.35rem;
     font-size: 0.78rem;
     font-weight: 600;
+    white-space: nowrap;
   }
   .builder-tab small {
     font-size: 0.66rem;
     color: var(--text-subtle);
+    white-space: nowrap;
   }
 
   .as-body {
