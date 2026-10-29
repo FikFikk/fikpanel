@@ -182,6 +182,7 @@
   let gitError = $state('');
   let gitRepos = $state<GitRepoItem[]>([]);
   let gitRepoFilter = $state('');
+  let repoDropdownOpen = $state(false);
   let selectedGitRepoFull = $state('');
   let gitBranches = $state<string[]>([]);
   let gitRepoURL = $state('');
@@ -331,6 +332,18 @@
         (r.description || '').toLowerCase().includes(q)
     );
   });
+
+  let selectedRepoObj = $derived(gitRepos.find((r) => r.full_name === selectedGitRepoFull) || null);
+
+  // Saat kata kunci pencarian repo diketik, otomatis pilih repo teratas jika hanya tersisa 1 hasil atau pilihan lama tidak ada di hasil filter
+  function onRepoFilterInput() {
+    if (
+      filteredGitRepos.length > 0 &&
+      (filteredGitRepos.length === 1 || !filteredGitRepos.some((r) => r.full_name === selectedGitRepoFull))
+    ) {
+      selectGitRepo(filteredGitRepos[0].full_name);
+    }
+  }
 
   // Pratinjau interaktif untuk tab Batch Create
   let parsedBatchRows = $derived.by(() => {
@@ -1245,30 +1258,125 @@
 
                   {#if gitStatus.connected}
                     <div class="grid-repo">
-                      <label class="fld" for="as-gh-repo">
+                      <div class="fld repo-combo-wrap">
                         <div class="row-between">
-                          <span class="fld-label">Repository ({filteredGitRepos.length})</span>
-                          <input
-                            type="text"
-                            class="repo-filter-input"
-                            placeholder="Filter nama / bahasa..."
-                            bind:value={gitRepoFilter}
-                          />
+                          <span class="fld-label">
+                            Repository <em>({filteredGitRepos.length} dari {gitRepos.length} repo)</em>
+                          </span>
                         </div>
-                        <select
-                          id="as-gh-repo"
-                          value={selectedGitRepoFull}
-                          onchange={(e) => selectGitRepo((e.currentTarget as HTMLSelectElement).value)}
-                        >
-                          <option value="" disabled>-- Pilih repositori GitHub --</option>
-                          {#each filteredGitRepos as r (r.full_name)}
-                            <option value={r.full_name}>
-                              {r.private ? '🔒 [Private]' : '🌐 [Public]'} {r.full_name}
-                              {r.language ? ` · (${r.language})` : ''}
-                            </option>
-                          {/each}
-                        </select>
-                      </label>
+
+                        <div class="repo-combobox" class:open={repoDropdownOpen}>
+                          <div class="repo-combo-bar">
+                            <i class="ri-search-line repo-search-icon"></i>
+                            <input
+                              id="as-gh-repo"
+                              type="text"
+                              class="repo-combo-input"
+                              placeholder={selectedRepoObj ? selectedRepoObj.full_name : 'Ketik untuk cari repo (mis. gci, laravel)...'}
+                              bind:value={gitRepoFilter}
+                              onfocus={() => (repoDropdownOpen = true)}
+                              oninput={() => {
+                                repoDropdownOpen = true;
+                                onRepoFilterInput();
+                              }}
+                              onkeydown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (filteredGitRepos.length > 0) {
+                                    selectGitRepo(filteredGitRepos[0].full_name);
+                                  }
+                                  repoDropdownOpen = false;
+                                } else if (e.key === 'Escape') {
+                                  e.stopPropagation();
+                                  repoDropdownOpen = false;
+                                }
+                              }}
+                            />
+                            {#if gitRepoFilter}
+                              <button
+                                type="button"
+                                class="repo-clear-btn"
+                                title="Bersihkan pencarian"
+                                onclick={() => {
+                                  gitRepoFilter = '';
+                                  repoDropdownOpen = true;
+                                }}
+                              >
+                                <i class="ri-close-circle-fill"></i>
+                              </button>
+                            {/if}
+                            <button
+                              type="button"
+                              class="repo-toggle-btn"
+                              aria-label="Daftar Repositori"
+                              onclick={() => (repoDropdownOpen = !repoDropdownOpen)}
+                            >
+                              <i class={repoDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}></i>
+                            </button>
+                          </div>
+
+                          {#if selectedRepoObj && !repoDropdownOpen}
+                            <button
+                              type="button"
+                              class="repo-selected-pill"
+                              onclick={() => (repoDropdownOpen = true)}
+                              title="Klik untuk mengganti repositori"
+                            >
+                              <span class="repo-vis-badge" class:priv={selectedRepoObj.private}>
+                                <i class={selectedRepoObj.private ? 'ri-lock-2-fill' : 'ri-global-line'}></i>
+                                {selectedRepoObj.private ? 'Private' : 'Public'}
+                              </span>
+                              <strong class="mono repo-pill-name">{selectedRepoObj.full_name}</strong>
+                              {#if selectedRepoObj.language}
+                                <span class="repo-lang-tag">{selectedRepoObj.language}</span>
+                              {/if}
+                            </button>
+                          {/if}
+
+                          {#if repoDropdownOpen}
+                            <!-- svelte-ignore a11y_click_events_have_key_events -->
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div class="repo-dropdown-backdrop" onclick={() => (repoDropdownOpen = false)}></div>
+                            <div class="repo-dropdown-menu" role="listbox">
+                              {#if filteredGitRepos.length === 0}
+                                <div class="repo-empty-item">
+                                  Tidak ada repositori yang cocok dengan "<b>{gitRepoFilter}</b>"
+                                </div>
+                              {:else}
+                                {#each filteredGitRepos as r (r.full_name)}
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={selectedGitRepoFull === r.full_name}
+                                    class="repo-option-item"
+                                    class:active={selectedGitRepoFull === r.full_name}
+                                    onclick={() => {
+                                      selectGitRepo(r.full_name);
+                                      repoDropdownOpen = false;
+                                    }}
+                                  >
+                                    <div class="repo-opt-left">
+                                      <span class="repo-vis-badge" class:priv={r.private}>
+                                        <i class={r.private ? 'ri-lock-2-fill' : 'ri-global-line'}></i>
+                                        {r.private ? 'Private' : 'Public'}
+                                      </span>
+                                      <span class="mono repo-opt-name">{r.full_name}</span>
+                                    </div>
+                                    <div class="repo-opt-right">
+                                      {#if r.language}
+                                        <span class="repo-lang-tag">{r.language}</span>
+                                      {/if}
+                                      {#if selectedGitRepoFull === r.full_name}
+                                        <i class="ri-check-line repo-check-icon"></i>
+                                      {/if}
+                                    </div>
+                                  </button>
+                                {/each}
+                              {/if}
+                            </div>
+                          {/if}
+                        </div>
+                      </div>
 
                       <label class="fld" for="as-gh-branch">
                         <span class="fld-label">Branch</span>
@@ -2162,11 +2270,184 @@
     display: grid;
     grid-template-columns: 2fr 1fr;
     gap: 0.65rem;
+    align-items: start;
   }
-  .repo-filter-input {
-    width: 175px !important;
-    padding: 0.2rem 0.5rem !important;
-    font-size: 0.71rem !important;
+  .repo-combo-wrap {
+    position: relative;
+  }
+  .repo-combobox {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .repo-combo-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 0.45rem 0 0.65rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    z-index: 22;
+  }
+  .repo-combobox.open .repo-combo-bar {
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .repo-search-icon {
+    font-size: 0.9rem;
+    color: var(--text-subtle);
+    margin-right: 0.4rem;
+    flex-shrink: 0;
+  }
+  .repo-combo-input {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0.52rem 0.25rem !important;
+    font-size: 0.8rem !important;
+    flex: 1;
+    min-width: 0;
+  }
+  .repo-clear-btn,
+  .repo-toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-subtle);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+  }
+  .repo-clear-btn:hover,
+  .repo-toggle-btn:hover {
+    color: var(--text);
+  }
+  .repo-selected-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.65rem;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    color: var(--text);
+    font-size: 0.76rem;
+    cursor: pointer;
+    text-align: left;
+  }
+  .repo-selected-pill:hover {
+    border-color: var(--accent);
+  }
+  .repo-pill-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--accent-strong);
+  }
+  .repo-dropdown-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+  }
+  .repo-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 230px;
+    overflow-y: auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    box-shadow: var(--shadow-lg);
+    padding: 0.3rem;
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .repo-option-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.46rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.77rem;
+    cursor: pointer;
+    text-align: left;
+  }
+  .repo-option-item:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .repo-option-item.active {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent-strong);
+    font-weight: 600;
+  }
+  .repo-opt-left {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    flex: 1;
+  }
+  .repo-opt-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .repo-opt-right {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+  .repo-vis-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.1rem 0.38rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--info) 14%, transparent);
+    color: var(--info);
+    flex-shrink: 0;
+  }
+  .repo-vis-badge.priv {
+    background: color-mix(in srgb, var(--warning) 15%, transparent);
+    color: var(--warning);
+  }
+  .repo-lang-tag {
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.66rem;
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .repo-check-icon {
+    color: var(--accent-strong);
+    font-size: 0.9rem;
+  }
+  .repo-empty-item {
+    padding: 0.75rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-subtle);
   }
   .ssh-key-card {
     display: flex;
