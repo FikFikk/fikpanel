@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { apiFetch, formatBytes } from '../lib/api';
+  import { copyText } from '../lib/utils/browser';
   import { confirmDialog, promptDialog } from '../lib/stores/confirm.svelte';
   import type { FileItem, FileListData } from '../lib/types';
 
@@ -337,7 +338,7 @@
   async function copyPathToClipboard(item: FileItem) {
     closeAllMenus();
     try {
-      await navigator.clipboard.writeText(item.path);
+      await copyText(item.path);
       onNotify(`Path disalin: ${item.name}`);
     } catch {
       onNotify(`Lokasi: ${item.path}`);
@@ -437,7 +438,7 @@
     closeAllMenus();
     const downloadUrl = `${window.location.origin}/api/files/read?path=${encodeURIComponent(item.path)}&download=1`;
     try {
-      await navigator.clipboard.writeText(downloadUrl);
+      await copyText(downloadUrl);
       onNotify(`Link unduhan eksternal disalin: ${item.name}`);
     } catch {
       onNotify(`Link: ${downloadUrl}`);

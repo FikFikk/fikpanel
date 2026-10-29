@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
+  import { copyText } from '../lib/utils/browser';
   import type {
     PortRule,
     FirewallExtendedStatus,
@@ -1115,7 +1116,7 @@
               <span class="aws-label">Security group name</span>
               <div class="aws-value-copy">
                 <span class="aws-val-text font-bold">launch-wizard-fikpanel</span>
-                <button class="copy-icon-btn" title="Copy name" onclick={() => { navigator.clipboard.writeText('launch-wizard-fikpanel'); notify('Security group name copied', 'info'); }}>
+                <button class="copy-icon-btn" title="Copy name" onclick={async () => { await copyText('launch-wizard-fikpanel'); notify('Security group name copied', 'info'); }}>
                   <i class="ri-file-copy-line"></i>
                 </button>
               </div>
@@ -1125,7 +1126,7 @@
               <span class="aws-label">Security group ID</span>
               <div class="aws-value-copy">
                 <span class="aws-val-text mono font-semibold">sg-0645a2456451e6a9f</span>
-                <button class="copy-icon-btn" title="Copy ID" onclick={() => { navigator.clipboard.writeText('sg-0645a2456451e6a9f'); notify('Security group ID copied', 'info'); }}>
+                <button class="copy-icon-btn" title="Copy ID" onclick={async () => { await copyText('sg-0645a2456451e6a9f'); notify('Security group ID copied', 'info'); }}>
                   <i class="ri-file-copy-line"></i>
                 </button>
               </div>
@@ -1145,7 +1146,7 @@
               <span class="aws-label">Owner</span>
               <div class="aws-value-copy">
                 <span class="aws-val-text mono">691687039084</span>
-                <button class="copy-icon-btn" title="Copy Owner" onclick={() => { navigator.clipboard.writeText('691687039084'); notify('Owner ID copied', 'info'); }}>
+                <button class="copy-icon-btn" title="Copy Owner" onclick={async () => { await copyText('691687039084'); notify('Owner ID copied', 'info'); }}>
                   <i class="ri-file-copy-line"></i>
                 </button>
               </div>

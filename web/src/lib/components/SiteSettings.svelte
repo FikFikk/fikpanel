@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { apiFetch, apiFetchText } from '../api';
+  import { copyText as copyToClipboard } from '../utils/browser';
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
   import type { DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
@@ -711,7 +712,7 @@
 
   async function copyText(text: string, label: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       onNotify(`${label} disalin`);
     } catch (err) {
       onNotify(`Gagal menyalin: ${(err as Error).message}`);

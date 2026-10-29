@@ -115,6 +115,10 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 180 * time.Second,
 		IdleTimeout:  60 * time.Second,
+		// Gunakan bgCtx sebagai BaseContext agar koneksi streaming SSE langsung ditutup saat Shutdown
+		BaseContext: func(_ net.Listener) context.Context {
+			return srv.bgCtx
+		},
 	}
 
 	return srv, nil

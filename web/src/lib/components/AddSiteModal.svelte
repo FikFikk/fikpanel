@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch, formatBytes } from '../api';
+  import { copyText as copyToClipboard } from '../utils/browser';
   import type { DomainReport, Site, SiteKind, SiteMeta } from '../types';
 
   interface Props {
@@ -594,7 +595,7 @@
   async function copySSHKey() {
     if (!sshPublicKey) return;
     try {
-      await navigator.clipboard.writeText(sshPublicKey);
+      await copyToClipboard(sshPublicKey);
       sshKeyCopied = true;
       setTimeout(() => (sshKeyCopied = false), 2000);
     } catch {

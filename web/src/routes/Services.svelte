@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch, formatBytes } from '../lib/api';
+  import { copyText } from '../lib/utils/browser';
   import type { Service } from '../lib/types';
   import NginxManager from '../lib/components/NginxManager.svelte';
 
@@ -162,12 +163,13 @@
     }
   }
 
-  // Salin teks log ke clipboard
+  // Salin teks log ke clipboard (mendukung HTTP non-HTTPS via fallback textarea)
   async function copyLogs() {
     if (!logContent) return;
     try {
-      await navigator.clipboard.writeText(logContent);
+      await copyText(logContent);
       copyLogSuccess = true;
+      onNotify('Log berhasil disalin ke clipboard', 'success');
       setTimeout(() => {
         copyLogSuccess = false;
       }, 2000);
