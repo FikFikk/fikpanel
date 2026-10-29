@@ -505,6 +505,8 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 	detectedKind := ""
 	detectedPostCmd := ""
 	needsDB := false
+	isLaravel := false
+	isFilament := false
 
 	contentsURL := fmt.Sprintf("https://api.github.com/repos/%s/contents", repo)
 	cReq, _ := http.NewRequestWithContext(ctx, "GET", contentsURL, nil)
@@ -528,9 +530,31 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 				detectedKind = "php"
 				needsDB = true
 				if fileSet["artisan"] {
+					isLaravel = true
 					detectedPostCmd = "composer install --no-interaction --prefer-dist --optimize-autoloader && php artisan key:generate --force && php artisan migrate --force"
 				} else {
 					detectedPostCmd = "composer install --no-interaction --prefer-dist"
+				}
+				// Periksa isi composer.json untuk mendeteksi penggunaan Filament Panel
+				if fileSet["composer.json"] {
+					compURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/composer.json", repo)
+					compReq, _ := http.NewRequestWithContext(ctx, "GET", compURL, nil)
+					compReq.Header.Set("Accept", "application/vnd.github.raw")
+					compReq.Header.Set("User-Agent", "FikPanel-Server")
+					if token != "" {
+						compReq.Header.Set("Authorization", "Bearer "+token)
+					}
+					if compResp, err := client.Do(compReq); err == nil {
+						rawComp, _ := io.ReadAll(io.LimitReader(compResp.Body, 128*1024))
+						_ = compResp.Body.Close()
+						compStr := strings.ToLower(string(rawComp))
+						if strings.Contains(compStr, "filament/filament") {
+							isFilament = true
+							isLaravel = true
+						} else if strings.Contains(compStr, "laravel/framework") {
+							isLaravel = true
+						}
+					}
 				}
 			case fileSet["go.mod"]:
 				detectedKind = "go"
@@ -558,6 +582,8 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 		"detected_kind":     detectedKind,
 		"detected_post_cmd": detectedPostCmd,
 		"needs_db":          needsDB,
+		"is_laravel":        isLaravel,
+		"is_filament":       isFilament,
 	})
 }
 
@@ -766,6 +792,19 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 			notes["backup_warning"] = err.Error()
 		} else {
 			notes["backup"] = "restored"
+		}
+	}
+
+	// 4b. Auto-Create / Update Akun Super Admin Laravel / Filament beserta Role super_admin
+	if in.CreateAdmin && strings.TrimSpace(in.AdminEmail) != "" && strings.TrimSpace(in.AdminPass) != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		adminName := strings.TrimSpace(in.AdminName)
+		if adminName == "" {
+			adminName = "Super Admin"
+		}
+		if err := s.provisionLaravelSuperAdmin(ctx, created, adminName, strings.TrimSpace(in.AdminEmail), in.AdminPass); err != nil {
+			notes["admin_warning"] = err.Error()
+		} else {
+			notes["admin_email"] = strings.TrimSpace(in.AdminEmail)
 		}
 	}
 
@@ -1326,3 +1365,224 @@ func (s *Server) handleBatchCreateSites(w http.ResponseWriter, r *http.Request) 
 		"results":       results,
 	})
 }
+
+// LaravelAdminUserItem merepresentasikan ringkasan akun pengguna di tabel users proyek Laravel / Filament
+type LaravelAdminUserItem struct {
+	ID    int64    `json:"id"`
+	Name  string   `json:"name"`
+	Email string   `json:"email"`
+	Roles []string `json:"roles"`
+}
+
+// resolveProjectDir menentukan direktori induk proyek dari RootPath situs
+func resolveProjectDir(rootPath string) string {
+	dir := strings.TrimSpace(rootPath)
+	if filepath.Base(dir) == "public" {
+		return filepath.Dir(dir)
+	}
+	return dir
+}
+
+// provisionLaravelSuperAdmin membuat atau memperbarui akun di tabel users serta memberikan role super_admin & admin (Spatie Permission / Filament Shield)
+func (s *Server) provisionLaravelSuperAdmin(ctx context.Context, site *store.Site, adminName, adminEmail, adminPass string) error {
+	projectDir := resolveProjectDir(site.RootPath)
+	if projectDir == "" {
+		return fmt.Errorf("direktori proyek kosong")
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, "artisan")); err != nil {
+		return fmt.Errorf("file artisan tidak ditemukan di %s", projectDir)
+	}
+
+	phpScript := `
+require "vendor/autoload.php";
+$app = require_once "bootstrap/app.php";
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$name = getenv("FIK_ADMIN_NAME") ?: "Super Admin";
+$email = getenv("FIK_ADMIN_EMAIL");
+$pass = getenv("FIK_ADMIN_PASS");
+$modelClass = "\\App\\Models\\User";
+if (!class_exists($modelClass)) {
+    fwrite(STDERR, "Model App\\Models\\User tidak ditemukan\n");
+    exit(1);
+}
+$attrs = [
+    "name" => $name,
+    "password" => \Illuminate\Support\Facades\Hash::make($pass),
+];
+try {
+    $table = (new $modelClass)->getTable();
+    $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+    if (in_array("email_verified_at", $cols)) { $attrs["email_verified_at"] = now(); }
+    if (in_array("is_admin", $cols)) { $attrs["is_admin"] = 1; }
+    if (in_array("is_active", $cols)) { $attrs["is_active"] = 1; }
+    if (in_array("role", $cols)) { $attrs["role"] = "super_admin"; }
+} catch (\Throwable $e) {}
+$u = $modelClass::unguarded(fn () => $modelClass::updateOrCreate(["email" => $email], $attrs));
+if (class_exists("\\Spatie\\Permission\\Models\\Role") && method_exists($u, "assignRole")) {
+    $guard = config("auth.defaults.guard", "web");
+    $r = \Spatie\Permission\Models\Role::findOrCreate("super_admin", $guard);
+    if (class_exists("\\Spatie\\Permission\\Models\\Permission")) {
+        $perms = \Spatie\Permission\Models\Permission::where("guard_name", $guard)->get();
+        if ($perms->count() > 0) { $r->syncPermissions($perms); }
+    }
+    $u->assignRole($r);
+    try {
+        $rAdmin = \Spatie\Permission\Models\Role::findOrCreate("admin", $guard);
+        $u->assignRole($rAdmin);
+    } catch (\Throwable $e) {}
+    try {
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    } catch (\Throwable $e) {}
+}
+echo "OK:" . $u->id;
+`
+	pctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(pctx, "php", "-r", phpScript)
+	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(),
+		"FIK_ADMIN_NAME="+adminName,
+		"FIK_ADMIN_EMAIL="+adminEmail,
+		"FIK_ADMIN_PASS="+adminPass,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal membuat akun Super Admin: %s", strings.TrimSpace(string(out)))
+	}
+
+	// Pastikan permission cache & log tetap dimiliki oleh www-data
+	permCmd := exec.CommandContext(pctx, "sh", "-c", "chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true")
+	permCmd.Dir = projectDir
+	_ = permCmd.Run()
+
+	return nil
+}
+
+// listLaravelAdminUsers mengambil daftar pengguna beserta role-nya dari proyek Laravel / Filament
+func listLaravelAdminUsers(ctx context.Context, projectDir string) ([]LaravelAdminUserItem, bool, bool) {
+	hasArtisan := false
+	isFilament := false
+	if _, err := os.Stat(filepath.Join(projectDir, "artisan")); err == nil {
+		hasArtisan = true
+	}
+	if rawComp, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil {
+		compLower := strings.ToLower(string(rawComp))
+		if strings.Contains(compLower, "filament/filament") {
+			isFilament = true
+			hasArtisan = true
+		}
+	}
+	if !hasArtisan || runtime.GOOS == "windows" {
+		return []LaravelAdminUserItem{}, hasArtisan, isFilament
+	}
+
+	phpScript := `
+require "vendor/autoload.php";
+$app = require_once "bootstrap/app.php";
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$modelClass = "\\App\\Models\\User";
+if (!class_exists($modelClass)) { echo "[]"; exit(0); }
+$users = $modelClass::query()->orderBy("id", "asc")->limit(25)->get();
+$out = [];
+foreach ($users as $u) {
+    $roles = [];
+    if (method_exists($u, "getRoleNames")) {
+        try { $roles = $u->getRoleNames()->toArray(); } catch (\Throwable $e) {}
+    }
+    $out[] = [
+        "id" => (int) $u->id,
+        "name" => (string) ($u->name ?? ""),
+        "email" => (string) ($u->email ?? ""),
+        "roles" => array_values($roles),
+    ];
+}
+echo json_encode($out);
+`
+	lctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(lctx, "php", "-r", phpScript)
+	cmd.Dir = projectDir
+	out, err := cmd.Output()
+	if err != nil {
+		return []LaravelAdminUserItem{}, hasArtisan, isFilament
+	}
+	var list []LaravelAdminUserItem
+	if idx := strings.IndexByte(string(out), '['); idx >= 0 {
+		_ = json.Unmarshal(out[idx:], &list)
+	}
+	if list == nil {
+		list = []LaravelAdminUserItem{}
+	}
+	return list, hasArtisan, isFilament
+}
+
+// handleGetSiteLaravelAdmin mengembalikan status proyek Laravel/Filament dan daftar akun admin yang terdaftar di DB proyek
+func (s *Server) handleGetSiteLaravelAdmin(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	projectDir := resolveProjectDir(site.RootPath)
+	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":          true,
+		"is_laravel":  isLaravel,
+		"is_filament": isFilament,
+		"users":       users,
+	})
+}
+
+// handleSaveSiteLaravelAdmin membuat atau memperbarui akun Super Admin pada proyek Laravel / Filament milik situs
+func (s *Server) handleSaveSiteLaravelAdmin(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	var req struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if !decodeNginxBody(w, r, &req) {
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Super Admin"
+	}
+	email := strings.TrimSpace(req.Email)
+	pass := req.Password
+	if email == "" || len(pass) < 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email dan password (minimal 4 karakter) wajib diisi"})
+		return
+	}
+
+	if err := s.provisionLaravelSuperAdmin(r.Context(), site, name, email, pass); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	s.auditSite(r, "site.laravel.admin", site.Domain, true, fmt.Sprintf("Super Admin dibuat/diperbarui: %s", email))
+	projectDir := resolveProjectDir(site.RootPath)
+	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":          true,
+		"is_laravel":  isLaravel,
+		"is_filament": isFilament,
+		"users":       users,
+	})
+}
+

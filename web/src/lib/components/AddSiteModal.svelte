@@ -138,6 +138,15 @@
   let dbPass = $state('');
   let dbTouched = $state(false);
 
+  // State provisioning akun Super Admin otomatis (Laravel / Filament)
+  let createAdmin = $state(false);
+  let adminName = $state('Super Admin');
+  let adminEmail = $state('');
+  let adminPass = $state('admin12345');
+  let adminEmailTouched = $state(false);
+  let isFilamentRepo = $state(false);
+  let isLaravelRepo = $state(false);
+
   // State One-Click Deploy
   let selectedTemplate = $state('laravel');
 
@@ -275,6 +284,14 @@
       const base = sanitizeDBIdentifier(report?.primary || 'fikpanel_site');
       dbName = `${base}_db`;
       dbUser = `${base}_u`;
+    }
+  });
+
+  // Isi otomatis email Super Admin berdasarkan domain utama jika belum diubah manual
+  $effect(() => {
+    if (!adminEmailTouched) {
+      const dom = report?.primary || 'example.com';
+      adminEmail = `admin@${dom}`;
     }
   });
 
@@ -463,6 +480,8 @@
         detected_kind?: SiteKind;
         detected_post_cmd?: string;
         needs_db?: boolean;
+        is_laravel?: boolean;
+        is_filament?: boolean;
       }>(`/api/sites/git/branches?repo=${encodeURIComponent(fullName)}`);
       gitBranches = res.branches || [gitBranch];
       if (gitBranches.length > 0 && !gitBranches.includes(gitBranch)) {
@@ -477,6 +496,11 @@
       }
       if (res.needs_db) {
         createDB = true;
+      }
+      isFilamentRepo = !!res.is_filament;
+      isLaravelRepo = !!(res.is_laravel || res.is_filament);
+      if (isFilamentRepo || isLaravelRepo) {
+        createAdmin = true;
       }
     } catch {
       gitBranches = [gitBranch];
@@ -747,13 +771,17 @@
           db_name: createDB ? dbName.trim() : '',
           db_user: createDB ? dbUser.trim() : '',
           db_pass: createDB ? dbPass : '',
+          create_admin: kind === 'php' && createDB && createAdmin,
+          admin_name: createAdmin ? adminName.trim() || 'Super Admin' : '',
+          admin_email: createAdmin ? adminEmail.trim() : '',
+          admin_pass: createAdmin ? adminPass : '',
           deploy_template: activeTab === 'deploy' ? selectedTemplate : '',
           git_repo_url: activeTab === 'git' ? gitRepoURL.trim() : '',
           git_branch: activeTab === 'git' ? gitBranch.trim() || 'main' : '',
           git_post_cmd: activeTab === 'git' ? gitPostCmd.trim() : '',
           backup_archive: activeTab === 'backup' ? selectedBackupArchive.trim() : ''
         }),
-        timeoutMs: 120_000
+        timeoutMs: 240_000
       });
       created = site;
       onCreated(site);
@@ -835,6 +863,7 @@
           {/if}
           {#if created.php_version}<dt>PHP</dt><dd>{created.php_version}</dd>{/if}
           {#if createDB}<dt>Database MySQL</dt><dd class="mono">{dbName} (user: {dbUser})</dd>{/if}
+          {#if createDB && createAdmin && kind === 'php'}<dt>Super Admin</dt><dd class="mono">{adminEmail} (pass: {adminPass})</dd>{/if}
           <dt>Domain</dt><dd class="mono">{[created.domain, ...JSON.parse(created.aliases || '[]')].join(', ')}</dd>
         </dl>
         <div class="ssl-cta" class:warn={!allPointHere}>
@@ -1671,6 +1700,60 @@
                     <input id="as-db-pass" class="mono" type="text" bind:value={dbPass} />
                   </label>
                 </div>
+
+                {#if kind === 'php'}
+                  <div class="admin-auto-divider"></div>
+                  <div class="row-between">
+                    <label class="check-inline" for="as-create-admin">
+                      <input id="as-create-admin" type="checkbox" bind:checked={createAdmin} />
+                      <span><i class="ri-shield-user-line"></i> Buat Akun Super Admin Otomatis (Laravel / Filament Shield)</span>
+                      {#if isFilamentRepo}
+                        <span class="filament-pill">Filament Terdeteksi</span>
+                      {:else if isLaravelRepo}
+                        <span class="filament-pill">Laravel Terdeteksi</span>
+                      {/if}
+                    </label>
+                    {#if createAdmin}
+                      <button type="button" class="preset" onclick={() => (adminPass = generateRandomPass(12))}>
+                        Acak Password Admin
+                      </button>
+                    {/if}
+                  </div>
+                  {#if createAdmin}
+                    <div class="grid-3">
+                      <label class="fld" for="as-admin-name">
+                        <span class="fld-label">Admin Name</span>
+                        <input
+                          id="as-admin-name"
+                          type="text"
+                          placeholder="Super Admin"
+                          bind:value={adminName}
+                        />
+                      </label>
+                      <label class="fld" for="as-admin-email">
+                        <span class="fld-label">Email Login</span>
+                        <input
+                          id="as-admin-email"
+                          class="mono"
+                          type="email"
+                          placeholder="admin@domain.com"
+                          bind:value={adminEmail}
+                          oninput={() => (adminEmailTouched = true)}
+                        />
+                      </label>
+                      <label class="fld" for="as-admin-pass">
+                        <span class="fld-label">Password Login</span>
+                        <input
+                          id="as-admin-pass"
+                          class="mono"
+                          type="text"
+                          placeholder="Minimal 4 karakter"
+                          bind:value={adminPass}
+                        />
+                      </label>
+                    </div>
+                  {/if}
+                {/if}
               </div>
             {/if}
           {/if}
@@ -2562,6 +2645,38 @@
     border-radius: 9px;
     border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     background: var(--bg-raised);
+  }
+  .admin-auto-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.25rem 0;
+  }
+  .check-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    flex-wrap: wrap;
+  }
+  .check-inline input[type='checkbox'] {
+    accent-color: var(--accent);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+  }
+  .filament-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent-strong);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   }
   .link {
     background: none;

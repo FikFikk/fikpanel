@@ -75,6 +75,10 @@ type SiteInput struct {
 	GitBranch      string `json:"git_branch"`
 	GitPostCmd     string `json:"git_post_cmd"`
 	BackupArchive  string `json:"backup_archive"`
+	CreateAdmin    bool   `json:"create_admin"`
+	AdminName      string `json:"admin_name"`
+	AdminEmail     string `json:"admin_email"`
+	AdminPass      string `json:"admin_pass"`
 }
 
 // domainReport adalah hasil analisis daftar domain untuk validasi realtime di UI

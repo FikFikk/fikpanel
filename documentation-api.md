@@ -2794,6 +2794,26 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "created_count": 3, "total_lines": 3, "results": [{"domain": "app1.example.com", "kind": "php", "ok": true, "message": "Situs aktif di Nginx..."}]}` |
 | Notes | Memproses pembuatan banyak situs sekaligus beserta database MySQL dan penjadwalan SSL Let's Encrypt otomatis. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/laravel-admin` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "is_laravel": true, "is_filament": true, "users": [{"id": 1, "name": "Super Admin", "email": "admin@domain.com", "roles": ["super_admin"]}]}` |
+| Notes | Memeriksa apakah situs merupakan proyek Laravel/Filament dan membaca daftar akun pengguna di tabel `users` beserta role Spatie Permission. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/laravel-admin` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, opsional, default `"Super Admin"`), `email` (string, wajib), `password` (string, wajib, minimal 4 karakter) |
+| Response | HTTP 200 `{"ok": true, "is_laravel": true, "is_filament": true, "users": [...]}` |
+| Notes | Membuat atau memperbarui akun di tabel `users` dengan hash bcrypt/Argon2 Laravel, menyetel `email_verified_at`, membuat dan memberikan role `super_admin` serta `admin` (Filament Shield / Spatie Permission), dan membersihkan cache permission. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

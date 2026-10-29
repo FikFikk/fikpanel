@@ -35,6 +35,7 @@
       tabs.push(
         { id: 'directory', label: 'Directory', icon: 'ri-folder-settings-line' },
         { id: 'php', label: 'PHP Version', icon: 'ri-code-s-slash-line' },
+        { id: 'laravel_admin', label: 'Super Admin (Filament)', icon: 'ri-shield-user-line' },
         { id: 'rewrite', label: 'URL Rewrite', icon: 'ri-shuffle-line' },
         { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
       );
@@ -157,6 +158,22 @@
   let fPHP = $state('');
   let sessionIsolation = $state(false);
   let phpSaving = $state(false);
+
+  // 8b. Tab Laravel / Filament Super Admin
+  interface LaravelAdminUser {
+    id: number;
+    name: string;
+    email: string;
+    roles: string[];
+  }
+  let laravelUsers = $state<LaravelAdminUser[]>([]);
+  let isLaravelProject = $state(false);
+  let isFilamentProject = $state(false);
+  let laravelLoading = $state(false);
+  let laravelSaving = $state(false);
+  let lAdminName = $state('Super Admin');
+  let lAdminEmail = $state('');
+  let lAdminPass = $state('admin12345');
 
   // 9. Tab Reverse Proxy
   let fUpstream = $state('');
@@ -343,6 +360,55 @@
     }
   }
 
+  async function loadLaravelAdmin() {
+    if (!detail) return;
+    laravelLoading = true;
+    try {
+      const r = await apiFetch<{
+        ok: boolean;
+        is_laravel: boolean;
+        is_filament: boolean;
+        users: LaravelAdminUser[];
+      }>(`/api/sites/${siteId}/laravel-admin`);
+      isLaravelProject = !!r.is_laravel;
+      isFilamentProject = !!r.is_filament;
+      laravelUsers = r.users || [];
+      if (!lAdminEmail) {
+        lAdminEmail = `admin@${detail.site.domain}`;
+      }
+    } catch (err) {
+      onNotify(`Gagal memuat data admin: ${(err as Error).message}`);
+    } finally {
+      laravelLoading = false;
+    }
+  }
+
+  async function saveLaravelAdmin() {
+    if (!detail) return;
+    laravelSaving = true;
+    try {
+      const r = await apiFetch<{
+        ok: boolean;
+        is_laravel: boolean;
+        is_filament: boolean;
+        users: LaravelAdminUser[];
+      }>(`/api/sites/${siteId}/laravel-admin`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: lAdminName.trim() || 'Super Admin',
+          email: lAdminEmail.trim(),
+          password: lAdminPass
+        })
+      });
+      laravelUsers = r.users || [];
+      onNotify(`Akun Super Admin (${lAdminEmail.trim()}) berhasil disimpan & diberi role super_admin`);
+    } catch (err) {
+      onNotify(`Gagal menyimpan Super Admin: ${(err as Error).message}`);
+    } finally {
+      laravelSaving = false;
+    }
+  }
+
   $effect(() => {
     const tab = active;
     if (!detail) return;
@@ -351,6 +417,7 @@
         if (!dnsReport && !dnsLoading) checkDNS();
         loadDeployedCerts();
       }
+      if (tab === 'laravel_admin') loadLaravelAdmin();
       if (tab === 'conf') loadVhost();
       if (tab === 'logs') loadLogs(logSubTab);
     });
@@ -1127,6 +1194,101 @@
         </div>
       </section>
 
+    <!-- 8b. TAB: LARAVEL / FILAMENT SUPER ADMIN -->
+    {:else if tab === 'laravel_admin'}
+      <section class="ss-sec">
+        <div class="conf-head">
+          <div class="sec-title">
+            <h4>Super Admin & Akun Panel (Laravel / Filament Shield)</h4>
+            <p class="ss-desc">
+              Buat akun Super Admin baru atau reset password & izin role <code>super_admin</code> secara instan tanpa perlu membuka terminal.
+            </p>
+          </div>
+          <button class="btn-mini" onclick={loadLaravelAdmin} disabled={laravelLoading}>
+            <i class="ri-refresh-line" class:spin={laravelLoading}></i> Refresh
+          </button>
+        </div>
+
+        <div class="ladmin-form-card">
+          <div class="ladmin-form-head">
+            <b><i class="ri-shield-user-line"></i> Buat / Reset Akun Super Admin</b>
+            {#if isFilamentProject}
+              <span class="tag">Filament Panel Aktif</span>
+            {:else if isLaravelProject}
+              <span class="tag">Laravel Aktif</span>
+            {/if}
+          </div>
+          <div class="ladmin-grid">
+            <label class="fld" for="ss-ladmin-name">
+              <span>Nama Admin</span>
+              <input id="ss-ladmin-name" type="text" placeholder="Super Admin" bind:value={lAdminName} />
+            </label>
+            <label class="fld" for="ss-ladmin-email">
+              <span>Email Login</span>
+              <input id="ss-ladmin-email" class="mono" type="email" placeholder="admin@{detail.site.domain}" bind:value={lAdminEmail} />
+            </label>
+            <label class="fld" for="ss-ladmin-pass">
+              <span>Password Login</span>
+              <input id="ss-ladmin-pass" class="mono" type="text" placeholder="Minimal 4 karakter" bind:value={lAdminPass} />
+            </label>
+          </div>
+          <div class="ss-actions">
+            <button
+              class="btn-primary"
+              onclick={saveLaravelAdmin}
+              disabled={laravelSaving || !lAdminEmail.trim() || lAdminPass.length < 4}
+            >
+              {#if laravelSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-user-add-line"></i>{/if}
+              Simpan & Jadikan Super Admin
+            </button>
+          </div>
+        </div>
+
+        <div class="sec-title">
+          <h4>Daftar Akun Terdaftar di Database ({laravelUsers.length})</h4>
+          <p class="ss-desc">Klik tombol <b>Pilih</b> pada baris akun untuk mereset password atau menyuntikkan role <code>super_admin</code>.</p>
+        </div>
+
+        {#if laravelLoading}
+          <div class="ss-empty"><i class="ri-loader-4-line spin"></i><p>Memuat daftar pengguna dari database proyek…</p></div>
+        {:else if laravelUsers.length === 0}
+          <div class="note warn">
+            <i class="ri-information-line"></i>
+            <span>Belum ada akun di tabel <code>users</code> atau proyek ini bukan berbasis Laravel. Gunakan form di atas untuk membuat akun pertama.</span>
+          </div>
+        {:else}
+          <div class="ladmin-user-list">
+            {#each laravelUsers as u (u.id)}
+              <div class="ladmin-user-row">
+                <div class="ladmin-user-info">
+                  <b>#{u.id} · {u.name || 'Tanpa Nama'}</b>
+                  <span class="mono">{u.email}</span>
+                </div>
+                <div class="ladmin-user-roles">
+                  {#if u.roles && u.roles.length > 0}
+                    {#each u.roles as r (r)}
+                      <span class="tag">{r}</span>
+                    {/each}
+                  {:else}
+                    <small class="mono">tanpa role</small>
+                  {/if}
+                  <button
+                    type="button"
+                    class="btn-mini"
+                    onclick={() => {
+                      lAdminName = u.name || 'Super Admin';
+                      lAdminEmail = u.email;
+                    }}
+                  >
+                    <i class="ri-edit-line"></i> Pilih / Reset
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
     <!-- 9. TAB: RUNTIME UPSTREAM / REVERSE PROXY -->
     {:else if tab === 'proxy'}
       <section class="ss-sec">
@@ -1393,6 +1555,15 @@
   .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
   .btn-mini { padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.72rem; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-muted); }
   .btn-mini:hover:not(:disabled) { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+  .ladmin-form-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .ladmin-form-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text); }
+  .ladmin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+  .ladmin-user-list { display: flex; flex-direction: column; gap: 0.45rem; }
+  .ladmin-user-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border); }
+  .ladmin-user-info { display: flex; flex-direction: column; gap: 0.12rem; font-size: 0.78rem; color: var(--text); }
+  .ladmin-user-info span { font-size: 0.74rem; color: var(--text-muted); }
+  .ladmin-user-roles { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
 
   .spin { display: inline-block; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
