@@ -876,7 +876,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 				}
 			}
 		}
-		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o640)
+		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o644)
 	}
 
 	// Pastikan folder public tersedia jika root_path berakhir dengan /public tetapi repo tidak memiliki sub-folder public
@@ -928,7 +928,8 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
 				"(php artisan filament:upgrade || php artisan filament:assets || true)",
 				"(php artisan optimize:clear || true)",
-				"(chown -R www-data:www-data storage bootstrap/cache database 2>/dev/null || true)",
+				"(chown -R www-data:www-data .env storage bootstrap/cache database public 2>/dev/null || true)",
+				"(chmod 644 .env 2>/dev/null || true)",
 				"(chmod -R 775 storage bootstrap/cache 2>/dev/null || true)",
 				"(chmod 755 /home/fikpanel /home/fikpanel/web . public 2>/dev/null || true)",
 			}, " && ")
