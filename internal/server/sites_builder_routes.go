@@ -796,15 +796,33 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 	}
 
 	// 4b. Auto-Create / Update Akun Super Admin Laravel / Filament beserta Role super_admin
-	if in.CreateAdmin && strings.TrimSpace(in.AdminEmail) != "" && strings.TrimSpace(in.AdminPass) != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		adminName := strings.TrimSpace(in.AdminName)
-		if adminName == "" {
-			adminName = "Super Admin"
+	if created.Kind == "php" && created.RootPath != "" && runtime.GOOS != "windows" {
+		targetDir := created.RootPath
+		if filepath.Base(targetDir) == "public" {
+			targetDir = filepath.Dir(targetDir)
 		}
-		if err := s.provisionLaravelSuperAdmin(ctx, created, adminName, strings.TrimSpace(in.AdminEmail), in.AdminPass); err != nil {
-			notes["admin_warning"] = err.Error()
-		} else {
-			notes["admin_email"] = strings.TrimSpace(in.AdminEmail)
+		_, errArtisan := os.Stat(filepath.Join(targetDir, "artisan"))
+		compBytes, _ := os.ReadFile(filepath.Join(targetDir, "composer.json"))
+		hasFilament := strings.Contains(strings.ToLower(string(compBytes)), "filament/filament")
+
+		if errArtisan == nil && (in.CreateAdmin || hasFilament) {
+			adminName := strings.TrimSpace(in.AdminName)
+			if adminName == "" {
+				adminName = "Super Admin"
+			}
+			adminEmail := strings.TrimSpace(in.AdminEmail)
+			if adminEmail == "" {
+				adminEmail = "admin@" + created.Domain
+			}
+			adminPass := in.AdminPass
+			if strings.TrimSpace(adminPass) == "" {
+				adminPass = "admin12345"
+			}
+			if err := s.provisionLaravelSuperAdmin(ctx, created, adminName, adminEmail, adminPass); err != nil {
+				notes["admin_warning"] = err.Error()
+			} else {
+				notes["admin_email"] = adminEmail
+			}
 		}
 	}
 

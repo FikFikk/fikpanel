@@ -139,7 +139,7 @@
   let dbTouched = $state(false);
 
   // State provisioning akun Super Admin otomatis (Laravel / Filament)
-  let createAdmin = $state(false);
+  let createAdmin = $state(true);
   let adminName = $state('Super Admin');
   let adminEmail = $state('');
   let adminPass = $state('admin12345');
@@ -461,6 +461,8 @@
     const lang = (found.language || '').toLowerCase();
     if (lang === 'php') {
       selectKind('php');
+      createDB = true;
+      createAdmin = true;
       if (!gitPostCmd) gitPostCmd = 'composer install --no-interaction --prefer-dist';
     } else if (lang === 'javascript' || lang === 'typescript') {
       selectKind('node');
@@ -1486,6 +1488,60 @@
                     bind:value={gitPostCmd}
                   />
                 </label>
+
+                {#if kind === 'php'}
+                  <div class="admin-auto-divider"></div>
+                  <div class="row-between">
+                    <label class="check-inline" for="as-git-create-admin">
+                      <input id="as-git-create-admin" type="checkbox" bind:checked={createAdmin} />
+                      <span><i class="ri-shield-user-line"></i> Buat Akun Super Admin Otomatis (Laravel / Filament Shield)</span>
+                      {#if isFilamentRepo}
+                        <span class="filament-pill">Filament Terdeteksi</span>
+                      {:else if isLaravelRepo}
+                        <span class="filament-pill">Laravel Terdeteksi</span>
+                      {/if}
+                    </label>
+                    {#if createAdmin}
+                      <button type="button" class="preset" onclick={() => (adminPass = generateRandomPass(12))}>
+                        Acak Password Admin
+                      </button>
+                    {/if}
+                  </div>
+                  {#if createAdmin}
+                    <div class="grid-3">
+                      <label class="fld" for="as-git-admin-name">
+                        <span class="fld-label">Admin Name (Username)</span>
+                        <input
+                          id="as-git-admin-name"
+                          type="text"
+                          placeholder="Super Admin"
+                          bind:value={adminName}
+                        />
+                      </label>
+                      <label class="fld" for="as-git-admin-email">
+                        <span class="fld-label">Email Login</span>
+                        <input
+                          id="as-git-admin-email"
+                          class="mono"
+                          type="email"
+                          placeholder="admin@domain.com"
+                          bind:value={adminEmail}
+                          oninput={() => (adminEmailTouched = true)}
+                        />
+                      </label>
+                      <label class="fld" for="as-git-admin-pass">
+                        <span class="fld-label">Password Login</span>
+                        <input
+                          id="as-git-admin-pass"
+                          class="mono"
+                          type="text"
+                          placeholder="Minimal 4 karakter"
+                          bind:value={adminPass}
+                        />
+                      </label>
+                    </div>
+                  {/if}
+                {/if}
               </div>
             {/if}
 
@@ -1701,7 +1757,7 @@
                   </label>
                 </div>
 
-                {#if kind === 'php'}
+                {#if kind === 'php' && activeTab !== 'git'}
                   <div class="admin-auto-divider"></div>
                   <div class="row-between">
                     <label class="check-inline" for="as-create-admin">

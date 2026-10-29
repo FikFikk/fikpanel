@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"fikpanel/internal/ai"
@@ -502,6 +503,9 @@ func (s *Server) registerRoutes() {
 		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
 		setCSP := func() {
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+			if !strings.HasPrefix(r.URL.Path, "/assets/") {
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			}
 		}
 
 		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)
