@@ -737,8 +737,18 @@
 
     deployTickTimer = setInterval(() => {
       deployElapsedSec = Math.floor((Date.now() - startMs) / 1000);
-      if (deployPercent < 95) {
-        deployPercent = Math.min(95, deployPercent + 1);
+      // Batasi kenaikan persentase otomatis sesuai plafon tahap aktif agar sinkron dengan tahapan backend
+      const stageCap =
+        deployStage === 'vhost' ? 16 :
+        deployStage === 'database' ? 26 :
+        deployStage === 'git_clone' ? 42 :
+        deployStage === 'env' ? 54 :
+        deployStage === 'composer' ? 70 :
+        deployStage === 'migrate' ? 82 :
+        deployStage === 'filament' ? 88 :
+        deployStage === 'admin' ? 94 : 98;
+      if (deployPercent < stageCap) {
+        deployPercent = Math.min(stageCap, deployPercent + 1);
       }
     }, 1000);
 
@@ -750,7 +760,7 @@
         }>(`/api/sites/deploy-progress?domain=${encodeURIComponent(targetDomain)}`, {
           timeoutMs: 3500
         });
-        if (res?.progress && res.progress.updated_at >= startMs - 2000) {
+        if (res?.progress) {
           if (res.progress.percent > deployPercent) {
             deployPercent = res.progress.percent;
           }
@@ -3084,7 +3094,7 @@
   .deploy-progress-panel {
     margin: 0 1.35rem 0.65rem;
     padding: 0.85rem 1rem;
-    background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised));
     border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
     border-radius: 10px;
     display: flex;
@@ -3106,7 +3116,7 @@
   }
   .deploy-prog-icon {
     font-size: 1.25rem;
-    color: var(--accent);
+    color: var(--accent-strong);
     flex-shrink: 0;
   }
   .deploy-prog-text {
@@ -3129,7 +3139,7 @@
   .deploy-prog-pct {
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--accent-strong);
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
     padding: 0.2rem 0.6rem;
@@ -3138,15 +3148,17 @@
   }
   .deploy-prog-track {
     width: 100%;
-    height: 8px;
-    background: var(--bg-canvas);
+    height: 10px;
+    background: var(--bg-inset);
     border-radius: 999px;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
   }
   .deploy-prog-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--success));
+    min-width: 6px;
+    background: linear-gradient(90deg, var(--accent-hover), var(--accent), var(--accent-strong));
+    box-shadow: 0 0 10px var(--ring-accent);
     border-radius: 999px;
     transition: width 0.35s ease;
   }
@@ -3163,19 +3175,20 @@
     font-size: 0.72rem;
     padding: 0.16rem 0.5rem;
     border-radius: 999px;
-    background: var(--bg-canvas);
+    background: var(--bg-inset);
     border: 1px solid var(--border);
     color: var(--text-muted);
   }
   .dp-step.active {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-canvas));
+    color: var(--info);
+    border-color: color-mix(in srgb, var(--info) 45%, var(--border));
+    background: color-mix(in srgb, var(--info) 12%, var(--bg-inset));
     font-weight: 600;
   }
   .dp-step.done {
-    color: var(--success);
-    border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+    color: var(--accent-strong);
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-inset));
   }
 
   .spin {

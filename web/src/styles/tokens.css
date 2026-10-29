@@ -54,6 +54,8 @@
   --accent: #10b981;        /* aksi utama, status aktif/sehat, brand */
   --accent-strong: #34d399; /* teks/ikon aksen di atas latar gelap */
   --accent-hover: #059669;
+  --success: #10b981;       /* alias status sukses / berhasil */
+  --success-strong: #34d399;
   --info: #38bdf8;          /* informasi netral, tautan, proses berjalan */
   --warning: #f59e0b;       /* perlu perhatian, belum berbahaya */
   --warning-strong: #fbbf24;
