@@ -46,7 +46,7 @@
   let logTarget = $state<Site | null>(null);
   let logTab = $state<'access' | 'error'>('access');
 
-  // Modal Konfirmasi Hapus Situs (GitHub-Style Danger Zone + Anti-Paste + Auto-Backup)
+  // Modal Konfirmasi Hapus Situs (Danger Zone + Anti-Paste + Auto-Backup)
   let deleteTarget = $state<Site | null>(null);
   let deleteConfirmInput = $state('');
   let deleteFilesOpt = $state(true);
@@ -708,7 +708,7 @@
     </div>
   {/if}
 
-  <!-- ═════════ MODAL: Konfirmasi Hapus Situs (GitHub-Style Danger Zone) ═════════ -->
+  <!-- ═════════ MODAL: Konfirmasi Hapus Situs (Danger Zone) ═════════ -->
   {#if deleteTarget}
     <div
       class="modal-backdrop"
@@ -786,7 +786,7 @@
           </label>
         </div>
 
-        <!-- Verifikasi Ketik Manual (Anti Copy-Paste ala GitHub) -->
+        <!-- Verifikasi Ketik Manual (Anti Copy-Paste) -->
         <div class="delete-verify-box">
           <label for="confirm-domain-input" class="verify-label">
             Untuk konfirmasi, ketik manual nama domain <strong class="mono select-none">{deleteTarget.domain}</strong> di bawah ini:
@@ -816,7 +816,7 @@
           {#if deletePasteWarning}
             <div class="paste-blocked-hint">
               <i class="ri-keyboard-box-line"></i>
-              <span>Demi keamanan ekstra (seperti GitHub), fitur Copy-Paste dinonaktifkan. Silakan ketik nama domain secara manual dengan keyboard.</span>
+              <span>Demi keamanan, fitur Copy-Paste dinonaktifkan. Silakan ketik nama domain secara manual dengan keyboard.</span>
             </div>
           {/if}
         </div>
