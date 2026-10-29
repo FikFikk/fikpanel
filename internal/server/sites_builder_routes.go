@@ -1118,6 +1118,9 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 				"(php artisan optimize:clear || true)",
 			}, "; "))
 
+			// Bersihkan placeholder stub '{{ ViewAny }}' pada app/Policies/*.php hasil shield:generate
+			sanitizeFilamentShieldPolicies(targetDir)
+
 			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o644)
 		} else {
 			if hasComposer && (postCmd == "" || strings.Contains(postCmd, "composer install")) {
@@ -1447,6 +1450,15 @@ func (s *Server) provisionLaravelSuperAdmin(ctx context.Context, site *store.Sit
 		return fmt.Errorf("file artisan tidak ditemukan di %s", projectDir)
 	}
 
+	// Jika proyek menggunakan bezhansalleh/filament-shield, pastikan kebijakan (policies) dan permission telah digenerate
+	if rawComp, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(rawComp)), "bezhansalleh/filament-shield") {
+		sctx, scancel := context.WithTimeout(ctx, 45*time.Second)
+		shieldCmd := exec.CommandContext(sctx, "sh", "-c", "(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)")
+		shieldCmd.Dir = projectDir
+		_ = shieldCmd.Run()
+		scancel()
+	}
+
 	phpScript := `
 require "vendor/autoload.php";
 $app = require_once "bootstrap/app.php";
@@ -1474,6 +1486,53 @@ try {
 $u = $modelClass::unguarded(fn () => $modelClass::updateOrCreate(["email" => $email], $attrs));
 if (class_exists("\\Spatie\\Permission\\Models\\Role") && method_exists($u, "assignRole")) {
     $guard = config("auth.defaults.guard", "web");
+
+    // Perbaiki otomatis placeholder stub Filament Shield (seperti '{{ ViewAny }}') yang tidak terganti
+    // apabila sebagian permission_prefixes di config/filament-shield.php dikomentari oleh pengembang proyek.
+    $policyDir = base_path("app/Policies");
+    $discoveredPerms = [];
+    if (is_dir($policyDir)) {
+        foreach (glob($policyDir . "/*.php") as $file) {
+            $code = @file_get_contents($file);
+            if ($code === false) continue;
+            $slug = "";
+            if (preg_match("/->can\('view_([^'{]+)'\)/", $code, $m)) {
+                $slug = $m[1];
+            }
+            if ($slug !== "" && str_contains($code, "{{")) {
+                $replacements = [
+                    "'{{ ViewAny }}'"        => "'view_{$slug}'",
+                    "'{{ View }}'"           => "'view_{$slug}'",
+                    "'{{ Create }}'"         => "'create_{$slug}'",
+                    "'{{ Update }}'"         => "'update_{$slug}'",
+                    "'{{ Delete }}'"         => "'delete_{$slug}'",
+                    "'{{ DeleteAny }}'"      => "'delete_{$slug}'",
+                    "'{{ ForceDelete }}'"    => "'delete_{$slug}'",
+                    "'{{ ForceDeleteAny }}'" => "'delete_{$slug}'",
+                    "'{{ Restore }}'"        => "'update_{$slug}'",
+                    "'{{ RestoreAny }}'"     => "'update_{$slug}'",
+                    "'{{ Replicate }}'"      => "'update_{$slug}'",
+                    "'{{ Reorder }}'"        => "'update_{$slug}'",
+                ];
+                $code = strtr($code, $replacements);
+                @file_put_contents($file, $code);
+            }
+            if (preg_match_all("/->can\('([^'{]+)'\)/", $code, $matches)) {
+                foreach ($matches[1] as $pName) {
+                    $discoveredPerms[$pName] = true;
+                }
+            }
+        }
+    }
+
+    if (class_exists("\\Spatie\\Permission\\Models\\Permission")) {
+        foreach (array_keys($discoveredPerms) as $pName) {
+            try {
+                \Spatie\Permission\Models\Permission::firstOrCreate(["name" => $pName, "guard_name" => $guard]);
+            } catch (\Throwable $e) {}
+        }
+    }
+
     $r = \Spatie\Permission\Models\Role::findOrCreate("super_admin", $guard);
     if (class_exists("\\Spatie\\Permission\\Models\\Permission")) {
         $perms = \Spatie\Permission\Models\Permission::where("guard_name", $guard)->get();
@@ -1482,6 +1541,7 @@ if (class_exists("\\Spatie\\Permission\\Models\\Role") && method_exists($u, "ass
     $u->assignRole($r);
     try {
         $rAdmin = \Spatie\Permission\Models\Role::findOrCreate("admin", $guard);
+        if (isset($perms) && $perms->count() > 0) { $rAdmin->syncPermissions($perms); }
         $u->assignRole($rAdmin);
     } catch (\Throwable $e) {}
     try {
@@ -1718,5 +1778,60 @@ func sanitizeCookieSlug(domain string) string {
 	}
 	return slug
 }
+
+// sanitizeFilamentShieldPolicies memperbaiki otomatis berkas app/Policies/*.php hasil shield:generate
+// ketika sebagian permission_prefixes (seperti view_any / delete_any) dikomentari di config/filament-shield.php
+// sehingga placeholder stub '{{ ViewAny }}' tidak menyebabkan menu resource hilang di sidebar Filament.
+func sanitizeFilamentShieldPolicies(projectDir string) {
+	policyDir := filepath.Join(projectDir, "app", "Policies")
+	entries, err := os.ReadDir(policyDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".php") {
+			continue
+		}
+		fullPath := filepath.Join(policyDir, entry.Name())
+		raw, err := os.ReadFile(fullPath)
+		if err != nil {
+			continue
+		}
+		code := string(raw)
+		if !strings.Contains(code, "{{") {
+			continue
+		}
+		slug := ""
+		const marker = "->can('view_"
+		if idx := strings.Index(code, marker); idx >= 0 {
+			rest := code[idx+len(marker):]
+			if endIdx := strings.IndexByte(rest, '\''); endIdx > 0 {
+				slug = rest[:endIdx]
+			}
+		}
+		if slug == "" {
+			continue
+		}
+		replacer := strings.NewReplacer(
+			"'{{ ViewAny }}'", "'view_"+slug+"'",
+			"'{{ View }}'", "'view_"+slug+"'",
+			"'{{ Create }}'", "'create_"+slug+"'",
+			"'{{ Update }}'", "'update_"+slug+"'",
+			"'{{ Delete }}'", "'delete_"+slug+"'",
+			"'{{ DeleteAny }}'", "'delete_"+slug+"'",
+			"'{{ ForceDelete }}'", "'delete_"+slug+"'",
+			"'{{ ForceDeleteAny }}'", "'delete_"+slug+"'",
+			"'{{ Restore }}'", "'update_"+slug+"'",
+			"'{{ RestoreAny }}'", "'update_"+slug+"'",
+			"'{{ Replicate }}'", "'update_"+slug+"'",
+			"'{{ Reorder }}'", "'update_"+slug+"'",
+		)
+		updated := replacer.Replace(code)
+		if updated != code {
+			_ = os.WriteFile(fullPath, []byte(updated), 0o644)
+		}
+	}
+}
+
 
 
