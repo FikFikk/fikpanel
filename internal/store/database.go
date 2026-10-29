@@ -56,7 +56,20 @@ func (s *Store) ListDatabases(ctx context.Context, engine string) ([]DatabaseRec
 	return list, nil
 }
 
-// CreateDatabase menyimpan database baru ke dalam tabel
+// GetDatabaseByName mengambil satu record database berdasarkan engine dan nama
+func (s *Store) GetDatabaseByName(ctx context.Context, engine, name string) (*DatabaseRecord, error) {
+	var d DatabaseRecord
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, engine, name, username, password, size_bytes, backup_count, location, note, created_at
+		 FROM databases WHERE engine = ? AND name = ? LIMIT 1`, engine, name).
+		Scan(&d.ID, &d.Engine, &d.Name, &d.Username, &d.Password, &d.SizeBytes, &d.BackupCount, &d.Location, &d.Note, &d.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// CreateDatabase menyimpan database baru atau memperbarui kredensial jika nama database sudah ada
 func (s *Store) CreateDatabase(ctx context.Context, d DatabaseRecord) (*DatabaseRecord, error) {
 	now := time.Now().Unix()
 	if d.Location == "" {
@@ -65,17 +78,21 @@ func (s *Store) CreateDatabase(ctx context.Context, d DatabaseRecord) (*Database
 
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO databases (engine, name, username, password, size_bytes, backup_count, location, note, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(engine, name) DO UPDATE SET
+		   username = excluded.username,
+		   password = excluded.password,
+		   location = excluded.location,
+		   note = excluded.note`,
 		d.Engine, d.Name, d.Username, d.Password, d.SizeBytes, d.BackupCount, d.Location, d.Note, now)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menambahkan database baru: %w", err)
 	}
 
 	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
+	if err == nil && id > 0 {
+		d.ID = id
 	}
-	d.ID = id
 	d.CreatedAt = now
 	return &d, nil
 }

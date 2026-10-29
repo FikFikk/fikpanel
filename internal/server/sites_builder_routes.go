@@ -694,6 +694,26 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 	dbUser := strings.TrimSpace(in.DBUser)
 	dbPass := strings.TrimSpace(in.DBPass)
 
+	// Jika situs dibuat ulang tanpa centang CreateDB namun database domain ini sudah terdaftar di panel, gunakan kembali kredensialnya
+	if !in.CreateDB {
+		base := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				return r
+			}
+			return '_'
+		}, strings.ToLower(created.Domain))
+		base = strings.Trim(base, "_")
+		if len(base) > 12 {
+			base = base[:12]
+		}
+		if existingDB, err := s.store.GetDatabaseByName(ctx, "mysql", base+"_db"); err == nil && existingDB != nil {
+			in.CreateDB = true
+			dbName = existingDB.Name
+			dbUser = existingDB.Username
+			dbPass = existingDB.Password
+		}
+	}
+
 	// 1. Auto-Create Database MySQL terlebih dahulu agar skema tersedia saat proses build / migrasi Git
 	if in.CreateDB && dbName != "" && dbUser != "" && dbPass != "" {
 		if err := database.ProvisionDatabase(ctx, "mysql", dbName, dbUser, dbPass, "localhost"); err != nil {
@@ -832,9 +852,19 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 	}
 
-	// Injeksi file .env otomatis (salin dari .env.example bila ada agar variabel kustom aplikasi/Filament tetap utuh)
+	// Injeksi & sinkronisasi file .env otomatis (selalu perbarui kredensial DB agar tidak tertinggal .env lama saat re-deploy)
 	envPath := filepath.Join(targetDir, ".env")
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+	existingAppKey := ""
+	if rawOldEnv, err := os.ReadFile(envPath); err == nil {
+		for _, line := range strings.Split(string(rawOldEnv), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "APP_KEY=") && len(trimmed) > len("APP_KEY=") {
+				existingAppKey = strings.TrimPrefix(trimmed, "APP_KEY=")
+				break
+			}
+		}
+	}
+	{
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
 		envLines = append(envLines, "NODE_ENV=production")
@@ -842,7 +872,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		envLines = append(envLines, "APP_ENV=production")
 		envLines = append(envLines, "APP_DEBUG=false")
 		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
-		envLines = append(envLines, "APP_KEY=")
+		envLines = append(envLines, fmt.Sprintf("APP_KEY=%s", existingAppKey))
 		envLines = append(envLines, "SESSION_DRIVER=file")
 		envLines = append(envLines, "CACHE_STORE=file")
 		if createDB && dbName != "" && dbUser != "" {
