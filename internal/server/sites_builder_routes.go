@@ -753,7 +753,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 4. Restore dari Arsip Backup
 	if archivePath := strings.TrimSpace(in.BackupArchive); archivePath != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		if err := extractBackupToSite(ctx, created, archivePath); err != nil {
+		if err := s.extractBackupToSite(ctx, created, archivePath, dbName); err != nil {
 			notes["backup_warning"] = err.Error()
 		} else {
 			notes["backup"] = "restored"
@@ -1055,14 +1055,19 @@ func phpVersionLabel(v string) string {
 	return v
 }
 
-// extractBackupToSite mengekstrak arsip .tar.gz / .tgz / .zip ke direktori root situs
-func extractBackupToSite(ctx context.Context, site *store.Site, archivePath string) error {
+// extractBackupToSite mengekstrak arsip .tar.gz / .tgz / .zip ke direktori root situs dan memulihkan dump SQL jika tersedia
+func (s *Server) extractBackupToSite(ctx context.Context, site *store.Site, archivePath, dbName string) error {
 	cleanPath := filepath.Clean(archivePath)
 	if _, err := os.Stat(cleanPath); err != nil {
 		return fmt.Errorf("berkas arsip tidak ditemukan: %s", cleanPath)
 	}
-	_ = os.MkdirAll(site.RootPath, 0o755)
+	targetDir := site.RootPath
+	if filepath.Base(targetDir) == "public" {
+		targetDir = filepath.Dir(targetDir)
+	}
+	_ = os.MkdirAll(targetDir, 0o755)
 	_ = os.Remove(filepath.Join(site.RootPath, "index.html"))
+	_ = os.Remove(filepath.Join(site.RootPath, "index.php"))
 
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
@@ -1070,12 +1075,42 @@ func extractBackupToSite(ctx context.Context, site *store.Site, archivePath stri
 	lower := strings.ToLower(cleanPath)
 	var cmd *exec.Cmd
 	if strings.HasSuffix(lower, ".zip") {
-		cmd = exec.CommandContext(cctx, "unzip", "-o", cleanPath, "-d", site.RootPath)
+		cmd = exec.CommandContext(cctx, "unzip", "-o", cleanPath, "-d", targetDir)
 	} else {
-		cmd = exec.CommandContext(cctx, "tar", "-xzf", cleanPath, "-C", site.RootPath)
+		cmd = exec.CommandContext(cctx, "tar", "-xzf", cleanPath, "-C", targetDir)
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("gagal mengekstrak arsip: %s", strings.TrimSpace(string(out)))
+	}
+
+	// Jika hasil ekstraksi merupakan proyek Laravel/Symfony dengan subfolder public/index.php, arahkan root_path ke /public
+	pubIndex := filepath.Join(targetDir, "public", "index.php")
+	if st, err := os.Stat(pubIndex); err == nil && !st.IsDir() {
+		newRoot := filepath.ToSlash(filepath.Join(targetDir, "public"))
+		if site.RootPath != newRoot {
+			site.RootPath = newRoot
+			_ = s.store.UpdateSite(ctx, site)
+			_ = s.sites.Apply(ctx, site, "")
+		}
+		_ = exec.CommandContext(cctx, "bash", "-c", fmt.Sprintf("chown -R www-data:www-data %q/storage %q/bootstrap/cache %q/.env 2>/dev/null; chmod -R 775 %q/storage %q/bootstrap/cache 2>/dev/null", targetDir, targetDir, targetDir, targetDir, targetDir)).Run()
+	}
+
+	// Jika ada berkas dump SQL di dalam arsip (misal database-backup-*.sql) dan database tersedia, impor secara otomatis
+	if dbName != "" {
+		if matches, err := filepath.Glob(filepath.Join(targetDir, "database-backup-*.sql")); err == nil && len(matches) > 0 {
+			sqlFile, err := os.Open(matches[0])
+			if err == nil {
+				var importCmd *exec.Cmd
+				if _, err := os.Stat("/etc/mysql/debian.cnf"); err == nil {
+					importCmd = exec.CommandContext(cctx, "mysql", "--defaults-file=/etc/mysql/debian.cnf", dbName)
+				} else {
+					importCmd = exec.CommandContext(cctx, "mysql", "-u", "root", dbName)
+				}
+				importCmd.Stdin = sqlFile
+				_ = importCmd.Run()
+				_ = sqlFile.Close()
+			}
+		}
 	}
 	return nil
 }

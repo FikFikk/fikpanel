@@ -5,9 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
+	"fikpanel/internal/database"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
@@ -395,16 +401,165 @@ func (s *Server) handleDeleteSite(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+
+	// Baca opsi penghapusan granular dari query string maupun body JSON (opsional)
+	q := r.URL.Query()
+	deleteFiles := q.Get("delete_files") == "1" || q.Get("delete_files") == "true"
+	deleteDB := q.Get("delete_db") == "1" || q.Get("delete_db") == "true"
+	backupFirst := q.Get("backup_first") == "1" || q.Get("backup_first") == "true"
+
+	var bodyOpts struct {
+		DeleteFiles *bool `json:"delete_files"`
+		DeleteDB    *bool `json:"delete_db"`
+		BackupFirst *bool `json:"backup_first"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&bodyOpts)
+		if bodyOpts.DeleteFiles != nil {
+			deleteFiles = *bodyOpts.DeleteFiles
+		}
+		if bodyOpts.DeleteDB != nil {
+			deleteDB = *bodyOpts.DeleteDB
+		}
+		if bodyOpts.BackupFirst != nil {
+			backupFirst = *bodyOpts.BackupFirst
+		}
+	}
+
+	// Tentukan direktori induk proyek (jika root_path mengarah ke /public, naik satu level ke folder proyek utama)
+	projectDir := strings.TrimSpace(site.RootPath)
+	if filepath.Base(projectDir) == "public" {
+		projectDir = filepath.Dir(projectDir)
+	}
+
+	// Deteksi nama database & user MySQL terkait dari file .env proyek atau konvensi penamaan domain panel
+	dbName := ""
+	dbUser := ""
+	if projectDir != "" {
+		if envBytes, err := os.ReadFile(filepath.Join(projectDir, ".env")); err == nil {
+			for _, line := range strings.Split(string(envBytes), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "DB_DATABASE=") {
+					dbName = strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "DB_DATABASE=")), `"'`)
+				} else if strings.HasPrefix(trimmed, "DB_USERNAME=") {
+					dbUser = strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "DB_USERNAME=")), `"'`)
+				}
+			}
+		}
+	}
+	if dbName == "" {
+		base := strings.Map(func(ch rune) rune {
+			if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') {
+				return ch
+			}
+			return '_'
+		}, strings.ToLower(site.Domain))
+		base = strings.Trim(base, "_")
+		if len(base) > 12 {
+			base = base[:12]
+		}
+		if existingDB, err := s.store.GetDatabaseByName(r.Context(), "mysql", base+"_db"); err == nil && existingDB != nil {
+			dbName = existingDB.Name
+			dbUser = existingDB.Username
+		}
+	} else if dbUser == "" {
+		if existingDB, err := s.store.GetDatabaseByName(r.Context(), "mysql", dbName); err == nil && existingDB != nil {
+			dbUser = existingDB.Username
+		}
+	}
+
+	// 1. Jika Auto-Backup Sebelum Hapus dipilih, dump database MySQL dan arsipkan seluruh folder proyek ke /var/backups/fikpanel
+	backupFile := ""
+	if backupFirst && runtime.GOOS != "windows" {
+		backupDir := "/var/backups/fikpanel"
+		_ = os.MkdirAll(backupDir, 0o755)
+		ts := time.Now().Format("20060102-150405")
+		safeDom := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(site.Domain)
+
+		if dbName != "" {
+			sqlDumpPath := filepath.Join(backupDir, fmt.Sprintf("%s-db-%s.sql", safeDom, ts))
+			if projectDir != "" {
+				if st, err := os.Stat(projectDir); err == nil && st.IsDir() {
+					sqlDumpPath = filepath.Join(projectDir, fmt.Sprintf("database-backup-%s.sql", dbName))
+				}
+			}
+			var dumpCmd *exec.Cmd
+			if _, err := os.Stat("/etc/mysql/debian.cnf"); err == nil {
+				dumpCmd = exec.CommandContext(r.Context(), "mysqldump", "--defaults-file=/etc/mysql/debian.cnf", "--single-transaction", "--routines", "--triggers", dbName)
+			} else {
+				dumpCmd = exec.CommandContext(r.Context(), "mysqldump", "-u", "root", "--single-transaction", "--routines", "--triggers", dbName)
+			}
+			if outFile, err := os.Create(sqlDumpPath); err == nil {
+				dumpCmd.Stdout = outFile
+				_ = dumpCmd.Run()
+				_ = outFile.Close()
+			}
+		}
+
+		if projectDir != "" {
+			if st, err := os.Stat(projectDir); err == nil && st.IsDir() {
+				archivePath := filepath.Join(backupDir, fmt.Sprintf("%s-pre-delete-%s.tar.gz", safeDom, ts))
+				tarCmd := exec.CommandContext(r.Context(), "tar", "-czf", archivePath, "-C", projectDir, ".")
+				if err := tarCmd.Run(); err == nil {
+					backupFile = filepath.ToSlash(archivePath)
+				}
+			}
+		}
+	}
+
+	// 2. Hapus konfigurasi vhost Nginx & sertifikat SSL situs
 	if err := s.sites.Remove(r.Context(), site.Domain); err != nil {
 		writeSiteError(w, err)
 		return
 	}
+
+	// Hentikan proses PM2 jika situs berbasis Node.js / Go / Python
+	if runtime.GOOS != "windows" && (site.Kind == "node" || site.Kind == "go" || site.Kind == "python") {
+		_ = exec.CommandContext(r.Context(), "pm2", "delete", site.Domain).Run()
+		if projectDir != "" {
+			ecoPath := filepath.Join(projectDir, "ecosystem.config.cjs")
+			if _, err := os.Stat(ecoPath); err == nil {
+				_ = exec.CommandContext(r.Context(), "pm2", "delete", ecoPath).Run()
+			}
+		}
+	}
+
+	// 3. Hapus database fisik MySQL beserta akun penggunanya jika dipilih
+	deletedDBName := ""
+	if deleteDB && dbName != "" {
+		_ = database.DeprovisionDatabase(r.Context(), "mysql", dbName, dbUser)
+		_ = s.store.DeleteDatabase(r.Context(), "mysql", dbName)
+		deletedDBName = dbName
+	}
+
+	// 4. Hapus direktori proyek secara aman jika dipilih (pastikan berada di dalam /home/ atau /var/www/ dan bukan direktori induk sistem)
+	deletedFiles := false
+	if deleteFiles && projectDir != "" && runtime.GOOS != "windows" {
+		cleanDir := filepath.ToSlash(filepath.Clean(projectDir))
+		segments := strings.Split(strings.Trim(cleanDir, "/"), "/")
+		isSafePrefix := strings.HasPrefix(cleanDir, "/home/") || strings.HasPrefix(cleanDir, "/var/www/") || strings.HasPrefix(cleanDir, "/www/wwwroot/")
+		isProtectedRoot := cleanDir == "/var/www" || cleanDir == "/var/www/html" || cleanDir == "/home/fikpanel" || cleanDir == "/home/fikpanel/web" || cleanDir == "/www/wwwroot"
+		if isSafePrefix && !isProtectedRoot && len(segments) >= 3 {
+			if err := os.RemoveAll(cleanDir); err == nil {
+				deletedFiles = true
+			}
+		}
+	}
+
 	if err := s.store.DeleteSite(r.Context(), id); err != nil {
 		writeSiteError(w, err)
 		return
 	}
-	s.auditSite(r, "site.delete", site.Domain, true, "Situs dan vhost dihapus (file web root dipertahankan)")
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "id": id})
+
+	auditDetail := fmt.Sprintf("files_deleted=%v db_deleted=%s backup=%s", deletedFiles, deletedDBName, backupFile)
+	s.auditSite(r, "site.delete", site.Domain, true, auditDetail)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":            true,
+		"id":            id,
+		"backup_file":   backupFile,
+		"deleted_db":    deletedDBName,
+		"deleted_files": deletedFiles,
+	})
 }
 
 func (s *Server) handleSiteVhost(w http.ResponseWriter, r *http.Request) {

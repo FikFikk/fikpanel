@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
-  import { confirmDialog } from '../lib/stores/confirm.svelte';
   import type { Site, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
   import NginxManager from '../lib/components/NginxManager.svelte';
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
@@ -46,6 +45,15 @@
   let showLogModal = $state(false);
   let logTarget = $state<Site | null>(null);
   let logTab = $state<'access' | 'error'>('access');
+
+  // Modal Konfirmasi Hapus Situs (GitHub-Style Danger Zone + Anti-Paste + Auto-Backup)
+  let deleteTarget = $state<Site | null>(null);
+  let deleteConfirmInput = $state('');
+  let deleteFilesOpt = $state(true);
+  let deleteDBOpt = $state(true);
+  let backupFirstOpt = $state(true);
+  let deletePasteWarning = $state(false);
+  let deletingSite = $state(false);
 
   // Filter daftar situs berdasarkan tab dan pencarian
   let filteredSites = $derived.by(() => {
@@ -158,19 +166,74 @@
     }
   }
 
-  async function deleteSite(id: number, siteDomain: string) {
-    if (!(await confirmDialog({
-      title: `Hapus situs "${siteDomain}"?`,
-      message: 'Konfigurasi virtual host Nginx dan sertifikat SSL akan dihapus dari server.',
-      confirmText: 'Hapus Situs',
-      tone: 'danger',
-    }))) return;
+  function getProjectRootDir(s: Site): string {
+    const raw = (s.root_path || `/home/fikpanel/web/${s.domain}`).replace(/\/+$/, '');
+    if (raw.endsWith('/public')) {
+      return raw.slice(0, -7);
+    }
+    return raw;
+  }
+
+  function getPredictedDBName(s: Site): string {
+    const base = s.domain
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 12);
+    return `${base || 'site'}_db`;
+  }
+
+  function openDeleteModal(site: Site) {
+    deleteTarget = site;
+    deleteConfirmInput = '';
+    deleteFilesOpt = true;
+    deleteDBOpt = true;
+    backupFirstOpt = true;
+    deletePasteWarning = false;
+    deletingSite = false;
+  }
+
+  function closeDeleteModal() {
+    if (deletingSite) return;
+    deleteTarget = null;
+    deleteConfirmInput = '';
+    deletePasteWarning = false;
+  }
+
+  function handleBlockPaste(e: Event) {
+    e.preventDefault();
+    deletePasteWarning = true;
+  }
+
+  async function confirmDeleteSite() {
+    if (!deleteTarget || deleteConfirmInput !== deleteTarget.domain || deletingSite) return;
+    deletingSite = true;
+    const targetDomain = deleteTarget.domain;
+    const targetId = deleteTarget.id;
     try {
-      await apiFetch(`/api/sites/${id}`, { method: 'DELETE' });
+      const qs = new URLSearchParams({
+        delete_files: deleteFilesOpt ? '1' : '0',
+        delete_db: deleteDBOpt ? '1' : '0',
+        backup_first: backupFirstOpt ? '1' : '0',
+      }).toString();
+      const res = await apiFetch<{
+        ok: boolean;
+        backup_file?: string;
+        deleted_db?: string;
+        deleted_files?: boolean;
+      }>(`/api/sites/${targetId}?${qs}`, { method: 'DELETE' });
+
+      deleteTarget = null;
       await loadSites();
-      onNotify(`Situs ${siteDomain} berhasil dihapus`);
+
+      const summaryParts: string[] = [`Situs ${targetDomain} dihapus`];
+      if (res.backup_file) summaryParts.push(`Backup: ${res.backup_file.split('/').pop()}`);
+      if (res.deleted_db) summaryParts.push(`DB ${res.deleted_db} terhapus`);
+      onNotify(summaryParts.join(' • '));
     } catch (err: any) {
       onNotify(err.message || 'Gagal menghapus situs');
+    } finally {
+      deletingSite = false;
     }
   }
 
@@ -549,7 +612,7 @@
                     <span class="op-div">|</span>
                     <button
                       class="btn-op-link link-danger"
-                      onclick={() => deleteSite(s.id, s.domain)}
+                      onclick={() => openDeleteModal(s)}
                       title="Hapus Situs"
                     >
                       Hapus
@@ -639,6 +702,142 @@
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onclick={() => (showLogModal = false)}>
             Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ═════════ MODAL: Konfirmasi Hapus Situs (GitHub-Style Danger Zone) ═════════ -->
+  {#if deleteTarget}
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
+      onkeydown={(e) => { if (e.key === 'Escape') closeDeleteModal(); }}
+    >
+      <div class="modal-card delete-danger-card">
+        <div class="modal-head delete-danger-head">
+          <div class="modal-title-wrap">
+            <span class="danger-icon-circle">
+              <i class="ri-error-warning-fill"></i>
+            </span>
+            <div>
+              <h3>Hapus Situs "{deleteTarget.domain}"?</h3>
+              <span class="danger-sub-caption">Tindakan destruktif &amp; permanen pada server produksi</span>
+            </div>
+          </div>
+          <button class="btn-close" onclick={closeDeleteModal} disabled={deletingSite}>&times;</button>
+        </div>
+
+        <!-- Banner Peringatan Dampak -->
+        <div class="danger-alert-banner">
+          <i class="ri-alarm-warning-line"></i>
+          <div>
+            <strong>Peringatan Penting Sebelum Menghapus!</strong>
+            <p>
+              Konfigurasi virtual host Nginx, sertifikat SSL, serta komponen yang Anda centang di bawah akan dihapus secara permanen.
+              Jika database dan kode proyek ini penting, pastikan opsi <strong>Auto-Backup Sebelum Hapus</strong> tetap aktif.
+            </p>
+          </div>
+        </div>
+
+        <!-- Opsi Granular Dampak Penghapusan & Cadangan Otomatis -->
+        <div class="delete-impact-list">
+          <label class="delete-opt-item opt-backup {backupFirstOpt ? 'is-checked' : ''}">
+            <input type="checkbox" bind:checked={backupFirstOpt} disabled={deletingSite} />
+            <div class="opt-body">
+              <div class="opt-title-row">
+                <span class="opt-title">Auto-Backup Proyek &amp; Database Sebelum Dihapus</span>
+                <span class="opt-badge badge-safe">Disarankan</span>
+              </div>
+              <span class="opt-desc">
+                Mencadangkan dump SQL + seluruh direktori proyek ke <code class="mono">/var/backups/fikpanel/{deleteTarget.domain}-pre-delete-*.tar.gz</code> agar dapat dipulihkan kapan saja lewat tab <b>Create from backup</b>.
+              </span>
+            </div>
+          </label>
+
+          <label class="delete-opt-item opt-destructive {deleteFilesOpt ? 'is-checked-danger' : ''}">
+            <input type="checkbox" bind:checked={deleteFilesOpt} disabled={deletingSite} />
+            <div class="opt-body">
+              <div class="opt-title-row">
+                <span class="opt-title">Hapus Direktori Proyek &amp; File Web Root</span>
+                <span class="opt-badge badge-danger">Permanen</span>
+              </div>
+              <span class="opt-desc">
+                Menghapus seluruh berkas kode sumber di <code class="mono">{getProjectRootDir(deleteTarget)}</code>
+              </span>
+            </div>
+          </label>
+
+          <label class="delete-opt-item opt-destructive {deleteDBOpt ? 'is-checked-danger' : ''}">
+            <input type="checkbox" bind:checked={deleteDBOpt} disabled={deletingSite} />
+            <div class="opt-body">
+              <div class="opt-title-row">
+                <span class="opt-title">Hapus Database &amp; User MySQL Terkait</span>
+                <span class="opt-badge badge-danger">DROP DATABASE</span>
+              </div>
+              <span class="opt-desc">
+                Menghapus skema database (<code class="mono">{getPredictedDBName(deleteTarget)}</code> / sesuai <code class="mono">.env</code>) beserta user MySQL dari server fisik.
+              </span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Verifikasi Ketik Manual (Anti Copy-Paste ala GitHub) -->
+        <div class="delete-verify-box">
+          <label for="confirm-domain-input" class="verify-label">
+            Untuk konfirmasi, ketik manual nama domain <strong class="mono select-none">{deleteTarget.domain}</strong> di bawah ini:
+          </label>
+          <input
+            id="confirm-domain-input"
+            type="text"
+            class="verify-input mono"
+            placeholder="Ketik manual {deleteTarget.domain} (tidak bisa paste)"
+            bind:value={deleteConfirmInput}
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            disabled={deletingSite}
+            onpaste={handleBlockPaste}
+            ondrop={handleBlockPaste}
+            oncontextmenu={(e) => e.preventDefault()}
+            onkeydown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                handleBlockPaste(e);
+              } else if (e.key === 'Enter' && deleteConfirmInput === deleteTarget.domain) {
+                confirmDeleteSite();
+              }
+            }}
+          />
+          {#if deletePasteWarning}
+            <div class="paste-blocked-hint">
+              <i class="ri-keyboard-box-line"></i>
+              <span>Demi keamanan ekstra (seperti GitHub), fitur Copy-Paste dinonaktifkan. Silakan ketik nama domain secara manual dengan keyboard.</span>
+            </div>
+          {/if}
+        </div>
+
+        <div class="modal-actions delete-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick={closeDeleteModal} disabled={deletingSite}>
+            Batal
+          </button>
+          <button
+            type="button"
+            class="btn btn-danger-solid"
+            disabled={deleteConfirmInput !== deleteTarget.domain || deletingSite}
+            onclick={confirmDeleteSite}
+          >
+            {#if deletingSite}
+              <i class="ri-loader-4-line spin"></i>
+              <span>{backupFirstOpt ? 'Mencadangkan & Menghapus...' : 'Menghapus Situs...'}</span>
+            {:else}
+              <i class="ri-delete-bin-2-line"></i>
+              <span>Saya Mengerti, Hapus Situs Ini</span>
+            {/if}
           </button>
         </div>
       </div>
@@ -1397,6 +1596,248 @@
   }
 
   .mono { font-family: 'Fira Code', monospace; }
+
+  /* ═════════ GitHub-Style Danger Zone Delete Modal ═════════ */
+  .delete-danger-card {
+    max-width: 540px;
+    border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  }
+
+  .delete-danger-head {
+    margin-bottom: 1rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .danger-icon-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .danger-icon-circle i {
+    color: var(--danger-strong) !important;
+    font-size: 1.15rem !important;
+  }
+
+  .danger-sub-caption {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+  }
+
+  .danger-alert-banner {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    padding: 0.75rem 0.9rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
+    margin-bottom: 1rem;
+    font-size: 0.76rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  .danger-alert-banner > i {
+    color: var(--danger-strong);
+    font-size: 1.1rem;
+    margin-top: 0.05rem;
+    flex-shrink: 0;
+  }
+
+  .danger-alert-banner strong {
+    color: var(--text);
+  }
+
+  .danger-alert-banner p {
+    margin: 0.2rem 0 0;
+  }
+
+  .delete-impact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .delete-opt-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 8px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .delete-opt-item input[type='checkbox'] {
+    width: 15px;
+    height: 15px;
+    margin-top: 0.15rem;
+    padding: 0;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .delete-opt-item.opt-destructive input[type='checkbox'] {
+    accent-color: var(--danger);
+  }
+
+  .delete-opt-item.is-checked {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-inset));
+  }
+
+  .delete-opt-item.is-checked-danger {
+    border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+    background: color-mix(in srgb, var(--danger) 5%, transparent);
+  }
+
+  .opt-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .opt-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .opt-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .opt-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.42rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+
+  .badge-safe {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .badge-danger {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger-strong);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  }
+
+  .opt-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+    word-break: break-all;
+  }
+
+  .opt-desc code {
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+  }
+
+  .delete-verify-box {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem;
+    margin-bottom: 1.15rem;
+  }
+
+  .verify-label {
+    display: block;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    line-height: 1.45;
+  }
+
+  .verify-label strong.select-none {
+    user-select: none;
+    -webkit-user-select: none;
+    color: var(--danger-strong);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    padding: 0.12rem 0.4rem;
+    border-radius: 4px;
+    border: 1px dashed color-mix(in srgb, var(--danger) 35%, transparent);
+  }
+
+  .verify-input {
+    border-color: var(--border-strong);
+    font-size: 0.82rem;
+  }
+
+  .verify-input:focus {
+    border-color: var(--danger-strong);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
+  }
+
+  .paste-blocked-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+    color: var(--warning);
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .delete-modal-actions {
+    padding-top: 0.25rem;
+  }
+
+  .btn-danger-solid {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--danger);
+    color: var(--text);
+    border: 1px solid var(--danger-strong);
+    padding: 0.5rem 1rem;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .btn-danger-solid:hover:not(:disabled) {
+    background: var(--danger-strong);
+  }
+
+  .btn-danger-solid:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    background: color-mix(in srgb, var(--danger) 35%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }

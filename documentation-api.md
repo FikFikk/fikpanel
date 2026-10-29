@@ -189,10 +189,10 @@
 | Method + Endpoint | `DELETE /api/sites/{id}` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `X-Panel-Request: 1` |
-| Query Params | Tidak ada |
-| Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "id": 2}` |
-| Notes | Menghapus file vhost (aktif & disabled), reload Nginx, lalu baris DB (sertifikat ikut terhapus via cascade). Isi web root tidak dihapus. |
+| Query Params | `delete_files` (`1`/`0`), `delete_db` (`1`/`0`), `backup_first` (`1`/`0`) |
+| Request Body | Opsional JSON: `delete_files` (bool), `delete_db` (bool), `backup_first` (bool) |
+| Response | HTTP 200 `{"ok": true, "id": 2, "backup_file": "/var/backups/fikpanel/domain-pre-delete-20261029.tar.gz", "deleted_db": "domain_db", "deleted_files": true}` |
+| Notes | Menghapus vhost Nginx & SSL, menghentikan proses PM2 terkait, dan secara opsional mencadangkan dump SQL (`mysqldump`) + seluruh folder proyek ke `/var/backups/fikpanel/<domain>-pre-delete-<timestamp>.tar.gz` sebelum menghapus database fisik MySQL (`DROP DATABASE` & `DROP USER`) dan direktori proyek secara aman. |
 
 | Field | Detail |
 |---|---|
