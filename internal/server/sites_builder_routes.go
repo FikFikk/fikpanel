@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"fikpanel/internal/database"
@@ -751,6 +752,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 1. Auto-Create Database MySQL terlebih dahulu agar skema tersedia saat proses build / migrasi Git
 	if in.CreateDB && dbName != "" && dbUser != "" && dbPass != "" {
+		updateSiteDeployProgress(created.Domain, 18, "database", "Menyiapkan database MySQL ("+dbName+") & kredensial user...")
 		if err := database.ProvisionDatabase(ctx, "mysql", dbName, dbUser, dbPass, "localhost"); err != nil {
 			notes["db_warning"] = err.Error()
 		} else {
@@ -769,6 +771,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 2. One-Click Deploy Template
 	if tpl := strings.TrimSpace(strings.ToLower(in.DeployTemplate)); tpl != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		updateSiteDeployProgress(created.Domain, 45, "template", "Menyiapkan struktur berkas template "+tpl+"...")
 		if err := provisionDeployTemplate(created, tpl, dbName, dbUser, dbPass); err != nil {
 			notes["template_warning"] = err.Error()
 		} else {
@@ -778,6 +781,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 3. Git Clone Repository + Auto .env + Sinkronisasi Port Ecosystem PM2 + Build
 	if repoURL := strings.TrimSpace(in.GitRepoURL); repoURL != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		updateSiteDeployProgress(created.Domain, 28, "git_clone", "Mengkloning repositori Git dari GitHub...")
 		token, _ := s.store.GetSetting(ctx, "github_token")
 		if err := s.cloneGitRepoToSite(ctx, created, repoURL, strings.TrimSpace(in.GitBranch), strings.TrimSpace(in.GitPostCmd), token, in.CreateDB, dbName, dbUser, dbPass); err != nil {
 			notes["git_warning"] = err.Error()
@@ -788,6 +792,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 4. Restore dari Arsip Backup
 	if archivePath := strings.TrimSpace(in.BackupArchive); archivePath != "" && created.RootPath != "" && runtime.GOOS != "windows" {
+		updateSiteDeployProgress(created.Domain, 55, "backup", "Mengekstrak arsip backup & memulihkan database...")
 		if err := s.extractBackupToSite(ctx, created, archivePath, dbName); err != nil {
 			notes["backup_warning"] = err.Error()
 		} else {
@@ -818,6 +823,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 			if strings.TrimSpace(adminPass) == "" {
 				adminPass = "admin12345"
 			}
+			updateSiteDeployProgress(created.Domain, 90, "admin", "Membuat akun Super Admin ("+adminEmail+") & role super_admin...")
 			if err := s.provisionLaravelSuperAdmin(ctx, created, adminName, adminEmail, adminPass); err != nil {
 				notes["admin_warning"] = err.Error()
 			} else {
@@ -828,6 +834,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 	// 5. Auto-Issue Let's Encrypt SSL
 	if in.AutoSSL {
+		updateSiteDeployProgress(created.Domain, 96, "ssl", "Menerbitkan & memasang sertifikat SSL HTTPS...")
 		created.SSLMode = "letsencrypt"
 		created.ForceHTTPS = 1
 		_ = s.store.UpdateSite(ctx, created)
@@ -839,6 +846,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 		notes["ssl"] = "issuing"
 	}
 
+	updateSiteDeployProgress(created.Domain, 100, "done", "Deployment selesai! Situs siap digunakan.")
 	return notes
 }
 
@@ -948,6 +956,10 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
+		// Buat nama cookie sesi tanpa karakter titik (.) karena PHP otomatis mengubah titik menjadi underscore di $_COOKIE
+		// sehingga Laravel gagal membaca cookie sesi miliknya sendiri dan memicu galat 419 Page Expired saat login.
+		sessionCookieName := sanitizeCookieSlug(site.Domain) + "_session"
+
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
 		envLines = append(envLines, "NODE_ENV=production")
@@ -957,6 +969,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
 		envLines = append(envLines, fmt.Sprintf("APP_KEY=%s", existingAppKey))
 		envLines = append(envLines, "SESSION_DRIVER=file")
+		envLines = append(envLines, fmt.Sprintf("SESSION_COOKIE=%s", sessionCookieName))
 		envLines = append(envLines, "CACHE_STORE=file")
 		if createDB && dbName != "" && dbUser != "" {
 			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", dbUser, dbPass, dbName))
@@ -971,7 +984,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		if rawExample, err := os.ReadFile(filepath.Join(targetDir, ".env.example")); err == nil {
 			definedKeys := map[string]bool{
 				"PORT": true, "NODE_ENV": true, "APP_NAME": true, "APP_ENV": true,
-				"APP_DEBUG": true, "APP_URL": true, "APP_KEY": true, "SESSION_DRIVER": true,
+				"APP_DEBUG": true, "APP_URL": true, "APP_KEY": true, "SESSION_DRIVER": true, "SESSION_COOKIE": true,
 				"CACHE_STORE": true, "DATABASE_URL": true, "DB_CONNECTION": true,
 				"DB_HOST": true, "DB_PORT": true, "DB_DATABASE": true, "DB_USERNAME": true, "DB_PASSWORD": true,
 			}
@@ -991,6 +1004,8 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o644)
 	}
+
+	updateSiteDeployProgress(site.Domain, 44, "env", "Menyuntikkan variabel .env & menyelaraskan struktur direktori...")
 
 	// Siapkan struktur folder wajib Laravel / Filament (storage & bootstrap/cache)
 	hasArtisan := false
@@ -1061,40 +1076,60 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
-		// Otomasi penuh proyek PHP Biasa, Laravel, & Laravel Filament (termasuk bypass deadlock ServiceProvider/PanelProvider yang kueri tabel sebelum migrate)
-		if hasArtisan {
-			laravelPipeline := strings.Join([]string{
-				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)",
-				"if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (npm install && npm run build) || true; fi",
-				"(php artisan key:generate --force || true)",
-				"if ! php artisan migrate --force; then if [ -f bootstrap/providers.php ]; then cp bootstrap/providers.php bootstrap/providers.php.fikbak && printf '<?php return [];\\n' > bootstrap/providers.php && (php artisan migrate --force || true); mv bootstrap/providers.php.fikbak bootstrap/providers.php; fi; fi",
-				"(php artisan package:discover --ansi || true)",
-				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
-				"(php artisan storage:link --force || true)",
-				"(php artisan filament:upgrade || php artisan filament:assets || true)",
-				"(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)",
-				"(php artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || php artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)",
-				"(php artisan optimize:clear || true)",
-			}, "; ")
-			postCmd = laravelPipeline
-		} else if hasComposer {
-			if postCmd == "" || strings.Contains(postCmd, "composer install") {
-				postCmd = "(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)"
-			}
-		}
-
 		bctx, bcancel := context.WithTimeout(ctx, 240*time.Second)
 		defer bcancel()
-		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+"; (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
-		buildCmd.Dir = targetDir
-		buildCmd.Env = append(os.Environ(),
+		buildEnv := append(os.Environ(),
 			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			"CI=true",
 			"COMPOSER_ALLOW_SUPERUSER=1",
 			"COMPOSER_MEMORY_LIMIT=-1",
 		)
-		out, _ := buildCmd.CombinedOutput()
-		_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
+
+		// Otomasi penuh proyek PHP Biasa, Laravel, & Laravel Filament dalam tahapan terukur agar persentase progress akurat
+		if hasArtisan {
+			var combinedLog []byte
+			runStage := func(pct int, stage, label, script string) {
+				updateSiteDeployProgress(site.Domain, pct, stage, label)
+				c := exec.CommandContext(bctx, "sh", "-c", script)
+				c.Dir = targetDir
+				c.Env = buildEnv
+				out, _ := c.CombinedOutput()
+				combinedLog = append(combinedLog, out...)
+				combinedLog = append(combinedLog, '\n')
+			}
+
+			runStage(56, "composer", "Menginstal dependensi Composer & membangun aset frontend...", strings.Join([]string{
+				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)",
+				"if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (npm install && npm run build) || true; fi",
+			}, "; "))
+
+			runStage(72, "migrate", "Menjalankan migrasi skema database & seeder (php artisan migrate)...", strings.Join([]string{
+				"(php artisan key:generate --force || true)",
+				"if ! php artisan migrate --force; then if [ -f bootstrap/providers.php ]; then cp bootstrap/providers.php bootstrap/providers.php.fikbak && printf '<?php return [];\\n' > bootstrap/providers.php && (php artisan migrate --force || true); mv bootstrap/providers.php.fikbak bootstrap/providers.php; fi; fi",
+				"(php artisan package:discover --ansi || true)",
+				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
+			}, "; "))
+
+			runStage(84, "filament", "Menyiapkan aset Filament, Shield permission & symlink storage...", strings.Join([]string{
+				"(php artisan storage:link --force || true)",
+				"(php artisan filament:upgrade || php artisan filament:assets || true)",
+				"(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)",
+				"(php artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || php artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)",
+				"(php artisan optimize:clear || true)",
+			}, "; "))
+
+			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o644)
+		} else {
+			if hasComposer && (postCmd == "" || strings.Contains(postCmd, "composer install")) {
+				postCmd = "(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)"
+			}
+			updateSiteDeployProgress(site.Domain, 65, "build", "Menjalankan perintah build & instalasi dependensi proyek...")
+			buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+"; (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
+			buildCmd.Dir = targetDir
+			buildCmd.Env = buildEnv
+			out, _ := buildCmd.CombinedOutput()
+			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
+		}
 	}
 
 	// Langkah akhir mutlak untuk seluruh proyek PHP / Static: pastikan kepemilikan www-data:www-data & izin tulis storage/cache
@@ -1122,8 +1157,9 @@ func provisionDeployTemplate(site *store.Site, tpl, dbName, dbUser, dbPass strin
 
 	switch tpl {
 	case "laravel":
-		envContent := fmt.Sprintf("APP_NAME=\"%s\"\nAPP_ENV=production\nAPP_DEBUG=false\nAPP_URL=https://%s\n\nDB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=%s\nDB_USERNAME=%s\nDB_PASSWORD=%s\n",
-			site.Domain, site.Domain, dbName, dbUser, dbPass)
+		sessionCookieName := sanitizeCookieSlug(site.Domain) + "_session"
+		envContent := fmt.Sprintf("APP_NAME=\"%s\"\nAPP_ENV=production\nAPP_DEBUG=false\nAPP_URL=https://%s\nSESSION_COOKIE=%s\n\nDB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=%s\nDB_USERNAME=%s\nDB_PASSWORD=%s\n",
+			site.Domain, site.Domain, sessionCookieName, dbName, dbUser, dbPass)
 		_ = os.WriteFile(filepath.Join(projectDir, ".env"), []byte(envContent), 0o640)
 		laravelIndex := fmt.Sprintf(`<?php
 // Laravel Starter Point — %s
@@ -1603,4 +1639,84 @@ func (s *Server) handleSaveSiteLaravelAdmin(w http.ResponseWriter, r *http.Reque
 		"users":       users,
 	})
 }
+
+// SiteDeployProgress merepresentasikan status persentase dan tahapan deployment situs secara real-time
+type SiteDeployProgress struct {
+	Domain    string `json:"domain"`
+	Percent   int    `json:"percent"`
+	Stage     string `json:"stage"`
+	StepLabel string `json:"step_label"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+var siteDeployProgressMap sync.Map
+
+// updateSiteDeployProgress memperbarui persentase dan deskripsi tahapan deployment untuk domain terkait
+func updateSiteDeployProgress(domain string, percent int, stage, stepLabel string) {
+	cleanDom := strings.ToLower(strings.TrimSpace(domain))
+	prog := SiteDeployProgress{
+		Domain:    cleanDom,
+		Percent:   percent,
+		Stage:     stage,
+		StepLabel: stepLabel,
+		UpdatedAt: time.Now().UnixMilli(),
+	}
+	if cleanDom != "" {
+		siteDeployProgressMap.Store(cleanDom, prog)
+	}
+	siteDeployProgressMap.Store("__latest__", prog)
+}
+
+// handleGetSiteDeployProgress mengembalikan persentase deployment situs terkini untuk ditampilkan pada progress bar UI
+func (s *Server) handleGetSiteDeployProgress(w http.ResponseWriter, r *http.Request) {
+	dom := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("domain")))
+	if dom != "" {
+		if val, ok := siteDeployProgressMap.Load(dom); ok {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":       true,
+				"progress": val,
+			})
+			return
+		}
+	}
+	if val, ok := siteDeployProgressMap.Load("__latest__"); ok {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":       true,
+			"progress": val,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true,
+		"progress": SiteDeployProgress{
+			Domain:    dom,
+			Percent:   5,
+			Stage:     "init",
+			StepLabel: "Menyiapkan provisioning situs...",
+			UpdatedAt: time.Now().UnixMilli(),
+		},
+	})
+}
+
+// sanitizeCookieSlug mengubah nama domain menjadi identifier aman tanpa titik (.) untuk nama cookie sesi PHP/Laravel
+func sanitizeCookieSlug(domain string) string {
+	slug := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return '_'
+	}, strings.TrimSpace(domain))
+	for strings.Contains(slug, "__") {
+		slug = strings.ReplaceAll(slug, "__", "_")
+	}
+	slug = strings.Trim(slug, "_")
+	if slug == "" {
+		return "laravel"
+	}
+	return slug
+}
+
 

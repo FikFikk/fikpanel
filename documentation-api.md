@@ -2814,6 +2814,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "is_laravel": true, "is_filament": true, "users": [...]}` |
 | Notes | Membuat atau memperbarui akun di tabel `users` dengan hash bcrypt/Argon2 Laravel, menyetel `email_verified_at`, membuat dan memberikan role `super_admin` serta `admin` (Filament Shield / Spatie Permission), dan membersihkan cache permission. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/deploy-progress` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `domain` (string, opsional, nama domain utama yang sedang di-deploy) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "progress": {"domain": "yuha.fikfikk.my.id", "percent": 72, "stage": "migrate", "step_label": "Menjalankan migrasi skema database & seeder (php artisan migrate)...", "updated_at": 1793259200000}}` |
+| Notes | Mengembalikan persentase dan deskripsi tahapan provisioning/deployment situs secara real-time untuk ditampilkan pada progress bar modal Add Site. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

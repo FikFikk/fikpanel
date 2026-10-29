@@ -231,6 +231,14 @@
   let submitError = $state('');
   let created = $state<Site | null>(null);
 
+  // State progress bar real-time saat proses pembuatan & deployment situs berjalan
+  let deployPercent = $state(0);
+  let deployStage = $state('init');
+  let deployStepLabel = $state('Menyiapkan provisioning situs...');
+  let deployElapsedSec = $state(0);
+  let deployPollTimer: ReturnType<typeof setInterval> | undefined;
+  let deployTickTimer: ReturnType<typeof setInterval> | undefined;
+
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let abortCtl: AbortController | undefined;
 
@@ -411,6 +419,7 @@
     return () => {
       clearTimeout(debounceTimer);
       abortCtl?.abort();
+      stopDeployProgressPolling();
     };
   });
 
@@ -718,15 +727,61 @@
     }
   }
 
+  function startDeployProgressPolling(targetDomain: string) {
+    stopDeployProgressPolling();
+    deployPercent = 6;
+    deployStage = 'vhost';
+    deployStepLabel = 'Membuat konfigurasi Virtual Host Nginx & direktori web...';
+    deployElapsedSec = 0;
+    const startMs = Date.now();
+
+    deployTickTimer = setInterval(() => {
+      deployElapsedSec = Math.floor((Date.now() - startMs) / 1000);
+      if (deployPercent < 95) {
+        deployPercent = Math.min(95, deployPercent + 1);
+      }
+    }, 1000);
+
+    deployPollTimer = setInterval(async () => {
+      try {
+        const res = await apiFetch<{
+          ok: boolean;
+          progress?: { domain: string; percent: number; stage: string; step_label: string; updated_at: number };
+        }>(`/api/sites/deploy-progress?domain=${encodeURIComponent(targetDomain)}`, {
+          timeoutMs: 3500
+        });
+        if (res?.progress && res.progress.updated_at >= startMs - 2000) {
+          if (res.progress.percent > deployPercent) {
+            deployPercent = res.progress.percent;
+          }
+          if (res.progress.stage) deployStage = res.progress.stage;
+          if (res.progress.step_label) deployStepLabel = res.progress.step_label;
+        }
+      } catch {
+        // Abaikan error polling sementara selama proses deploy berjalan
+      }
+    }, 650);
+  }
+
+  function stopDeployProgressPolling() {
+    clearInterval(deployPollTimer);
+    clearInterval(deployTickTimer);
+    deployPollTimer = undefined;
+    deployTickTimer = undefined;
+  }
+
   async function submit(e: Event) {
     e.preventDefault();
     if (!canSubmit) return;
     submitting = true;
     submitError = '';
+    const primaryDomain = report?.primary || domains.split('\n')[0]?.trim() || '';
+    startDeployProgressPolling(primaryDomain);
 
     // Penanganan khusus Tab 4: Batch Create
     if (activeTab === 'batch') {
       try {
+        deployStepLabel = `Membuat ${parsedBatchRows.length} situs secara massal...`;
         const res = await apiFetch<{
           ok: boolean;
           created_count: number;
@@ -740,6 +795,7 @@
           }),
           timeoutMs: 120_000
         });
+        deployPercent = 100;
         batchResult = res;
         if (res.created_count > 0) {
           onNotify(`Berhasil membuat ${res.created_count} dari ${res.total_lines} situs secara massal`);
@@ -751,6 +807,7 @@
       } catch (err) {
         submitError = (err as Error).message;
       } finally {
+        stopDeployProgressPolling();
         submitting = false;
       }
       return;
@@ -785,12 +842,15 @@
         }),
         timeoutMs: 240_000
       });
+      deployPercent = 100;
+      deployStepLabel = 'Deployment selesai! Situs siap digunakan.';
       created = site;
       onCreated(site);
       onNotify(`Situs ${site.domain} berhasil dibuat`);
     } catch (err) {
       submitError = (err as Error).message;
     } finally {
+      stopDeployProgressPolling();
       submitting = false;
     }
   }
@@ -1819,13 +1879,61 @@
           {/if}
         </div>
 
+        {#if submitting}
+          <div class="deploy-progress-panel" role="status" aria-live="polite">
+            <div class="deploy-prog-top">
+              <div class="deploy-prog-left">
+                <i class="ri-loader-4-line spin deploy-prog-icon"></i>
+                <div class="deploy-prog-text">
+                  <strong>{deployStepLabel}</strong>
+                  <small>
+                    Tahap aktif: <span class="mono">{deployStage}</span> · Waktu berjalan: <span class="mono">{deployElapsedSec}d</span>
+                  </small>
+                </div>
+              </div>
+              <div class="deploy-prog-pct mono">{deployPercent}%</div>
+            </div>
+            <div class="deploy-prog-track">
+              <div class="deploy-prog-fill" style="width: {deployPercent}%"></div>
+            </div>
+            <div class="deploy-prog-steps">
+              <span class="dp-step" class:done={deployPercent >= 15} class:active={deployPercent < 15}>
+                <i class={deployPercent >= 15 ? 'ri-checkbox-circle-fill' : 'ri-loader-4-line spin'}></i> Vhost Nginx
+              </span>
+              {#if createDB}
+                <span class="dp-step" class:done={deployPercent >= 25} class:active={deployPercent >= 15 && deployPercent < 25}>
+                  <i class={deployPercent >= 25 ? 'ri-checkbox-circle-fill' : deployPercent >= 15 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> MySQL DB
+                </span>
+              {/if}
+              {#if activeTab === 'git'}
+                <span class="dp-step" class:done={deployPercent >= 50} class:active={deployPercent >= 25 && deployPercent < 50}>
+                  <i class={deployPercent >= 50 ? 'ri-checkbox-circle-fill' : deployPercent >= 25 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Git Clone & .env
+                </span>
+                <span class="dp-step" class:done={deployPercent >= 88} class:active={deployPercent >= 50 && deployPercent < 88}>
+                  <i class={deployPercent >= 88 ? 'ri-checkbox-circle-fill' : deployPercent >= 50 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Composer & Migrasi
+                </span>
+              {/if}
+              {#if kind === 'php' && createDB && createAdmin}
+                <span class="dp-step" class:done={deployPercent >= 94} class:active={deployPercent >= 88 && deployPercent < 94}>
+                  <i class={deployPercent >= 94 ? 'ri-checkbox-circle-fill' : deployPercent >= 88 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Super Admin
+                </span>
+              {/if}
+              {#if autoSSL}
+                <span class="dp-step" class:done={deployPercent >= 99} class:active={deployPercent >= 94 && deployPercent < 99}>
+                  <i class={deployPercent >= 99 ? 'ri-checkbox-circle-fill' : deployPercent >= 94 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Auto-SSL
+                </span>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         <footer class="as-foot">
           <button type="button" class="btn-ghost" onclick={onClose} disabled={submitting} id="as-cancel-btn">
             Cancel
           </button>
           <button type="submit" class="btn-primary" disabled={!canSubmit} id="as-submit-btn">
             {#if submitting}
-              <i class="ri-loader-4-line spin"></i> Memproses…
+              <i class="ri-loader-4-line spin"></i> Memproses… {deployPercent}%
             {:else if activeTab === 'batch'}
               <i class="ri-stack-line"></i> Confirm Batch ({parsedBatchRows.length})
             {:else}
@@ -2965,6 +3073,103 @@
   }
   .ssl-cta.warn i {
     color: var(--warning);
+  }
+
+  .deploy-progress-panel {
+    margin: 0 1.35rem 0.65rem;
+    padding: 0.85rem 1rem;
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    animation: fade 0.18s ease;
+  }
+  .deploy-prog-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .deploy-prog-left {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+  .deploy-prog-icon {
+    font-size: 1.25rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .deploy-prog-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .deploy-prog-text strong {
+    font-size: 0.84rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .deploy-prog-text small {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+  }
+  .deploy-prog-pct {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .deploy-prog-track {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-canvas);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .deploy-prog-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+    border-radius: 999px;
+    transition: width 0.35s ease;
+  }
+  .deploy-prog-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding-top: 0.15rem;
+  }
+  .dp-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    padding: 0.16rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .dp-step.active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-canvas));
+    font-weight: 600;
+  }
+  .dp-step.done {
+    color: var(--success);
+    border-color: color-mix(in srgb, var(--success) 35%, var(--border));
   }
 
   .spin {

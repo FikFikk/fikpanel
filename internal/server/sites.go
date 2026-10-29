@@ -259,6 +259,8 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	updateSiteDeployProgress(site.Domain, 8, "vhost", "Membuat konfigurasi Virtual Host Nginx & direktori web...")
+
 	created, err := s.store.CreateSite(r.Context(), site)
 	if err != nil {
 		writeSiteError(w, err)
