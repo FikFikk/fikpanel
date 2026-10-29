@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -864,6 +866,12 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 	}
+	if existingAppKey == "" {
+		keyBytes := make([]byte, 32)
+		if _, err := rand.Read(keyBytes); err == nil {
+			existingAppKey = "base64:" + base64.StdEncoding.EncodeToString(keyBytes)
+		}
+	}
 	{
 		// Deteksi apakah proyek memakai Filament namun model User belum mengimplementasikan FilamentUser (canAccessPanel)
 		// Pada Filament, jika User tidak mengimplementasikan FilamentUser, APP_ENV selain 'local' otomatis ditolak 403 Forbidden
@@ -920,13 +928,6 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o644)
 	}
 
-	// Pastikan folder public tersedia jika root_path berakhir dengan /public tetapi repo tidak memiliki sub-folder public
-	if strings.HasSuffix(site.RootPath, "/public") {
-		if _, err := os.Stat(site.RootPath); os.IsNotExist(err) {
-			_ = os.MkdirAll(site.RootPath, 0o755)
-		}
-	}
-
 	// Siapkan struktur folder wajib Laravel / Filament (storage & bootstrap/cache)
 	hasArtisan := false
 	if _, err := os.Stat(filepath.Join(targetDir, "artisan")); err == nil {
@@ -943,7 +944,44 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		}
 	}
 
-	if postCmd != "" || hasArtisan {
+	// Penyesuaian otomatis Web Root antara proyek berstruktur /public (Laravel/Filament/Symfony) dan PHP biasa (native index.php di root)
+	if site.Kind == "php" || site.Kind == "static" {
+		hasPubIndex := false
+		if st, err := os.Stat(filepath.Join(targetDir, "public", "index.php")); err == nil && !st.IsDir() {
+			hasPubIndex = true
+		} else if st, err := os.Stat(filepath.Join(targetDir, "public", "index.html")); err == nil && !st.IsDir() {
+			hasPubIndex = true
+		}
+		hasRootIndex := false
+		if st, err := os.Stat(filepath.Join(targetDir, "index.php")); err == nil && !st.IsDir() {
+			hasRootIndex = true
+		} else if st, err := os.Stat(filepath.Join(targetDir, "index.html")); err == nil && !st.IsDir() {
+			hasRootIndex = true
+		}
+
+		desiredRoot := site.RootPath
+		if hasArtisan || hasPubIndex {
+			desiredRoot = filepath.ToSlash(filepath.Join(targetDir, "public"))
+			_ = os.MkdirAll(desiredRoot, 0o755)
+		} else if hasRootIndex && strings.HasSuffix(filepath.ToSlash(site.RootPath), "/public") {
+			// Proyek PHP biasa / WordPress yang meletakkan index.php langsung di root proyek (bukan di /public)
+			desiredRoot = filepath.ToSlash(targetDir)
+			_ = os.Remove(filepath.Join(targetDir, "public"))
+		}
+
+		if desiredRoot != "" && desiredRoot != site.RootPath {
+			site.RootPath = desiredRoot
+			_ = s.store.UpdateSite(ctx, site)
+			_ = s.sites.Apply(ctx, site, "")
+		}
+	}
+
+	hasComposer := false
+	if _, err := os.Stat(filepath.Join(targetDir, "composer.json")); err == nil {
+		hasComposer = true
+	}
+
+	if postCmd != "" || hasArtisan || hasComposer {
 		// Sisipkan otomatis npx drizzle-kit push apabila repo memakai Drizzle ORM dan DB diaktifkan
 		hasDrizzle := false
 		if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.ts")); err == nil {
@@ -959,31 +997,31 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
-		// Otomasi penuh proyek PHP Laravel & Filament (termasuk kompatibilitas lintas versi PHP 8.3 -> 8.5 via --ignore-platform-reqs)
+		// Otomasi penuh proyek PHP Biasa, Laravel, & Laravel Filament (termasuk bypass deadlock ServiceProvider/PanelProvider yang kueri tabel sebelum migrate)
 		if hasArtisan {
 			laravelPipeline := strings.Join([]string{
-				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs)",
+				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)",
 				"if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (npm install && npm run build) || true; fi",
-				"php artisan key:generate --force",
-				"(php artisan storage:link --force || true)",
+				"(php artisan key:generate --force || true)",
+				"if ! php artisan migrate --force; then if [ -f bootstrap/providers.php ]; then cp bootstrap/providers.php bootstrap/providers.php.fikbak && printf '<?php return [];\\n' > bootstrap/providers.php && (php artisan migrate --force || true); mv bootstrap/providers.php.fikbak bootstrap/providers.php; fi; fi",
+				"(php artisan package:discover --ansi || true)",
 				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
+				"(php artisan storage:link --force || true)",
 				"(php artisan filament:upgrade || php artisan filament:assets || true)",
 				"(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)",
 				"(php artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || php artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)",
 				"(php artisan optimize:clear || true)",
-				"(chown -R www-data:www-data .env storage bootstrap/cache database public 2>/dev/null || true)",
-				"(chmod 644 .env 2>/dev/null || true)",
-				"(chmod -R 775 storage bootstrap/cache 2>/dev/null || true)",
-				"(chmod 755 /home/fikpanel /home/fikpanel/web . public 2>/dev/null || true)",
-			}, " && ")
+			}, "; ")
 			postCmd = laravelPipeline
-		} else if strings.Contains(postCmd, "composer install") && !strings.Contains(postCmd, "--ignore-platform-reqs") {
-			postCmd = "(" + postCmd + " || composer install --no-interaction --prefer-dist --ignore-platform-reqs)"
+		} else if hasComposer {
+			if postCmd == "" || strings.Contains(postCmd, "composer install") {
+				postCmd = "(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)"
+			}
 		}
 
-		bctx, bcancel := context.WithTimeout(ctx, 180*time.Second)
+		bctx, bcancel := context.WithTimeout(ctx, 240*time.Second)
 		defer bcancel()
-		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+" && (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
+		buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+"; (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
 		buildCmd.Dir = targetDir
 		buildCmd.Env = append(os.Environ(),
 			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -993,6 +1031,17 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		)
 		out, _ := buildCmd.CombinedOutput()
 		_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
+	}
+
+	// Langkah akhir mutlak untuk seluruh proyek PHP / Static: pastikan kepemilikan www-data:www-data & izin tulis storage/cache
+	if runtime.GOOS != "windows" && (site.Kind == "php" || site.Kind == "static" || hasArtisan) {
+		pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
+		defer pcancel()
+		permScript := fmt.Sprintf(
+			"chown -R www-data:www-data %q 2>/dev/null || true; chmod 755 /home/fikpanel /home/fikpanel/web %q %q/public 2>/dev/null || true; chmod 644 %q/.env 2>/dev/null || true; chmod -R 775 %q/storage %q/bootstrap/cache 2>/dev/null || true",
+			targetDir, targetDir, targetDir, targetDir, targetDir, targetDir,
+		)
+		_ = exec.CommandContext(pctx, "sh", "-c", permScript).Run()
 	}
 
 	return nil
