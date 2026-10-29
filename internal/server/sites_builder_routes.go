@@ -956,9 +956,9 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
-		// Buat nama cookie sesi tanpa karakter titik (.) karena PHP otomatis mengubah titik menjadi underscore di $_COOKIE
-		// sehingga Laravel gagal membaca cookie sesi miliknya sendiri dan memicu galat 419 Page Expired saat login.
-		sessionCookieName := sanitizeCookieSlug(site.Domain) + "_session"
+		// Buat nama cookie sesi dengan prefiks unik tanpa karakter titik (.) karena PHP otomatis mengubah titik menjadi underscore di $_COOKIE
+		// dan mengutamakan cookie pertama pada header Cookie (RFC 6265), sehingga prefiks 'fikpanel_' mencegah tabrakan dengan cookie lama di browser.
+		sessionCookieName := "fikpanel_" + sanitizeCookieSlug(site.Domain) + "_session"
 
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))

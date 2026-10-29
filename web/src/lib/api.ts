@@ -9,6 +9,9 @@ export const UNAUTHORIZED_EVENT = 'fikpanel:unauthorized';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// Simpan ID build server pertama yang diterima agar tab browser otomatis me-reload saat biner server diperbarui
+let activeServerBuildId = '';
+
 /** Error terstruktur agar UI bisa membedakan status HTTP (mis. 409 konflik vs 400 validasi). */
 export class ApiError extends Error {
   readonly status: number;
@@ -74,6 +77,17 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
     externalSignal?.removeEventListener('abort', onExternalAbort);
   }
 
+  // Deteksi pembaruan versi build server secara otomatis pada request GET agar UI selalu sinkron
+  const buildHdr = res.headers.get('X-FikPanel-Build') || '';
+  if (buildHdr) {
+    if (!activeServerBuildId) {
+      activeServerBuildId = buildHdr;
+    } else if (activeServerBuildId !== buildHdr && method === 'GET' && !endpoint.includes('deploy-progress')) {
+      activeServerBuildId = buildHdr;
+      window.location.reload();
+    }
+  }
+
   if (!res.ok) {
     let errMsg = `Permintaan gagal (HTTP ${res.status})`;
     try {
@@ -130,6 +144,17 @@ export async function apiFetchText(endpoint: string, options: ApiOptions = {}): 
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener('abort', onExternalAbort);
+  }
+
+  // Deteksi pembaruan versi build server secara otomatis pada request GET agar UI selalu sinkron
+  const buildHdr = res.headers.get('X-FikPanel-Build') || '';
+  if (buildHdr) {
+    if (!activeServerBuildId) {
+      activeServerBuildId = buildHdr;
+    } else if (activeServerBuildId !== buildHdr && method === 'GET' && !endpoint.includes('deploy-progress')) {
+      activeServerBuildId = buildHdr;
+      window.location.reload();
+    }
   }
 
   if (!res.ok) {

@@ -4,12 +4,16 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"fikpanel/internal/store"
 )
+
+// Identitas build saat proses server dimulai untuk mendeteksi pembaruan biner secara otomatis di sisi klien
+var serverBuildID = strconv.FormatInt(time.Now().UnixNano(), 36)
 
 type contextKey string
 
@@ -110,6 +114,7 @@ func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 // SecurityHeadersMiddleware menyematkan header keamanan HTTP standar
 func (s *Server) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-FikPanel-Build", serverBuildID)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// Izinkan iframe SAMEORIGIN khusus untuk endpoint pratinjau halaman galat internal panel
 		if strings.HasPrefix(r.URL.Path, "/api/sites/error-pages/preview") {

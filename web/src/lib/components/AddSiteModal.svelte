@@ -950,7 +950,7 @@
       </div>
     {:else}
       <form class="as-body" onsubmit={submit}>
-        <div class="as-scroll">
+        <div class="as-scroll" class:is-submitting={submitting}>
           <!-- ========================================================= -->
           <!-- TAB 4: BATCH CREATE (Pembuatan Banyak Situs Sekaligus)     -->
           <!-- ========================================================= -->
@@ -2086,6 +2086,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+    transition: opacity 0.2s ease;
+  }
+  .as-scroll.is-submitting {
+    opacity: 0.45;
+    pointer-events: none;
+    user-select: none;
   }
   .as-foot {
     display: flex;
