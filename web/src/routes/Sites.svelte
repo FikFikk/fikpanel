@@ -62,25 +62,51 @@
   }
   let gitPullTarget = $state<Site | null>(null);
   let gitPullRunning = $state(false);
-  let gitPullRunComposer = $state(true);
-  let gitPullRunMigrate = $state(true);
-  let gitPullClearCache = $state(true);
+  let gitPullCustomCmd = $state('');
   let gitPullResult = $state<GitPullResponse | null>(null);
   let gitPullError = $state('');
   let openMoreSiteId = $state<number | null>(null);
+  let renewingAllSSL = $state(false);
 
   function toggleMoreMenu(siteId: number, e: MouseEvent) {
     e.stopPropagation();
     openMoreSiteId = openMoreSiteId === siteId ? null : siteId;
   }
 
-  async function quickGitPull(site: Site) {
-    openMoreSiteId = null;
-    openGitPullModal(site);
-    gitPullRunComposer = false;
-    gitPullRunMigrate = true;
-    gitPullClearCache = true;
-    await executeGitPull();
+  // Daftar snippet perintah dinamis yang dapat ditambahkan/dihapus dengan 1 klik pada modal Git Pull
+  const gitPullSnippets = [
+    { label: '+ composer install', cmd: 'composer install --no-interaction --optimize-autoloader', phpOnly: true },
+    { label: '+ php artisan migrate', cmd: 'php artisan migrate --force', phpOnly: true },
+    { label: '+ php artisan optimize:clear', cmd: 'php artisan optimize:clear', phpOnly: true },
+    { label: '+ filament:assets', cmd: 'php artisan filament:assets', phpOnly: true },
+    { label: '+ npm run build', cmd: 'npm install && npm run build', phpOnly: false },
+  ];
+
+  // Memeriksa apakah snippet tertentu sudah ada di dalam rangkaian perintah Git Pull
+  function hasGitSnippet(snippetCmd: string): boolean {
+    const parts = gitPullCustomCmd.split('&&').map((p) => p.trim());
+    return parts.includes(snippetCmd);
+  }
+
+  // Menambah atau menghapus snippet perintah dari input dinamis Git Pull
+  function toggleGitSnippet(snippetCmd: string) {
+    const parts = gitPullCustomCmd
+      .split('&&')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const idx = parts.indexOf(snippetCmd);
+    if (idx !== -1) {
+      parts.splice(idx, 1);
+    } else {
+      parts.push(snippetCmd);
+    }
+    const branch = gitPullTarget?.git_branch || 'main';
+    gitPullCustomCmd = parts.length > 0 ? parts.join(' && ') : `git pull origin ${branch}`;
+  }
+
+  function resetGitPullCmd() {
+    const branch = gitPullTarget?.git_branch || 'main';
+    gitPullCustomCmd = `git pull origin ${branch}`;
   }
 
   // Modal Konfirmasi Hapus Situs (Danger Zone + Anti-Paste + Auto-Backup)
@@ -135,34 +161,54 @@
     return () => clearTimeout(t);
   });
 
-  // Sisa hari masa berlaku sertifikat
+  // Memeriksa dan memperbarui sertifikat SSL untuk seluruh situs terdaftar
   async function renewAllSSL() {
-    const issuedSites = sites.filter((s) => s.ssl_mode === 'letsencrypt');
-    if (issuedSites.length === 0) {
-      notify('Tidak ada situs dengan SSL Let\'s Encrypt', 'info');
+    if (renewingAllSSL) return;
+    if (sites.length === 0) {
+      onNotify('Belum ada situs yang terdaftar untuk diperiksa SSL-nya');
       return;
     }
-    notify(`Memeriksa dan memperbarui SSL untuk ${issuedSites.length} situs...`, 'info');
-    let count = 0;
-    for (const site of issuedSites) {
-      try {
-        await apiFetch(`/api/sites/${site.id}/ssl`, {
-          method: 'POST',
-          body: JSON.stringify({
-            enabled: true,
-            force_https: site.force_https === 1,
-            hsts: site.hsts === 1,
-            issue: true,
-            skip_dns: true,
-          }),
-        });
-        count++;
-      } catch {
-        // Lanjutkan
+
+    renewingAllSSL = true;
+    try {
+      // Cari situs yang SSL-nya belum aktif, gagal, atau sisa masa berlakunya <= 30 hari
+      const needRenew = sites.filter(
+        (s) => s.ssl_status !== 'issued' || s.ssl_mode === 'none' || sslDaysLeft(s) <= 30,
+      );
+
+      if (needRenew.length === 0) {
+        await loadSites(true);
+        const minDays = Math.min(...sites.map((s) => sslDaysLeft(s)));
+        onNotify(
+          `Semua sertifikat SSL (${sites.length} situs) masih aktif & aman (${minDays} hari tersisa)`,
+        );
+        return;
       }
+
+      onNotify(`Memperbarui sertifikat SSL untuk ${needRenew.length} situs...`);
+      let count = 0;
+      for (const site of needRenew) {
+        try {
+          await apiFetch(`/api/sites/${site.id}/ssl`, {
+            method: 'POST',
+            body: JSON.stringify({
+              enabled: true,
+              force_https: site.force_https === 1,
+              hsts: site.hsts === 1,
+              issue: true,
+              skip_dns: true,
+            }),
+          });
+          count++;
+        } catch {
+          // Lanjutkan ke situs berikutnya jika satu situs gagal
+        }
+      }
+      await loadSites(true);
+      onNotify(`Pembaruan SSL berhasil dijalankan untuk ${count} dari ${needRenew.length} situs`);
+    } finally {
+      renewingAllSSL = false;
     }
-    notify(`Pembaruan SSL selesai dipicu untuk ${count} situs`, 'success');
-    await loadSites();
   }
 
   function sslDaysLeft(s: Site) {
@@ -315,13 +361,18 @@
     }
   }
 
-  // Buka modal Git Pull & Auto-Deploy untuk situs berbasis Git
+  // Buka modal konfirmasi Git Pull dengan perintah dinamis yang dapat diedit
   function openGitPullModal(site: Site) {
     gitPullTarget = site;
     gitPullRunning = false;
-    gitPullRunComposer = true;
-    gitPullRunMigrate = true;
-    gitPullClearCache = true;
+    const branch = site.git_branch || 'main';
+    if (site.kind === 'php') {
+      gitPullCustomCmd = `git pull origin ${branch} && php artisan optimize:clear`;
+    } else if (site.kind === 'node') {
+      gitPullCustomCmd = `git pull origin ${branch} && npm install && npm run build`;
+    } else {
+      gitPullCustomCmd = `git pull origin ${branch}`;
+    }
     gitPullResult = null;
     gitPullError = '';
   }
@@ -342,9 +393,7 @@
       const res = await apiFetch<GitPullResponse>(`/api/sites/${gitPullTarget.id}/git-pull`, {
         method: 'POST',
         body: JSON.stringify({
-          run_composer: gitPullRunComposer,
-          run_migrate: gitPullRunMigrate,
-          clear_cache: gitPullClearCache,
+          command: gitPullCustomCmd.trim(),
         }),
       });
       gitPullResult = res;
@@ -395,51 +444,40 @@
 <svelte:window onclick={() => { if (openMoreSiteId !== null) openMoreSiteId = null; }} />
 
 <div class="sites-container">
-  <!-- ═════════ 1. Header Tab Kategori Proyek (Sesuai Screenshot aaPanel) ═════════ -->
+  <!-- ═════════ 1. Header Tab Kategori Proyek + Status Mesin Nginx di Kanan ═════════ -->
   <div class="project-tabs-bar">
-    <button class="proj-tab {activeTab === 'all' ? 'active' : ''}" onclick={() => (activeTab = 'all')}>
-      <span>Semua Proyek</span>
-    </button>
-    <button class="proj-tab {activeTab === 'php' ? 'active' : ''}" onclick={() => (activeTab = 'php')}>
-      <i class="ri-code-s-slash-line icon-php"></i>
-      <span>PHP Project</span>
-    </button>
-    <button class="proj-tab {activeTab === 'node' ? 'active' : ''}" onclick={() => (activeTab = 'node')}>
-      <i class="ri-javascript-line icon-node"></i>
-      <span>Node.js Project</span>
-    </button>
-    <button class="proj-tab {activeTab === 'proxy' ? 'active' : ''}" onclick={() => (activeTab = 'proxy')}>
-      <i class="ri-shuffle-line icon-proxy"></i>
-      <span>Proxy Project</span>
-    </button>
-    <button class="proj-tab {activeTab === 'go' ? 'active' : ''}" onclick={() => (activeTab = 'go')}>
-      <i class="ri-braces-line icon-go"></i>
-      <span>Go Project</span>
-    </button>
-    <button class="proj-tab {activeTab === 'python' ? 'active' : ''}" onclick={() => (activeTab = 'python')}>
-      <i class="ri-terminal-box-line icon-python"></i>
-      <span>Python Project</span>
-    </button>
-    <button class="proj-tab {activeTab === 'static' ? 'active' : ''}" onclick={() => (activeTab = 'static')}>
-      <i class="ri-html5-line icon-static"></i>
-      <span>Static HTML</span>
-    </button>
-  </div>
-
-  <!-- ═════════ 2. Action Toolbar: Tombol Tambah, Badge Nginx, & Search ═════════ -->
-  <div class="action-toolbar">
-    <div class="tb-left">
-      <button class="btn btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
-        <i class="ri-add-line"></i>
-        <span>Tambah Situs</span>
+    <div class="project-tabs-list">
+      <button class="proj-tab {activeTab === 'all' ? 'active' : ''}" onclick={() => (activeTab = 'all')}>
+        <span>Semua Proyek</span>
       </button>
-
-      <button class="btn btn-renew-ssl" title="Perbarui dan cek masa aktif semua SSL otomatis" onclick={renewAllSSL}>
-        <i class="ri-shield-keyhole-line"></i>
-        <span>Perbarui SSL Semua</span>
+      <button class="proj-tab {activeTab === 'php' ? 'active' : ''}" onclick={() => (activeTab = 'php')}>
+        <i class="ri-code-s-slash-line icon-php"></i>
+        <span>PHP Project</span>
       </button>
+      <button class="proj-tab {activeTab === 'node' ? 'active' : ''}" onclick={() => (activeTab = 'node')}>
+        <i class="ri-javascript-line icon-node"></i>
+        <span>Node.js Project</span>
+      </button>
+      <button class="proj-tab {activeTab === 'proxy' ? 'active' : ''}" onclick={() => (activeTab = 'proxy')}>
+        <i class="ri-shuffle-line icon-proxy"></i>
+        <span>Proxy Project</span>
+      </button>
+      <button class="proj-tab {activeTab === 'go' ? 'active' : ''}" onclick={() => (activeTab = 'go')}>
+        <i class="ri-braces-line icon-go"></i>
+        <span>Go Project</span>
+      </button>
+      <button class="proj-tab {activeTab === 'python' ? 'active' : ''}" onclick={() => (activeTab = 'python')}>
+        <i class="ri-terminal-box-line icon-python"></i>
+        <span>Python Project</span>
+      </button>
+      <button class="proj-tab {activeTab === 'static' ? 'active' : ''}" onclick={() => (activeTab = 'static')}>
+        <i class="ri-html5-line icon-static"></i>
+        <span>Static HTML</span>
+      </button>
+    </div>
 
-      <!-- Badge Web Server Aktif (Nginx 1.24.0 ▶) -->
+    <!-- Badge Engine Web Server di Ujung Kanan Bar Kategori -->
+    <div class="project-tabs-right">
       {#if webServer.installed}
         <button
           id="nginx-badge-btn"
@@ -459,6 +497,26 @@
           <span>Nginx Belum Terpasang</span>
         </div>
       {/if}
+    </div>
+  </div>
+
+  <!-- ═════════ 2. Action Toolbar: Tombol Tambah, Perbarui SSL Semua, & Search ═════════ -->
+  <div class="action-toolbar">
+    <div class="tb-left">
+      <button class="btn btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
+        <i class="ri-add-line"></i>
+        <span>Tambah Situs</span>
+      </button>
+
+      <button
+        class="btn btn-renew-ssl"
+        title="Periksa masa aktif & perbarui semua sertifikat SSL"
+        disabled={renewingAllSSL}
+        onclick={renewAllSSL}
+      >
+        <i class={renewingAllSSL ? 'ri-loader-4-line spin' : 'ri-shield-keyhole-line'}></i>
+        <span>{renewingAllSSL ? 'Memeriksa SSL...' : 'Perbarui SSL Semua'}</span>
+      </button>
     </div>
 
     <div class="tb-right">
@@ -772,31 +830,6 @@
                       </button>
                       {#if openMoreSiteId === s.id}
                         <div class="op-more-menu" role="menu">
-                          {#if s.has_git}
-                            <button
-                              type="button"
-                              class="op-more-item"
-                              onclick={() => { openMoreSiteId = null; openGitPullModal(s); }}
-                            >
-                              <i class="ri-git-pull-request-line icon-accent"></i>
-                              <div>
-                                <b>Git Pull &amp; Sinkronisasi</b>
-                                <small>Tarik commit terbaru dari {s.git_branch || 'main'}</small>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              class="op-more-item"
-                              onclick={() => quickGitPull(s)}
-                            >
-                              <i class="ri-flashlight-line icon-amber"></i>
-                              <div>
-                                <b>Quick Pull (Instan)</b>
-                                <small>Tarik kode terbaru &amp; bersihkan cache</small>
-                              </div>
-                            </button>
-                            <div class="op-more-divider"></div>
-                          {/if}
                           <button
                             type="button"
                             class="op-more-item"
@@ -981,48 +1014,58 @@
           </div>
         </div>
 
-        <!-- Opsi Otomatisasi Pasca-Pull -->
-        <div class="delete-impact-list">
-          <label class="delete-opt-item {gitPullRunComposer ? 'is-checked' : ''}">
-            <input type="checkbox" bind:checked={gitPullRunComposer} disabled={gitPullRunning} />
-            <div class="opt-body">
-              <div class="opt-title-row">
-                <span class="opt-title">Sinkronkan Dependensi Proyek</span>
-                <span class="opt-badge badge-safe">Composer / NPM</span>
-              </div>
-              <span class="opt-desc">
-                Menjalankan <code class="mono">composer install</code> (PHP) atau <code class="mono">npm install &amp;&amp; npm run build</code> (Node.js) apabila ada paket baru.
-              </span>
-            </div>
-          </label>
+        <!-- Konfirmasi & Editor Perintah Dinamis Git Pull -->
+        <div class="git-cmd-section">
+          <div class="git-cmd-label-row">
+            <span class="git-cmd-label">
+              <i class="ri-terminal-box-line"></i>
+              Perintah Eksekusi (Dapat Diedit Dinamis)
+            </span>
+            <button
+              type="button"
+              class="git-chip-reset"
+              onclick={resetGitPullCmd}
+              disabled={gitPullRunning}
+              title="Kembalikan ke perintah git pull murni"
+            >
+              Reset ke git pull
+            </button>
+          </div>
 
-          {#if gitPullTarget.kind === 'php'}
-            <label class="delete-opt-item {gitPullRunMigrate ? 'is-checked' : ''}">
-              <input type="checkbox" bind:checked={gitPullRunMigrate} disabled={gitPullRunning} />
-              <div class="opt-body">
-                <div class="opt-title-row">
-                  <span class="opt-title">Jalankan Migrasi Tabel Baru</span>
-                  <span class="opt-badge badge-safe">Artisan Migrate</span>
-                </div>
-                <span class="opt-desc">
-                  Menjalankan skema migrasi baru (<code class="mono">php artisan migrate</code>) secara aman tanpa menyentuh data tabel yang sudah ada.
-                </span>
-              </div>
-            </label>
+          <div class="git-cmd-input-wrap">
+            <span class="git-cmd-prompt mono">$</span>
+            <input
+              type="text"
+              class="git-cmd-input mono"
+              bind:value={gitPullCustomCmd}
+              disabled={gitPullRunning}
+              placeholder="git pull origin {gitPullTarget.git_branch || 'main'} && php artisan optimize:clear"
+            />
+          </div>
 
-            <label class="delete-opt-item {gitPullClearCache ? 'is-checked' : ''}">
-              <input type="checkbox" bind:checked={gitPullClearCache} disabled={gitPullRunning} />
-              <div class="opt-body">
-                <div class="opt-title-row">
-                  <span class="opt-title">Segarkan Cache &amp; Aset Aplikasi</span>
-                  <span class="opt-badge badge-safe">Disarankan</span>
-                </div>
-                <span class="opt-desc">
-                  Menjalankan <code class="mono">php artisan optimize:clear</code>, menyinkronkan aset Filament, serta merapikan izin akses direktori web.
-                </span>
-              </div>
-            </label>
-          {/if}
+          <!-- Tombol Chip Tambah/Hapus Perintah Cepat -->
+          <div class="git-chips-bar">
+            <span class="git-chips-hint">Klik untuk tambah/hapus:</span>
+            {#each gitPullSnippets.filter((sn) => !sn.phpOnly || gitPullTarget?.kind === 'php') as sn}
+              <button
+                type="button"
+                class="git-snippet-chip mono {hasGitSnippet(sn.cmd) ? 'is-active' : ''}"
+                onclick={() => toggleGitSnippet(sn.cmd)}
+                disabled={gitPullRunning}
+                title={sn.cmd}
+              >
+                <i class={hasGitSnippet(sn.cmd) ? 'ri-check-line' : 'ri-add-line'}></i>
+                <span>{sn.label.replace(/^\+\s*/, '')}</span>
+              </button>
+            {/each}
+          </div>
+
+          <div class="git-confirm-note">
+            <i class="ri-shield-check-line"></i>
+            <span>
+              Dijalankan di <code class="mono">{getProjectRootDir(gitPullTarget)}</code>. File <code class="mono">.env</code> lokal dicadangkan otomatis &amp; izin <code class="mono">www-data</code> tetap terjaga.
+            </span>
+          </div>
         </div>
 
         {#if gitPullError}
@@ -1238,10 +1281,24 @@
   .project-tabs-bar {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    overflow-x: auto;
+    justify-content: space-between;
+    gap: 0.75rem;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.4rem;
+    padding-bottom: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  .project-tabs-list {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    overflow-x: auto;
+  }
+
+  .project-tabs-right {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
   }
 
   .proj-tab {
@@ -1299,10 +1356,11 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    height: 34px;
     background: var(--accent-hover);
     color: var(--text);
     border: 1px solid var(--accent);
-    padding: 0.42rem 0.85rem;
+    padding: 0 0.85rem;
     border-radius: 6px;
     font-size: 0.78rem;
     font-weight: 600;
@@ -1319,19 +1377,24 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.5rem 0.85rem;
+    height: 34px;
+    padding: 0 0.85rem;
     background: var(--bg-surface);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    font-size: 0.82rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
-  .btn-renew-ssl:hover {
+  .btn-renew-ssl:hover:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--border-hover);
+  }
+  .btn-renew-ssl:disabled {
+    opacity: 0.65;
+    cursor: wait;
   }
   .btn-renew-ssl i {
     color: var(--accent);
@@ -1342,9 +1405,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    padding: 0.35rem 0.7rem;
+    padding: 0.3rem 0.65rem;
     border-radius: 6px;
-    font-size: 0.75rem;
+    font-size: 0.73rem;
     font-weight: 500;
     user-select: none;
   }
@@ -1407,12 +1470,18 @@
   .search-box {
     display: flex;
     align-items: center;
+    height: 34px;
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.3rem 0.6rem;
-    gap: 0.4rem;
+    padding: 0 0.7rem;
+    gap: 0.45rem;
     min-width: 240px;
+    transition: border-color 0.15s ease;
+  }
+
+  .search-box:focus-within {
+    border-color: var(--accent);
   }
 
   .search-box input {
@@ -1421,11 +1490,14 @@
     outline: none;
     color: var(--text);
     font-size: 0.78rem;
+    padding: 0;
+    height: 100%;
     width: 100%;
   }
 
   .search-icon {
     color: var(--text-subtle);
+    font-size: 0.85rem;
   }
 
   .btn-clear-search {
@@ -1433,6 +1505,8 @@
     border: none;
     color: var(--text-subtle);
     cursor: pointer;
+    padding: 0;
+    line-height: 1;
   }
 
   /* ═════════ 3. Dependency Warning Card (aaPanel Gambar 2 Style) ═════════ */
@@ -2505,6 +2579,142 @@
 
   .git-branch-highlight {
     color: var(--accent) !important;
+  }
+
+  .git-cmd-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 8px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+  }
+
+  .git-cmd-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .git-cmd-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .git-cmd-label i {
+    color: var(--accent);
+  }
+
+  .git-chip-reset {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.65rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .git-chip-reset:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .git-cmd-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--bg-surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    border-radius: 6px;
+    padding: 0 0.65rem;
+    height: 36px;
+  }
+
+  .git-cmd-input-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .git-cmd-prompt {
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    user-select: none;
+  }
+
+  .git-cmd-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    height: 100%;
+    font-size: 0.75rem !important;
+    color: var(--text);
+    width: 100%;
+  }
+
+  .git-chips-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.1rem;
+  }
+
+  .git-chips-hint {
+    font-size: 0.66rem;
+    color: var(--text-subtle);
+    margin-right: 0.15rem;
+  }
+
+  .git-snippet-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 5px;
+    font-size: 0.67rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+
+  .git-snippet-chip:hover:not(:disabled) {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  }
+
+  .git-snippet-chip.is-active {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .git-confirm-note {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    padding-top: 0.25rem;
+    border-top: 1px dashed var(--border-subtle);
+  }
+
+  .git-confirm-note i {
+    color: var(--accent);
+    font-size: 0.85rem;
+    flex-shrink: 0;
   }
 
   .git-pull-alert {

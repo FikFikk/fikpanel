@@ -2064,13 +2064,15 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		RunComposer *bool `json:"run_composer"`
-		RunMigrate  *bool `json:"run_migrate"`
-		ClearCache  *bool `json:"clear_cache"`
+		Command     string `json:"command"`
+		RunComposer *bool  `json:"run_composer"`
+		RunMigrate  *bool  `json:"run_migrate"`
+		ClearCache  *bool  `json:"clear_cache"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
+	customCmd := strings.TrimSpace(req.Command)
 	runComposer := true
 	if req.RunComposer != nil {
 		runComposer = *req.RunComposer
@@ -2142,88 +2144,38 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 	// Abaikan perbedaan chmod/fileMode agar git pull berjalan aman tanpa reset paksa
 	_ = exec.CommandContext(ctx, "git", "-C", projectDir, "config", "core.fileMode", "false").Run()
 
-	gitEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new")
-	pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "pull", "origin", branch)
-	pullCmd.Env = gitEnv
-	pullOut, pullErr := pullCmd.CombinedOutput()
-	if pullErr != nil {
+	execEnv := append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new",
+		"COMPOSER_ALLOW_SUPERUSER=1",
+		"HOME=/root",
+	)
+
+	if customCmd != "" && runtime.GOOS != "windows" {
+		shCmd := exec.CommandContext(ctx, "bash", "-c", customCmd)
+		shCmd.Dir = projectDir
+		shCmd.Env = execEnv
+		shOut, shErr := shCmd.CombinedOutput()
 		if envErr == nil && len(envBackup) > 0 {
-			_ = os.WriteFile(envPath, envBackup, 0o644)
-		}
-		cleanErr := strings.TrimSpace(string(pullOut))
-		if token != "" {
-			cleanErr = strings.ReplaceAll(cleanErr, token, "***")
-		}
-		s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
-		writeJSON(w, http.StatusBadGateway, map[string]string{
-			"error": "Git pull gagal: " + cleanErr,
-		})
-		return
-	}
-	appendStepLog("git pull origin "+branch, string(pullOut))
-
-	// Pulihkan kembali berkas .env lokal
-	if envErr == nil && len(envBackup) > 0 {
-		_ = os.WriteFile(envPath, envBackup, 0o644)
-	}
-
-	// Jalankan langkah pasca-pull sesuai jenis proyek
-	if runtime.GOOS != "windows" {
-		_, hasComposer := os.Stat(filepath.Join(projectDir, "composer.json"))
-		_, hasArtisan := os.Stat(filepath.Join(projectDir, "artisan"))
-		_, hasPackageJSON := os.Stat(filepath.Join(projectDir, "package.json"))
-
-		if hasComposer == nil && runComposer {
-			compCmd := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader")
-			compCmd.Dir = projectDir
-			compCmd.Env = append(os.Environ(), "COMPOSER_ALLOW_SUPERUSER=1", "HOME=/root")
-			compOut, err := compCmd.CombinedOutput()
-			if err != nil {
-				compCmd2 := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--ignore-platform-reqs")
-				compCmd2.Dir = projectDir
-				compCmd2.Env = append(os.Environ(), "COMPOSER_ALLOW_SUPERUSER=1", "HOME=/root")
-				compOut2, _ := compCmd2.CombinedOutput()
-				appendStepLog("composer install (--ignore-platform-reqs)", string(compOut)+"\n"+string(compOut2))
-			} else {
-				appendStepLog("composer install", string(compOut))
+			if _, statErr := os.Stat(envPath); statErr != nil {
+				_ = os.WriteFile(envPath, envBackup, 0o644)
 			}
 		}
-
-		if hasArtisan == nil {
-			if runMigrate {
-				migCmd := exec.CommandContext(ctx, "php", "artisan", "migrate", "--force")
-				migCmd.Dir = projectDir
-				migOut, _ := migCmd.CombinedOutput()
-				appendStepLog("php artisan migrate --force", string(migOut))
+		if shErr != nil {
+			cleanErr := strings.TrimSpace(string(shOut))
+			if token != "" {
+				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
 			}
-
-			// Sanitasi otomatis Policy Filament Shield bila ada file policy baru dari hasil pull
-			sanitizeFilamentShieldPolicies(projectDir)
-
-			if clearCache {
-				optCmd := exec.CommandContext(ctx, "php", "artisan", "optimize:clear")
-				optCmd.Dir = projectDir
-				optOut, _ := optCmd.CombinedOutput()
-				appendStepLog("php artisan optimize:clear", string(optOut))
-
-				if compBytes, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(compBytes)), "filament/filament") {
-					_ = exec.CommandContext(ctx, "php", "artisan", "filament:assets").Run()
-				}
-			}
+			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "Eksekusi perintah gagal: " + cleanErr,
+			})
+			return
 		}
+		appendStepLog(customCmd, string(shOut))
 
-		if hasPackageJSON == nil && site.Kind == "node" && runComposer {
-			npmCmd := exec.CommandContext(ctx, "bash", "-c", "npm install && npm run build")
-			npmCmd.Dir = projectDir
-			npmOut, _ := npmCmd.CombinedOutput()
-			appendStepLog("npm install && npm run build", string(npmOut))
-			if _, err := os.Stat(filepath.Join(projectDir, "ecosystem.config.cjs")); err == nil {
-				pm2Out, _ := exec.CommandContext(ctx, "pm2", "restart", "ecosystem.config.cjs", "--update-env").CombinedOutput()
-				appendStepLog("pm2 restart ecosystem.config.cjs", string(pm2Out))
-			}
-		}
-
-		// Pastikan kepemilikan berkas web dan izin tulis storage/cache terjaga
+		// Sanitasi otomatis Policy Filament Shield & rapikan kepemilikan direktori web
+		sanitizeFilamentShieldPolicies(projectDir)
 		_ = exec.CommandContext(ctx, "chown", "-R", "www-data:www-data", projectDir).Run()
 		for _, writableSub := range []string{"storage", "bootstrap/cache"} {
 			subPath := filepath.Join(projectDir, writableSub)
@@ -2233,6 +2185,97 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 		}
 		if site.Kind == "php" && site.PHPVersion != "" {
 			_ = exec.CommandContext(ctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
+		}
+	} else {
+		pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "pull", "origin", branch)
+		pullCmd.Env = execEnv
+		pullOut, pullErr := pullCmd.CombinedOutput()
+		if pullErr != nil {
+			if envErr == nil && len(envBackup) > 0 {
+				_ = os.WriteFile(envPath, envBackup, 0o644)
+			}
+			cleanErr := strings.TrimSpace(string(pullOut))
+			if token != "" {
+				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
+			}
+			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "Git pull gagal: " + cleanErr,
+			})
+			return
+		}
+		appendStepLog("git pull origin "+branch, string(pullOut))
+
+		// Pulihkan kembali berkas .env lokal
+		if envErr == nil && len(envBackup) > 0 {
+			_ = os.WriteFile(envPath, envBackup, 0o644)
+		}
+
+		// Jalankan langkah pasca-pull sesuai jenis proyek
+		if runtime.GOOS != "windows" {
+			_, hasComposer := os.Stat(filepath.Join(projectDir, "composer.json"))
+			_, hasArtisan := os.Stat(filepath.Join(projectDir, "artisan"))
+			_, hasPackageJSON := os.Stat(filepath.Join(projectDir, "package.json"))
+
+			if hasComposer == nil && runComposer {
+				compCmd := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader")
+				compCmd.Dir = projectDir
+				compCmd.Env = execEnv
+				compOut, err := compCmd.CombinedOutput()
+				if err != nil {
+					compCmd2 := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--ignore-platform-reqs")
+					compCmd2.Dir = projectDir
+					compCmd2.Env = execEnv
+					compOut2, _ := compCmd2.CombinedOutput()
+					appendStepLog("composer install (--ignore-platform-reqs)", string(compOut)+"\n"+string(compOut2))
+				} else {
+					appendStepLog("composer install", string(compOut))
+				}
+			}
+
+			if hasArtisan == nil {
+				if runMigrate {
+					migCmd := exec.CommandContext(ctx, "php", "artisan", "migrate", "--force")
+					migCmd.Dir = projectDir
+					migOut, _ := migCmd.CombinedOutput()
+					appendStepLog("php artisan migrate", string(migOut))
+				}
+
+				sanitizeFilamentShieldPolicies(projectDir)
+
+				if clearCache {
+					optCmd := exec.CommandContext(ctx, "php", "artisan", "optimize:clear")
+					optCmd.Dir = projectDir
+					optOut, _ := optCmd.CombinedOutput()
+					appendStepLog("php artisan optimize:clear", string(optOut))
+
+					if compBytes, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(compBytes)), "filament/filament") {
+						_ = exec.CommandContext(ctx, "php", "artisan", "filament:assets").Run()
+					}
+				}
+			}
+
+			if hasPackageJSON == nil && site.Kind == "node" && runComposer {
+				npmCmd := exec.CommandContext(ctx, "bash", "-c", "npm install && npm run build")
+				npmCmd.Dir = projectDir
+				npmOut, _ := npmCmd.CombinedOutput()
+				appendStepLog("npm install && npm run build", string(npmOut))
+				if _, err := os.Stat(filepath.Join(projectDir, "ecosystem.config.cjs")); err == nil {
+					pm2Out, _ := exec.CommandContext(ctx, "pm2", "restart", "ecosystem.config.cjs", "--update-env").CombinedOutput()
+					appendStepLog("pm2 restart ecosystem.config.cjs", string(pm2Out))
+				}
+			}
+
+			_ = exec.CommandContext(ctx, "chown", "-R", "www-data:www-data", projectDir).Run()
+			for _, writableSub := range []string{"storage", "bootstrap/cache"} {
+				subPath := filepath.Join(projectDir, writableSub)
+				if _, err := os.Stat(subPath); err == nil {
+					_ = exec.CommandContext(ctx, "chmod", "-R", "775", subPath).Run()
+				}
+			}
+			if site.Kind == "php" && site.PHPVersion != "" {
+				_ = exec.CommandContext(ctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
+			}
 		}
 	}
 

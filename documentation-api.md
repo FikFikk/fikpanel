@@ -2834,6 +2834,26 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "progress": {"domain": "yuha.fikfikk.my.id", "percent": 72, "stage": "migrate", "step_label": "Menjalankan migrasi skema database & seeder (php artisan migrate)...", "updated_at": 1793259200000}}` |
 | Notes | Mengembalikan persentase dan deskripsi tahapan provisioning/deployment situs secara real-time untuk ditampilkan pada progress bar modal Add Site. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/git-pull` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `command` (string, opsional, contoh `"git pull origin main && php artisan optimize:clear"`), `run_composer` (bool, fallback), `run_migrate` (bool, fallback), `clear_cache` (bool, fallback) |
+| Response | HTTP 200 `{"ok": true, "domain": "yuha.fikfikk.my.id", "branch": "main", "repo": "developerct/gsjs", "old_commit": "e12ec75", "new_commit": "e12ec75", "commit_message": "init", "updated": false, "output": "..."}` |
+| Notes | Mengeksekusi perintah sinkronisasi Git dinamis di direktori root proyek tanpa menimpa file `.env` lokal, menyinkronkan kredensial global Git (`/root/.git-credentials`), menyetel `core.fileMode=false` serta `safe.directory`, menyelaraskan Policy Filament Shield, dan merapikan kepemilikan direktori `www-data`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `type` (string, opsional: `"access"` atau `"error"`, default `"access"`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "type": "access", "content": "..."}` |
+| Notes | Membaca hingga 200 baris terakhir dari berkas `/var/log/nginx/{domain}.access.log` atau `/var/log/nginx/{domain}.error.log` secara langsung dari disk. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
