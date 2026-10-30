@@ -1189,16 +1189,19 @@ export interface CloudflareConfig {
   email?: string;
   account_name?: string;
   account_id?: string;
+  auth_mode?: 'api_token' | 'global_key';
   last_sync?: number;
 }
 
 export interface CloudflareDNSRecord {
   id: string;
-  type: string; // A, AAAA, CNAME, etc.
+  type: string; // A, AAAA, CNAME, TXT, MX, etc.
   name: string;
   content: string;
   proxied: boolean;
+  proxiable?: boolean;
   ttl: number;
+  priority?: number;
   points_to_server: boolean;
 }
 
@@ -1209,8 +1212,18 @@ export interface CloudflareZone {
   paused: boolean;
   development_mode: number;
   ssl_mode?: string;
+  security_level?: string;
+  always_use_https?: boolean;
+  auto_https_rewrites?: boolean;
+  brotli?: boolean;
+  tls_1_3?: boolean;
+  name_servers?: string[];
   dns_records?: CloudflareDNSRecord[];
   points_to_server?: boolean;
+  matched_records?: string[];
+  local_sites?: string[];
+  source?: 'cloudflare_api' | 'local_dns_fallback';
+  read_only?: boolean;
 }
 
 export interface GlobalPackage {

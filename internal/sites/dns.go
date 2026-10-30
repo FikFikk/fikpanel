@@ -59,38 +59,71 @@ func (m *Manager) ServerIPs(ctx context.Context) []string {
 	for ip := range set {
 		out = append(out, ip)
 	}
-	sort.Strings(out)
+	// Urutkan agar IPv4 publik (non-private) selalu berada di urutan paling pertama (indeks 0)
+	sort.Slice(out, func(i, j int) bool {
+		ipA := net.ParseIP(out[i])
+		ipB := net.ParseIP(out[j])
+		score := func(ip net.IP) int {
+			if ip == nil {
+				return 99
+			}
+			if ip.To4() != nil && !ip.IsPrivate() {
+				return 0 // Prioritas utama: IPv4 Publik (misal 54.254.187.53)
+			}
+			if ip.To4() == nil && !ip.IsPrivate() {
+				return 1 // Prioritas kedua: IPv6 Publik
+			}
+			if ip.To4() != nil && ip.IsPrivate() {
+				return 2 // Prioritas ketiga: IPv4 Private VPC/LAN (misal 172.31.x.x)
+			}
+			return 3
+		}
+		sa, sb := score(ipA), score(ipB)
+		if sa != sb {
+			return sa < sb
+		}
+		return out[i] < out[j]
+	})
 	return out
 }
 
-// publicIPs mendeteksi IP publik (penting untuk server di balik NAT cloud) dengan cache
+// publicIPs mendeteksi IP publik (penting untuk server di balik NAT cloud) dengan cache & multi-provider fallback
 func (m *Manager) publicIPs(ctx context.Context) []string {
 	m.ipc.mu.Lock()
 	defer m.ipc.mu.Unlock()
-	if time.Since(m.ipc.fetched) < publicIPTTL {
+	if len(m.ipc.ips) > 0 && time.Since(m.ipc.fetched) < publicIPTTL {
 		return m.ipc.ips
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, "https://api.ipify.org", nil)
-	if err != nil {
-		return m.ipc.ips
+	endpoints := []string{
+		"https://api.ipify.org",
+		"https://icanhazip.com",
+		"https://ifconfig.me/ip",
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		// Tandai waktu agar kegagalan jaringan tidak memicu percobaan beruntun
-		m.ipc.fetched = time.Now().Add(-publicIPTTL + time.Minute)
-		return m.ipc.ips
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
-	if err == nil && resp.StatusCode == http.StatusOK {
-		if ip := strings.TrimSpace(string(body)); net.ParseIP(ip) != nil {
-			m.ipc.ips = []string{ip}
+	for _, ep := range endpoints {
+		reqCtx, cancel := context.WithTimeout(ctx, 2500*time.Millisecond)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, ep, nil)
+		if err != nil {
+			cancel()
+			continue
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			cancel()
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+		resp.Body.Close()
+		cancel()
+		if err == nil && resp.StatusCode == http.StatusOK {
+			if ip := strings.TrimSpace(string(body)); net.ParseIP(ip) != nil {
+				m.ipc.ips = []string{ip}
+				m.ipc.fetched = time.Now()
+				return m.ipc.ips
+			}
 		}
 	}
-	m.ipc.fetched = time.Now()
+	m.ipc.fetched = time.Now().Add(-publicIPTTL + 30*time.Second)
 	return m.ipc.ips
 }
 

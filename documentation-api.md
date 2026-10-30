@@ -2864,6 +2864,36 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "logs": [{"id": 120, "site_name": "yuha.fikfikk.my.id", "client_ip": "182.8.100.74", "country": "Indonesia", "country_code": "ID", "city": "Surabaya", "isp": "PT Telkom Indonesia", "latitude": -7.2492, "longitude": 112.7508, "method": "POST", "url_path": "/livewire/update", "protocol": "HTTP/2.0", "status_code": 200, "bytes_sent": 4128, "referer": "https://yuha.fikfikk.my.id/admin", "user_agent": "Mozilla/5.0...", "device": "Desktop (PC)", "os": "Windows 10/11", "browser": "Chrome", "is_threat": false, "action": "allow", "timestamp": 1793341200}]}` |
 | Notes | Mengembalikan rekaman log akses HTTP real-time dari ring buffer `waf.LogWatcher` yang mencakup lalu lintas pengunjung normal maupun percobaan serangan/probe biner, lengkap dengan geolokasi, perangkat, ukuran byte, dan klasifikasi WAF. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/zones/{id}/dns` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `record_id` (string, opsional untuk update), `type` (`"A"`, `"AAAA"`, `"CNAME"`, `"TXT"`, `"MX"`), `name` (string, wajib), `content` (string, opsional; jika kosong pada `A`/`AAAA` otomatis diisi IP publik server), `proxied` (bool), `ttl` (int, default `1` = Auto), `priority` (int, opsional untuk `MX`) |
+| Response | HTTP 200 `{"ok": true, "record": {"id": "...", "type": "A", "name": "yuha.fikfikk.my.id", "content": "54.254.187.53", "proxied": true, "ttl": 1}}` |
+| Notes | Membuat atau memperbarui rekaman DNS pada zona Cloudflare secara langsung (membutuhkan izin token `Zone -> DNS -> Edit`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/cloudflare/zones/{id}/dns/{record_id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menghapus rekaman DNS berdasarkan `record_id` dari zona Cloudflare. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cloudflare/zones/{id}/settings` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `setting` (`"ssl"`, `"security_level"`, `"always_use_https"`, `"automatic_https_rewrites"`, `"brotli"`, `"tls_1_3"`, `"development_mode"`), `value` (`"off"`, `"flexible"`, `"full"`, `"strict"`, `"under_attack"`, `"high"`, `"medium"`, `"low"`, `"essentially_off"`, `"on"`) |
+| Response | HTTP 200 `{"ok": true, "setting": "security_level", "value": "under_attack"}` |
+| Notes | Mengubah pengaturan keamanan dan performa Cloudflare Edge secara langsung via `PATCH /client/v4/zones/{id}/settings/{setting}` (membutuhkan izin token `Zone -> Zone Settings -> Edit`). |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
