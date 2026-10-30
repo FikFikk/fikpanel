@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"fikpanel/internal/discovery"
 	"fikpanel/internal/store"
@@ -83,8 +85,11 @@ func (s *Server) handleSaveDiscoveryConfig(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handleDiscoveryScan menjalankan pemindaian menyeluruh terhadap infrastruktur server
+// handleDiscoveryScan menjalankan pemindaian menyeluruh terhadap infrastruktur server dengan batas waktu 10 detik
 func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	var req struct {
 		CustomRoots []string `json:"custom_roots"`
 	}
@@ -92,7 +97,7 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 
 	roots := req.CustomRoots
 	if len(roots) == 0 {
-		val, err := s.store.GetSetting(r.Context(), "discovery_custom_roots")
+		val, err := s.store.GetSetting(ctx, "discovery_custom_roots")
 		if err == nil && val != "" {
 			_ = json.Unmarshal([]byte(val), &roots)
 		}
@@ -102,14 +107,35 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 		s.discoveryScanner = discovery.NewScanner()
 	}
 
-	result, err := s.discoveryScanner.ScanAll(r.Context(), roots)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"gagal melakukan pemindaian server: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
+	result, scanErr := s.discoveryScanner.ScanAll(ctx, roots)
+	if result == nil {
+		result = &discovery.DiscoveryResult{
+			NginxVhosts:    []discovery.NginxVhostItem{},
+			DockerProjects: []discovery.DockerDiscoveredItem{},
+			PM2Apps:        []discovery.PM2DiscoveredItem{},
+			Databases:      []discovery.DatabaseDiscoveredItem{},
+			KubernetesType: "none",
+		}
+	}
+	if result.NginxVhosts == nil {
+		result.NginxVhosts = []discovery.NginxVhostItem{}
+	}
+	if result.DockerProjects == nil {
+		result.DockerProjects = []discovery.DockerDiscoveredItem{}
+	}
+	if result.PM2Apps == nil {
+		result.PM2Apps = []discovery.PM2DiscoveredItem{}
+	}
+	if result.Databases == nil {
+		result.Databases = []discovery.DatabaseDiscoveredItem{}
 	}
 
+	// Gunakan context terpisah agar query database tidak gagal jika context scan terkena timeout
+	dbCtx, cancelDB := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelDB()
+
 	// Bandingkan dengan situs yang sudah ada di database untuk menandai status adopsi
-	existingSites, err := s.store.ListSites(r.Context())
+	existingSites, err := s.store.ListSites(dbCtx)
 	if err == nil {
 		registeredDomains := make(map[string]bool)
 		for _, es := range existingSites {
@@ -126,11 +152,17 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"ok":     true,
 		"result": result,
-	})
+	}
+	if scanErr != nil || ctx.Err() != nil {
+		resp["partial"] = true
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // handleDiscoveryAdopt mendaftarkan konfigurasi vhost/aplikasi yang ditemukan ke sistem database panel

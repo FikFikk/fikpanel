@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,7 @@ type DockerDiscoveredItem struct {
 type PM2DiscoveredItem struct {
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
+	User       string `json:"user"`
 	Script     string `json:"script"`
 	WorkingDir string `json:"working_dir"`
 	Status     string `json:"status"`
@@ -55,6 +57,28 @@ type DiscoveryResult struct {
 	Databases          []DatabaseDiscoveredItem `json:"databases"`
 	KubernetesDetected bool                     `json:"kubernetes_detected"`
 	KubernetesType     string                   `json:"kubernetes_type"` // k3s, microk8s, standard, none
+}
+
+// skippedComposeDirs daftar direktori besar yang wajib dilewati saat memindai berkas compose
+var skippedComposeDirs = map[string]bool{
+	"actions-runner":  true,
+	".actions-runner": true,
+	"cache":           true,
+	".cache":          true,
+	"logs":            true,
+	"tmp":             true,
+	"temp":            true,
+	"vendor":          true,
+	"node_modules":    true,
+	".output":         true,
+	"dist":            true,
+	"build":           true,
+	".git":            true,
+	"storage":         true,
+	"AppData":         true,
+	"Local":           true,
+	"Windows":         true,
+	"Program Files":   true,
 }
 
 type Scanner struct{}
@@ -148,7 +172,7 @@ func parseConfigFile(path string) []NginxVhostItem {
 
 // ScanNginxVhosts memindai vhost Nginx yang sudah aktif di direktori Linux standar
 func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error) {
-	var results []NginxVhostItem
+	results := []NginxVhostItem{}
 	// Hanya periksa konfigurasi yang benar-benar aktif (sites-enabled dan conf.d)
 	dirs := []string{
 		"/etc/nginx/sites-enabled",
@@ -157,6 +181,12 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 
 	seen := make(map[string]bool)
 	for _, dir := range dirs {
+		select {
+		case <-ctx.Done():
+			return results, ctx.Err()
+		default:
+		}
+
 		files, err := os.ReadDir(dir)
 		if err != nil {
 			continue
@@ -183,10 +213,16 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 
 // scanComposeInPaths menelusuri direktori target untuk menemukan berkas docker-compose
 func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredItem {
-	var projects []DockerDiscoveredItem
+	projects := []DockerDiscoveredItem{}
 	seenDirs := make(map[string]bool)
 
 	for _, root := range roots {
+		select {
+		case <-ctx.Done():
+			return projects
+		default:
+		}
+
 		if _, err := os.Stat(root); err != nil {
 			continue
 		}
@@ -194,16 +230,16 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 			if err != nil {
 				return nil
 			}
-			// Periksa pembatalan context
+			// Periksa pembatalan context agar tidak hang
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
 			}
 
-			// Batasi kedalaman pencarian maksimal 3 subdirektori
+			// Batasi kedalaman pencarian maksimal 2 subdirektori
 			rel, errRel := filepath.Rel(root, path)
-			if errRel == nil && strings.Count(rel, string(filepath.Separator)) > 3 {
+			if errRel == nil && strings.Count(rel, string(filepath.Separator)) > 2 {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
@@ -212,8 +248,7 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 
 			if info.IsDir() {
 				name := info.Name()
-				if name == "node_modules" || name == ".git" || name == "vendor" || name == "storage" ||
-					name == "AppData" || name == "Local" || name == "Windows" || name == "Program Files" ||
+				if skippedComposeDirs[name] || skippedComposeDirs[strings.ToLower(name)] ||
 					(strings.HasPrefix(name, ".") && name != "." && name != "..") {
 					return filepath.SkipDir
 				}
@@ -230,6 +265,7 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 						ProjectName: projectName,
 						ComposePath: path,
 						WorkingDir:  dir,
+						Containers:  []string{},
 					})
 				}
 			}
@@ -242,10 +278,10 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 
 // ScanDockerProjects memindai direktori proyek compose dan kontainer berjalan
 func (s *Scanner) ScanDockerProjects(ctx context.Context, customRoots []string) ([]DockerDiscoveredItem, error) {
-	defaultRoots := []string{"/var/www", "/opt"}
+	defaultRoots := []string{"/var/www", "/opt", "/www/dk_project"}
 	if home, err := os.UserHomeDir(); err == nil {
 		// Pindai subdirektori proyek umum di home direktori pengguna saat ini
-		for _, sub := range []string{"projects", "workspace", "www", "web", "node", "dev"} {
+		for _, sub := range []string{"projects", "workspace", "www", "web", "node", "dev", "docker"} {
 			subPath := filepath.Join(home, sub)
 			if _, err := os.Stat(subPath); err == nil {
 				defaultRoots = append(defaultRoots, subPath)
@@ -253,17 +289,12 @@ func (s *Scanner) ScanDockerProjects(ctx context.Context, customRoots []string) 
 		}
 	}
 
-	// Jika berjalan sebagai root di Linux, pindai subdirektori proyek di seluruh akun /home/<user>
+	// Jika berjalan di Linux, pindai direktori akun /home/<user> (terproteksi oleh batas depth <= 2 dan blacklist)
 	if entries, err := os.ReadDir("/home"); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
 				userHome := filepath.Join("/home", e.Name())
-				for _, sub := range []string{"projects", "workspace", "www", "web", "node", "dev"} {
-					subPath := filepath.Join(userHome, sub)
-					if _, err := os.Stat(subPath); err == nil {
-						defaultRoots = append(defaultRoots, subPath)
-					}
-				}
+				defaultRoots = append(defaultRoots, userHome)
 			}
 		}
 	}
@@ -299,57 +330,194 @@ func (s *Scanner) ScanDockerProjects(ctx context.Context, customRoots []string) 
 	return projects, nil
 }
 
-// ScanPM2Apps memindai proses PM2 yang sedang berjalan di host
+// resolvePM2BinForUser mencari biner pm2 atau node untuk user tertentu (termasuk NVM)
+func resolvePM2BinForUser(name string, username string) string {
+	if runtime.GOOS == "windows" {
+		if p, err := exec.LookPath(name + ".cmd"); err == nil {
+			return p
+		}
+		if p, err := exec.LookPath(name + ".exe"); err == nil {
+			return p
+		}
+	}
+
+	if runtime.GOOS == "linux" && username != "" && username != "root" {
+		userHome := filepath.Join("/home", username)
+		for _, pat := range []string{
+			filepath.Join(userHome, ".nvm/versions/node/*/bin", name),
+			filepath.Join(userHome, ".npm-global/bin", name),
+			filepath.Join(userHome, ".local/share/pnpm", name),
+			filepath.Join(userHome, ".volta/bin", name),
+		} {
+			if matches, _ := filepath.Glob(pat); len(matches) > 0 {
+				return matches[len(matches)-1]
+			}
+		}
+	}
+
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+
+	if runtime.GOOS == "linux" {
+		for _, c := range []string{"/usr/local/bin/" + name, "/usr/bin/" + name, "/bin/" + name} {
+			if _, err := os.Stat(c); err == nil {
+				return c
+			}
+		}
+		for _, pat := range []string{
+			filepath.Join("/root", ".nvm/versions/node/*/bin", name),
+			filepath.Join("/home/*", ".nvm/versions/node/*/bin", name),
+			filepath.Join("/home/*", ".npm-global/bin", name),
+		} {
+			if matches, _ := filepath.Glob(pat); len(matches) > 0 {
+				return matches[len(matches)-1]
+			}
+		}
+	}
+
+	return ""
+}
+
+// discoverHostPM2Users mendeteksi seluruh pemilik folder .pm2 (/root/.pm2 dan /home/*/.pm2)
+func discoverHostPM2Users() []string {
+	if runtime.GOOS != "linux" {
+		return []string{"default"}
+	}
+
+	var users []string
+	seen := make(map[string]bool)
+
+	if info, err := os.Stat("/root/.pm2"); err == nil && info.IsDir() {
+		users = append(users, "root")
+		seen["root"] = true
+	}
+
+	if entries, err := os.ReadDir("/home"); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			u := entry.Name()
+			if seen[u] {
+				continue
+			}
+			pm2Dir := filepath.Join("/home", u, ".pm2")
+			if info, err := os.Stat(pm2Dir); err == nil && info.IsDir() {
+				users = append(users, u)
+				seen[u] = true
+			}
+		}
+	}
+
+	if len(users) == 0 {
+		users = append(users, "root")
+	}
+	return users
+}
+
+// ScanPM2Apps memindai proses PM2 yang sedang berjalan dari seluruh user (/root/.pm2 dan /home/*/.pm2)
 func (s *Scanner) ScanPM2Apps(ctx context.Context) ([]PM2DiscoveredItem, error) {
-	pm2Bin, err := exec.LookPath("pm2")
-	if err != nil {
-		if runtime.GOOS == "windows" {
-			pm2Bin, err = exec.LookPath("pm2.cmd")
+	if resolvePM2BinForUser("pm2", "") == "" {
+		return []PM2DiscoveredItem{}, nil
+	}
+
+	users := discoverHostPM2Users()
+	apps := []PM2DiscoveredItem{}
+	seenKey := make(map[string]bool)
+
+	for _, username := range users {
+		select {
+		case <-ctx.Done():
+			return apps, nil
+		default:
 		}
-	}
-	if err != nil {
-		return []PM2DiscoveredItem{}, nil
-	}
 
-	cmd := exec.CommandContext(ctx, pm2Bin, "jlist")
-	out, err := cmd.Output()
-	if err != nil {
-		return []PM2DiscoveredItem{}, nil
-	}
-
-	outStr := string(out)
-	firstBracket := strings.Index(outStr, "[")
-	lastBracket := strings.LastIndex(outStr, "]")
-	if firstBracket == -1 || lastBracket == -1 || lastBracket < firstBracket {
-		return []PM2DiscoveredItem{}, nil
-	}
-
-	var rawList []map[string]interface{}
-	if err := json.Unmarshal([]byte(outStr[firstBracket:lastBracket+1]), &rawList); err != nil {
-		return []PM2DiscoveredItem{}, nil
-	}
-
-	var apps []PM2DiscoveredItem
-	for _, item := range rawList {
-		app := PM2DiscoveredItem{Instances: 1}
-		if pmID, ok := item["pm_id"].(float64); ok {
-			app.ID = int(pmID)
+		pm2Bin := resolvePM2BinForUser("pm2", username)
+		if pm2Bin == "" {
+			continue
 		}
-		if name, ok := item["name"].(string); ok {
-			app.Name = name
-		}
-		if pm2Env, ok := item["pm2_env"].(map[string]interface{}); ok {
-			if st, ok := pm2Env["status"].(string); ok {
-				app.Status = st
+
+		userCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		var cmd *exec.Cmd
+
+		if runtime.GOOS == "linux" && username != "root" && username != "default" {
+			homeDir := filepath.Join("/home", username)
+			pm2Home := filepath.Join(homeDir, ".pm2")
+			pathParts := []string{filepath.Dir(pm2Bin)}
+			if nodeBin := resolvePM2BinForUser("node", username); nodeBin != "" {
+				pathParts = append(pathParts, filepath.Dir(nodeBin))
 			}
-			if sc, ok := pm2Env["pm_exec_path"].(string); ok {
-				app.Script = sc
+			pathParts = append(pathParts, "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
+			richPath := strings.Join(pathParts, ":")
+
+			if sudoBin, errSudo := exec.LookPath("sudo"); errSudo == nil {
+				cmd = exec.CommandContext(userCtx, sudoBin, "-n", "-u", username, "env",
+					"HOME="+homeDir,
+					"PM2_HOME="+pm2Home,
+					"PATH="+richPath,
+					pm2Bin, "jlist")
+			} else {
+				cmd = exec.CommandContext(userCtx, pm2Bin, "jlist")
+				cmd.Env = append(os.Environ(), "HOME="+homeDir, "PM2_HOME="+pm2Home, "PATH="+richPath)
 			}
-			if cwd, ok := pm2Env["pm_cwd"].(string); ok {
-				app.WorkingDir = cwd
+		} else {
+			cmd = exec.CommandContext(userCtx, pm2Bin, "jlist")
+			if runtime.GOOS == "linux" {
+				cmd.Env = append(os.Environ(), "HOME=/root", "PM2_HOME=/root/.pm2")
 			}
 		}
-		apps = append(apps, app)
+
+		out, err := cmd.Output()
+		cancel()
+		if err != nil || len(out) == 0 {
+			continue
+		}
+
+		outStr := string(out)
+		firstBracket := strings.Index(outStr, "[")
+		lastBracket := strings.LastIndex(outStr, "]")
+		if firstBracket == -1 || lastBracket == -1 || lastBracket < firstBracket {
+			continue
+		}
+
+		var rawList []map[string]interface{}
+		if err := json.Unmarshal([]byte(outStr[firstBracket:lastBracket+1]), &rawList); err != nil {
+			continue
+		}
+
+		for _, item := range rawList {
+			app := PM2DiscoveredItem{
+				Instances: 1,
+				User:      username,
+			}
+			if pmID, ok := item["pm_id"].(float64); ok {
+				app.ID = int(pmID)
+			}
+			if name, ok := item["name"].(string); ok {
+				app.Name = name
+			}
+			if pm2Env, ok := item["pm2_env"].(map[string]interface{}); ok {
+				if st, ok := pm2Env["status"].(string); ok {
+					app.Status = st
+				}
+				if u, ok := pm2Env["username"].(string); ok && strings.TrimSpace(u) != "" {
+					app.User = strings.TrimSpace(u)
+				}
+				if sc, ok := pm2Env["pm_exec_path"].(string); ok {
+					app.Script = sc
+				}
+				if cwd, ok := pm2Env["pm_cwd"].(string); ok {
+					app.WorkingDir = cwd
+				}
+			}
+
+			key := fmt.Sprintf("%s:%d:%s", app.User, app.ID, app.Name)
+			if !seenKey[key] {
+				seenKey[key] = true
+				apps = append(apps, app)
+			}
+		}
 	}
 
 	return apps, nil
@@ -367,9 +535,11 @@ func DetectKubernetes(ctx context.Context) (bool, string) {
 		return true, "microk8s"
 	}
 
-	// Cek kubectl umum
+	// Cek kubectl umum dengan batas waktu singkat
 	if _, err := exec.LookPath("kubectl"); err == nil {
-		cmd := exec.CommandContext(ctx, "kubectl", "version", "--client", "--output=json")
+		k8sCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(k8sCtx, "kubectl", "version", "--client", "--output=json")
 		if err := cmd.Run(); err == nil {
 			return true, "standard"
 		}
@@ -378,18 +548,33 @@ func DetectKubernetes(ctx context.Context) (bool, string) {
 	return false, "none"
 }
 
-// ScanAll menjalankan seluruh modul deteksi secara komprehensif
+// ScanAll menjalankan seluruh modul deteksi secara komprehensif dengan batas waktu 10 detik
 func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*DiscoveryResult, error) {
-	res := &DiscoveryResult{}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-	vhosts, _ := s.ScanNginxVhosts(ctx)
-	res.NginxVhosts = vhosts
+	res := &DiscoveryResult{
+		NginxVhosts:    []NginxVhostItem{},
+		DockerProjects: []DockerDiscoveredItem{},
+		PM2Apps:        []PM2DiscoveredItem{},
+		Databases:      []DatabaseDiscoveredItem{},
+		KubernetesType: "none",
+	}
 
-	dockerProjs, _ := s.ScanDockerProjects(ctx, customRoots)
-	res.DockerProjects = dockerProjs
+	if vhosts, err := s.ScanNginxVhosts(ctx); err == nil && vhosts != nil {
+		res.NginxVhosts = vhosts
+	}
 
-	pm2Apps, _ := s.ScanPM2Apps(ctx)
-	res.PM2Apps = pm2Apps
+	// Batasi pemindaian berkas compose maksimal 5 detik agar PM2 & K8s tetap memiliki sisa waktu
+	dockerCtx, cancelDocker := context.WithTimeout(ctx, 5*time.Second)
+	if dockerProjs, _ := s.ScanDockerProjects(dockerCtx, customRoots); dockerProjs != nil {
+		res.DockerProjects = dockerProjs
+	}
+	cancelDocker()
+
+	if pm2Apps, _ := s.ScanPM2Apps(ctx); pm2Apps != nil {
+		res.PM2Apps = pm2Apps
+	}
 
 	k8sDetected, k8sType := DetectKubernetes(ctx)
 	res.KubernetesDetected = k8sDetected

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"fikpanel/internal/node"
 )
@@ -74,7 +75,17 @@ func (s *Server) handleControlNodeProcess(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.pm2.Action(r.Context(), idOrName, action); err != nil {
+	// Baca user pemilik proses jika dikirim melalui query param atau body JSON
+	ownerUser := strings.TrimSpace(r.URL.Query().Get("user"))
+	if ownerUser == "" && r.Body != nil {
+		var body struct {
+			User string `json:"user"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		ownerUser = strings.TrimSpace(body.User)
+	}
+
+	if err := s.pm2.Action(r.Context(), idOrName, action, ownerUser); err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
@@ -103,7 +114,9 @@ func (s *Server) handleGetNodeProcessLogs(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	logs, err := s.pm2.GetLogs(r.Context(), idOrName, lines)
+	ownerUser := strings.TrimSpace(r.URL.Query().Get("user"))
+
+	logs, err := s.pm2.GetLogs(r.Context(), idOrName, lines, ownerUser)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
@@ -116,4 +129,3 @@ func (s *Server) handleGetNodeProcessLogs(w http.ResponseWriter, r *http.Request
 		"logs":   logs,
 	})
 }
-

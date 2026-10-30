@@ -62,7 +62,7 @@
 
     try {
       notify(`Memproses ${action} "${p.name}"...`, 'info');
-      await apiFetch(`/api/node/processes/${p.id}/${action}`, { method: 'POST' });
+      await apiFetch(`/api/node/processes/${p.id}/${action}${p.user ? `?user=${encodeURIComponent(p.user)}` : ''}`, { method: 'POST' });
       notify(`Proses "${p.name}" berhasil di-${action}`, 'success');
       await loadData();
     } catch (err: any) {
@@ -109,13 +109,13 @@
   async function openLogs(p: PM2Process) {
     selectedProcess = p;
     showLogModal = true;
-    await fetchLogs(p.id);
+    await fetchLogs(p.id, p.user);
   }
 
-  async function fetchLogs(id: number) {
+  async function fetchLogs(id: number, user?: string) {
     try {
       loadingLogs = true;
-      const res = await apiFetch<{ ok: boolean; logs: string }>(`/api/node/processes/${id}/logs?lines=80`);
+      const res = await apiFetch<{ ok: boolean; logs: string }>(`/api/node/processes/${id}/logs?lines=80${user ? `&user=${encodeURIComponent(user)}` : ''}`);
       logContent = res.logs || 'Belum ada catatan log.';
     } catch (err: any) {
       logContent = `Gagal mengambil log: ${err.message}`;
@@ -278,13 +278,13 @@
               </td>
             </tr>
           {:else}
-            {#each processes as p (p.id)}
+            {#each processes as p (`${p.user || 'root'}-${p.id}-${p.name}`)}
               <tr>
                 <td>
                   <div class="proc-name-col">
                     <span class="badge-id">#{p.id}</span>
                     <div class="proc-title-wrap">
-                      <span class="font-bold text-white">{p.name}</span>
+                      <span class="font-bold text-white">{p.name} {#if p.user}<span class="badge-mode">@{p.user}</span>{/if}</span>
                       {#if p.cwd || p.script}
                         <span class="text-subtle text-xs mono truncate" title="{p.cwd || ''}/{p.script || ''}">
                           {p.script || p.cwd}
@@ -436,7 +436,7 @@
           <i class="ri-terminal-box-line"></i> Log Real-time: {selectedProcess?.name} (#{selectedProcess?.id})
         </h2>
         <div class="modal-head-tools">
-          <button class="btn btn-ghost btn-sm" onclick={() => selectedProcess && fetchLogs(selectedProcess.id)} disabled={loadingLogs}>
+          <button class="btn btn-ghost btn-sm" onclick={() => selectedProcess && fetchLogs(selectedProcess.id, selectedProcess.user)} disabled={loadingLogs}>
             <i class="ri-refresh-line {loadingLogs ? 'spin' : ''}"></i> Refresh Log
           </button>
           <button class="modal-close" onclick={() => (showLogModal = false)}>

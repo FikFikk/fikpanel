@@ -1395,7 +1395,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"ok": true, "status": {...}, "processes": [{"id": 0, "name": "my-app", "status": "online", "pid": 1234, "cpu": 0.5, "memory": 45000000, "uptime": 1740000000, "restart_count": 0, "mode": "fork"}]}` |
-| Notes | Mengambil daftar proses nyata dari output `pm2 jlist` (mengembalikan array kosong jika PM2 belum terpasang atau belum ada proses). |
+| Notes | Mengambil dan menggabungkan daftar proses nyata dari seluruh direktori `/root/.pm2` dan `/home/*/.pm2` menggunakan `sudo -u <username> pm2 jlist` beserta field pemilik `user`. |
 
 | Field | Detail |
 |---|---|
@@ -1415,7 +1415,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"ok": true, "target": "0", "action": "restart"}` |
-| Notes | Mengontrol siklus hidup proses PM2: `restart`, `stop`, `start`, `reload`, atau `delete` (otomatis mengeksekusi `pm2 save` saat menghapus). |
+| Notes | Mengontrol siklus hidup proses PM2 (`restart`, `stop`, `start`, `reload`, `delete`) atas nama user pemilik proses (`sudo -u <username> pm2 <action> <id>`). Mendukung parameter query opsional `?user=<username>`. |
 
 | Field | Detail |
 |---|---|
@@ -1425,7 +1425,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | `lines` (int, default: 60) |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"ok": true, "target": "0", "logs": "..."}` |
-| Notes | Mengambil baris log gabungan stdout dan stderr langsung dari daemon PM2. |
+| Notes | Mengambil baris log gabungan stdout dan stderr langsung dari daemon PM2 milik user pemilik proses (`sudo -u <username> pm2 logs <id>`). Mendukung parameter query opsional `?user=<username>`. |
 
 ---
 
@@ -1459,7 +1459,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `custom_roots` (opsional, array of string) |
 | Response | HTTP 200 `{"ok": true, "result": {"nginx_vhosts": [...], "docker_projects": [...], "pm2_apps": [...], "kubernetes_detected": bool, "kubernetes_type": "k3s"}}` |
-| Notes | Memindai menyeluruh konfigurasi vhost Nginx host (`/etc/nginx/**`), stack docker compose, proses PM2 aktif, dan status cluster K8s. Vhost yang sudah ada di database otomatis ditandai `is_adopted: true`. |
+| Notes | Memindai konfigurasi vhost Nginx host (`/etc/nginx/**`), stack docker compose (kedalaman maks 2 subfolder & melewati folder berat `actions-runner`, `.cache`, `vendor`, `node_modules`, dll.), proses PM2 multi-user (`/root/.pm2` & `/home/*/.pm2`), dan status cluster K8s dengan batas waktu 10 detik. Mengembalikan HTTP 200 dengan hasil parsial bila terjadi timeout. |
 
 | Field | Detail |
 |---|---|
