@@ -2015,8 +2015,10 @@ func (s *Server) syncGitGlobalCredentials(ctx context.Context, projectDir string
 		return
 	}
 	_ = exec.CommandContext(ctx, "git", "config", "--global", "--replace-all", "safe.directory", "*").Run()
+	_ = exec.CommandContext(ctx, "git", "config", "--global", "core.fileMode", "false").Run()
 	if strings.TrimSpace(projectDir) != "" {
 		_ = exec.CommandContext(ctx, "git", "config", "--global", "--add", "safe.directory", projectDir).Run()
+		_ = exec.CommandContext(ctx, "git", "-C", projectDir, "config", "core.fileMode", "false").Run()
 	}
 	token, _ := s.store.GetSetting(ctx, "github_token")
 	if strings.TrimSpace(token) == "" {
@@ -2137,37 +2139,28 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Bersihkan perubahan filemode/working tree lokal agar git pull tidak tertahan konflik chmod/stub
-	_ = exec.CommandContext(ctx, "git", "-C", projectDir, "reset", "--hard", "HEAD").Run()
+	// Abaikan perbedaan chmod/fileMode agar git pull berjalan aman tanpa reset paksa
+	_ = exec.CommandContext(ctx, "git", "-C", projectDir, "config", "core.fileMode", "false").Run()
 
 	gitEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new")
-	pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "pull", "--ff-only", "origin", branch)
+	pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "pull", "origin", branch)
 	pullCmd.Env = gitEnv
 	pullOut, pullErr := pullCmd.CombinedOutput()
 	if pullErr != nil {
-		// Fallback apabila branch remote mengalami force-push: fetch + reset --hard ke origin/<branch>
-		fetchCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "fetch", "origin", branch)
-		fetchCmd.Env = gitEnv
-		fetchOut, fetchErr := fetchCmd.CombinedOutput()
-		if fetchErr != nil {
-			if envErr == nil {
-				_ = os.WriteFile(envPath, envBackup, 0o644)
-			}
-			cleanErr := strings.TrimSpace(string(pullOut) + "\n" + string(fetchOut))
-			if token != "" {
-				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
-			}
-			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
-			writeJSON(w, http.StatusBadGateway, map[string]string{
-				"error": "Git pull gagal: " + cleanErr,
-			})
-			return
+		if envErr == nil && len(envBackup) > 0 {
+			_ = os.WriteFile(envPath, envBackup, 0o644)
 		}
-		resetOut, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "reset", "--hard", "origin/"+branch).CombinedOutput()
-		appendStepLog("git fetch & reset --hard origin/"+branch, string(fetchOut)+"\n"+string(resetOut))
-	} else {
-		appendStepLog("git pull origin "+branch, string(pullOut))
+		cleanErr := strings.TrimSpace(string(pullOut))
+		if token != "" {
+			cleanErr = strings.ReplaceAll(cleanErr, token, "***")
+		}
+		s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": "Git pull gagal: " + cleanErr,
+		})
+		return
 	}
+	appendStepLog("git pull origin "+branch, string(pullOut))
 
 	// Pulihkan kembali berkas .env lokal
 	if envErr == nil && len(envBackup) > 0 {

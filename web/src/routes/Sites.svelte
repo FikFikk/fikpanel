@@ -735,7 +735,7 @@
                   </button>
                 </td>
 
-                <!-- Kolom Operasi (Git Pull & More jika proyek Git, Conf, Log, Hapus) -->
+                <!-- Kolom Operasi (Ringkas: Git Pull / Conf + Menu More ▾) -->
                 <td class="col-ops">
                   <div class="ops-wrap">
                     {#if s.has_git}
@@ -743,38 +743,36 @@
                         type="button"
                         class="btn-op-git"
                         onclick={() => openGitPullModal(s)}
-                        title="Tarik perubahan terbaru dari Git ({s.git_repo || 'origin'} : {s.git_branch || 'main'})"
+                        title="Tarik pembaruan kode dari Git ({s.git_repo || 'origin'} : {s.git_branch || 'main'})"
                       >
                         <i class="ri-git-pull-request-line"></i>
                         <span>Git Pull</span>
                       </button>
-                      <span class="op-div">|</span>
+                    {:else}
+                      <button
+                        type="button"
+                        class="btn-op-conf-pill"
+                        onclick={() => openSettings(s, 'conf')}
+                        title="Konfigurasi Virtual Host & Situs"
+                      >
+                        <i class="ri-settings-4-line"></i>
+                        <span>Conf</span>
+                      </button>
                     {/if}
-                    <button class="btn-op-link" onclick={() => openSettings(s, 'conf')}>Conf</button>
-                    <span class="op-div">|</span>
-                    <button class="btn-op-link" onclick={() => openLogViewer(s)}>Log</button>
-                    <span class="op-div">|</span>
-                    <button
-                      class="btn-op-link link-danger"
-                      onclick={() => openDeleteModal(s)}
-                      title="Hapus Situs"
-                    >
-                      Hapus
-                    </button>
-                    {#if s.has_git}
-                      <span class="op-div">|</span>
-                      <div class="op-more-wrap">
-                        <button
-                          type="button"
-                          class="btn-op-more {openMoreSiteId === s.id ? 'is-open' : ''}"
-                          onclick={(e) => toggleMoreMenu(s.id, e)}
-                          title="Opsi lanjutan Git & Deployment"
-                        >
-                          <span>More</span>
-                          <i class="ri-arrow-down-s-line"></i>
-                        </button>
-                        {#if openMoreSiteId === s.id}
-                          <div class="op-more-menu">
+
+                    <div class="op-more-wrap">
+                      <button
+                        type="button"
+                        class="btn-op-more {openMoreSiteId === s.id ? 'is-open' : ''}"
+                        onclick={(e) => toggleMoreMenu(s.id, e)}
+                        title="Menu operasi situs lengkap"
+                      >
+                        <span>More</span>
+                        <i class="ri-arrow-down-s-line"></i>
+                      </button>
+                      {#if openMoreSiteId === s.id}
+                        <div class="op-more-menu" role="menu">
+                          {#if s.has_git}
                             <button
                               type="button"
                               class="op-more-item"
@@ -782,8 +780,8 @@
                             >
                               <i class="ri-git-pull-request-line icon-accent"></i>
                               <div>
-                                <b>Git Pull &amp; Auto-Deploy</b>
-                                <small>Tarik commit + Composer + Migrate</small>
+                                <b>Git Pull &amp; Sinkronisasi</b>
+                                <small>Tarik commit terbaru dari {s.git_branch || 'main'}</small>
                               </div>
                             </button>
                             <button
@@ -793,25 +791,60 @@
                             >
                               <i class="ri-flashlight-line icon-amber"></i>
                               <div>
-                                <b>Quick Git Pull (Instan)</b>
+                                <b>Quick Pull (Instan)</b>
                                 <small>Tarik kode terbaru &amp; bersihkan cache</small>
                               </div>
                             </button>
-                            <button
-                              type="button"
-                              class="op-more-item"
-                              onclick={() => { openMoreSiteId = null; openInTerminal(getProjectRootDir(s)); }}
-                            >
-                              <i class="ri-terminal-box-line icon-cyan"></i>
-                              <div>
-                                <b>Terminal Direktori Git</b>
-                                <small>Buka shell di {getProjectRootDir(s)}</small>
-                              </div>
-                            </button>
-                          </div>
-                        {/if}
-                      </div>
-                    {/if}
+                            <div class="op-more-divider"></div>
+                          {/if}
+                          <button
+                            type="button"
+                            class="op-more-item"
+                            onclick={() => { openMoreSiteId = null; openSettings(s, 'conf'); }}
+                          >
+                            <i class="ri-file-code-line icon-cyan"></i>
+                            <div>
+                              <b>Konfigurasi Situs (Conf)</b>
+                              <small>Pengaturan vhost Nginx, PHP, SSL &amp; domain</small>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            class="op-more-item"
+                            onclick={() => { openMoreSiteId = null; openLogViewer(s); }}
+                          >
+                            <i class="ri-file-list-3-line icon-amber"></i>
+                            <div>
+                              <b>Log Akses &amp; Error (Log)</b>
+                              <small>Pantau lalu lintas HTTP &amp; catatan galat</small>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            class="op-more-item"
+                            onclick={() => { openMoreSiteId = null; openInTerminal(getProjectRootDir(s)); }}
+                          >
+                            <i class="ri-terminal-box-line icon-gray"></i>
+                            <div>
+                              <b>Buka Terminal Proyek</b>
+                              <small class="mono">{getProjectRootDir(s)}</small>
+                            </div>
+                          </button>
+                          <div class="op-more-divider"></div>
+                          <button
+                            type="button"
+                            class="op-more-item is-danger-item"
+                            onclick={() => { openMoreSiteId = null; openDeleteModal(s); }}
+                          >
+                            <i class="ri-delete-bin-line"></i>
+                            <div>
+                              <b>Hapus Situs</b>
+                              <small>Hapus vhost, database &amp; direktori proyek</small>
+                            </div>
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -958,7 +991,7 @@
                 <span class="opt-badge badge-safe">Composer / NPM</span>
               </div>
               <span class="opt-desc">
-                Menjalankan <code class="mono">composer install --no-interaction --optimize-autoloader</code> (PHP) atau <code class="mono">npm install &amp;&amp; npm run build</code> (Node.js).
+                Menjalankan <code class="mono">composer install</code> (PHP) atau <code class="mono">npm install &amp;&amp; npm run build</code> (Node.js) apabila ada paket baru.
               </span>
             </div>
           </label>
@@ -968,11 +1001,11 @@
               <input type="checkbox" bind:checked={gitPullRunMigrate} disabled={gitPullRunning} />
               <div class="opt-body">
                 <div class="opt-title-row">
-                  <span class="opt-title">Jalankan Migrasi Database Baru</span>
+                  <span class="opt-title">Jalankan Migrasi Tabel Baru</span>
                   <span class="opt-badge badge-safe">Artisan Migrate</span>
                 </div>
                 <span class="opt-desc">
-                  Mengeksekusi <code class="mono">php artisan migrate --force</code> secara aman tanpa menghapus data tabel yang sudah ada.
+                  Menjalankan skema migrasi baru (<code class="mono">php artisan migrate</code>) secara aman tanpa menyentuh data tabel yang sudah ada.
                 </span>
               </div>
             </label>
@@ -981,11 +1014,11 @@
               <input type="checkbox" bind:checked={gitPullClearCache} disabled={gitPullRunning} />
               <div class="opt-body">
                 <div class="opt-title-row">
-                  <span class="opt-title">Bersihkan Cache &amp; Sanitasi Policy Filament Shield</span>
+                  <span class="opt-title">Segarkan Cache &amp; Aset Aplikasi</span>
                   <span class="opt-badge badge-safe">Disarankan</span>
                 </div>
                 <span class="opt-desc">
-                  Menjalankan <code class="mono">php artisan optimize:clear</code>, menyinkronkan aset Filament, dan memperbaiki izin direktori <code class="mono">www-data</code>.
+                  Menjalankan <code class="mono">php artisan optimize:clear</code>, menyinkronkan aset Filament, serta merapikan izin akses direktori web.
                 </span>
               </div>
             </label>
@@ -1512,10 +1545,11 @@
     background: var(--bg-raised);
     border-bottom: 1px solid var(--border);
     font-weight: 600;
+    white-space: nowrap;
   }
 
   td {
-    padding: 0.75rem 0.85rem;
+    padding: 0.7rem 0.85rem;
     border-bottom: 1px solid var(--border-subtle);
     vertical-align: middle;
   }
@@ -1654,7 +1688,7 @@
 
   .badge-runtime {
     font-size: 0.68rem;
-    padding: 0.2rem 0.45rem;
+    padding: 0.2rem 0.5rem;
     border-radius: 4px;
     background: var(--bg-raised);
     border: 1px solid var(--border);
@@ -1662,6 +1696,8 @@
     font-weight: 600;
     font-family: monospace;
     cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: all 0.15s ease;
   }
   .badge-runtime:hover {
@@ -1673,6 +1709,7 @@
   .perpetual-badge {
     color: var(--text-muted);
     font-size: 0.75rem;
+    white-space: nowrap;
   }
 
   /* SSL Badge */
@@ -1686,6 +1723,7 @@
     font-weight: 600;
     cursor: pointer;
     border: none;
+    white-space: nowrap;
   }
 
   .ssl-badge.ssl-active {
@@ -2089,18 +2127,20 @@
   }
 
   .opt-desc {
-    font-size: 0.72rem;
+    font-size: 0.73rem;
     color: var(--text-muted);
-    line-height: 1.45;
-    word-break: break-all;
+    line-height: 1.5;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   .opt-desc code {
     color: var(--text-secondary);
     background: color-mix(in srgb, var(--text) 6%, transparent);
-    padding: 0.05rem 0.3rem;
-    border-radius: 3px;
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
     font-size: 0.7rem;
+    overflow-wrap: anywhere;
   }
 
   .delete-verify-box {
@@ -2240,14 +2280,15 @@
   .btn-op-git {
     display: inline-flex;
     align-items: center;
-    gap: 0.28rem;
-    padding: 0.18rem 0.5rem;
-    border-radius: 5px;
+    gap: 0.3rem;
+    padding: 0.24rem 0.6rem;
+    border-radius: 6px;
     background: color-mix(in srgb, var(--accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
     color: var(--accent);
-    font-size: 0.72rem;
+    font-size: 0.73rem;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
     transition: all 0.15s ease;
   }
@@ -2255,6 +2296,28 @@
   .btn-op-git:hover {
     background: var(--accent);
     color: var(--text-on-accent);
+  }
+
+  .btn-op-conf-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.24rem 0.58rem;
+    border-radius: 6px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.73rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-op-conf-pill:hover {
+    border-color: var(--info);
+    color: var(--info);
+    background: color-mix(in srgb, var(--info) 8%, var(--bg-raised));
   }
 
   .op-more-wrap {
@@ -2265,47 +2328,57 @@
   .btn-op-more {
     display: inline-flex;
     align-items: center;
-    gap: 0.15rem;
-    background: transparent;
-    border: none;
-    color: var(--info);
-    font-size: 0.75rem;
-    font-weight: 500;
+    gap: 0.2rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.73rem;
+    font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
-    padding: 0.1rem 0.25rem;
-    border-radius: 4px;
+    padding: 0.24rem 0.55rem;
+    border-radius: 6px;
+    transition: all 0.15s ease;
   }
 
   .btn-op-more:hover,
   .btn-op-more.is-open {
-    background: color-mix(in srgb, var(--info) 12%, transparent);
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text);
   }
 
   .op-more-menu {
     position: absolute;
     right: 0;
     top: calc(100% + 6px);
-    min-width: 235px;
+    min-width: 248px;
     background: var(--bg-raised);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    padding: 0.35rem;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65);
-    z-index: 60;
+    border-radius: 10px;
+    padding: 0.4rem;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.72);
+    z-index: 80;
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
   }
 
+  .op-more-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 0.25rem 0.35rem;
+  }
+
   .op-more-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.55rem;
+    gap: 0.6rem;
     width: 100%;
     text-align: left;
     background: transparent;
     border: none;
-    padding: 0.48rem 0.6rem;
+    padding: 0.5rem 0.65rem;
     border-radius: 6px;
     cursor: pointer;
     color: var(--text);
@@ -2314,6 +2387,18 @@
 
   .op-more-item:hover {
     background: var(--bg-hover);
+  }
+
+  .op-more-item.is-danger-item {
+    color: var(--danger-strong);
+  }
+
+  .op-more-item.is-danger-item b {
+    color: var(--danger-strong);
+  }
+
+  .op-more-item.is-danger-item:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
   }
 
   .op-more-item i {
