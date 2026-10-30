@@ -8,6 +8,7 @@
     WAFSite,
     WAFRule,
     WAFEvent,
+    WAFAccessLog,
     CloudflareConfig,
     CloudflareZone,
     CloudflareDNSRecord,
@@ -16,16 +17,29 @@
   import { confirmDialog } from '../lib/stores/confirm.svelte';
 
   // State Tab Navigasi WAF
-  type WAFTab = 'overview' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
+  type WAFTab = 'overview' | 'live_access' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
   let activeTab = $state<WAFTab>('overview');
 
   // State Telemetri & Filter Attack Map
   let selectedEvent = $state<WAFEvent | null>(null);
+  let selectedAccessLog = $state<WAFAccessLog | null>(null);
   let attackTypeFilter = $state('all');
   let countryFilter = $state('');
   let mapSearchQuery = $state('');
   let attackMapInstance: L.Map | null = null;
   let overviewMapInstance: L.Map | null = null;
+  let refreshOverviewMapFn: (() => void) | null = null;
+  let refreshAttackMapFn: (() => void) | null = null;
+
+  // State Filter Observatorium Lalu Lintas & Log Akses Real-time
+  let accessLogs = $state<WAFAccessLog[]>([]);
+  let loadingAccessLogs = $state(false);
+  let accessDomainFilter = $state('all');
+  let accessStatusFilter = $state<'all' | '2xx' | '3xx' | '4xx' | '5xx'>('all');
+  let accessThreatFilter = $state<'all' | 'threat' | 'normal'>('all');
+  let accessMethodFilter = $state('all');
+  let accessSearchQuery = $state('');
+  let autoRefresh = $state(true);
 
   // Loading States
   let loadingOverview = $state(true);
@@ -73,17 +87,40 @@
   );
 
   // Ambil data WAF Overview
-  async function loadOverview() {
+  async function loadOverview(silent = false) {
     try {
-      loadingOverview = true;
+      if (!silent) loadingOverview = true;
       const res = await apiFetch<{ ok: boolean; overview: WAFOverview }>('/api/waf/overview');
       if (res?.overview) {
         overview = res.overview;
+        if (res.overview.recent_access_logs && accessLogs.length === 0) {
+          accessLogs = res.overview.recent_access_logs;
+        }
+        // Pastikan peta Overview langsung menggambar ulang titik & laser serangan setelah data tiba
+        setTimeout(() => {
+          overviewMapInstance?.invalidateSize();
+          refreshOverviewMapFn?.();
+        }, 40);
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat metrik WAF', 'error');
+      if (!silent) notify(err.message || 'Gagal memuat metrik WAF', 'error');
     } finally {
-      loadingOverview = false;
+      if (!silent) loadingOverview = false;
+    }
+  }
+
+  // Ambil log akses HTTP lengkap secara real-time (normal + ancaman)
+  async function loadAccessLogs(silent = false) {
+    try {
+      if (!silent) loadingAccessLogs = true;
+      const res = await apiFetch<{ ok: boolean; logs: WAFAccessLog[] }>('/api/waf/access-logs?limit=250');
+      if (res?.logs) {
+        accessLogs = res.logs;
+      }
+    } catch (err: any) {
+      if (!silent) notify(err.message || 'Gagal memuat log akses HTTP', 'error');
+    } finally {
+      if (!silent) loadingAccessLogs = false;
     }
   }
 
@@ -207,17 +244,21 @@
   }
 
   // Ambil insiden serangan WAF
-  async function loadEvents() {
+  async function loadEvents(silent = false) {
     try {
-      loadingEvents = true;
-      const res = await apiFetch<{ ok: boolean; events: WAFEvent[] }>('/api/waf/events?limit=50');
+      if (!silent) loadingEvents = true;
+      const res = await apiFetch<{ ok: boolean; events: WAFEvent[] }>('/api/waf/events?limit=80');
       if (res?.events) {
         events = res.events;
+        setTimeout(() => {
+          attackMapInstance?.invalidateSize();
+          refreshAttackMapFn?.();
+        }, 40);
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat insiden serangan', 'error');
+      if (!silent) notify(err.message || 'Gagal memuat insiden serangan', 'error');
     } finally {
-      loadingEvents = false;
+      if (!silent) loadingEvents = false;
     }
   }
 
@@ -415,6 +456,56 @@
     return points;
   }
 
+  // Daftar domain unik yang muncul di log akses
+  let availableAccessDomains = $derived(
+    (() => {
+      const set = new Set<string>();
+      for (const s of sites) set.add(s.site_name);
+      for (const l of accessLogs) if (l.site_name) set.add(l.site_name);
+      if (overview?.traffic_ranking) {
+        for (const tr of overview.traffic_ranking) if (tr.domain) set.add(tr.domain);
+      }
+      return Array.from(set);
+    })()
+  );
+
+  // Filter multi-dimensi untuk log akses HTTP real-time
+  let filteredAccessLogs = $derived(
+    accessLogs.filter((log) => {
+      if (accessDomainFilter !== 'all' && log.site_name !== accessDomainFilter) return false;
+      if (accessThreatFilter === 'threat' && !log.is_threat) return false;
+      if (accessThreatFilter === 'normal' && log.is_threat) return false;
+      if (accessMethodFilter !== 'all' && log.method !== accessMethodFilter) return false;
+      if (accessStatusFilter === '2xx' && (log.status_code < 200 || log.status_code >= 300)) return false;
+      if (accessStatusFilter === '3xx' && (log.status_code < 300 || log.status_code >= 400)) return false;
+      if (accessStatusFilter === '4xx' && (log.status_code < 400 || log.status_code >= 500)) return false;
+      if (accessStatusFilter === '5xx' && log.status_code < 500) return false;
+      if (!accessSearchQuery.trim()) return true;
+      const q = accessSearchQuery.toLowerCase();
+      return (
+        log.client_ip.toLowerCase().includes(q) ||
+        log.url_path.toLowerCase().includes(q) ||
+        log.site_name.toLowerCase().includes(q) ||
+        (log.country && log.country.toLowerCase().includes(q)) ||
+        (log.city && log.city.toLowerCase().includes(q)) ||
+        (log.isp && log.isp.toLowerCase().includes(q)) ||
+        (log.browser && log.browser.toLowerCase().includes(q)) ||
+        (log.os && log.os.toLowerCase().includes(q)) ||
+        (log.attack_type && log.attack_type.toLowerCase().includes(q)) ||
+        (log.user_agent && log.user_agent.toLowerCase().includes(q))
+      );
+    })
+  );
+
+  // Format ukuran byte menjadi KB / MB / GB
+  function formatBytes(bytes: number): string {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const val = bytes / Math.pow(1024, i);
+    return `${val >= 10 || i === 0 ? val.toFixed(0) : val.toFixed(2)} ${units[i]}`;
+  }
+
   // Blokir IP seketika ke aturan blacklist WAF
   async function quickBlockIP(ip: string, reason?: string) {
     if (!ip) return;
@@ -425,13 +516,71 @@
           rule_type: 'ip_blacklist',
           ip_version: ip.includes(':') ? 'IPv6' : 'IPv4',
           start_ip: ip.trim(),
-          remarks: reason || 'Diblokir langsung dari Attack Map',
+          remarks: reason || 'Diblokir langsung dari observatorium WAF',
         }),
       });
       notify(`IP ${ip} berhasil dimasukkan ke daftar hitam (Blacklist)!`, 'success');
       await loadRules();
     } catch (err: any) {
       notify(err.message || 'Gagal memblokir IP', 'error');
+    }
+  }
+
+  // Masukkan IP ke daftar putih (Whitelist) seketika
+  async function quickWhitelistIP(ip: string, reason?: string) {
+    if (!ip) return;
+    try {
+      await apiFetch('/api/waf/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          rule_type: 'ip_whitelist',
+          ip_version: ip.includes(':') ? 'IPv6' : 'IPv4',
+          start_ip: ip.trim(),
+          remarks: reason || 'Diizinkan dari observatorium lalu lintas WAF',
+        }),
+      });
+      notify(`IP ${ip} berhasil dimasukkan ke daftar putih (Whitelist)!`, 'success');
+      await loadRules();
+    } catch (err: any) {
+      notify(err.message || 'Gagal menambahkan IP ke Whitelist', 'error');
+    }
+  }
+
+  // Blokir pola URL path berbahaya ke URL Blacklist
+  async function quickBlockPath(urlPath: string, reason?: string) {
+    if (!urlPath) return;
+    const cleanPath = urlPath.split('?')[0].trim();
+    if (!cleanPath || cleanPath === '/') {
+      notify('Tidak dapat memblokir root path "/"', 'warning');
+      return;
+    }
+    try {
+      await apiFetch('/api/waf/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          rule_type: 'url_blacklist',
+          pattern: cleanPath,
+          remarks: reason || 'Blokir URL dari inspeksi paket HTTP',
+        }),
+      });
+      notify(`Path URL "${cleanPath}" berhasil dimasukkan ke URL Blacklist!`, 'success');
+      await loadRules();
+    } catch (err: any) {
+      notify(err.message || 'Gagal memblokir path URL', 'error');
+    }
+  }
+
+  // Buka inspeksi untuk IP tertentu di Attack Map
+  async function inspectAttackIP(ip: string) {
+    activeTab = 'attack_map';
+    mapSearchQuery = ip;
+    await loadEvents();
+    const match = events.find((e) => e.client_ip === ip);
+    if (match) {
+      selectedEvent = match;
+      if (match.latitude && match.longitude) {
+        setTimeout(() => flyToCountry(match.latitude, match.longitude), 150);
+      }
     }
   }
 
@@ -459,8 +608,24 @@
     mapSearchQuery = '';
   }
 
-  // Svelte Action untuk peta ringkas di tab Overview
-  function overviewMapAction(node: HTMLElement) {
+  // Reaktif: Gambar ulang peta Overview setiap kali data recent_events berubah
+  $effect(() => {
+    const _evCount = overview?.recent_events?.length ?? 0;
+    if (_evCount >= 0 && refreshOverviewMapFn) {
+      refreshOverviewMapFn();
+    }
+  });
+
+  // Reaktif: Gambar ulang peta Attack Map setiap kali filteredEvents berubah
+  $effect(() => {
+    const _fCount = filteredEvents.length;
+    if (_fCount >= 0 && refreshAttackMapFn) {
+      refreshAttackMapFn();
+    }
+  });
+
+  // Svelte Action untuk peta ringkas di tab Overview (stabil saat browser di-refresh)
+  function overviewMapAction(node: HTMLElement, _eventsParam?: WAFEvent[]) {
     const map = L.map(node, {
       zoomControl: false,
       attributionControl: false,
@@ -493,11 +658,16 @@
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
-      L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 1000 }).addTo(layersGroup);
+      L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 1000 })
+        .bindTooltip('FikPanel Origin Host (AWS Singapore)', { direction: 'top', className: 'dark-map-tooltip' })
+        .addTo(layersGroup);
 
-      // Titik serangan & laser arc
-      const threatList = overview?.recent_events || [];
-      threatList.slice(0, 8).forEach((ev) => {
+      // Titik serangan & laser arc (ambil dari overview.recent_events atau fallback ke events)
+      const threatList = (overview?.recent_events && overview.recent_events.length > 0)
+        ? overview.recent_events
+        : events;
+
+      threatList.slice(0, 24).forEach((ev) => {
         if (!ev.latitude && !ev.longitude) return;
         const isBlock = ev.action === 'block';
         const threatIcon = L.divIcon({
@@ -506,27 +676,53 @@
           iconSize: [20, 20],
           iconAnchor: [10, 10],
         });
-        L.marker([ev.latitude, ev.longitude], { icon: threatIcon }).addTo(layersGroup);
+        const marker = L.marker([ev.latitude, ev.longitude], { icon: threatIcon }).addTo(layersGroup);
+
+        marker.bindTooltip(`
+          <div class="map-tooltip-content">
+            <span class="flag-code">${ev.country_code}</span> <strong>${ev.country}</strong> · ${ev.city || 'Detected'}<br/>
+            <span class="mono">${ev.client_ip}</span> · <span class="badge-tag-xs">${ev.attack_type}</span><br/>
+            <span class="mono text-2xs text-subtle">${ev.method || 'GET'} ${ev.url_path}</span>
+          </div>
+        `, { direction: 'top', className: 'dark-map-tooltip' });
+
+        marker.on('click', () => {
+          selectedEvent = ev;
+          activeTab = 'attack_map';
+          loadEvents(true);
+        });
 
         const arcPoints = createCurvedArc([ev.latitude, ev.longitude], [hostServerLocation.lat, hostServerLocation.lng]);
         L.polyline(arcPoints, {
           className: isBlock ? 'laser-arc-danger' : 'laser-arc-warn',
-          weight: 2,
+          weight: 2.2,
         }).addTo(layersGroup);
       });
     }
 
+    refreshOverviewMapFn = updateLayers;
     updateLayers();
+
+    // Pantau perubahan ukuran elemen agar ukuran canvas Leaflet selalu presisi setelah F5 / refresh
+    const resizeObs = new ResizeObserver(() => {
+      map.invalidateSize();
+      updateLayers();
+    });
+    resizeObs.observe(node);
 
     setTimeout(() => {
       map.invalidateSize();
-    }, 200);
+      updateLayers();
+    }, 150);
 
     return {
       update() {
+        map.invalidateSize();
         updateLayers();
       },
       destroy() {
+        resizeObs.disconnect();
+        if (refreshOverviewMapFn === updateLayers) refreshOverviewMapFn = null;
         map.remove();
         overviewMapInstance = null;
       },
@@ -534,7 +730,7 @@
   }
 
   // Svelte Action untuk peta studio penuh di tab Attack Map
-  function attackMapAction(node: HTMLElement) {
+  function attackMapAction(node: HTMLElement, _eventsParam?: WAFEvent[]) {
     const map = L.map(node, {
       zoomControl: false,
       attributionControl: false,
@@ -613,22 +809,33 @@
         const arc = createCurvedArc([ev.latitude, ev.longitude], [hostServerLocation.lat, hostServerLocation.lng]);
         L.polyline(arc, {
           className: isBlock ? 'laser-arc-danger' : 'laser-arc-warn',
-          weight: 2,
+          weight: 2.2,
         }).addTo(layersGroup);
       });
     }
 
+    refreshAttackMapFn = renderAttackLayers;
     renderAttackLayers();
+
+    const resizeObs = new ResizeObserver(() => {
+      map.invalidateSize();
+      renderAttackLayers();
+    });
+    resizeObs.observe(node);
 
     setTimeout(() => {
       map.invalidateSize();
+      renderAttackLayers();
     }, 150);
 
     return {
       update() {
+        map.invalidateSize();
         renderAttackLayers();
       },
       destroy() {
+        resizeObs.disconnect();
+        if (refreshAttackMapFn === renderAttackLayers) refreshAttackMapFn = null;
         map.remove();
         attackMapInstance = null;
       },
@@ -645,9 +852,38 @@
     });
   }
 
+  function formatDateTime(ts: number): string {
+    if (!ts) return '-';
+    return new Date(ts * 1000).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  }
+
   onMount(() => {
     loadOverview();
     loadSites();
+    loadEvents(true);
+    loadAccessLogs(true);
+
+    // Interval pembaruan otomatis real-time setiap 6 detik jika autoRefresh aktif
+    const timer = setInterval(() => {
+      if (!autoRefresh) return;
+      if (activeTab === 'overview') {
+        loadOverview(true);
+      } else if (activeTab === 'live_access') {
+        loadAccessLogs(true);
+        loadOverview(true);
+      } else if (activeTab === 'attack_map') {
+        loadEvents(true);
+      }
+    }, 6000);
+
+    return () => clearInterval(timer);
   });
 </script>
 
@@ -664,22 +900,38 @@
       </div>
     </div>
     <div class="waf-top-actions">
+      <button
+        type="button"
+        class="btn-live-pulse {autoRefresh ? 'active' : ''}"
+        onclick={() => autoRefresh = !autoRefresh}
+        title="Pembaruan telemetri & peta otomatis setiap 6 detik"
+      >
+        <span class="pulse-dot {autoRefresh ? 'live' : ''}"></span>
+        {autoRefresh ? 'Live Stream (6d)' : 'Live Dijeda'}
+      </button>
       <span class="badge-status-glow">
         <span class="dot-glow"></span> Proteksi Mesin Aktif
       </span>
-      <button class="btn btn-secondary btn-sm" onclick={loadOverview} disabled={loadingOverview}>
+      <button class="btn btn-secondary btn-sm" onclick={() => { loadOverview(); loadAccessLogs(); loadEvents(); }} disabled={loadingOverview}>
         <i class="ri-refresh-line {loadingOverview ? 'spin' : ''}"></i> Segarkan
       </button>
     </div>
   </header>
 
-  <!-- Sub-Tabs Navigation (Matching Reference Screenshots) -->
+  <!-- Sub-Tabs Navigation -->
   <nav class="waf-tabs-nav">
     <button
       class="waf-tab-btn {activeTab === 'overview' ? 'active' : ''}"
       onclick={() => { activeTab = 'overview'; loadOverview(); }}
     >
       <i class="ri-dashboard-2-line"></i> Overview
+    </button>
+    <button
+      class="waf-tab-btn {activeTab === 'live_access' ? 'active' : ''}"
+      onclick={() => { activeTab = 'live_access'; loadAccessLogs(); loadOverview(true); }}
+    >
+      <i class="ri-pulse-line"></i> Lalu Lintas & Akses Detail
+      <span class="tab-count-pill">{accessLogs.length || overview?.recent_access_logs?.length || 0}</span>
     </button>
     <button
       class="waf-tab-btn {activeTab === 'website' ? 'active' : ''}"
@@ -710,7 +962,7 @@
     </button>
   </nav>
 
-  <!-- TAB 1: OVERVIEW (Screenshot 2) -->
+  <!-- TAB 1: OVERVIEW -->
   {#if activeTab === 'overview'}
     <div class="overview-grid">
       <!-- 4 Quick Stats Cards -->
@@ -719,8 +971,10 @@
           <span class="stat-label">Today request</span>
           <i class="ri-bar-chart-box-line stat-icon text-accent"></i>
         </div>
-        <div class="stat-num">{overview?.today_requests.toLocaleString() || '1,420'}</div>
-        <div class="stat-sub">Yesterday: {overview?.yesterday_requests.toLocaleString() || '3,280'}</div>
+        <div class="stat-num">{(overview?.today_requests ?? 0).toLocaleString()}</div>
+        <div class="stat-sub">
+          Yesterday: {(overview?.yesterday_requests ?? 0).toLocaleString()} · Total Log: <strong>{(overview?.total_requests_all_time ?? 0).toLocaleString()}</strong>
+        </div>
       </div>
 
       <div class="stat-card danger">
@@ -728,20 +982,22 @@
           <span class="stat-label">Malicious request</span>
           <i class="ri-shield-cross-line stat-icon text-danger"></i>
         </div>
-        <div class="stat-num text-danger">{overview?.malicious_requests.toLocaleString() || '23'}</div>
+        <div class="stat-num text-danger">{(overview?.malicious_requests ?? 0).toLocaleString()}</div>
         <div class="stat-sub">
-          <span class="trend-badge down"><i class="ri-arrow-down-line"></i> 64.62%</span>
-          Yesterday: {overview?.yesterday_malicious || '65'}
+          <span class="trend-badge down"><i class="ri-shield-flash-line"></i> Dicegat</span>
+          Yesterday: {(overview?.yesterday_malicious ?? 0).toLocaleString()}
         </div>
       </div>
 
       <div class="stat-card">
         <div class="stat-head">
-          <span class="stat-label">Real-time QPS</span>
+          <span class="stat-label">Real-time QPS & Bandwidth</span>
           <i class="ri-speed-line stat-icon text-info"></i>
         </div>
-        <div class="stat-num">{overview?.realtime_qps || '0.8'} <span class="stat-unit">/s</span></div>
-        <div class="stat-sub">Pencegatan WAF: {overview?.intercept_rate.toFixed(2) || '1.62'}%</div>
+        <div class="stat-num">{overview?.realtime_qps ?? 0.4} <span class="stat-unit">/s</span></div>
+        <div class="stat-sub">
+          Pencegatan: {(overview?.intercept_rate ?? 0).toFixed(2)}% · Trafik: <strong>{formatBytes(overview?.total_bandwidth_bytes ?? 0)}</strong>
+        </div>
       </div>
 
       <div class="stat-card">
@@ -749,10 +1005,44 @@
           <span class="stat-label">Real-time origin response</span>
           <i class="ri-timer-line stat-icon text-success"></i>
         </div>
-        <div class="stat-num text-success">{overview?.origin_latency_ms || '4'} <span class="stat-unit">ms</span></div>
-        <div class="stat-sub">Kecepatan latensi server normal</div>
+        <div class="stat-num text-success">{overview?.origin_latency_ms ?? 4} <span class="stat-unit">ms</span></div>
+        <div class="stat-sub">Kecepatan latensi origin Nginx normal</div>
       </div>
     </div>
+
+    <!-- HTTP Status Breakdown & Deep Telemetry Bar -->
+    {#if overview?.status_breakdown}
+      {@const sb = overview.status_breakdown}
+      {@const totalSt = Math.max(sb.s2xx + sb.s3xx + sb.s4xx + sb.s5xx, 1)}
+      <div class="bento-panel status-telemetry-strip">
+        <div class="telemetry-strip-head">
+          <div class="strip-title">
+            <i class="ri-pulse-line text-accent"></i>
+            <span>Distribusi Kode Respons HTTP & Telemetri Paket Nginx (Real-Time Log)</span>
+          </div>
+          <div class="strip-badges">
+            <span class="status-pill s2xx">
+              <span class="dot"></span> 2xx Normal: <strong>{sb.s2xx.toLocaleString()}</strong> ({((sb.s2xx / totalSt) * 100).toFixed(1)}%)
+            </span>
+            <span class="status-pill s3xx">
+              <span class="dot"></span> 3xx Redirect: <strong>{sb.s3xx.toLocaleString()}</strong> ({((sb.s3xx / totalSt) * 100).toFixed(1)}%)
+            </span>
+            <span class="status-pill s4xx">
+              <span class="dot"></span> 4xx Client/Probe: <strong>{sb.s4xx.toLocaleString()}</strong> ({((sb.s4xx / totalSt) * 100).toFixed(1)}%)
+            </span>
+            <span class="status-pill s5xx">
+              <span class="dot"></span> 5xx Server Error: <strong>{sb.s5xx.toLocaleString()}</strong> ({((sb.s5xx / totalSt) * 100).toFixed(1)}%)
+            </span>
+          </div>
+        </div>
+        <div class="status-progress-bar">
+          <div class="seg seg-2xx" style="width: {(sb.s2xx / totalSt) * 100}%" title="HTTP 2xx: {sb.s2xx}"></div>
+          <div class="seg seg-3xx" style="width: {(sb.s3xx / totalSt) * 100}%" title="HTTP 3xx: {sb.s3xx}"></div>
+          <div class="seg seg-4xx" style="width: {(sb.s4xx / totalSt) * 100}%" title="HTTP 4xx: {sb.s4xx}"></div>
+          <div class="seg seg-5xx" style="width: {(sb.s5xx / totalSt) * 100}%" title="HTTP 5xx: {sb.s5xx}"></div>
+        </div>
+      </div>
+    {/if}
 
     <!-- Map & Top Attack Table Section -->
     <div class="bento-two-col">
@@ -764,26 +1054,28 @@
             <h3>Access / Block Map</h3>
           </div>
           <div class="panel-header-badges">
-            <span class="badge-soft">Peta Koordinat Serangan Real-time</span>
-            <button class="btn-link text-xs text-accent" onclick={() => activeTab = 'attack_map'}>
+            <span class="badge-soft">
+              <span class="live-mini-dot"></span> {(overview?.recent_events?.length || events.length || 0)} Vektor Serangan Aktif
+            </span>
+            <button class="btn-link text-xs text-accent" onclick={() => { activeTab = 'attack_map'; loadEvents(); }}>
               Buka Peta Penuh <i class="ri-arrow-right-line"></i>
             </button>
           </div>
         </div>
 
         <div class="world-map-wrapper">
-          <div class="overview-leaflet-container" use:overviewMapAction></div>
+          <div class="overview-leaflet-container" use:overviewMapAction={overview?.recent_events}></div>
         </div>
       </div>
 
-      <!-- Top Attack IPs Table (Screenshot 2 Right Side) -->
+      <!-- Top Attack IPs Table -->
       <div class="bento-panel">
         <div class="panel-header">
           <div class="panel-title-wrap">
             <i class="ri-skull-line text-danger"></i>
             <h3>Top Attack IPs</h3>
           </div>
-          <span class="text-xs text-muted">Hari Ini</span>
+          <span class="text-xs text-muted">Klik untuk Inspeksi / Blokir</span>
         </div>
 
         <div class="table-container-compact">
@@ -793,12 +1085,13 @@
                 <th>Attack IP</th>
                 <th>Times</th>
                 <th>IP attribution</th>
+                <th class="text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {#if !overview?.top_attack_ips || overview.top_attack_ips.length === 0}
                 <tr>
-                  <td colspan="3" class="text-center text-muted">Belum ada rekaman IP penyerang</td>
+                  <td colspan="4" class="text-center text-muted">Belum ada rekaman IP penyerang</td>
                 </tr>
               {:else}
                 {#each overview.top_attack_ips as ipItem}
@@ -816,6 +1109,22 @@
                         <div class="attribution-isp mono truncate max-w-xs">{ipItem.isp}</div>
                       {/if}
                     </td>
+                    <td class="text-right nowrap">
+                      <button
+                        class="btn-icon-xs text-accent"
+                        title="Inspeksi Vektor Serangan IP Ini"
+                        onclick={() => inspectAttackIP(ipItem.ip)}
+                      >
+                        <i class="ri-search-eye-line"></i>
+                      </button>
+                      <button
+                        class="btn-icon-xs text-danger"
+                        title="Blokir IP ke Blacklist"
+                        onclick={() => quickBlockIP(ipItem.ip, `Top Attacker (${ipItem.count}x)`)}
+                      >
+                        <i class="ri-shield-cross-line"></i>
+                      </button>
+                    </td>
                   </tr>
                 {/each}
               {/if}
@@ -831,6 +1140,7 @@
       <div class="bento-panel">
         <div class="panel-header">
           <h4><i class="ri-shield-alert-line text-danger"></i> Attacked domains TOP10</h4>
+          <span class="text-2xs text-muted">Target Serangan</span>
         </div>
         <div class="rank-list">
           {#if overview?.attacked_domains}
@@ -845,42 +1155,436 @@
         </div>
       </div>
 
-      <!-- Traffic Ranking TOP 10 -->
+      <!-- Traffic Ranking TOP 10 (Enhanced with Bandwidth & Status Breakdown) -->
       <div class="bento-panel">
         <div class="panel-header">
           <h4><i class="ri-line-chart-line text-accent"></i> Traffic ranking TOP10</h4>
+          <span class="text-2xs text-muted">Per Domain Vhost</span>
         </div>
         <div class="rank-list">
           {#if overview?.traffic_ranking}
             {#each overview.traffic_ranking as tr, idx}
-              <div class="rank-item">
+              <div class="rank-item rank-item-rich">
                 <span class="rank-num">{idx + 1}</span>
-                <span class="rank-name mono">{tr.domain}</span>
-                <span class="rank-val text-accent">{tr.requests.toLocaleString()} req</span>
+                <div class="rank-rich-body">
+                  <div class="rank-rich-top">
+                    <span class="rank-name mono font-semibold">{tr.domain}</span>
+                    <span class="rank-val text-accent">{tr.requests.toLocaleString()} req</span>
+                  </div>
+                  <div class="rank-rich-meta mono text-2xs">
+                    <span><i class="ri-hard-drive-2-line"></i> {formatBytes(tr.bytes_sent || 0)}</span>
+                    {#if tr.status_2xx !== undefined}
+                      <span class="text-success">2xx:{tr.status_2xx}</span>
+                      <span class="text-warning">4xx:{tr.status_4xx || 0}</span>
+                      {#if (tr.threats || 0) > 0}
+                        <span class="text-danger">{tr.threats} ancaman</span>
+                      {/if}
+                    {/if}
+                  </div>
+                </div>
               </div>
             {/each}
           {/if}
         </div>
       </div>
 
-      <!-- Visited Pages TOP 10 -->
+      <!-- Visited Pages TOP 15 (Enhanced with Method, Domain, Status, Bytes) -->
       <div class="bento-panel">
         <div class="panel-header">
-          <h4><i class="ri-file-search-line text-info"></i> Visited pages TOP10</h4>
+          <h4><i class="ri-file-search-line text-info"></i> Visited pages & Endpoints</h4>
+          <span class="text-2xs text-muted">Klik untuk filter log</span>
         </div>
-        <div class="rank-list">
+        <div class="rank-list rank-list-scroll">
           {#if overview?.visited_pages}
             {#each overview.visited_pages as vp, idx}
-              <div class="rank-item">
-                <span class="rank-num">{idx + 1}</span>
-                <span class="rank-name mono text-xs truncate" title={vp.path}>{vp.path}</span>
-                <span class="rank-val badge-soft">{vp.count}</span>
-              </div>
+              <button
+                type="button"
+                class="rank-item rank-item-clickable {vp.is_threat ? 'rank-threat-row' : ''}"
+                onclick={() => {
+                  activeTab = 'live_access';
+                  accessSearchQuery = vp.path;
+                  loadAccessLogs();
+                }}
+                title="Klik untuk melihat seluruh rekaman akses ke {vp.path}"
+              >
+                <span class="rank-num {vp.is_threat ? 'first' : ''}">{idx + 1}</span>
+                <div class="rank-rich-body">
+                  <div class="rank-rich-top">
+                    <span class="rank-name mono text-xs truncate">
+                      {#if vp.method}
+                        <span class="method-mini {vp.method.toLowerCase()}">{vp.method}</span>
+                      {/if}
+                      {vp.path}
+                    </span>
+                    <span class="rank-val badge-soft">{vp.count}x</span>
+                  </div>
+                  <div class="rank-rich-meta mono text-2xs">
+                    <span class="text-subtle">{vp.domain || 'default'}</span>
+                    {#if vp.last_status}
+                      <span class="status-mini s{Math.floor(vp.last_status / 100)}xx">HTTP {vp.last_status}</span>
+                    {/if}
+                    {#if vp.bytes_sent}
+                      <span>{formatBytes(vp.bytes_sent)}</span>
+                    {/if}
+                    {#if vp.is_threat}
+                      <span class="text-danger font-bold">PROBED</span>
+                    {/if}
+                  </div>
+                </div>
+              </button>
             {/each}
           {/if}
         </div>
       </div>
     </div>
+
+    <!-- Live HTTP Access & Threat Stream Preview directly inside Overview -->
+    <div class="bento-panel mt-2">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <i class="ri-radar-line text-accent"></i>
+          <div>
+            <h3>Live HTTP Access & Threat Observatory (Semua Endpoint yang Diakses)</h3>
+            <p class="text-xs text-subtle">Menampilkan lalu lintas HTTP nyata yang masuk ke Nginx (baik pengunjung normal maupun percobaan eksploitasi bot/scanner)</p>
+          </div>
+        </div>
+        <div class="panel-header-badges">
+          <button
+            class="btn btn-primary btn-sm"
+            onclick={() => { activeTab = 'live_access'; loadAccessLogs(); }}
+          >
+            <i class="ri-External-link-line"></i> Buka Observatorium Penuh ({accessLogs.length || overview?.recent_access_logs?.length || 0} Log)
+          </button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="waf-main-table">
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Status</th>
+              <th>Klien IP & Lokasi</th>
+              <th>Domain & Endpoint URL</th>
+              <th>Ukuran</th>
+              <th>Perangkat / User-Agent</th>
+              <th>Klasifikasi WAF</th>
+              <th class="text-right">Inspeksi / Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each (overview?.recent_access_logs || accessLogs).slice(0, 12) as log}
+              <tr class="{log.is_threat ? 'row-threat-highlight' : ''}">
+                <td class="mono text-xs text-muted nowrap">{formatTime(log.timestamp)}</td>
+                <td>
+                  <span class="http-status-badge s{Math.floor(log.status_code / 100)}xx">{log.status_code}</span>
+                </td>
+                <td>
+                  <div class="mono font-semibold text-xs">{log.client_ip}</div>
+                  <div class="text-2xs text-subtle">
+                    <span class="flag-code">{log.country_code}</span> {log.city ? `${log.city}, ` : ''}{log.country}
+                  </div>
+                </td>
+                <td>
+                  <div class="mono text-xs">
+                    <span class="method-mini {log.method.toLowerCase()}">{log.method}</span>
+                    <span class="text-accent font-semibold">{log.site_name}</span>
+                  </div>
+                  <div class="mono text-xs text-subtle truncate max-w-md" title={log.url_path}>{log.url_path}</div>
+                </td>
+                <td class="mono text-xs text-subtle nowrap">{formatBytes(log.bytes_sent)}</td>
+                <td>
+                  <div class="text-xs font-medium">{log.browser} · {log.os}</div>
+                  <div class="mono text-2xs text-subtle truncate max-w-xs" title={log.user_agent}>{log.user_agent || '-'}</div>
+                </td>
+                <td>
+                  {#if log.is_threat}
+                    <span class="badge-attack-tag">{log.attack_type || 'Threat Probe'}</span>
+                  {:else}
+                    <span class="badge-normal-traffic"><i class="ri-check-line"></i> Normal Traffic</span>
+                  {/if}
+                </td>
+                <td class="text-right nowrap">
+                  <button
+                    class="btn-icon-xs text-accent"
+                    title="Inspeksi Paket HTTP Lengkap"
+                    onclick={() => selectedAccessLog = log}
+                  >
+                    <i class="ri-file-search-line"></i>
+                  </button>
+                  <button
+                    class="btn-icon-xs text-danger"
+                    title="Blokir IP ke Blacklist"
+                    onclick={() => quickBlockIP(log.client_ip, log.attack_type || `Akses ke ${log.url_path}`)}
+                  >
+                    <i class="ri-shield-cross-line"></i>
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  <!-- TAB 1B: LIVE HTTP ACCESS & VISITOR OBSERVATORY -->
+  {:else if activeTab === 'live_access'}
+    <!-- Top Visitors / Active Clients Telemetry -->
+    {#if overview?.top_visitors && overview.top_visitors.length > 0}
+      <div class="bento-panel">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <i class="ri-user-location-line text-accent"></i>
+            <div>
+              <h3>Top Pengakses & Klien Aktif (Agregasi IP Pengunjung & Scanner)</h3>
+              <p class="text-xs text-subtle">Rincian setiap alamat IP yang mengakses server beserta geolokasi, ISP, perangkat, total bandwidth, dan path terakhir yang diakses</p>
+            </div>
+          </div>
+          <span class="badge-soft">{overview.top_visitors.length} Klien Teratas</span>
+        </div>
+
+        <div class="table-responsive">
+          <table class="waf-main-table">
+            <thead>
+              <tr>
+                <th>Alamat IP Klien</th>
+                <th>Geolokasi & ISP</th>
+                <th>Perangkat / OS / Peramban</th>
+                <th>Total Request</th>
+                <th>Total Bandwidth</th>
+                <th>Status Ancaman</th>
+                <th>Endpoint Terakhir Diakses</th>
+                <th class="text-right">Kontrol Cepat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each overview.top_visitors as vis}
+                <tr class="{vis.threats > 0 ? 'row-threat-highlight' : ''}">
+                  <td>
+                    <button
+                      type="button"
+                      class="btn-link mono font-bold"
+                      onclick={() => accessSearchQuery = vis.ip}
+                      title="Filter log untuk IP ini"
+                    >
+                      {vis.ip}
+                    </button>
+                    <div class="text-2xs text-muted mono">Terakhir: {formatTime(vis.last_seen)}</div>
+                  </td>
+                  <td>
+                    <div class="geo-cell">
+                      <span class="flag-code">{vis.country_code}</span>
+                      <span class="font-medium text-xs">{vis.city ? `${vis.city}, ` : ''}{vis.country}</span>
+                    </div>
+                    <div class="mono text-2xs text-subtle truncate max-w-xs">{vis.isp}</div>
+                  </td>
+                  <td>
+                    <div class="text-xs font-semibold">{vis.device}</div>
+                    <div class="text-2xs text-subtle">{vis.os} · {vis.browser}</div>
+                  </td>
+                  <td class="mono font-bold text-accent">{vis.requests.toLocaleString()} req</td>
+                  <td class="mono text-xs">{formatBytes(vis.bytes_sent)}</td>
+                  <td>
+                    {#if vis.threats > 0}
+                      <span class="badge-danger-soft">{vis.threats} serangan/probe</span>
+                    {:else}
+                      <span class="badge-normal-traffic">Bersih (0 ancaman)</span>
+                    {/if}
+                  </td>
+                  <td class="mono text-xs text-subtle truncate max-w-xs" title={vis.last_path}>{vis.last_path}</td>
+                  <td class="text-right nowrap">
+                    <button
+                      class="btn-icon-xs text-accent"
+                      title="Filter semua request dari IP ini"
+                      onclick={() => accessSearchQuery = vis.ip}
+                    >
+                      <i class="ri-filter-3-line"></i>
+                    </button>
+                    <button
+                      class="btn-icon-xs text-success"
+                      title="Masukkan IP ke Whitelist"
+                      onclick={() => quickWhitelistIP(vis.ip, 'Trusted Visitor')}
+                    >
+                      <i class="ri-shield-check-line"></i>
+                    </button>
+                    <button
+                      class="btn-icon-xs text-danger"
+                      title="Blokir IP ke Blacklist"
+                      onclick={() => quickBlockIP(vis.ip, `Visitor Activity (${vis.threats} threats)`)}
+                    >
+                      <i class="ri-shield-cross-line"></i>
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Full Real-Time Access Log Explorer -->
+    <div class="bento-panel">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <i class="ri-terminal-window-line text-accent"></i>
+          <div>
+            <h3>Inspektor Log Akses HTTP & Paket Masuk Real-Time ({filteredAccessLogs.length} Rekaman)</h3>
+            <p class="text-xs text-subtle">Pantau secara transparan seluruh halaman yang dibuka, API yang dipanggil, payload biner, referer, hingga User-Agent lengkap</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick={() => loadAccessLogs()} disabled={loadingAccessLogs}>
+          <i class="ri-refresh-line {loadingAccessLogs ? 'spin' : ''}"></i> Muat Ulang Log
+        </button>
+      </div>
+
+      <!-- Multi-Filter Toolbar -->
+      <div class="studio-toolbar mt-3">
+        <div class="search-input-wrap">
+          <i class="ri-search-line search-icon"></i>
+          <input
+            type="text"
+            bind:value={accessSearchQuery}
+            placeholder="Cari berdasarkan IP, URL path, domain, kota, ISP, browser, atau User-Agent..."
+            class="input-dark search-input"
+          />
+          {#if accessSearchQuery}
+            <button class="clear-search-btn" aria-label="Bersihkan" onclick={() => accessSearchQuery = ''}>&times;</button>
+          {/if}
+        </div>
+
+        <div class="toolbar-selects">
+          <select bind:value={accessDomainFilter} class="input-dark select-sm">
+            <option value="all">Semua Domain</option>
+            {#each availableAccessDomains as dom}
+              <option value={dom}>{dom}</option>
+            {/each}
+          </select>
+
+          <select bind:value={accessThreatFilter} class="input-dark select-sm">
+            <option value="all">Semua Lalu Lintas</option>
+            <option value="threat">Hanya Ancaman / Probe</option>
+            <option value="normal">Hanya Pengunjung Normal</option>
+          </select>
+
+          <select bind:value={accessStatusFilter} class="input-dark select-sm">
+            <option value="all">Semua Status HTTP</option>
+            <option value="2xx">HTTP 2xx (OK)</option>
+            <option value="3xx">HTTP 3xx (Redirect)</option>
+            <option value="4xx">HTTP 4xx (Not Found / Blocked)</option>
+            <option value="5xx">HTTP 5xx (Server Error)</option>
+          </select>
+
+          <select bind:value={accessMethodFilter} class="input-dark select-sm">
+            <option value="all">Semua Metode</option>
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT / PATCH</option>
+            <option value="DELETE">DELETE</option>
+            <option value="CONNECT">CONNECT / PROXY</option>
+            <option value="HEAD">HEAD</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-responsive mt-4">
+        <table class="waf-main-table">
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Status</th>
+              <th>Metode & Situs</th>
+              <th>URL Path / Endpoint Diakses</th>
+              <th>Alamat IP & Geolokasi</th>
+              <th>Klien & Perangkat</th>
+              <th>Ukuran</th>
+              <th>Analisis WAF</th>
+              <th class="text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#if loadingAccessLogs && filteredAccessLogs.length === 0}
+              <tr>
+                <td colspan="9" class="text-center p-6 text-muted">
+                  <i class="ri-loader-4-line spin text-lg"></i> Memindai log akses Nginx real-time...
+                </td>
+              </tr>
+            {:else if filteredAccessLogs.length === 0}
+              <tr>
+                <td colspan="9" class="text-center p-6 text-muted">
+                  Tidak ada rekaman akses HTTP yang cocok dengan kriteria filter di atas.
+                </td>
+              </tr>
+            {:else}
+              {#each filteredAccessLogs as log}
+                <tr class="{log.is_threat ? 'row-threat-highlight' : ''}">
+                  <td class="mono text-xs text-muted nowrap">{formatDateTime(log.timestamp)}</td>
+                  <td>
+                    <span class="http-status-badge s{Math.floor(log.status_code / 100)}xx">{log.status_code}</span>
+                  </td>
+                  <td class="nowrap">
+                    <span class="method-mini {log.method.toLowerCase()}">{log.method}</span>
+                    <span class="mono text-xs font-semibold text-accent">{log.site_name}</span>
+                  </td>
+                  <td>
+                    <div class="mono text-xs font-medium break-all max-w-md" title={log.url_path}>{log.url_path}</div>
+                    {#if log.referer}
+                      <div class="mono text-2xs text-subtle truncate max-w-md">Ref: {log.referer}</div>
+                    {/if}
+                  </td>
+                  <td>
+                    <div class="mono text-xs font-bold">{log.client_ip}</div>
+                    <div class="text-2xs text-subtle">
+                      <span class="flag-code">{log.country_code}</span> {log.city ? `${log.city}, ` : ''}{log.country}
+                    </div>
+                    {#if log.isp}
+                      <div class="mono text-2xs text-muted truncate max-w-xs">{log.isp}</div>
+                    {/if}
+                  </td>
+                  <td>
+                    <div class="text-xs font-medium">{log.device} · {log.os}</div>
+                    <div class="text-2xs text-subtle">{log.browser} · <span class="mono">{log.protocol}</span></div>
+                  </td>
+                  <td class="mono text-xs nowrap">{formatBytes(log.bytes_sent)}</td>
+                  <td>
+                    {#if log.is_threat}
+                      <span class="badge-attack-tag">{log.attack_type}</span>
+                      <div class="text-2xs text-danger mt-05">{log.action === 'block' ? 'Diblokir / 40x' : 'Peringatan'}</div>
+                    {:else}
+                      <span class="badge-normal-traffic"><i class="ri-shield-check-line"></i> Aman</span>
+                    {/if}
+                  </td>
+                  <td class="text-right nowrap">
+                    <button
+                      class="btn-icon-xs text-accent"
+                      title="Lihat Forensik Detail Request Ini"
+                      onclick={() => selectedAccessLog = log}
+                    >
+                      <i class="ri-search-eye-line"></i>
+                    </button>
+                    <button
+                      class="btn-icon-xs text-warning"
+                      title="Blokir Path URL Ini"
+                      onclick={() => quickBlockPath(log.url_path, `Blokir endpoint dari ${log.client_ip}`)}
+                    >
+                      <i class="ri-forbid-2-line"></i>
+                    </button>
+                    <button
+                      class="btn-icon-xs text-danger"
+                      title="Blokir IP ke Blacklist"
+                      onclick={() => quickBlockIP(log.client_ip, log.attack_type || `Akses mencurigakan ke ${log.url_path}`)}
+                    >
+                      <i class="ri-shield-cross-line"></i>
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            {/if}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
 
   <!-- TAB 2: WEBSITE PROTECTION (Screenshot 3) -->
   {:else if activeTab === 'website'}
@@ -1107,7 +1811,7 @@
       <!-- Interactive Map Studio & Telemetry Drawer Container -->
       <div class="map-studio-viewport">
         <!-- Canvas Peta Leaflet (Dukungan zoom penuh hingga level jalan) -->
-        <div class="attack-map-canvas" use:attackMapAction></div>
+        <div class="attack-map-canvas" use:attackMapAction={filteredEvents}></div>
 
         <!-- Telemetry Inspector Drawer (Muncul saat marker atau baris log diklik) -->
         {#if selectedEvent}
@@ -1881,6 +2585,159 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick={() => showSiteModal = false}>Batal</button>
         <button type="button" class="btn btn-primary" onclick={saveSiteSettings}>Simpan Konfigurasi</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal Forensik Paket HTTP & Akses Mendalam -->
+{#if selectedAccessLog}
+  <div
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    onclick={(e) => { if (e.target === e.currentTarget) selectedAccessLog = null; }}
+    onkeydown={(e) => { if (e.key === 'Escape') selectedAccessLog = null; }}
+  >
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <div class="modal-title-wrap">
+          <i class="ri-radar-line {selectedAccessLog.is_threat ? 'text-danger' : 'text-accent'}"></i>
+          <div>
+            <h3>Inspeksi Forensik Paket HTTP #{selectedAccessLog.id}</h3>
+            <span class="modal-sub">
+              {formatDateTime(selectedAccessLog.timestamp)} · {selectedAccessLog.is_threat ? `Ancaman Terdeteksi: ${selectedAccessLog.attack_type}` : 'Lalu Lintas Pengunjung Normal'}
+            </span>
+          </div>
+        </div>
+        <button class="btn-close" onclick={() => selectedAccessLog = null}>&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="forensic-modal-grid">
+          <!-- Kolom 1: Informasi Request & Target -->
+          <div class="drawer-card">
+            <div class="drawer-card-title"><i class="ri-links-line text-accent"></i> Detail Permintaan HTTP & Endpoint</div>
+            <div class="drawer-info-grid">
+              <div class="info-row">
+                <span class="info-lbl">Domain Vhost:</span>
+                <span class="info-val mono font-bold text-accent">{selectedAccessLog.site_name}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Metode & Protokol:</span>
+                <span class="info-val mono">
+                  <span class="method-mini {selectedAccessLog.method.toLowerCase()}">{selectedAccessLog.method}</span>
+                  {selectedAccessLog.protocol}
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Kode Status HTTP:</span>
+                <span class="info-val">
+                  <span class="http-status-badge s{Math.floor(selectedAccessLog.status_code / 100)}xx">{selectedAccessLog.status_code}</span>
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Ukuran Payload Dikirim:</span>
+                <span class="info-val mono">{formatBytes(selectedAccessLog.bytes_sent)} ({selectedAccessLog.bytes_sent.toLocaleString()} bytes)</span>
+              </div>
+              <div class="info-col">
+                <span class="info-lbl">URL Path / Payload Lengkap:</span>
+                <div class="payload-box mono text-xs">{selectedAccessLog.url_path}</div>
+              </div>
+              {#if selectedAccessLog.referer}
+                <div class="info-col">
+                  <span class="info-lbl">HTTP Referer:</span>
+                  <div class="ua-box mono text-2xs">{selectedAccessLog.referer}</div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Kolom 2: Identitas Klien, Geolokasi & Perangkat -->
+          <div class="drawer-card">
+            <div class="drawer-card-title"><i class="ri-map-pin-user-line text-info"></i> Atribusi IP, Geolokasi & Perangkat</div>
+            <div class="drawer-info-grid">
+              <div class="info-row">
+                <span class="info-lbl">Alamat IP Klien:</span>
+                <span class="info-val mono font-bold">{selectedAccessLog.client_ip}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Negara & Kota:</span>
+                <span class="info-val">
+                  <span class="flag-code">{selectedAccessLog.country_code}</span>
+                  {selectedAccessLog.city ? `${selectedAccessLog.city}, ` : ''}{selectedAccessLog.region ? `${selectedAccessLog.region}, ` : ''}{selectedAccessLog.country}
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Koordinat GPS:</span>
+                <span class="info-val mono text-xs">{selectedAccessLog.latitude.toFixed(4)}, {selectedAccessLog.longitude.toFixed(4)}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">ISP / Jaringan ASN:</span>
+                <span class="info-val text-xs">{selectedAccessLog.isp || 'Autonomous System'}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-lbl">Perangkat & OS:</span>
+                <span class="info-val">{selectedAccessLog.device} · {selectedAccessLog.os} · {selectedAccessLog.browser}</span>
+              </div>
+              <div class="info-col">
+                <span class="info-lbl">Raw User-Agent Header:</span>
+                <div class="ua-box mono text-2xs">{selectedAccessLog.user_agent || '(Kosong / Raw Socket)'}</div>
+              </div>
+              <div class="info-col">
+                <span class="info-lbl">Keputusan Mesin WAF:</span>
+                <div class="rule-box text-xs">
+                  {#if selectedAccessLog.is_threat}
+                    <strong class="text-danger">{selectedAccessLog.attack_type}</strong> — {selectedAccessLog.rule_name || 'Signature Inspection Engine'} ({selectedAccessLog.action.toUpperCase()})
+                  {:else}
+                    <strong class="text-success">Normal HTTP Request</strong> — Tidak ditemukan pola SQLi, XSS, LFI, atau scanner berbahaya.
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          onclick={() => {
+            if (selectedAccessLog) {
+              quickWhitelistIP(selectedAccessLog.client_ip, 'Whitelisted via Packet Forensic Modal');
+              selectedAccessLog = null;
+            }
+          }}
+        >
+          <i class="ri-shield-check-line text-success"></i> Whitelist IP
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          onclick={() => {
+            if (selectedAccessLog) {
+              quickBlockPath(selectedAccessLog.url_path, `Blocked endpoint from ${selectedAccessLog.client_ip}`);
+              selectedAccessLog = null;
+            }
+          }}
+        >
+          <i class="ri-forbid-2-line text-warning"></i> Blokir URL Path Ini
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger btn-sm"
+          onclick={() => {
+            if (selectedAccessLog) {
+              quickBlockIP(selectedAccessLog.client_ip, selectedAccessLog.attack_type || `Forensic block (${selectedAccessLog.url_path})`);
+              selectedAccessLog = null;
+            }
+          }}
+        >
+          <i class="ri-shield-cross-line"></i> Blokir IP ke Blacklist
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => selectedAccessLog = null}>Tutup</button>
       </div>
     </div>
   </div>
@@ -2989,5 +3846,260 @@
     font-size: 0.85rem;
     max-width: 500px;
     margin: 0 auto 1.25rem;
+  }
+
+  /* Live Pulse Toggle & Observatory Styles */
+  .btn-live-pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-subtle);
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .btn-live-pulse.active {
+    background: var(--tint-accent);
+    border-color: var(--ring-accent);
+    color: var(--accent-strong);
+  }
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+  }
+  .pulse-dot.live {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulseGlow 1.5s infinite ease-in-out;
+  }
+
+  .tab-count-pill {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    padding: 0.08rem 0.45rem;
+    border-radius: 9999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+  }
+
+  .status-telemetry-strip {
+    padding: 0.9rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .telemetry-strip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .strip-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .strip-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-subtle);
+  }
+  .status-pill .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+  .status-pill.s2xx .dot { background: var(--accent); }
+  .status-pill.s3xx .dot { background: var(--info); }
+  .status-pill.s4xx .dot { background: var(--warning); }
+  .status-pill.s5xx .dot { background: var(--danger); }
+
+  .status-progress-bar {
+    height: 7px;
+    width: 100%;
+    background: var(--bg-inset);
+    border-radius: 9999px;
+    overflow: hidden;
+    display: flex;
+    gap: 2px;
+  }
+  .status-progress-bar .seg {
+    height: 100%;
+    transition: width 0.4s ease;
+  }
+  .seg-2xx { background: var(--accent); }
+  .seg-3xx { background: var(--info); }
+  .seg-4xx { background: var(--warning); }
+  .seg-5xx { background: var(--danger); }
+
+  .live-mini-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  .rank-item-rich {
+    align-items: flex-start;
+    padding: 0.55rem 0.65rem;
+  }
+  .rank-rich-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .rank-rich-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .rank-rich-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    color: var(--text-muted);
+  }
+  .rank-list-scroll {
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .rank-item-clickable {
+    width: 100%;
+    text-align: left;
+    background: var(--bg-inset);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .rank-item-clickable:hover {
+    border-color: var(--ring-accent);
+    background: var(--tint-accent);
+  }
+  .rank-threat-row {
+    border-left: 2px solid var(--danger);
+  }
+
+  .method-mini {
+    display: inline-block;
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-right: 0.25rem;
+    background: var(--tint-info);
+    color: var(--info);
+  }
+  .method-mini.post {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+  }
+  .method-mini.delete,
+  .method-mini.connect,
+  .method-mini.raw {
+    background: var(--tint-danger);
+    color: var(--danger-strong);
+  }
+
+  .status-mini,
+  .http-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.14rem 0.45rem;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .s2xx {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border: 1px solid var(--ring-accent);
+  }
+  .s3xx {
+    background: var(--tint-info);
+    color: var(--info);
+    border: 1px solid var(--ring-info);
+  }
+  .s4xx {
+    background: var(--tint-warning);
+    color: var(--warning-strong);
+    border: 1px solid var(--ring-warning);
+  }
+  .s5xx {
+    background: var(--tint-danger);
+    color: var(--danger-strong);
+    border: 1px solid var(--ring-danger);
+  }
+
+  .badge-normal-traffic {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border: 1px solid var(--ring-accent);
+    padding: 0.18rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .row-threat-highlight {
+    background: var(--tint-danger);
+  }
+  .forensic-modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 900px) {
+    .forensic-modal-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .break-all {
+    word-break: break-all;
+  }
+  .mt-2 {
+    margin-top: 0.5rem;
+  }
+  .mt-05 {
+    margin-top: 0.15rem;
   }
 </style>

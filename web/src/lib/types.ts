@@ -1085,11 +1085,64 @@ export interface WAFEvent {
   created_at: number;
 }
 
+export interface WAFAccessLog {
+  id: number;
+  site_name: string;
+  client_ip: string;
+  country: string;
+  country_code: string;
+  region?: string;
+  city?: string;
+  isp?: string;
+  latitude: number;
+  longitude: number;
+  device?: string;
+  os?: string;
+  browser?: string;
+  method: string;
+  url_path: string;
+  protocol?: string;
+  status_code: number;
+  bytes_sent: number;
+  referer?: string;
+  user_agent?: string;
+  is_threat: boolean;
+  attack_type: string;
+  action: 'allow' | 'block' | 'intercept' | 'challenge';
+  rule_name?: string;
+  created_at: number;
+}
+
+export interface WAFVisitorItem {
+  ip: string;
+  count: number;
+  bytes_total: number;
+  country: string;
+  country_code: string;
+  city?: string;
+  isp?: string;
+  device?: string;
+  os?: string;
+  browser?: string;
+  threat_count: number;
+  last_site?: string;
+  last_path?: string;
+  last_seen: number;
+}
+
 export interface WAFOverview {
   today_requests: number;
   malicious_requests: number;
   yesterday_requests: number;
   yesterday_malicious: number;
+  total_requests_all_time?: number;
+  total_bandwidth_bytes?: number;
+  status_breakdown?: {
+    s2xx: number;
+    s3xx: number;
+    s4xx: number;
+    s5xx: number;
+  };
   intercept_rate: number;
   realtime_qps: number;
   origin_latency_ms: number;
@@ -1103,9 +1156,28 @@ export interface WAFOverview {
     isp?: string;
   }[];
   attacked_domains: { domain: string; count: number }[];
-  traffic_ranking: { domain: string; requests: number }[];
-  visited_pages: { path: string; count: number }[];
+  traffic_ranking: {
+    domain: string;
+    requests: number;
+    bandwidth_bytes?: number;
+    threats?: number;
+    status_2xx?: number;
+    status_3xx?: number;
+    status_4xx?: number;
+    status_5xx?: number;
+  }[];
+  visited_pages: {
+    site_name?: string;
+    path: string;
+    method?: string;
+    count: number;
+    status_code?: number;
+    bytes_total?: number;
+    is_threat?: boolean;
+  }[];
+  top_visitors?: WAFVisitorItem[];
   recent_events: WAFEvent[];
+  recent_access_logs?: WAFAccessLog[];
   total_rules_count: number;
   waf_global_enabled: boolean;
 }

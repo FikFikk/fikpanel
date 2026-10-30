@@ -2854,6 +2854,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "type": "access", "content": "..."}` |
 | Notes | Membaca hingga 200 baris terakhir dari berkas `/var/log/nginx/{domain}.access.log` atau `/var/log/nginx/{domain}.error.log` secara langsung dari disk. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/access-logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, opsional, default `200`, maks `350`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "logs": [{"id": 120, "site_name": "yuha.fikfikk.my.id", "client_ip": "182.8.100.74", "country": "Indonesia", "country_code": "ID", "city": "Surabaya", "isp": "PT Telkom Indonesia", "latitude": -7.2492, "longitude": 112.7508, "method": "POST", "url_path": "/livewire/update", "protocol": "HTTP/2.0", "status_code": 200, "bytes_sent": 4128, "referer": "https://yuha.fikfikk.my.id/admin", "user_agent": "Mozilla/5.0...", "device": "Desktop (PC)", "os": "Windows 10/11", "browser": "Chrome", "is_threat": false, "action": "allow", "timestamp": 1793341200}]}` |
+| Notes | Mengembalikan rekaman log akses HTTP real-time dari ring buffer `waf.LogWatcher` yang mencakup lalu lintas pengunjung normal maupun percobaan serangan/probe biner, lengkap dengan geolokasi, perangkat, ukuran byte, dan klasifikasi WAF. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

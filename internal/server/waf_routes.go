@@ -206,6 +206,28 @@ func (s *Server) handleListWAFEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleListWAFAccessLogs mengembalikan riwayat seluruh lalu lintas akses HTTP (baik normal maupun serangan) dari berkas log Nginx
+func (s *Server) handleListWAFAccessLogs(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	limit := 150
+	if limStr := r.URL.Query().Get("limit"); limStr != "" {
+		if l, err := strconv.Atoi(limStr); err == nil && l > 0 && l <= 400 {
+			limit = l
+		}
+	}
+
+	logs := s.waf.ListAccessLogs(limit)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":   true,
+		"logs": logs,
+	})
+}
+
 // handleWAFMapTile melayani proxy dan caching lokal tile peta dunia CartoDB Dark Matter
 func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 	z := r.PathValue("z")

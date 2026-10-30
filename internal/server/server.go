@@ -468,6 +468,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddWAFRule)))
 	s.mux.Handle("DELETE /api/waf/rules/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWAFRule)))
 	s.mux.Handle("GET /api/waf/events", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFEvents)))
+	s.mux.Handle("GET /api/waf/access-logs", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFAccessLogs)))
 	s.mux.Handle("GET /api/waf/tiles/{z}/{x}/{y}", http.HandlerFunc(s.handleWAFMapTile))
 
 	// Integrasi Cloudflare API v4 & DNS Pointing
