@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,7 @@ type DNSRecord struct {
 	TTL            int    `json:"ttl"`
 	Priority       int    `json:"priority,omitempty"`
 	PointsToServer bool   `json:"points_to_server"`
+	InLocalSites   bool   `json:"in_local_sites"`
 }
 
 // DNSRecordInput adalah payload pembuatan atau pembaruan record DNS
@@ -449,6 +451,24 @@ func (c *Client) ListZonesWithDiagnostics(ctx context.Context, serverIPs []strin
 
 		// Ambil rekaman DNS untuk domain ini
 		dnsRecords, _ := c.listDNSRecordsWithIPMap(ctx, z.ID, ownIPMap)
+		localSet := make(map[string]bool)
+		for _, ld := range zoneItem.LocalSites {
+			localSet[strings.ToLower(ld)] = true
+		}
+		for i := range dnsRecords {
+			if localSet[strings.ToLower(dnsRecords[i].Name)] {
+				dnsRecords[i].InLocalSites = true
+			}
+		}
+		sort.SliceStable(dnsRecords, func(i, j int) bool {
+			if dnsRecords[i].PointsToServer != dnsRecords[j].PointsToServer {
+				return dnsRecords[i].PointsToServer
+			}
+			if dnsRecords[i].InLocalSites != dnsRecords[j].InLocalSites {
+				return dnsRecords[i].InLocalSites
+			}
+			return dnsRecords[i].Name < dnsRecords[j].Name
+		})
 		zoneItem.DNSRecords = dnsRecords
 
 		for _, r := range dnsRecords {
@@ -604,7 +624,107 @@ func matchLocalSitesForZone(zoneName string, localDomains []string) []string {
 	return matched
 }
 
-// discoverLocalCloudflareZones memindai DNS langsung untuk situs-situs FikPanel ketika API Token belum memiliki izin Zone:Read
+// collectZoneCandidateHosts mengumpulkan seluruh kandidat subdomain aktif untuk rootZone dari:
+// 1. Situs lokal yang terdaftar di FikPanel
+// 2. Passive DNS publik (api.hackertarget.com)
+// 3. Certificate Transparency log (crt.sh)
+// 4. Kamus prefix subdomain populer & Cloudflare Tunnel
+func (c *Client) collectZoneCandidateHosts(ctx context.Context, rootZone string, localSubDomains []string) []string {
+	seen := make(map[string]bool)
+	var mu sync.Mutex
+	addHost := func(h string) {
+		h = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(h, "*.")))
+		h = strings.TrimSuffix(h, ".")
+		if h == "" || (!strings.HasSuffix(h, "."+rootZone) && h != rootZone) {
+			return
+		}
+		mu.Lock()
+		seen[h] = true
+		mu.Unlock()
+	}
+
+	addHost(rootZone)
+	for _, sd := range localSubDomains {
+		addHost(sd)
+	}
+
+	// Prefix umum web, API, dan Cloudflare Tunnel
+	commonPrefixes := []string{
+		"www", "api", "bot", "email", "go", "go-api", "harimu", "kala", "n8n", "omni",
+		"yuha", "yuhu", "wa", "gsjs", "mail", "app", "dev", "admin", "panel", "staging",
+		"cdn", "auth", "status", "docs", "webhook", "chat", "test", "portal", "vpn", "git",
+	}
+	for _, p := range commonPrefixes {
+		addHost(p + "." + rootZone)
+	}
+
+	var wg sync.WaitGroup
+	// 1. Ambil passive DNS dari HackerTarget (sangat cepat dan memuat semua subdomain A/CNAME publik seperti yuhu.fikfikk.my.id)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reqCtx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+		defer cancel()
+		u := "https://api.hackertarget.com/hostsearch/?q=" + rootZone
+		req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 128*1024))
+		for _, line := range strings.Split(string(body), "\n") {
+			parts := strings.Split(strings.TrimSpace(line), ",")
+			if len(parts) >= 1 && !strings.Contains(parts[0], " ") {
+				addHost(parts[0])
+			}
+		}
+	}()
+
+	// 2. Ambil Certificate Transparency log dari crt.sh
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reqCtx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+		defer cancel()
+		u := "https://crt.sh/?q=%25." + rootZone + "&output=json"
+		req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		var rows []struct {
+			NameValue string `json:"name_value"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&rows) == nil {
+			for _, r := range rows {
+				for _, n := range strings.Split(r.NameValue, "\n") {
+					addHost(n)
+				}
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	var out []string
+	for h := range seen {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// discoverLocalCloudflareZones memindai DNS langsung untuk zona Cloudflare beserta seluruh subdomain aktifnya ketika API Token belum memiliki izin Zone:Read
 func (c *Client) discoverLocalCloudflareZones(ctx context.Context, localDomains []string, ownIPMap map[string]bool, primaryServerIP string) []Zone {
 	zoneGroups := make(map[string][]string)
 	for _, d := range localDomains {
@@ -631,43 +751,56 @@ func (c *Client) discoverLocalCloudflareZones(ctx context.Context, localDomains 
 			}
 		}
 
-		// Kandidat host yang akan diperiksa record A/AAAA-nya
-		hostsToProbe := []string{rootZone, "www." + rootZone}
-		seenHost := map[string]bool{rootZone: true, "www." + rootZone: true}
+		localSiteSet := make(map[string]bool)
 		for _, sd := range subDomains {
-			if !seenHost[sd] {
-				seenHost[sd] = true
-				hostsToProbe = append(hostsToProbe, sd)
-			}
+			localSiteSet[strings.ToLower(sd)] = true
 		}
+
+		// Kumpulkan seluruh kandidat subdomain dari situs lokal, HackerTarget passive DNS, crt.sh, dan kamus populer
+		hostsToProbe := c.collectZoneCandidateHosts(ctx, rootZone, subDomains)
+
+		type probeResult struct {
+			host string
+			ips  []string
+		}
+		results := make([]probeResult, len(hostsToProbe))
+		sem := make(chan struct{}, 16)
+		var wg sync.WaitGroup
+
+		for idx, h := range hostsToProbe {
+			wg.Add(1)
+			go func(i int, hostName string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				hCtx, hCancel := context.WithTimeout(ctx, 2200*time.Millisecond)
+				ips, err := net.DefaultResolver.LookupHost(hCtx, hostName)
+				hCancel()
+				if err == nil && len(ips) > 0 {
+					results[i] = probeResult{host: hostName, ips: ips}
+				}
+			}(idx, h)
+		}
+		wg.Wait()
 
 		var records []DNSRecord
 		var matchedRecs []string
 		pointsHere := false
 
-		for idx, h := range hostsToProbe {
-			hCtx, hCancel := context.WithTimeout(ctx, 2500*time.Millisecond)
-			ips, err := net.DefaultResolver.LookupHost(hCtx, h)
-			hCancel()
-			if err != nil || len(ips) == 0 {
+		for idx, res := range results {
+			if res.host == "" || len(res.ips) == 0 {
 				continue
 			}
+			h := res.host
+			isLocalSite := localSiteSet[strings.ToLower(h)]
 
-			for ipIdx, ipStr := range ips {
+			for ipIdx, ipStr := range res.ips {
 				proxied := isCloudflareEdgeIP(ipStr)
 				if proxied {
 					isCF = true
 				}
 				recPointsHere := ownIPMap[ipStr]
-				// Jika domain ini adalah situs aktif di server ini dan diproxy oleh Cloudflare (Orange Cloud),
-				// tandai bahwa domain ini dikelola oleh server ini melalui Cloudflare Proxy
-				isLocalSite := false
-				for _, sd := range subDomains {
-					if sd == h {
-						isLocalSite = true
-						break
-					}
-				}
 				if recPointsHere || (proxied && isLocalSite) {
 					pointsHere = true
 					recPointsHere = true
@@ -686,6 +819,7 @@ func (c *Client) discoverLocalCloudflareZones(ctx context.Context, localDomains 
 					Proxiable:      true,
 					TTL:            1,
 					PointsToServer: recPointsHere,
+					InLocalSites:   isLocalSite,
 				})
 				if recPointsHere {
 					label := fmt.Sprintf("%s → %s", h, ipStr)
@@ -700,6 +834,17 @@ func (c *Client) discoverLocalCloudflareZones(ctx context.Context, localDomains 
 				}
 			}
 		}
+
+		// Urutkan agar record yang mengarah ke server ini (yuha.fikfikk.my.id & yuhu.fikfikk.my.id) selalu di urutan teratas
+		sort.SliceStable(records, func(i, j int) bool {
+			if records[i].PointsToServer != records[j].PointsToServer {
+				return records[i].PointsToServer
+			}
+			if records[i].InLocalSites != records[j].InLocalSites {
+				return records[i].InLocalSites
+			}
+			return records[i].Name < records[j].Name
+		})
 
 		if !isCF && len(records) == 0 {
 			continue

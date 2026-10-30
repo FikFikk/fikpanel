@@ -1065,7 +1065,7 @@ export interface WAFEvent {
   id: number;
   site_name: string;
   client_ip: string;
-  country: string;
+  country: string;padahal 
   country_code: string;
   region?: string;
   city?: string;
@@ -1203,6 +1203,7 @@ export interface CloudflareDNSRecord {
   ttl: number;
   priority?: number;
   points_to_server: boolean;
+  in_local_sites?: boolean;
 }
 
 export interface CloudflareZone {
@@ -1292,4 +1293,4 @@ export interface TerminalTab {
   executing: boolean;
 }
 
-
+
