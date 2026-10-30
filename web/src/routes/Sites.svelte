@@ -67,6 +67,21 @@
   let gitPullClearCache = $state(true);
   let gitPullResult = $state<GitPullResponse | null>(null);
   let gitPullError = $state('');
+  let openMoreSiteId = $state<number | null>(null);
+
+  function toggleMoreMenu(siteId: number, e: MouseEvent) {
+    e.stopPropagation();
+    openMoreSiteId = openMoreSiteId === siteId ? null : siteId;
+  }
+
+  async function quickGitPull(site: Site) {
+    openMoreSiteId = null;
+    openGitPullModal(site);
+    gitPullRunComposer = false;
+    gitPullRunMigrate = true;
+    gitPullClearCache = true;
+    await executeGitPull();
+  }
 
   // Modal Konfirmasi Hapus Situs (Danger Zone + Anti-Paste + Auto-Backup)
   let deleteTarget = $state<Site | null>(null);
@@ -377,6 +392,8 @@
   });
 </script>
 
+<svelte:window onclick={() => { if (openMoreSiteId !== null) openMoreSiteId = null; }} />
+
 <div class="sites-container">
   <!-- ═════════ 1. Header Tab Kategori Proyek (Sesuai Screenshot aaPanel) ═════════ -->
   <div class="project-tabs-bar">
@@ -621,16 +638,16 @@
                   <div class="quick-actions-bar">
                     <button
                       class="quick-act-btn"
-                      onclick={() => openInFileManager(s.root_path || '/var/www/html')}
-                      title="Buka direktori situs di File Manager FikPanel"
+                      onclick={() => openInFileManager(getProjectRootDir(s))}
+                      title="Buka direktori proyek situs di File Manager FikPanel"
                     >
                       <i class="ri-folder-open-fill icon-amber"></i>
                     </button>
 
                     <button
                       class="quick-act-btn"
-                      onclick={() => openInTerminal(s.root_path || '/var/www/html')}
-                      title="Buka Terminal di folder situs ini"
+                      onclick={() => openInTerminal(getProjectRootDir(s))}
+                      title="Buka Terminal di folder root proyek situs ini"
                     >
                       <i class="ri-terminal-box-line icon-cyan"></i>
                     </button>
@@ -718,7 +735,7 @@
                   </button>
                 </td>
 
-                <!-- Kolom Operasi (Git Pull jika proyek Git, Conf, Log, Hapus) -->
+                <!-- Kolom Operasi (Git Pull & More jika proyek Git, Conf, Log, Hapus) -->
                 <td class="col-ops">
                   <div class="ops-wrap">
                     {#if s.has_git}
@@ -744,6 +761,57 @@
                     >
                       Hapus
                     </button>
+                    {#if s.has_git}
+                      <span class="op-div">|</span>
+                      <div class="op-more-wrap">
+                        <button
+                          type="button"
+                          class="btn-op-more {openMoreSiteId === s.id ? 'is-open' : ''}"
+                          onclick={(e) => toggleMoreMenu(s.id, e)}
+                          title="Opsi lanjutan Git & Deployment"
+                        >
+                          <span>More</span>
+                          <i class="ri-arrow-down-s-line"></i>
+                        </button>
+                        {#if openMoreSiteId === s.id}
+                          <div class="op-more-menu">
+                            <button
+                              type="button"
+                              class="op-more-item"
+                              onclick={() => { openMoreSiteId = null; openGitPullModal(s); }}
+                            >
+                              <i class="ri-git-pull-request-line icon-accent"></i>
+                              <div>
+                                <b>Git Pull &amp; Auto-Deploy</b>
+                                <small>Tarik commit + Composer + Migrate</small>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              class="op-more-item"
+                              onclick={() => quickGitPull(s)}
+                            >
+                              <i class="ri-flashlight-line icon-amber"></i>
+                              <div>
+                                <b>Quick Git Pull (Instan)</b>
+                                <small>Tarik kode terbaru &amp; bersihkan cache</small>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              class="op-more-item"
+                              onclick={() => { openMoreSiteId = null; openInTerminal(getProjectRootDir(s)); }}
+                            >
+                              <i class="ri-terminal-box-line icon-cyan"></i>
+                              <div>
+                                <b>Terminal Direktori Git</b>
+                                <small>Buka shell di {getProjectRootDir(s)}</small>
+                              </div>
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 </td>
               </tr>
@@ -1424,7 +1492,7 @@
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   }
 
@@ -2187,6 +2255,96 @@
   .btn-op-git:hover {
     background: var(--accent);
     color: var(--text-on-accent);
+  }
+
+  .op-more-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .btn-op-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    background: transparent;
+    border: none;
+    color: var(--info);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0.1rem 0.25rem;
+    border-radius: 4px;
+  }
+
+  .btn-op-more:hover,
+  .btn-op-more.is-open {
+    background: color-mix(in srgb, var(--info) 12%, transparent);
+  }
+
+  .op-more-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 235px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 0.35rem;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65);
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .op-more-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0.48rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.12s ease;
+  }
+
+  .op-more-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .op-more-item i {
+    font-size: 0.95rem;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+  }
+
+  .icon-accent {
+    color: var(--accent);
+  }
+
+  .op-more-item div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .op-more-item b {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .op-more-item small {
+    font-size: 0.65rem;
+    color: var(--text-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .log-pre-raw {

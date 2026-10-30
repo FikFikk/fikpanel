@@ -248,6 +248,7 @@ func (s *Server) handleGitConnect(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.SetSetting(r.Context(), "github_token", req.Token)
 	_ = s.store.SetSetting(r.Context(), "github_username", profile.Login)
 	_ = s.store.SetSetting(r.Context(), "github_avatar", profile.AvatarURL)
+	s.syncGitGlobalCredentials(r.Context(), "")
 	s.auditSite(r, "git.connect", profile.Login, true, "Menghubungkan akun GitHub dengan akses penuh (Public & Private)")
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -390,6 +391,7 @@ func (s *Server) handleGitDevicePoll(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.SetSetting(r.Context(), "github_token", tokenRes.AccessToken)
 	_ = s.store.SetSetting(r.Context(), "github_username", profile.Login)
 	_ = s.store.SetSetting(r.Context(), "github_avatar", profile.AvatarURL)
+	s.syncGitGlobalCredentials(r.Context(), "")
 	s.auditSite(r, "git.connect.oauth", profile.Login, true, "Otorisasi GitHub OAuth Device Flow berhasil")
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -907,6 +909,9 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		return fmt.Errorf("gagal menyalin hasil clone: %s", strings.TrimSpace(string(out)))
 	}
 	_ = os.RemoveAll(tmpDir)
+
+	// Sinkronkan safe.directory & kredensial Git global agar 'git pull' manual di Terminal maupun via UI berjalan mulus
+	s.syncGitGlobalCredentials(ctx, targetDir)
 
 	// Deteksi otomatis PORT pada ecosystem.config.cjs / ecosystem.config.js dan selaraskan upstream Nginx
 	appPort := "3000"
@@ -2001,6 +2006,28 @@ func extractCleanRepoSlug(rawURL string) string {
 	return strings.TrimSuffix(rawURL, ".git")
 }
 
+var gitCredSyncedOnce sync.Once
+
+// syncGitGlobalCredentials mengatur safe.directory serta credential.helper global untuk root
+// agar perintah 'git pull' di Web Terminal maupun tombol UI pada repositori privat GitHub berjalan tanpa error autentikasi/ownership.
+func (s *Server) syncGitGlobalCredentials(ctx context.Context, projectDir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	_ = exec.CommandContext(ctx, "git", "config", "--global", "--replace-all", "safe.directory", "*").Run()
+	if strings.TrimSpace(projectDir) != "" {
+		_ = exec.CommandContext(ctx, "git", "config", "--global", "--add", "safe.directory", projectDir).Run()
+	}
+	token, _ := s.store.GetSetting(ctx, "github_token")
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	credFile := "/root/.git-credentials"
+	credLine := fmt.Sprintf("https://x-access-token:%s@github.com\n", strings.TrimSpace(token))
+	_ = os.WriteFile(credFile, []byte(credLine), 0o600)
+	_ = exec.CommandContext(ctx, "git", "config", "--global", "credential.helper", "store --file="+credFile).Run()
+}
+
 // enrichSiteRuntimeMeta memperkaya objek Site dengan jumlah request log Nginx nyata, jumlah backup, dan metadata Git
 func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
 	if site == nil {
@@ -2014,6 +2041,11 @@ func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
 	site.GitBranch = branch
 	site.GitRepo = repoSlug
 	site.GitCommit = shortCommit
+	if hasGit {
+		gitCredSyncedOnce.Do(func() {
+			go s.syncGitGlobalCredentials(context.Background(), projectDir)
+		})
+	}
 }
 
 // handleSiteGitPull menarik perubahan terbaru dari repositori Git situs dan menjalankan otomatisasi pasca-pull
@@ -2065,8 +2097,8 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
 
-	// Pastikan direktori proyek terdaftar sebagai safe.directory pada konfigurasi Git global
-	_ = exec.CommandContext(ctx, "git", "config", "--global", "--add", "safe.directory", projectDir).Run()
+	// Pastikan direktori proyek terdaftar sebagai safe.directory & credential helper Git aktif
+	s.syncGitGlobalCredentials(ctx, projectDir)
 
 	// Ambil remote URL saat ini dan suntikkan token GitHub sementara bila menggunakan HTTPS github.com
 	token, _ := s.store.GetSetting(ctx, "github_token")
