@@ -2378,16 +2378,16 @@
 
   <!-- TAB 5: CLOUDFLARE HUB -->
   {:else if activeTab === 'cloudflare'}
-    <div class="bento-panel">
+    <div class="bento-panel cf-hub-container">
       <!-- Status Koneksi Header -->
       <div class="cf-status-card">
         <div class="cf-left">
           <div class="cf-logo-icon">
             <i class="ri-cloud-line"></i>
           </div>
-          <div>
+          <div class="cf-head-copy">
             <div class="cf-title-row">
-              <h3>Integrasi Akun Cloudflare API v4 & Edge Control</h3>
+              <h3>Integrasi Akun Cloudflare API v4 &amp; Edge Control</h3>
               {#if cfConfig?.connected}
                 <span class="badge-cf-connected">
                   <i class="ri-checkbox-circle-fill"></i> Terhubung ({cfConfig.account_name})
@@ -2398,8 +2398,8 @@
                 </span>
               {/if}
             </div>
-            <p class="text-subtle text-xs">
-              Kelola seluruh domain Cloudflare, deteksi resolusi DNS ke IP Publik VPS ({serverIP || '54.254.187.53'}), manajemen record DNS (A/CNAME/TXT/MX), Mode SSL, Under Attack Mode, Always Use HTTPS, dan Purge Cache CDN.
+            <p class="cf-head-desc">
+              Kelola seluruh domain Cloudflare, deteksi resolusi DNS ke IP Publik VPS (<span class="mono">{serverIP || '54.254.187.53'}</span>), manajemen record DNS (A/CNAME/TXT/MX), Mode SSL, Under Attack Mode, Always Use HTTPS, dan Purge Cache CDN.
             </p>
           </div>
         </div>
@@ -2409,14 +2409,14 @@
             <button class="btn btn-secondary btn-sm" onclick={loadCloudflare} disabled={loadingCF}>
               <i class="ri-refresh-line {loadingCF ? 'spin' : ''}"></i> Sinkronkan Domain
             </button>
-            <button class="btn btn-secondary btn-sm" onclick={() => showCFConnectModal = true}>
+            <button class="btn btn-secondary btn-sm" onclick={() => (showCFConnectModal = true)}>
               <i class="ri-key-2-line"></i> Ganti Token / Izin
             </button>
             <button class="btn btn-danger-outline btn-sm" onclick={handleDisconnectCF}>
-              Putuskan
+              <i class="ri-link-unlink-m"></i> Putuskan
             </button>
           {:else}
-            <button class="btn btn-primary btn-sm" onclick={() => showCFConnectModal = true}>
+            <button class="btn btn-primary btn-sm" onclick={() => (showCFConnectModal = true)}>
               <i class="ri-link"></i> Hubungkan Cloudflare
             </button>
           {/if}
@@ -2428,73 +2428,101 @@
           <i class="ri-cloud-windy-line promo-icon"></i>
           <h4>Sinkronkan Domain Cloudflare Anda</h4>
           <p>
-            Dapatkan kontrol penuh atas domain Anda di Cloudflare: deteksi otomatis apakah DNS mengarah ke IP Publik VPS Anda ({serverIP || '54.254.187.53'}), kelola record A/CNAME/TXT, ubah mode SSL & Under Attack Mode, serta kosongkan cache dengan 1-klik.
+            Dapatkan kontrol penuh atas domain Anda di Cloudflare: deteksi otomatis apakah DNS mengarah ke IP Publik VPS Anda ({serverIP || '54.254.187.53'}), kelola record A/CNAME/TXT, ubah mode SSL &amp; Under Attack Mode, serta kosongkan cache dengan 1-klik.
           </p>
-          <button class="btn btn-primary" onclick={() => showCFConnectModal = true}>
+          <button class="btn btn-primary" onclick={() => (showCFConnectModal = true)}>
             Mulai Hubungkan API Token / Global Key
           </button>
         </div>
       {:else}
-        <!-- Diagnostik Izin API Token (Collapsible agar hemat ruang) -->
+        <!-- Diagnostik Izin API Token (Collapsible & Terstruktur) -->
         {#if cfTokenDiagnostic}
-          <div class="cf-diagnostic-banner mt-4">
+          <div class="cf-diagnostic-banner">
             <div class="cf-diag-compact-bar">
               <div class="cf-diag-left">
-                <i class="ri-information-line text-warning text-base"></i>
+                <div class="cf-diag-icon-box">
+                  <i class="ri-radar-line"></i>
+                </div>
                 <div class="cf-diag-summary">
-                  <strong>Mode DNS Live Aktif</strong>
-                  <span class="text-subtle">
-                    — Endpoint Cloudflare <code>/zones</code> mengembalikan 0 zona pada token saat ini, sehingga FikPanel otomatis memindai seluruh subdomain aktif DNS publik &amp; situs lokal.
-                  </span>
+                  <div class="cf-diag-headline">
+                    <strong>Mode DNS Live Aktif</strong>
+                    <span class="cf-diag-pill">Read-Only Fallback</span>
+                  </div>
+                  <p class="cf-diag-subtext">
+                    Endpoint Cloudflare <code>/zones</code> mengembalikan 0 zona pada token saat ini, sehingga FikPanel otomatis memindai seluruh subdomain aktif dari DNS publik &amp; situs lokal.
+                  </p>
                 </div>
               </div>
               <div class="cf-diag-right">
                 <button
                   type="button"
-                  class="btn btn-xs btn-secondary"
+                  class="btn btn-sm btn-secondary cf-guide-toggle-btn {showCFPermGuide ? 'active' : ''}"
                   onclick={() => (showCFPermGuide = !showCFPermGuide)}
                 >
                   <i class="ri-shield-keyhole-line text-accent"></i>
-                  Panduan Izin Token (Read vs Edit)
+                  <span>Panduan Izin Token</span>
                   <i class={showCFPermGuide ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}></i>
                 </button>
                 <button
                   type="button"
-                  class="btn btn-xs btn-primary"
+                  class="btn btn-sm btn-primary"
                   onclick={() => (showCFConnectModal = true)}
                 >
-                  <i class="ri-key-2-line"></i> Perbarui Token / Global Key
+                  <i class="ri-key-2-line"></i> Perbarui Token / Key
                 </button>
               </div>
             </div>
 
             {#if showCFPermGuide}
               <div class="cf-diag-expanded">
-                <p class="cf-diag-text">{cfTokenDiagnostic}</p>
+                <div class="cf-diag-note-row">
+                  <i class="ri-information-line text-warning"></i>
+                  <span>{cfTokenDiagnostic}</span>
+                </div>
                 <div class="cf-perm-grid">
                   <div class="cf-perm-box highlight">
-                    <div class="cf-perm-title">1. Agar Daftar Semua Zona Muncul (Wajib)</div>
-                    <div class="text-2xs text-subtle">
-                      <code>Zone</code> → <code>Zone</code> → <code>Read</code> + <code>Zone Resources: Include All Zones</code>
+                    <div class="cf-perm-head">
+                      <span class="cf-perm-step">Langkah 1</span>
+                      <span class="cf-perm-badge req">Wajib</span>
                     </div>
+                    <div class="cf-perm-title">Daftar Semua Zona Muncul</div>
+                    <div class="cf-perm-path">
+                      <code>Zone</code> <i class="ri-arrow-right-s-line"></i> <code>Zone</code> <i class="ri-arrow-right-s-line"></i> <code>Read</code>
+                    </div>
+                    <div class="cf-perm-foot">Setel <code>Zone Resources: Include All Zones</code></div>
                   </div>
                   <div class="cf-perm-box">
-                    <div class="cf-perm-title">2. Agar Bisa Tambah / Ubah / Point DNS</div>
-                    <div class="text-2xs text-subtle">
-                      <code>Zone</code> → <code>DNS</code> → <code>Edit</code> (Izin <code>Read</code> hanya bisa melihat)
+                    <div class="cf-perm-head">
+                      <span class="cf-perm-step">Langkah 2</span>
+                      <span class="cf-perm-badge">DNS Manager</span>
                     </div>
+                    <div class="cf-perm-title">Tambah / Ubah / Point DNS</div>
+                    <div class="cf-perm-path">
+                      <code>Zone</code> <i class="ri-arrow-right-s-line"></i> <code>DNS</code> <i class="ri-arrow-right-s-line"></i> <code>Edit</code>
+                    </div>
+                    <div class="cf-perm-foot">Izin <code>Read</code> hanya dapat melihat daftar record</div>
                   </div>
                   <div class="cf-perm-box">
-                    <div class="cf-perm-title">3. Agar Bisa Ubah SSL, Under Attack &amp; HTTPS</div>
-                    <div class="text-2xs text-subtle">
-                      <code>Zone</code> → <code>Zone Settings</code> → <code>Edit</code>
+                    <div class="cf-perm-head">
+                      <span class="cf-perm-step">Langkah 3</span>
+                      <span class="cf-perm-badge">Edge Control</span>
                     </div>
+                    <div class="cf-perm-title">Ubah SSL, DDoS &amp; HTTPS</div>
+                    <div class="cf-perm-path">
+                      <code>Zone</code> <i class="ri-arrow-right-s-line"></i> <code>Zone Settings</code> <i class="ri-arrow-right-s-line"></i> <code>Edit</code>
+                    </div>
+                    <div class="cf-perm-foot">Diperlukan untuk mengubah SSL &amp; Under Attack Mode</div>
                   </div>
                   <div class="cf-perm-box">
-                    <div class="cf-perm-title">4. Agar Bisa Purge Cache CDN</div>
-                    <div class="text-2xs text-subtle">
-                      <code>Zone</code> → <code>Cache Purge</code> → <code>Purge</code>
+                    <div class="cf-perm-head">
+                      <span class="cf-perm-step">Langkah 4</span>
+                      <span class="cf-perm-badge">CDN Cache</span>
                     </div>
+                    <div class="cf-perm-title">Purge Cache Instan</div>
+                    <div class="cf-perm-path">
+                      <code>Zone</code> <i class="ri-arrow-right-s-line"></i> <code>Cache Purge</code> <i class="ri-arrow-right-s-line"></i> <code>Purge</code>
+                    </div>
+                    <div class="cf-perm-foot">Mengizinkan pembersihan cache aset CDN 1-klik</div>
                   </div>
                 </div>
               </div>
@@ -2503,7 +2531,7 @@
         {/if}
 
         <!-- Filter & Informasi IP Server -->
-        <div class="panel-header mt-4">
+        <div class="cf-toolbar-row">
           <div class="cf-filter-tabs">
             <button
               type="button"
@@ -2540,7 +2568,7 @@
           </div>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive cf-table-wrap">
           <table class="waf-main-table cf-zones-table">
             <thead>
               <tr>
@@ -2548,7 +2576,7 @@
                 <th>Domain Mengarah ke Server Ini ({serverIP})</th>
                 <th>SSL/TLS &amp; DDoS Level</th>
                 <th>Proteksi Edge</th>
-                <th class="text-right">Aksi Cepat</th>
+                <th class="text-right">Kontrol &amp; DNS</th>
               </tr>
             </thead>
             <tbody>
@@ -2570,7 +2598,7 @@
                   {@const otherRecs = (zone.dns_records || []).filter((r) => !r.points_to_server)}
                   {@const isExpanded = !!expandedCFZones[zone.id]}
                   <tr>
-                    <td>
+                    <td class="cf-col-zone">
                       <div class="cf-zone-name-row">
                         <span class="font-bold mono text-accent text-sm">{zone.name}</span>
                         <span class="badge-cf-connected uppercase">{zone.status}</span>
@@ -2585,13 +2613,13 @@
                         {/if}
                       </div>
                       {#if zone.name_servers && zone.name_servers.length > 0}
-                        <div class="mono text-2xs text-subtle truncate max-w-xs" title={zone.name_servers.join(', ')}>
-                          NS: {zone.name_servers.join(', ')}
+                        <div class="cf-ns-line mono" title={zone.name_servers.join(', ')}>
+                          <i class="ri-server-line"></i> {zone.name_servers.map((ns) => ns.replace('.ns.cloudflare.com', '')).join(', ')}.ns.cloudflare.com
                         </div>
                       {/if}
                     </td>
 
-                    <td>
+                    <td class="cf-col-domains">
                       {#if pointingRecs.length > 0}
                         <div class="cf-pointing-head">
                           <span class="badge-points-here">
@@ -2647,7 +2675,7 @@
                       {/if}
                     </td>
 
-                    <td class="nowrap">
+                    <td class="nowrap cf-col-ssl">
                       <div class="cf-dual-select-stack">
                         <div class="cf-mini-select-row">
                           <span class="cf-mini-lbl">SSL:</span>
@@ -2683,7 +2711,7 @@
                       </div>
                     </td>
 
-                    <td class="nowrap">
+                    <td class="nowrap cf-col-edge">
                       <div class="cf-edge-pills">
                         <span class="badge-toggle {zone.always_use_https ? 'active' : ''}" title="Always Use HTTPS">
                           HTTPS: {zone.always_use_https ? 'ON' : 'OFF'}
@@ -2703,35 +2731,44 @@
                       </div>
                     </td>
 
-                    <td class="text-right actions-cell nowrap">
-                      <div class="cf-action-btn-group">
+                    <td class="text-right actions-cell cf-col-actions">
+                      <div class="cf-action-grid">
                         <button
-                          class="btn btn-xs btn-secondary"
+                          type="button"
+                          class="cf-act-btn primary-dns"
                           onclick={() => { selectedZone = zone; resetDNSForm(); dnsFilterTab = 'points_here'; dnsSearchQuery = ''; showDNSModal = true; }}
-                          title="Kelola Record DNS (Default menampilkan domain yang mengarah ke server ini)"
+                          title="Kelola Record DNS (Menampilkan domain server ini & subdomain Tunnel)"
                         >
-                          <i class="ri-list-settings-line text-accent"></i> DNS ({pointingRecs.length}/{zone.dns_records?.length || 0})
+                          <i class="ri-list-settings-line"></i>
+                          <span>Kelola DNS</span>
+                          <span class="cf-dns-count">{pointingRecs.length}/{zone.dns_records?.length || 0}</span>
                         </button>
                         <button
-                          class="btn btn-xs btn-secondary"
+                          type="button"
+                          class="cf-act-btn"
                           onclick={() => { selectedZone = zone; showCFSettingsModal = true; }}
                           title="Pengaturan Edge Cloudflare (SSL, Under Attack Mode, Always HTTPS, Brotli, TLS 1.3)"
                         >
-                          <i class="ri-equalizer-line"></i> Edge
+                          <i class="ri-equalizer-line"></i>
+                          <span>Edge Config</span>
                         </button>
                         <button
-                          class="btn btn-xs btn-secondary"
+                          type="button"
+                          class="cf-act-btn"
                           onclick={() => pointZoneHere(zone, true)}
                           title="Arahkan record A domain ke IP Publik server ini ({serverIP})"
                         >
-                          <i class="ri-focus-3-line"></i> Point IP
+                          <i class="ri-focus-3-line"></i>
+                          <span>Point IP</span>
                         </button>
                         <button
-                          class="btn btn-xs btn-ghost"
+                          type="button"
+                          class="cf-act-btn danger-subtle"
                           onclick={() => purgeCFCache(zone)}
                           title="Kosongkan seluruh cache CDN Cloudflare"
                         >
-                          <i class="ri-delete-bin-7-line"></i> Purge
+                          <i class="ri-delete-bin-7-line"></i>
+                          <span>Purge Cache</span>
                         </button>
                       </div>
                     </td>
@@ -4417,42 +4454,73 @@
   }
 
   /* Cloudflare Hub Styles */
+  .cf-hub-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+  }
   .cf-status-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: var(--bg-inset);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 1.25rem;
+    border-radius: 12px;
+    padding: 1.25rem 1.4rem;
     gap: 1.5rem;
+    flex-wrap: wrap;
   }
   .cf-left {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 1rem;
+    flex: 1;
+    min-width: 280px;
+  }
+  .cf-head-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+  .cf-head-desc {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--text-subtle);
+    line-height: 1.55;
+    max-width: 72ch;
+  }
+  .cf-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
   }
   .cf-logo-icon {
-    width: 48px;
-    height: 48px;
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
     background: var(--tint-warning);
     color: var(--warning-strong);
+    border: 1px solid var(--ring-warning);
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.6rem;
+    font-size: 1.5rem;
     box-shadow: 0 0 16px var(--tint-warning);
   }
   .cf-title-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.25rem;
+    gap: 0.65rem;
+    flex-wrap: wrap;
   }
   .cf-title-row h3 {
     margin: 0;
     font-size: 1rem;
+    font-weight: 700;
     color: var(--text);
   }
   .badge-cf-connected {
@@ -4888,101 +4956,220 @@
 
   /* Komponen Cloudflare Hub & Diagnostik Izin Token (Collapsible) */
   .cf-diagnostic-banner {
-    background: var(--tint-warning);
+    background: var(--bg-inset);
     border: 1px solid var(--ring-warning);
-    border-radius: 10px;
-    padding: 0.65rem 0.95rem;
+    border-left: 3px solid var(--warning-strong);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.9rem;
   }
   .cf-diag-compact-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.85rem;
+    gap: 1.25rem;
     flex-wrap: wrap;
   }
   .cf-diag-left {
     display: flex;
-    align-items: center;
-    gap: 0.55rem;
+    align-items: flex-start;
+    gap: 0.85rem;
     flex: 1;
-    min-width: 240px;
+    min-width: 260px;
+  }
+  .cf-diag-icon-box {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    background: var(--tint-warning);
+    border: 1px solid var(--ring-warning);
+    color: var(--warning-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
   }
   .cf-diag-summary {
-    font-size: 0.78rem;
-    color: var(--text);
-    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+    min-width: 0;
   }
-  .cf-diag-summary code {
+  .cf-diag-headline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .cf-diag-headline strong {
+    font-size: 0.84rem;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .cf-diag-pill {
+    font-size: 0.66rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    background: var(--tint-warning);
+    color: var(--warning-strong);
+    border: 1px solid var(--ring-warning);
+  }
+  .cf-diag-subtext {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .cf-diag-subtext code {
     font-family: var(--font-mono);
     font-size: 0.72rem;
     color: var(--warning-strong);
+    background: var(--bg-surface);
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
   }
   .cf-diag-right {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.6rem;
+    flex-shrink: 0;
     flex-wrap: wrap;
   }
+  .cf-guide-toggle-btn.active {
+    border-color: var(--ring-accent);
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+  }
   .cf-diag-expanded {
-    border-top: 1px solid var(--ring-warning);
-    padding-top: 0.65rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.95rem;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.85rem;
   }
-  .cf-diag-text {
-    margin: 0;
-    font-size: 0.74rem;
+  .cf-diag-note-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     line-height: 1.5;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
   }
   .cf-perm-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: 0.55rem;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 0.8rem;
   }
   .cf-perm-box {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    padding: 0.85rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.38rem;
   }
   .cf-perm-box.highlight {
     border-color: var(--ring-accent);
     background: var(--tint-accent);
   }
+  .cf-perm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+  .cf-perm-step {
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-subtle);
+  }
+  .cf-perm-badge {
+    font-size: 0.64rem;
+    font-weight: 600;
+    padding: 0.08rem 0.4rem;
+    border-radius: 4px;
+    background: var(--bg-inset);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .cf-perm-badge.req {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border-color: var(--ring-accent);
+  }
   .cf-perm-title {
-    font-size: 0.73rem;
+    font-size: 0.78rem;
     font-weight: 700;
     color: var(--text);
-    margin-bottom: 0.25rem;
+  }
+  .cf-perm-path {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.22rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .cf-perm-path code {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    background: var(--bg-inset);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.38rem;
+    border-radius: 4px;
+  }
+  .cf-perm-foot {
+    font-size: 0.69rem;
+    color: var(--text-subtle);
+    line-height: 1.4;
+  }
+  .cf-perm-foot code {
+    font-family: var(--font-mono);
+    color: var(--accent-strong);
   }
 
+  .cf-toolbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
   .cf-filter-tabs {
     display: inline-flex;
     align-items: center;
     background: var(--bg-inset);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.18rem;
-    gap: 0.2rem;
+    border-radius: 9px;
+    padding: 0.22rem;
+    gap: 0.25rem;
     flex-wrap: wrap;
   }
   .cf-filter-btn {
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-muted);
-    font-size: 0.73rem;
+    font-size: 0.74rem;
     font-weight: 600;
-    padding: 0.28rem 0.65rem;
-    border-radius: 6px;
+    padding: 0.34rem 0.75rem;
+    border-radius: 7px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
     transition: all 0.15s ease;
   }
   .cf-filter-btn:hover {
@@ -4997,18 +5184,18 @@
   .cf-ip-badges {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     flex-wrap: wrap;
   }
   .cf-ip-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.38rem;
     background: var(--bg-inset);
     border: 1px solid var(--border);
-    padding: 0.25rem 0.6rem;
-    border-radius: 6px;
-    font-size: 0.72rem;
+    padding: 0.34rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.73rem;
     color: var(--text-muted);
   }
   .cf-ip-pill strong {
@@ -5018,17 +5205,47 @@
     color: var(--text);
   }
 
+  .cf-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow-x: auto;
+  }
+  .cf-zones-table {
+    width: 100%;
+  }
+  .cf-zones-table th {
+    padding: 0.75rem 0.9rem;
+    white-space: nowrap;
+  }
   .cf-zones-table td {
     vertical-align: top;
-    padding-top: 0.9rem;
-    padding-bottom: 0.9rem;
+    padding: 0.95rem 0.9rem;
+  }
+  .cf-col-zone {
+    min-width: 185px;
+    max-width: 240px;
+  }
+  .cf-col-domains {
+    min-width: 280px;
+  }
+  .cf-col-actions {
+    width: 220px;
   }
   .cf-zone-name-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.45rem;
-    margin-bottom: 0.3rem;
+    gap: 0.4rem;
+    margin-bottom: 0.38rem;
+  }
+  .cf-ns-line {
+    font-size: 0.68rem;
+    color: var(--text-subtle);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    line-height: 1.4;
+    word-break: break-all;
   }
   .cf-source-tag {
     display: inline-flex;
@@ -5056,7 +5273,7 @@
     align-items: center;
     gap: 0.45rem;
     flex-wrap: wrap;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.5rem;
   }
   .cf-collapse-link {
     background: var(--bg-inset);
@@ -5064,13 +5281,14 @@
     color: var(--text-muted);
     font-size: 0.68rem;
     font-weight: 600;
-    padding: 0.16rem 0.5rem;
-    border-radius: 4px;
+    padding: 0.18rem 0.52rem;
+    border-radius: 5px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
     white-space: nowrap;
+    transition: all 0.15s ease;
   }
   .cf-collapse-link:hover {
     border-color: var(--ring-info);
@@ -5081,19 +5299,19 @@
   .cf-matched-list {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.35rem;
   }
   .cf-matched-row {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
+    flex-wrap: wrap;
+    gap: 0.42rem;
     font-size: 0.73rem;
     background: var(--bg-inset);
     border: 1px solid var(--border);
-    padding: 0.22rem 0.55rem;
+    padding: 0.26rem 0.6rem;
     border-radius: 6px;
     width: fit-content;
-    white-space: nowrap;
   }
   .cf-host-name {
     color: var(--text);
@@ -5110,7 +5328,7 @@
     font-family: var(--font-sans);
     font-size: 0.64rem;
     font-weight: 600;
-    padding: 0.06rem 0.38rem;
+    padding: 0.08rem 0.4rem;
     border-radius: 4px;
   }
   .cf-site-tag.registered {
@@ -5127,7 +5345,7 @@
   .cf-dual-select-stack {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.38rem;
   }
   .cf-mini-select-row {
     display: flex;
@@ -5138,16 +5356,16 @@
     font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-muted);
-    width: 34px;
+    width: 32px;
   }
   .select-cf {
-    min-width: 124px;
+    min-width: 112px;
     width: auto;
     background: var(--bg-inset);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.26rem 0.5rem;
+    padding: 0.26rem 0.48rem;
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
@@ -5166,12 +5384,56 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.25rem;
+    gap: 0.28rem;
   }
-  .cf-action-btn-group {
+  .cf-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(98px, auto));
+    gap: 0.42rem;
+    justify-content: end;
+  }
+  .cf-act-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    justify-content: center;
+    gap: 0.32rem;
+    background: var(--bg-inset);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 0.34rem 0.58rem;
+    font-size: 0.71rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+  .cf-act-btn:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-elevated);
+  }
+  .cf-act-btn.primary-dns {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+    border-color: var(--ring-accent);
+  }
+  .cf-act-btn.primary-dns:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .cf-dns-count {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    padding: 0.04rem 0.32rem;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--accent-strong);
+    border: 1px solid var(--ring-accent);
+  }
+  .cf-act-btn.danger-subtle:hover {
+    border-color: var(--ring-danger);
+    color: var(--danger-strong);
+    background: var(--tint-danger);
   }
 
   .badge-toggle {

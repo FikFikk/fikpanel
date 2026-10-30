@@ -84,11 +84,18 @@ type ZonesResponse struct {
 	TokenDiagnostic string   `json:"token_diagnostic,omitempty"`
 }
 
+type cachedHosts struct {
+	hosts   []string
+	fetched time.Time
+}
+
 // Client mengelola panggilan REST API ke Cloudflare v4 endpoint
 type Client struct {
 	store      *store.Store
 	httpClient *http.Client
 	mu         sync.RWMutex
+	cacheMu    sync.Mutex
+	candCache  map[string]cachedHosts
 }
 
 // Rentang CIDR resmi Cloudflare IPv4 untuk mendeteksi apakah domain diproxy oleh Cloudflare (Orange Cloud)
@@ -139,8 +146,9 @@ func NewClient(s *store.Store) *Client {
 	return &Client{
 		store: s,
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 12 * time.Second,
 		},
+		candCache: make(map[string]cachedHosts),
 	}
 }
 
@@ -630,6 +638,28 @@ func matchLocalSitesForZone(zoneName string, localDomains []string) []string {
 // 3. Certificate Transparency log (crt.sh)
 // 4. Kamus prefix subdomain populer & Cloudflare Tunnel
 func (c *Client) collectZoneCandidateHosts(ctx context.Context, rootZone string, localSubDomains []string) []string {
+	c.cacheMu.Lock()
+	if entry, ok := c.candCache[rootZone]; ok && time.Since(entry.fetched) < 10*time.Minute && len(entry.hosts) > 0 {
+		merged := make(map[string]bool, len(entry.hosts)+len(localSubDomains))
+		for _, h := range entry.hosts {
+			merged[h] = true
+		}
+		for _, sd := range localSubDomains {
+			sd = strings.ToLower(strings.TrimSpace(sd))
+			if sd != "" {
+				merged[sd] = true
+			}
+		}
+		var out []string
+		for h := range merged {
+			out = append(out, h)
+		}
+		sort.Strings(out)
+		c.cacheMu.Unlock()
+		return out
+	}
+	c.cacheMu.Unlock()
+
 	seen := make(map[string]bool)
 	var mu sync.Mutex
 	addHost := func(h string) {
@@ -663,7 +693,7 @@ func (c *Client) collectZoneCandidateHosts(ctx context.Context, rootZone string,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reqCtx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+		reqCtx, cancel := context.WithTimeout(ctx, 2000*time.Millisecond)
 		defer cancel()
 		u := "https://api.hackertarget.com/hostsearch/?q=" + rootZone
 		req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
@@ -689,7 +719,7 @@ func (c *Client) collectZoneCandidateHosts(ctx context.Context, rootZone string,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		reqCtx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+		reqCtx, cancel := context.WithTimeout(ctx, 2000*time.Millisecond)
 		defer cancel()
 		u := "https://crt.sh/?q=%25." + rootZone + "&output=json"
 		req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
@@ -721,6 +751,11 @@ func (c *Client) collectZoneCandidateHosts(ctx context.Context, rootZone string,
 		out = append(out, h)
 	}
 	sort.Strings(out)
+
+	c.cacheMu.Lock()
+	c.candCache[rootZone] = cachedHosts{hosts: out, fetched: time.Now()}
+	c.cacheMu.Unlock()
+
 	return out
 }
 
