@@ -2544,25 +2544,23 @@
           <table class="waf-main-table cf-zones-table">
             <thead>
               <tr>
-                <th>Domain Zona &amp; Nameserver</th>
-                <th>Status</th>
-                <th>Subdomain Mengarah ke Server ({serverIP})</th>
-                <th>Mode SSL/TLS</th>
-                <th>Security Level</th>
-                <th>Status Edge</th>
-                <th class="text-right">Kontrol &amp; Aksi Cepat</th>
+                <th>Domain Zona &amp; Status</th>
+                <th>Domain Mengarah ke Server Ini ({serverIP})</th>
+                <th>SSL/TLS &amp; DDoS Level</th>
+                <th>Proteksi Edge</th>
+                <th class="text-right">Aksi Cepat</th>
               </tr>
             </thead>
             <tbody>
               {#if loadingCF}
                 <tr>
-                  <td colspan="7" class="text-center p-6 text-muted">
+                  <td colspan="5" class="text-center p-6 text-muted">
                     <i class="ri-loader-4-line spin text-lg"></i> Mengambil data zona &amp; memindai DNS Cloudflare...
                   </td>
                 </tr>
               {:else if filteredCFZones.length === 0}
                 <tr>
-                  <td colspan="7" class="text-center p-6 text-muted">
+                  <td colspan="5" class="text-center p-6 text-muted">
                     Tidak ada domain yang sesuai dengan filter saat ini.
                   </td>
                 </tr>
@@ -2575,18 +2573,6 @@
                     <td>
                       <div class="cf-zone-name-row">
                         <span class="font-bold mono text-accent text-sm">{zone.name}</span>
-                        <span class="cf-record-count-pill mono" title="Total record DNS terdeteksi pada zona ini">
-                          {zone.dns_records?.length || 0} DNS
-                        </span>
-                      </div>
-                      {#if zone.name_servers && zone.name_servers.length > 0}
-                        <div class="mono text-2xs text-subtle truncate max-w-xs" title={zone.name_servers.join(', ')}>
-                          NS: {zone.name_servers.join(', ')}
-                        </div>
-                      {/if}
-                    </td>
-                    <td class="nowrap">
-                      <div class="cf-status-stack">
                         <span class="badge-cf-connected uppercase">{zone.status}</span>
                         {#if zone.source === 'local_dns_fallback'}
                           <span class="cf-source-tag warn" title="Terdeteksi dari DNS publik & situs lokal (tambahkan izin Zone:Read untuk mode edit penuh)">
@@ -2598,7 +2584,13 @@
                           </span>
                         {/if}
                       </div>
+                      {#if zone.name_servers && zone.name_servers.length > 0}
+                        <div class="mono text-2xs text-subtle truncate max-w-xs" title={zone.name_servers.join(', ')}>
+                          NS: {zone.name_servers.join(', ')}
+                        </div>
+                      {/if}
                     </td>
+
                     <td>
                       {#if pointingRecs.length > 0}
                         <div class="cf-pointing-head">
@@ -2609,21 +2601,27 @@
                             <button
                               type="button"
                               class="cf-collapse-link"
-                              onclick={() => (expandedCFZones[zone.id] = !expandedCFZones[zone.id])}
+                              onclick={() => {
+                                selectedZone = zone;
+                                resetDNSForm();
+                                dnsFilterTab = 'proxied';
+                                dnsSearchQuery = '';
+                                showDNSModal = true;
+                              }}
+                              title="Subdomain lain memakai Cloudflare Tunnel (main-tunnel) atau mengarah ke server lain. Klik untuk melihat detailnya di manajemen DNS."
                             >
-                              {isExpanded ? 'Sembunyikan' : `+${otherRecs.length} subdomain lain`}
-                              <i class={isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}></i>
+                              <i class="ri-git-branch-line"></i> {otherRecs.length} via Tunnel / Host Lain
                             </button>
                           {/if}
                         </div>
                         <div class="cf-matched-list">
-                          {#each pointingRecs as pr}
-                            <div class="cf-matched-item mono">
+                          {#each (isExpanded ? pointingRecs : pointingRecs.slice(0, 3)) as pr}
+                            <div class="cf-matched-row mono">
                               <span class="cf-host-name">{pr.name}</span>
-                              <span class="text-subtle">→ {pr.content}</span>
+                              <span class="cf-ip-arrow">→ {pr.content}</span>
                               {#if pr.in_local_sites || (zone.local_sites || []).includes(pr.name)}
                                 <span class="cf-site-tag registered" title="Sudah terdaftar di menu Website FikPanel">
-                                  <i class="ri-check-line"></i> Di Website
+                                  <i class="ri-check-line"></i> Terdaftar di Website
                                 </span>
                               {:else}
                                 <span class="cf-site-tag unregistered" title="Mengarah ke IP server ini di Cloudflare, namun belum dibuat di menu Website">
@@ -2632,56 +2630,59 @@
                               {/if}
                             </div>
                           {/each}
+                          {#if pointingRecs.length > 3}
+                            <button
+                              type="button"
+                              class="cf-collapse-link self-start"
+                              onclick={() => (expandedCFZones[zone.id] = !expandedCFZones[zone.id])}
+                            >
+                              {isExpanded ? 'Ringkas tampilan' : `+${pointingRecs.length - 3} domain lainnya`}
+                            </button>
+                          {/if}
                         </div>
-                        {#if isExpanded && otherRecs.length > 0}
-                          <div class="cf-other-records-collapse">
-                            <div class="text-2xs font-semibold text-subtle mb-1">
-                              Subdomain Lain di Cloudflare ({otherRecs.length} mengarah ke Tunnel / Proxy / Server Lain):
-                            </div>
-                            <div class="cf-other-chips">
-                              {#each otherRecs as or}
-                                <span class="cf-other-chip mono" title="{or.name} ({or.type} → {or.content})">
-                                  {or.name} <span class="text-subtle">({or.proxied ? 'Proxy/Tunnel' : or.content})</span>
-                                </span>
-                              {/each}
-                            </div>
-                          </div>
-                        {/if}
                       {:else}
-                        <span class="badge-points-other" title="Domain ini mengarah ke IP/server lain, bukan server FikPanel ini">
-                          <i class="ri-external-link-line"></i> Mengarah ke Host Lain
+                        <span class="badge-points-other" title="Domain ini mengarah ke IP/server lain atau Cloudflare Tunnel">
+                          <i class="ri-external-link-line"></i> Mengarah ke Tunnel / Host Lain
                         </span>
                       {/if}
                     </td>
+
                     <td class="nowrap">
-                      <select
-                        class="input-dark select-cf mono"
-                        value={zone.ssl_mode || 'full'}
-                        disabled={zone.read_only}
-                        onchange={(e) => updateCFZoneSetting(zone, 'ssl', (e.currentTarget as HTMLSelectElement).value)}
-                        title={zone.read_only ? 'Tambahkan izin Zone Settings:Edit pada API Token untuk mengubah SSL' : 'Mode Enkripsi SSL/TLS Cloudflare'}
-                      >
-                        <option value="off">Off</option>
-                        <option value="flexible">Flexible</option>
-                        <option value="full">Full</option>
-                        <option value="strict">Full (Strict)</option>
-                      </select>
+                      <div class="cf-dual-select-stack">
+                        <div class="cf-mini-select-row">
+                          <span class="cf-mini-lbl">SSL:</span>
+                          <select
+                            class="input-dark select-cf mono"
+                            value={zone.ssl_mode || 'full'}
+                            disabled={zone.read_only}
+                            onchange={(e) => updateCFZoneSetting(zone, 'ssl', (e.currentTarget as HTMLSelectElement).value)}
+                            title={zone.read_only ? 'Tambahkan izin Zone Settings:Edit pada API Token untuk mengubah SSL' : 'Mode Enkripsi SSL/TLS Cloudflare'}
+                          >
+                            <option value="off">Off</option>
+                            <option value="flexible">Flexible</option>
+                            <option value="full">Full</option>
+                            <option value="strict">Full (Strict)</option>
+                          </select>
+                        </div>
+                        <div class="cf-mini-select-row">
+                          <span class="cf-mini-lbl">DDoS:</span>
+                          <select
+                            class="input-dark select-cf {zone.security_level === 'under_attack' ? 'sec-uam' : ''}"
+                            value={zone.security_level || 'medium'}
+                            disabled={zone.read_only}
+                            onchange={(e) => updateCFZoneSetting(zone, 'security_level', (e.currentTarget as HTMLSelectElement).value)}
+                            title={zone.read_only ? 'Tambahkan izin Zone Settings:Edit pada API Token untuk mengubah Security Level' : 'Tingkat Tantangan Keamanan & Mitigasi DDoS Cloudflare'}
+                          >
+                            <option value="under_attack">🔥 Under Attack!</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                            <option value="essentially_off">Essentially Off</option>
+                          </select>
+                        </div>
+                      </div>
                     </td>
-                    <td class="nowrap">
-                      <select
-                        class="input-dark select-cf {zone.security_level === 'under_attack' ? 'sec-uam' : ''}"
-                        value={zone.security_level || 'medium'}
-                        disabled={zone.read_only}
-                        onchange={(e) => updateCFZoneSetting(zone, 'security_level', (e.currentTarget as HTMLSelectElement).value)}
-                        title={zone.read_only ? 'Tambahkan izin Zone Settings:Edit pada API Token untuk mengubah Security Level' : 'Tingkat Tantangan Keamanan & Mitigasi DDoS Cloudflare'}
-                      >
-                        <option value="under_attack">🔥 Under Attack!</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                        <option value="essentially_off">Essentially Off</option>
-                      </select>
-                    </td>
+
                     <td class="nowrap">
                       <div class="cf-edge-pills">
                         <span class="badge-toggle {zone.always_use_https ? 'active' : ''}" title="Always Use HTTPS">
@@ -2701,14 +2702,15 @@
                         </button>
                       </div>
                     </td>
+
                     <td class="text-right actions-cell nowrap">
                       <div class="cf-action-btn-group">
                         <button
                           class="btn btn-xs btn-secondary"
-                          onclick={() => { selectedZone = zone; resetDNSForm(); dnsFilterTab = 'all'; dnsSearchQuery = ''; showDNSModal = true; }}
-                          title="Kelola Record DNS (Tambah/Edit/Hapus A, AAAA, CNAME, TXT, MX)"
+                          onclick={() => { selectedZone = zone; resetDNSForm(); dnsFilterTab = 'points_here'; dnsSearchQuery = ''; showDNSModal = true; }}
+                          title="Kelola Record DNS (Default menampilkan domain yang mengarah ke server ini)"
                         >
-                          <i class="ri-list-settings-line text-accent"></i> DNS ({zone.dns_records?.length || 0})
+                          <i class="ri-list-settings-line text-accent"></i> DNS ({pointingRecs.length}/{zone.dns_records?.length || 0})
                         </button>
                         <button
                           class="btn btn-xs btn-secondary"
@@ -3022,15 +3024,17 @@
                     <td>
                       {#if rec.points_to_server}
                         <div class="cf-server-match-cell">
-                          <span class="badge-points-here"><i class="ri-check-line"></i> Match Server Ini</span>
+                          <span class="badge-points-here"><i class="ri-check-line"></i> Mengarah ke Server Ini</span>
                           {#if rec.in_local_sites || (selectedZone.local_sites || []).includes(rec.name)}
-                            <span class="cf-site-tag registered"><i class="ri-check-line"></i> Di Website</span>
+                            <span class="cf-site-tag registered"><i class="ri-check-line"></i> Terdaftar di Website</span>
                           {:else}
                             <span class="cf-site-tag unregistered">Belum di Website</span>
                           {/if}
                         </div>
+                      {:else if rec.proxied}
+                        <span class="cf-source-tag warn"><i class="ri-git-branch-line"></i> Cloudflare Tunnel / Proxy Lain</span>
                       {:else}
-                        <span class="text-muted text-xs">Server / Tunnel Lain</span>
+                        <span class="text-muted text-xs">IP Server Lain ({rec.content})</span>
                       {/if}
                     </td>
                     <td class="text-right nowrap">
@@ -5014,25 +5018,17 @@
     color: var(--text);
   }
 
+  .cf-zones-table td {
+    vertical-align: top;
+    padding-top: 0.9rem;
+    padding-bottom: 0.9rem;
+  }
   .cf-zone-name-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.45rem;
-    margin-bottom: 0.15rem;
-  }
-  .cf-record-count-pill {
-    font-size: 0.65rem;
-    padding: 0.08rem 0.4rem;
-    border-radius: 9999px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-  }
-  .cf-status-stack {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.22rem;
+    margin-bottom: 0.3rem;
   }
   .cf-source-tag {
     display: inline-flex;
@@ -5040,58 +5036,72 @@
     gap: 0.22rem;
     font-size: 0.66rem;
     font-weight: 600;
-    padding: 0.08rem 0.38rem;
+    padding: 0.1rem 0.42rem;
     border-radius: 4px;
+    white-space: nowrap;
   }
   .cf-source-tag.warn {
     background: var(--tint-warning);
     color: var(--warning-strong);
+    border: 1px solid var(--ring-warning);
   }
   .cf-source-tag.api {
     background: var(--tint-info);
     color: var(--info);
+    border: 1px solid var(--ring-info);
   }
 
   .cf-pointing-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     flex-wrap: wrap;
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.45rem;
   }
   .cf-collapse-link {
     background: var(--bg-inset);
     border: 1px solid var(--border);
-    color: var(--info);
+    color: var(--text-muted);
     font-size: 0.68rem;
     font-weight: 600;
-    padding: 0.14rem 0.45rem;
+    padding: 0.16rem 0.5rem;
     border-radius: 4px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 0.2rem;
+    gap: 0.25rem;
+    white-space: nowrap;
   }
   .cf-collapse-link:hover {
     border-color: var(--ring-info);
+    color: var(--info);
     background: var(--tint-info);
   }
 
   .cf-matched-list {
     display: flex;
     flex-direction: column;
-    gap: 0.22rem;
+    gap: 0.3rem;
   }
-  .cf-matched-item {
-    display: flex;
+  .cf-matched-row {
+    display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    font-size: 0.72rem;
+    gap: 0.45rem;
+    font-size: 0.73rem;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 0.22rem 0.55rem;
+    border-radius: 6px;
+    width: fit-content;
+    white-space: nowrap;
   }
   .cf-host-name {
     color: var(--text);
     font-weight: 600;
+  }
+  .cf-ip-arrow {
+    color: var(--text-muted);
+    font-size: 0.69rem;
   }
   .cf-site-tag {
     display: inline-flex;
@@ -5114,36 +5124,31 @@
     border: 1px solid var(--ring-info);
   }
 
-  .cf-other-records-collapse {
-    margin-top: 0.45rem;
-    padding: 0.5rem 0.65rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-  .cf-other-chips {
+  .cf-dual-select-stack {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
+    flex-direction: column;
+    gap: 0.35rem;
   }
-  .cf-other-chip {
-    font-size: 0.66rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.12rem 0.4rem;
-    color: var(--text);
+  .cf-mini-select-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
-
+  .cf-mini-lbl {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    width: 34px;
+  }
   .select-cf {
-    min-width: 132px;
+    min-width: 124px;
     width: auto;
     background: var(--bg-inset);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.32rem 0.55rem;
-    font-size: 0.74rem;
+    padding: 0.26rem 0.5rem;
+    font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
   }
@@ -5159,8 +5164,9 @@
 
   .cf-edge-pills {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.28rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
   }
   .cf-action-btn-group {
     display: inline-flex;
