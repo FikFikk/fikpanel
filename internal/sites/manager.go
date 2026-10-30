@@ -435,24 +435,36 @@ func (m *Manager) SaveCustomCert(ctx context.Context, siteID int64, domain, keyP
 	return cert, nil
 }
 
-// GetLog membaca baris terakhir log akses atau error untuk domain
+// GetLog membaca baris terakhir log akses atau error untuk domain (termasuk file rotasi .log.1 bila file utama baru dirotasi)
 func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
 	if logType != "access" && logType != "error" {
 		logType = "access"
 	}
 	path := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, logType))
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), nil
+	rotatedPath := path + ".1"
+
+	var allLines []string
+	if rotData, err := os.ReadFile(rotatedPath); err == nil && len(rotData) > 0 {
+		for _, line := range strings.Split(strings.TrimSpace(string(rotData)), "\n") {
+			if strings.TrimSpace(line) != "" {
+				allLines = append(allLines, line)
+			}
 		}
-		return "", err
 	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if strings.TrimSpace(line) != "" {
+				allLines = append(allLines, line)
+			}
+		}
 	}
-	return strings.Join(lines, "\n"), nil
+	if len(allLines) == 0 {
+		return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), nil
+	}
+	if len(allLines) > maxLines {
+		allLines = allLines[len(allLines)-maxLines:]
+	}
+	return strings.Join(allLines, "\n"), nil
 }
 
 // ClearLog mengosongkan log akses dan error untuk domain

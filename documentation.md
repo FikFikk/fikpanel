@@ -348,6 +348,8 @@ flowchart TD
 | `hsts` | Boolean (0/1), default 0 | Hanya bisa 1 bila `force_https=1`; header `max-age=31536000` |
 | `extra_conf` | String konfigurasi Nginx bebas | Snippet wajib lolos uji sintaks `nginx -t` |
 | `enabled` | Boolean (0 atau 1), default 1 | 0 = file vhost di-rename menjadi `.conf.disabled` |
+| `request_count` | Integer (terhitung otomatis saat query API) | Jumlah riil permintaan HTTP dari baris log akses Nginx (`/var/log/nginx/<domain>.access.log`, `.log.1`, dan `.log.*.gz`) |
+| `has_git` | Boolean (terdeteksi otomatis dari direktori `.git`) | Menentukan ketersediaan badge repositori Git & tombol operasi **Git Pull** khusus situs yang di-clone dari Git |
 | `updated_at` | Timestamp Unix integer | Waktu perubahan konfigurasi terakhir |
 
 ### 2.3 Entitas `certificates`

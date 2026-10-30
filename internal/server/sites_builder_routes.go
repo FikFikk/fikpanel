@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -1832,6 +1834,409 @@ func sanitizeFilamentShieldPolicies(projectDir string) {
 		}
 	}
 }
+
+// countReaderLines menghitung jumlah baris pada stream secara efisien dengan buffer 32KB
+func countReaderLines(r io.Reader) int64 {
+	buf := make([]byte, 32*1024)
+	var total int64
+	var lastByte byte
+	hasBytes := false
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			hasBytes = true
+			lastByte = buf[n-1]
+			total += int64(bytes.Count(buf[:n], []byte{'\n'}))
+		}
+		if err != nil {
+			break
+		}
+	}
+	if hasBytes && lastByte != '\n' {
+		total++
+	}
+	return total
+}
+
+// countDomainAccessLogRequests menghitung total permintaan HTTP riil dari log akses Nginx milik situs
+func countDomainAccessLogRequests(domain string) int64 {
+	if strings.TrimSpace(domain) == "" {
+		return 0
+	}
+	logDir := "/var/log/nginx"
+	if runtime.GOOS != "linux" {
+		logDir = filepath.Join("dev-data", "nginx", "logs")
+	}
+	var total int64
+	for _, name := range []string{domain + ".access.log", domain + ".access.log.1"} {
+		if f, err := os.Open(filepath.Join(logDir, name)); err == nil {
+			total += countReaderLines(f)
+			_ = f.Close()
+		}
+	}
+	if gzMatches, err := filepath.Glob(filepath.Join(logDir, domain+".access.log.*.gz")); err == nil {
+		for _, gzPath := range gzMatches {
+			if f, err := os.Open(gzPath); err == nil {
+				if gr, err := gzip.NewReader(f); err == nil {
+					total += countReaderLines(gr)
+					_ = gr.Close()
+				}
+				_ = f.Close()
+			}
+		}
+	}
+	return total
+}
+
+// countDomainBackups menghitung jumlah berkas arsip cadangan (.tar.gz/.tgz/.zip) yang terkait dengan domain
+func countDomainBackups(domain string) int {
+	if strings.TrimSpace(domain) == "" {
+		return 0
+	}
+	safeDom := strings.ToLower(strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(domain))
+	lowerDom := strings.ToLower(domain)
+	dirs := []string{"/var/backups/fikpanel", "/home/fikpanel/backups"}
+	count := 0
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := strings.ToLower(e.Name())
+			if !strings.HasSuffix(name, ".tar.gz") && !strings.HasSuffix(name, ".tgz") && !strings.HasSuffix(name, ".zip") {
+				continue
+			}
+			if strings.HasPrefix(name, lowerDom) || strings.HasPrefix(name, safeDom) {
+				if !seen[name] {
+					seen[name] = true
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
+// inspectProjectGitMeta mendeteksi apakah direktori proyek situs merupakan clone Git serta membaca branch, repo, dan commit aktif
+func inspectProjectGitMeta(projectDir string) (hasGit bool, branch, repoSlug, shortCommit string) {
+	if strings.TrimSpace(projectDir) == "" {
+		return false, "", "", ""
+	}
+	gitDir := filepath.Join(projectDir, ".git")
+	st, err := os.Stat(gitDir)
+	if err != nil || !st.IsDir() {
+		return false, "", "", ""
+	}
+	hasGit = true
+	branch = "main"
+
+	// Baca branch atau commit dari .git/HEAD
+	if headBytes, err := os.ReadFile(filepath.Join(gitDir, "HEAD")); err == nil {
+		headStr := strings.TrimSpace(string(headBytes))
+		if strings.HasPrefix(headStr, "ref:") {
+			refPath := strings.TrimSpace(strings.TrimPrefix(headStr, "ref:"))
+			branch = strings.TrimPrefix(refPath, "refs/heads/")
+			if refBytes, err := os.ReadFile(filepath.Join(gitDir, filepath.FromSlash(refPath))); err == nil {
+				hash := strings.TrimSpace(string(refBytes))
+				if len(hash) >= 7 {
+					shortCommit = hash[:7]
+				}
+			} else if packedBytes, err := os.ReadFile(filepath.Join(gitDir, "packed-refs")); err == nil {
+				for _, line := range strings.Split(string(packedBytes), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasSuffix(line, " "+refPath) {
+						parts := strings.Fields(line)
+						if len(parts) >= 2 && len(parts[0]) >= 7 {
+							shortCommit = parts[0][:7]
+							break
+						}
+					}
+				}
+			}
+		} else if len(headStr) >= 7 {
+			shortCommit = headStr[:7]
+			branch = "HEAD"
+		}
+	}
+
+	// Baca URL remote origin dari .git/config tanpa membocorkan kredensial token
+	if cfgBytes, err := os.ReadFile(filepath.Join(gitDir, "config")); err == nil {
+		for _, line := range strings.Split(string(cfgBytes), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "url") && strings.Contains(trimmed, "=") {
+				parts := strings.SplitN(trimmed, "=", 2)
+				rawURL := strings.TrimSpace(parts[1])
+				repoSlug = extractCleanRepoSlug(rawURL)
+				if repoSlug != "" {
+					break
+				}
+			}
+		}
+	}
+	return hasGit, branch, repoSlug, shortCommit
+}
+
+// extractCleanRepoSlug mengekstrak slug owner/repo bersih dari URL remote Git (HTTPS maupun SSH)
+func extractCleanRepoSlug(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if strings.HasPrefix(rawURL, "git@") {
+		if idx := strings.IndexByte(rawURL, ':'); idx > 0 && idx+1 < len(rawURL) {
+			return strings.TrimSuffix(rawURL[idx+1:], ".git")
+		}
+	}
+	if u, err := url.Parse(rawURL); err == nil && u.Path != "" {
+		cleanPath := strings.Trim(strings.TrimSuffix(u.Path, ".git"), "/")
+		if cleanPath != "" {
+			return cleanPath
+		}
+	}
+	return strings.TrimSuffix(rawURL, ".git")
+}
+
+// enrichSiteRuntimeMeta memperkaya objek Site dengan jumlah request log Nginx nyata, jumlah backup, dan metadata Git
+func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
+	if site == nil {
+		return
+	}
+	site.RequestCount = countDomainAccessLogRequests(site.Domain)
+	site.BackupCount = countDomainBackups(site.Domain)
+	projectDir := resolveProjectDir(site.RootPath)
+	hasGit, branch, repoSlug, shortCommit := inspectProjectGitMeta(projectDir)
+	site.HasGit = hasGit
+	site.GitBranch = branch
+	site.GitRepo = repoSlug
+	site.GitCommit = shortCommit
+}
+
+// handleSiteGitPull menarik perubahan terbaru dari repositori Git situs dan menjalankan otomatisasi pasca-pull
+func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
+	id, err := siteID(r)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+	site, err := s.store.GetSite(r.Context(), id)
+	if err != nil {
+		writeSiteError(w, err)
+		return
+	}
+
+	var req struct {
+		RunComposer *bool `json:"run_composer"`
+		RunMigrate  *bool `json:"run_migrate"`
+		ClearCache  *bool `json:"clear_cache"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	runComposer := true
+	if req.RunComposer != nil {
+		runComposer = *req.RunComposer
+	}
+	runMigrate := true
+	if req.RunMigrate != nil {
+		runMigrate = *req.RunMigrate
+	}
+	clearCache := true
+	if req.ClearCache != nil {
+		clearCache = *req.ClearCache
+	}
+
+	projectDir := resolveProjectDir(site.RootPath)
+	hasGit, branch, repoSlug, oldCommit := inspectProjectGitMeta(projectDir)
+	if !hasGit {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "Situs ini tidak memiliki repositori Git (.git tidak ditemukan pada direktori proyek)",
+		})
+		return
+	}
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	// Pastikan direktori proyek terdaftar sebagai safe.directory pada konfigurasi Git global
+	_ = exec.CommandContext(ctx, "git", "config", "--global", "--add", "safe.directory", projectDir).Run()
+
+	// Ambil remote URL saat ini dan suntikkan token GitHub sementara bila menggunakan HTTPS github.com
+	token, _ := s.store.GetSetting(ctx, "github_token")
+	origRemoteBytes, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "remote", "get-url", "origin").Output()
+	origRemoteURL := strings.TrimSpace(string(origRemoteBytes))
+	cleanRemoteURL := origRemoteURL
+	if strings.Contains(cleanRemoteURL, "@github.com/") {
+		if u, err := url.Parse(cleanRemoteURL); err == nil {
+			u.User = nil
+			cleanRemoteURL = u.String()
+		}
+	}
+	if token != "" && strings.HasPrefix(cleanRemoteURL, "https://github.com/") {
+		authRemoteURL := strings.Replace(cleanRemoteURL, "https://github.com/", "https://x-access-token:"+token+"@github.com/", 1)
+		_ = exec.CommandContext(ctx, "git", "-C", projectDir, "remote", "set-url", "origin", authRemoteURL).Run()
+		defer func() {
+			_ = exec.CommandContext(context.Background(), "git", "-C", projectDir, "remote", "set-url", "origin", cleanRemoteURL).Run()
+		}()
+	}
+
+	// Cadangkan berkas .env lokal di memori agar tidak tertimpa atau hilang saat sinkronisasi Git
+	envPath := filepath.Join(projectDir, ".env")
+	envBackup, envErr := os.ReadFile(envPath)
+
+	var logBuilder strings.Builder
+	appendStepLog := func(title, out string) {
+		clean := strings.TrimSpace(out)
+		if token != "" {
+			clean = strings.ReplaceAll(clean, token, "***")
+		}
+		logBuilder.WriteString("==> " + title + "\n")
+		if clean != "" {
+			logBuilder.WriteString(clean + "\n\n")
+		} else {
+			logBuilder.WriteString("OK\n\n")
+		}
+	}
+
+	// Bersihkan perubahan filemode/working tree lokal agar git pull tidak tertahan konflik chmod/stub
+	_ = exec.CommandContext(ctx, "git", "-C", projectDir, "reset", "--hard", "HEAD").Run()
+
+	gitEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new")
+	pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "pull", "--ff-only", "origin", branch)
+	pullCmd.Env = gitEnv
+	pullOut, pullErr := pullCmd.CombinedOutput()
+	if pullErr != nil {
+		// Fallback apabila branch remote mengalami force-push: fetch + reset --hard ke origin/<branch>
+		fetchCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "fetch", "origin", branch)
+		fetchCmd.Env = gitEnv
+		fetchOut, fetchErr := fetchCmd.CombinedOutput()
+		if fetchErr != nil {
+			if envErr == nil {
+				_ = os.WriteFile(envPath, envBackup, 0o644)
+			}
+			cleanErr := strings.TrimSpace(string(pullOut) + "\n" + string(fetchOut))
+			if token != "" {
+				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
+			}
+			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "Git pull gagal: " + cleanErr,
+			})
+			return
+		}
+		resetOut, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "reset", "--hard", "origin/"+branch).CombinedOutput()
+		appendStepLog("git fetch & reset --hard origin/"+branch, string(fetchOut)+"\n"+string(resetOut))
+	} else {
+		appendStepLog("git pull origin "+branch, string(pullOut))
+	}
+
+	// Pulihkan kembali berkas .env lokal
+	if envErr == nil && len(envBackup) > 0 {
+		_ = os.WriteFile(envPath, envBackup, 0o644)
+	}
+
+	// Jalankan langkah pasca-pull sesuai jenis proyek
+	if runtime.GOOS != "windows" {
+		_, hasComposer := os.Stat(filepath.Join(projectDir, "composer.json"))
+		_, hasArtisan := os.Stat(filepath.Join(projectDir, "artisan"))
+		_, hasPackageJSON := os.Stat(filepath.Join(projectDir, "package.json"))
+
+		if hasComposer == nil && runComposer {
+			compCmd := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader")
+			compCmd.Dir = projectDir
+			compCmd.Env = append(os.Environ(), "COMPOSER_ALLOW_SUPERUSER=1", "HOME=/root")
+			compOut, err := compCmd.CombinedOutput()
+			if err != nil {
+				compCmd2 := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--ignore-platform-reqs")
+				compCmd2.Dir = projectDir
+				compCmd2.Env = append(os.Environ(), "COMPOSER_ALLOW_SUPERUSER=1", "HOME=/root")
+				compOut2, _ := compCmd2.CombinedOutput()
+				appendStepLog("composer install (--ignore-platform-reqs)", string(compOut)+"\n"+string(compOut2))
+			} else {
+				appendStepLog("composer install", string(compOut))
+			}
+		}
+
+		if hasArtisan == nil {
+			if runMigrate {
+				migCmd := exec.CommandContext(ctx, "php", "artisan", "migrate", "--force")
+				migCmd.Dir = projectDir
+				migOut, _ := migCmd.CombinedOutput()
+				appendStepLog("php artisan migrate --force", string(migOut))
+			}
+
+			// Sanitasi otomatis Policy Filament Shield bila ada file policy baru dari hasil pull
+			sanitizeFilamentShieldPolicies(projectDir)
+
+			if clearCache {
+				optCmd := exec.CommandContext(ctx, "php", "artisan", "optimize:clear")
+				optCmd.Dir = projectDir
+				optOut, _ := optCmd.CombinedOutput()
+				appendStepLog("php artisan optimize:clear", string(optOut))
+
+				if compBytes, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(compBytes)), "filament/filament") {
+					_ = exec.CommandContext(ctx, "php", "artisan", "filament:assets").Run()
+				}
+			}
+		}
+
+		if hasPackageJSON == nil && site.Kind == "node" && runComposer {
+			npmCmd := exec.CommandContext(ctx, "bash", "-c", "npm install && npm run build")
+			npmCmd.Dir = projectDir
+			npmOut, _ := npmCmd.CombinedOutput()
+			appendStepLog("npm install && npm run build", string(npmOut))
+			if _, err := os.Stat(filepath.Join(projectDir, "ecosystem.config.cjs")); err == nil {
+				pm2Out, _ := exec.CommandContext(ctx, "pm2", "restart", "ecosystem.config.cjs", "--update-env").CombinedOutput()
+				appendStepLog("pm2 restart ecosystem.config.cjs", string(pm2Out))
+			}
+		}
+
+		// Pastikan kepemilikan berkas web dan izin tulis storage/cache terjaga
+		_ = exec.CommandContext(ctx, "chown", "-R", "www-data:www-data", projectDir).Run()
+		for _, writableSub := range []string{"storage", "bootstrap/cache"} {
+			subPath := filepath.Join(projectDir, writableSub)
+			if _, err := os.Stat(subPath); err == nil {
+				_ = exec.CommandContext(ctx, "chmod", "-R", "775", subPath).Run()
+			}
+		}
+		if site.Kind == "php" && site.PHPVersion != "" {
+			_ = exec.CommandContext(ctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
+		}
+	}
+
+	_, branchNow, repoNow, newCommit := inspectProjectGitMeta(projectDir)
+	if branchNow != "" {
+		branch = branchNow
+	}
+	if repoNow != "" {
+		repoSlug = repoNow
+	}
+
+	commitMsgBytes, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "log", "-1", "--pretty=%s").Output()
+	commitMsg := strings.TrimSpace(string(commitMsgBytes))
+
+	s.auditSite(r, "site.git.pull", site.Domain, true, fmt.Sprintf("branch=%s commit=%s->%s", branch, oldCommit, newCommit))
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":             true,
+		"domain":         site.Domain,
+		"branch":         branch,
+		"repo":           repoSlug,
+		"old_commit":     oldCommit,
+		"new_commit":     newCommit,
+		"commit_message": commitMsg,
+		"updated":        oldCommit != "" && newCommit != "" && oldCommit != newCommit,
+		"output":         strings.TrimSpace(logBuilder.String()),
+	})
+}
+
 
 
 

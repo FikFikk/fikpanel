@@ -204,6 +204,9 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []store.Site{}
 	}
+	for i := range list {
+		s.enrichSiteRuntimeMeta(&list[i])
+	}
 	ws, err := s.nginx.Status(r.Context())
 	if err != nil {
 		writeSiteError(w, err)
@@ -303,6 +306,7 @@ func (s *Server) handleGetSite(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+	s.enrichSiteRuntimeMeta(site)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
 		writeSiteError(w, err)
@@ -579,6 +583,7 @@ func (s *Server) handleSiteVhost(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+	s.enrichSiteRuntimeMeta(site)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
 		writeSiteError(w, err)

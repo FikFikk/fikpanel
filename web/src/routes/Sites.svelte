@@ -41,10 +41,32 @@
   let showAddModal = $state(false);
   let settingsTarget = $state<{ id: number; tab: string } | null>(null);
 
-  // Modal Log Akses / Error Situs
+  // Modal Log Akses / Error Situs (Real Nginx Logs)
   let showLogModal = $state(false);
   let logTarget = $state<Site | null>(null);
   let logTab = $state<'access' | 'error'>('access');
+  let logContent = $state('');
+  let logLoading = $state(false);
+
+  // Modal Git Pull & Auto-Deploy (khusus situs yang dibuat dari Git)
+  interface GitPullResponse {
+    ok: boolean;
+    domain: string;
+    branch: string;
+    repo: string;
+    old_commit: string;
+    new_commit: string;
+    commit_message: string;
+    updated: boolean;
+    output: string;
+  }
+  let gitPullTarget = $state<Site | null>(null);
+  let gitPullRunning = $state(false);
+  let gitPullRunComposer = $state(true);
+  let gitPullRunMigrate = $state(true);
+  let gitPullClearCache = $state(true);
+  let gitPullResult = $state<GitPullResponse | null>(null);
+  let gitPullError = $state('');
 
   // Modal Konfirmasi Hapus Situs (Danger Zone + Anti-Paste + Auto-Backup)
   let deleteTarget = $state<Site | null>(null);
@@ -251,10 +273,81 @@
     onNotify(`Membuka terminal pada direktori ${targetPath}`);
   }
 
-  // Buka penampil log situs
+  // Buka penampil log situs nyata dari server
+  async function fetchSiteLogs(site: Site, type: 'access' | 'error') {
+    logLoading = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; content: string }>(`/api/sites/${site.id}/logs?type=${type}`);
+      logContent = res.content || `Belum ada catatan ${type} log untuk ${site.domain}.`;
+    } catch (err: any) {
+      logContent = `Gagal memuat log: ${err.message || 'Kesalahan jaringan'}`;
+    } finally {
+      logLoading = false;
+    }
+  }
+
   function openLogViewer(site: Site) {
     logTarget = site;
+    logTab = 'access';
     showLogModal = true;
+    fetchSiteLogs(site, 'access');
+  }
+
+  function switchLogTab(tab: 'access' | 'error') {
+    logTab = tab;
+    if (logTarget) {
+      fetchSiteLogs(logTarget, tab);
+    }
+  }
+
+  // Buka modal Git Pull & Auto-Deploy untuk situs berbasis Git
+  function openGitPullModal(site: Site) {
+    gitPullTarget = site;
+    gitPullRunning = false;
+    gitPullRunComposer = true;
+    gitPullRunMigrate = true;
+    gitPullClearCache = true;
+    gitPullResult = null;
+    gitPullError = '';
+  }
+
+  function closeGitPullModal() {
+    if (gitPullRunning) return;
+    gitPullTarget = null;
+    gitPullResult = null;
+    gitPullError = '';
+  }
+
+  async function executeGitPull() {
+    if (!gitPullTarget || gitPullRunning) return;
+    gitPullRunning = true;
+    gitPullError = '';
+    gitPullResult = null;
+    try {
+      const res = await apiFetch<GitPullResponse>(`/api/sites/${gitPullTarget.id}/git-pull`, {
+        method: 'POST',
+        body: JSON.stringify({
+          run_composer: gitPullRunComposer,
+          run_migrate: gitPullRunMigrate,
+          clear_cache: gitPullClearCache,
+        }),
+      });
+      gitPullResult = res;
+      await loadSites(true);
+      if (gitPullTarget) {
+        const refreshed = sites.find((s) => s.id === gitPullTarget?.id);
+        if (refreshed) gitPullTarget = refreshed;
+      }
+      onNotify(
+        res.updated
+          ? `Git Pull ${res.domain} berhasil (${res.old_commit} → ${res.new_commit})`
+          : `Git Pull ${res.domain} selesai (sudah commit terbaru #${res.new_commit})`,
+      );
+    } catch (err: any) {
+      gitPullError = err.message || 'Gagal menjalankan Git Pull pada situs ini';
+    } finally {
+      gitPullRunning = false;
+    }
   }
 
   // Memicu pencadangan situs
@@ -470,6 +563,23 @@
                       <i class="ri-folder-2-line"></i>
                       <span>{s.kind === 'proxy' ? s.upstream : (s.root_path || '/var/www/html')}</span>
                     </div>
+                    {#if s.has_git}
+                      <div class="site-git-meta mono">
+                        <button
+                          type="button"
+                          class="git-meta-pill"
+                          onclick={() => openGitPullModal(s)}
+                          title="Proyek terhubung ke Git ({s.git_repo || 'origin'} • branch {s.git_branch || 'main'}). Klik untuk Git Pull & Auto-Deploy."
+                        >
+                          <i class="ri-git-branch-line"></i>
+                          <span>{s.git_repo || 'git'}</span>
+                          <span class="git-branch-tag">{s.git_branch || 'main'}</span>
+                          {#if s.git_commit}
+                            <span class="git-commit-hash">#{s.git_commit}</span>
+                          {/if}
+                        </button>
+                      </div>
+                    {/if}
                     {#if s.description}
                       <div class="site-path-sub" title={s.description}>
                         <i class="ri-sticky-note-line"></i>
@@ -500,7 +610,7 @@
                   >
                     <i class="ri-cloud-line"></i>
                     <div class="backup-text-wrap">
-                      <span class="backup-main">0 Backup</span>
+                      <span class="backup-main">{s.backup_count ?? 0} Backup</span>
                       <span class="backup-sub">Cadangkan</span>
                     </div>
                   </button>
@@ -595,17 +705,34 @@
                   {/if}
                 </td>
 
-                <!-- Kolom Permintaan / Request Count -->
+                <!-- Kolom Permintaan / Request Count (Data Riil dari Access Log Nginx) -->
                 <td class="col-req mono">
-                  <div class="req-stat-box">
-                    <span class="req-num">128</span>
+                  <button
+                    type="button"
+                    class="req-stat-box req-btn-trigger"
+                    onclick={() => openLogViewer(s)}
+                    title="Total {(s.request_count ?? 0).toLocaleString('id-ID')} permintaan HTTP tercatat di log Nginx (Klik untuk lihat Access Log)"
+                  >
+                    <span class="req-num">{(s.request_count ?? 0).toLocaleString('id-ID')}</span>
                     <span class="req-sparkline"></span>
-                  </div>
+                  </button>
                 </td>
 
-                <!-- Kolom Operasi (Conf, Log, Hapus) -->
+                <!-- Kolom Operasi (Git Pull jika proyek Git, Conf, Log, Hapus) -->
                 <td class="col-ops">
                   <div class="ops-wrap">
+                    {#if s.has_git}
+                      <button
+                        type="button"
+                        class="btn-op-git"
+                        onclick={() => openGitPullModal(s)}
+                        title="Tarik perubahan terbaru dari Git ({s.git_repo || 'origin'} : {s.git_branch || 'main'})"
+                      >
+                        <i class="ri-git-pull-request-line"></i>
+                        <span>Git Pull</span>
+                      </button>
+                      <span class="op-div">|</span>
+                    {/if}
                     <button class="btn-op-link" onclick={() => openSettings(s, 'conf')}>Conf</button>
                     <span class="op-div">|</span>
                     <button class="btn-op-link" onclick={() => openLogViewer(s)}>Log</button>
@@ -660,7 +787,7 @@
     {/key}
   {/if}
 
-  <!-- ═════════ MODAL: Penampil Log Akses & Error ═════════ -->
+  <!-- ═════════ MODAL: Penampil Log Akses & Error (Data Riil dari Server) ═════════ -->
   {#if showLogModal && logTarget}
     <div
       class="modal-backdrop"
@@ -680,28 +807,173 @@
         </div>
 
         <div class="log-tabs">
-          <button class="log-tab {logTab === 'access' ? 'active' : ''}" onclick={() => (logTab = 'access')}>
-            Access Log
+          <button class="log-tab {logTab === 'access' ? 'active' : ''}" onclick={() => switchLogTab('access')}>
+            Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
           </button>
-          <button class="log-tab {logTab === 'error' ? 'active' : ''}" onclick={() => (logTab = 'error')}>
+          <button class="log-tab {logTab === 'error' ? 'active' : ''}" onclick={() => switchLogTab('error')}>
             Error Log
+          </button>
+          <button
+            type="button"
+            class="log-tab"
+            onclick={() => logTarget && fetchSiteLogs(logTarget, logTab)}
+            disabled={logLoading}
+          >
+            <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
           </button>
         </div>
 
         <div class="log-viewer mono">
-          {#if logTab === 'access'}
-            <div class="log-line">127.0.0.1 - - [23/Oct/2026:16:30:12 +0700] "GET / HTTP/1.1" 200 4521 "-" "Mozilla/5.0"</div>
-            <div class="log-line">127.0.0.1 - - [23/Oct/2026:16:30:15 +0700] "GET /assets/index.js HTTP/1.1" 200 12531 "-" "Mozilla/5.0"</div>
-            <div class="log-line">127.0.0.1 - - [23/Oct/2026:16:30:16 +0700] "GET /api/health HTTP/1.1" 200 15 "-" "curl/7.81.0"</div>
+          {#if logLoading}
+            <div class="log-line text-muted"><i class="ri-loader-4-line spin"></i> Memuat catatan log {logTab} dari server...</div>
           {:else}
-            <div class="log-line text-muted">2026/10/23 16:20:01 [notice] 1234#1234: using the "epoll" event method</div>
-            <div class="log-line text-muted">2026/10/23 16:20:01 [notice] 1234#1234: start worker processes</div>
+            <pre class="log-pre-raw">{logContent}</pre>
           {/if}
         </div>
 
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" onclick={() => (showLogModal = false)}>
             Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ═════════ MODAL: Git Pull & Auto-Deploy (Khusus Situs Berbasis Git) ═════════ -->
+  {#if gitPullTarget}
+    <div
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      onclick={(e) => { if (e.target === e.currentTarget) closeGitPullModal(); }}
+      onkeydown={(e) => { if (e.key === 'Escape') closeGitPullModal(); }}
+    >
+      <div class="modal-card git-pull-card">
+        <div class="modal-head git-pull-head">
+          <div class="modal-title-wrap">
+            <span class="git-icon-circle">
+              <i class="ri-git-pull-request-line"></i>
+            </span>
+            <div>
+              <h3>Git Pull &amp; Sinkronisasi: {gitPullTarget.domain}</h3>
+              <span class="danger-sub-caption">Tarik commit terbaru dari repositori remote tanpa menimpa file .env lokal</span>
+            </div>
+          </div>
+          <button class="btn-close" onclick={closeGitPullModal} disabled={gitPullRunning}>&times;</button>
+        </div>
+
+        <!-- Ringkasan Repositori & Branch Aktif -->
+        <div class="git-summary-strip mono">
+          <div class="git-sum-item">
+            <span class="git-sum-lbl">Repositori</span>
+            <strong><i class="ri-github-fill"></i> {gitPullTarget.git_repo || 'origin'}</strong>
+          </div>
+          <div class="git-sum-item">
+            <span class="git-sum-lbl">Branch Aktif</span>
+            <strong class="git-branch-highlight"><i class="ri-git-branch-line"></i> {gitPullTarget.git_branch || 'main'}</strong>
+          </div>
+          <div class="git-sum-item">
+            <span class="git-sum-lbl">Commit Saat Ini</span>
+            <strong>#{gitPullTarget.git_commit || 'HEAD'}</strong>
+          </div>
+        </div>
+
+        <!-- Opsi Otomatisasi Pasca-Pull -->
+        <div class="delete-impact-list">
+          <label class="delete-opt-item {gitPullRunComposer ? 'is-checked' : ''}">
+            <input type="checkbox" bind:checked={gitPullRunComposer} disabled={gitPullRunning} />
+            <div class="opt-body">
+              <div class="opt-title-row">
+                <span class="opt-title">Sinkronkan Dependensi Proyek</span>
+                <span class="opt-badge badge-safe">Composer / NPM</span>
+              </div>
+              <span class="opt-desc">
+                Menjalankan <code class="mono">composer install --no-interaction --optimize-autoloader</code> (PHP) atau <code class="mono">npm install &amp;&amp; npm run build</code> (Node.js).
+              </span>
+            </div>
+          </label>
+
+          {#if gitPullTarget.kind === 'php'}
+            <label class="delete-opt-item {gitPullRunMigrate ? 'is-checked' : ''}">
+              <input type="checkbox" bind:checked={gitPullRunMigrate} disabled={gitPullRunning} />
+              <div class="opt-body">
+                <div class="opt-title-row">
+                  <span class="opt-title">Jalankan Migrasi Database Baru</span>
+                  <span class="opt-badge badge-safe">Artisan Migrate</span>
+                </div>
+                <span class="opt-desc">
+                  Mengeksekusi <code class="mono">php artisan migrate --force</code> secara aman tanpa menghapus data tabel yang sudah ada.
+                </span>
+              </div>
+            </label>
+
+            <label class="delete-opt-item {gitPullClearCache ? 'is-checked' : ''}">
+              <input type="checkbox" bind:checked={gitPullClearCache} disabled={gitPullRunning} />
+              <div class="opt-body">
+                <div class="opt-title-row">
+                  <span class="opt-title">Bersihkan Cache &amp; Sanitasi Policy Filament Shield</span>
+                  <span class="opt-badge badge-safe">Disarankan</span>
+                </div>
+                <span class="opt-desc">
+                  Menjalankan <code class="mono">php artisan optimize:clear</code>, menyinkronkan aset Filament, dan memperbaiki izin direktori <code class="mono">www-data</code>.
+                </span>
+              </div>
+            </label>
+          {/if}
+        </div>
+
+        {#if gitPullError}
+          <div class="git-pull-alert is-error">
+            <i class="ri-error-warning-fill"></i>
+            <div>
+              <strong>Git Pull Gagal</strong>
+              <p class="mono">{gitPullError}</p>
+            </div>
+          </div>
+        {/if}
+
+        {#if gitPullResult}
+          <div class="git-pull-alert {gitPullResult.updated ? 'is-updated' : 'is-uptodate'}">
+            <i class={gitPullResult.updated ? 'ri-checkbox-circle-fill' : 'ri-information-fill'}></i>
+            <div>
+              {#if gitPullResult.updated}
+                <strong>Berhasil Diperbarui ({gitPullResult.old_commit} &rarr; {gitPullResult.new_commit})</strong>
+              {:else}
+                <strong>Sudah Versi Terbaru (#{gitPullResult.new_commit})</strong>
+              {/if}
+              {#if gitPullResult.commit_message}
+                <p>Commit terakhir: <span class="mono">"{gitPullResult.commit_message}"</span></p>
+              {/if}
+            </div>
+          </div>
+
+          {#if gitPullResult.output}
+            <div class="git-output-box mono">
+              <div class="git-output-head">Log Eksekusi Git Pull &amp; Post-Deploy</div>
+              <pre class="log-pre-raw">{gitPullResult.output}</pre>
+            </div>
+          {/if}
+        {/if}
+
+        <div class="modal-actions delete-modal-actions">
+          <button type="button" class="btn btn-ghost" onclick={closeGitPullModal} disabled={gitPullRunning}>
+            Tutup
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-git-pull-exec"
+            disabled={gitPullRunning}
+            onclick={executeGitPull}
+          >
+            {#if gitPullRunning}
+              <i class="ri-loader-4-line spin"></i>
+              <span>Menarik Commit &amp; Menyinkronkan Aplikasi...</span>
+            {:else}
+              <i class="ri-git-pull-request-line"></i>
+              <span>Tarik Perubahan Terbaru (Git Pull)</span>
+            {/if}
           </button>
         </div>
       </div>
@@ -1837,6 +2109,226 @@
     cursor: not-allowed;
     background: color-mix(in srgb, var(--danger) 35%, transparent);
     border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  }
+
+  /* ═════════ Git Badge, Git Pull Button & Modal ═════════ */
+  .site-git-meta {
+    margin-top: 0.15rem;
+  }
+
+  .git-meta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-raised));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .git-meta-pill:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-raised));
+  }
+
+  .git-meta-pill i {
+    color: var(--accent);
+    font-size: 0.76rem;
+  }
+
+  .git-branch-tag {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .git-commit-hash {
+    color: var(--text-subtle);
+    font-size: 0.63rem;
+  }
+
+  .req-btn-trigger {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.35rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .req-btn-trigger:hover {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+  }
+
+  .btn-op-git {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.18rem 0.5rem;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-op-git:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+
+  .log-pre-raw {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.73rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  .git-pull-card {
+    max-width: 580px;
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  }
+
+  .git-pull-head {
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .git-icon-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .git-icon-circle i {
+    color: var(--accent) !important;
+    font-size: 1.15rem !important;
+  }
+
+  .git-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 8px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    margin-bottom: 0.95rem;
+  }
+
+  .git-sum-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .git-sum-lbl {
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-subtle);
+  }
+
+  .git-sum-item strong {
+    font-size: 0.76rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .git-branch-highlight {
+    color: var(--accent) !important;
+  }
+
+  .git-pull-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+  }
+
+  .git-pull-alert i {
+    font-size: 1.05rem;
+    margin-top: 0.05rem;
+    flex-shrink: 0;
+  }
+
+  .git-pull-alert p {
+    margin: 0.2rem 0 0;
+    color: var(--text-secondary);
+  }
+
+  .git-pull-alert.is-updated {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--accent);
+  }
+
+  .git-pull-alert.is-uptodate {
+    background: color-mix(in srgb, var(--info) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+    color: var(--info);
+  }
+
+  .git-pull-alert.is-error {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--danger-strong);
+  }
+
+  .git-output-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+    max-height: 210px;
+    overflow: auto;
+    margin-bottom: 1rem;
+  }
+
+  .git-output-head {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-subtle);
+    margin-bottom: 0.4rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .btn-git-pull-exec {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
   }
 
   @keyframes pulse {

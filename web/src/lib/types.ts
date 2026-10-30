@@ -31,6 +31,12 @@ export interface Site {
   updated_at: number;
   ssl_status: SSLStatus;
   ssl_expires: number;
+  request_count?: number;
+  backup_count?: number;
+  has_git?: boolean;
+  git_branch?: string;
+  git_repo?: string;
+  git_commit?: string;
 }
 
 export interface DomainCheck {

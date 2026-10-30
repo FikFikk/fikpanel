@@ -264,6 +264,16 @@
 | Response | HTTP 200 `{"ok": true}` |
 | Notes | Mengosongkan berkas log akses dan error untuk domain terpilih secara instan. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/git-pull` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Opsional JSON: `run_composer` (bool, default `true`), `run_migrate` (bool, default `true`), `clear_cache` (bool, default `true`) |
+| Response | HTTP 200 `{"ok": true, "domain": string, "branch": string, "repo": string, "old_commit": string, "new_commit": string, "commit_message": string, "updated": bool, "output": string}` |
+| Notes | Khusus situs dengan direktori `.git` (`has_git=true`). Mencadangkan `.env` lokal di memori, menyuntikkan token GitHub sementara untuk repositori privat, menjalankan `git pull --ff-only origin <branch>` (fallback `fetch` + `reset --hard`), memulihkan `.env`, lalu mengeksekusi `composer install`, `php artisan migrate --force`, sanitasi otomatis policy Filament Shield (`{{ ViewAny }}`), `php artisan optimize:clear`, dan perbaikan izin `www-data`. |
+
 ---
 
 ### 1.3a Nginx Manager

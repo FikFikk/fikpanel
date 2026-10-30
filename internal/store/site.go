@@ -31,6 +31,14 @@ type Site struct {
 	// Ringkasan sertifikat (hasil LEFT JOIN, hanya-baca)
 	SSLStatus  string `json:"ssl_status"`
 	SSLExpires int64  `json:"ssl_expires"`
+
+	// Metadata runtime, log akses nyata, dan repositori Git (diperkaya saat query API)
+	RequestCount int64  `json:"request_count"`
+	BackupCount  int    `json:"backup_count"`
+	HasGit       bool   `json:"has_git"`
+	GitBranch    string `json:"git_branch,omitempty"`
+	GitRepo      string `json:"git_repo,omitempty"`
+	GitCommit    string `json:"git_commit,omitempty"`
 }
 
 // Certificate merepresentasikan metadata sertifikat TLS milik sebuah situs

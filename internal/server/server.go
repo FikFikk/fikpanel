@@ -179,6 +179,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/sites/{id}/laravel-admin", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteLaravelAdmin)))
 	s.mux.Handle("GET /api/sites/deploy-progress", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteDeployProgress)))
 	s.mux.Handle("POST /api/sites/{id}/laravel-admin", s.AuthMiddleware(http.HandlerFunc(s.handleSaveSiteLaravelAdmin)))
+	s.mux.Handle("POST /api/sites/{id}/git-pull", s.AuthMiddleware(http.HandlerFunc(s.handleSiteGitPull)))
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))
 
