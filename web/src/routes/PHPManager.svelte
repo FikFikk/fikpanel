@@ -4,6 +4,8 @@
   import type { PHPVersionInfo, PHPVersionDetail, PHPExtensionInfo } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/phpmanager.css';
 
   // State daftar versi PHP
   let versions = $state<PHPVersionInfo[]>([]);
@@ -197,8 +199,8 @@
       const ok = await confirmDialog({
         title: `Hentikan PHP ${activeVersion} FPM?`,
         message: `Layanan php${activeVersion}-fpm akan dihentikan. Semua situs yang mengandalkan versi ini tidak akan dapat memproses request skrip PHP sampai dinyalakan kembali.`,
-        confirmLabel: 'Hentikan Layanan',
-        variant: 'danger',
+        confirmText: 'Hentikan Layanan',
+        tone: 'danger',
       });
       if (!ok) return;
     }
@@ -459,8 +461,8 @@
     const ok = await confirmDialog({
       title: `Pasang Ekstensi ${ext.name}?`,
       message: `Pasang paket ${pkg} untuk runtime PHP ${activeVersion}? Paket akan diinstal otomatis via APT dan layanan php${activeVersion}-fpm akan di-reload seketika.`,
-      confirmLabel: 'Mulai Pasang',
-      variant: 'primary',
+      confirmText: 'Mulai Pasang',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -490,8 +492,8 @@
     const ok = await confirmDialog({
       title: `Copot Ekstensi ${ext.name}?`,
       message: `Apakah Anda yakin ingin mencopot paket ${pkg} dari PHP ${activeVersion}? Aplikasi web yang membutuhkan ekstensi ini mungkin akan mengalami error.`,
-      confirmLabel: 'Copot Sekarang',
-      variant: 'danger',
+      confirmText: 'Copot Sekarang',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -570,8 +572,8 @@
     const ok = await confirmDialog({
       title: 'Kosongkan Berkas Log?',
       message: `Apakah Anda yakin ingin mengosongkan berkas ${logType === 'fpm' ? 'Error Log' : 'Slow Log'} PHP ${activeVersion}? Data riwayat akan dihapus permanen.`,
-      confirmLabel: 'Kosongkan Log',
-      variant: 'danger',
+      confirmText: 'Kosongkan Log',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -602,8 +604,8 @@
     const ok = await confirmDialog({
       title: `Pasang PHP ${v.version}`,
       message: `Pasang paket runtime PHP ${v.version} dan daemon php${v.version}-fpm melalui manajer paket APT? Proses berjalan di background.`,
-      confirmLabel: 'Mulai Pasang',
-      variant: 'primary',
+      confirmText: 'Mulai Pasang',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -628,8 +630,8 @@
     const ok = await confirmDialog({
       title: `Alihkan Versi PHP ${domain}`,
       message: `Apakah Anda yakin ingin mengalihkan runtime PHP untuk situs "${domain}" ke PHP ${newVersion}? Konfigurasi virtual host Nginx akan dirender ulang secara instan tanpa mematikan server.`,
-      confirmLabel: `Alihkan ke PHP ${newVersion}`,
-      variant: 'primary',
+      confirmText: `Alihkan ke PHP ${newVersion}`,
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -730,18 +732,18 @@
   }
 </script>
 
-<div class="php-view">
+<div class="pg-phpmanager php-view">
   <!-- Header Halaman -->
-  <header class="page-head">
-    <div class="page-title-wrap">
-      <h1 class="page-title">
+  <header class="page-header">
+    <div class="page-header__titles">
+      <h1 class="page-header__title">
         <i class="ri-code-s-slash-line" aria-hidden="true"></i> PHP Multi-Version & FPM Tuning
       </h1>
-      <p class="page-sub">
+      <p class="page-header__subtitle">
         Deteksi otomatis versi PHP aktif di server, kelola konfigurasi php.ini visual & raw editor, tuning worker FPM pool, dan monitoring modul.
       </p>
     </div>
-    <div class="page-actions">
+    <div class="page-header__actions">
       <button class="btn btn-ghost" onclick={loadPHPVersions} disabled={loading} title="Periksa ulang biner dan socket PHP">
         <i class="ri-refresh-line {loading ? 'spin' : ''}" aria-hidden="true"></i> Refresh Status
       </button>
@@ -756,11 +758,11 @@
           <div class="flex items-center gap-2">
             <span class="v-tag">PHP {v.version}</span>
             {#if v.running}
-              <span class="status-pill running"><i class="ri-checkbox-circle-fill"></i> RUNNING</span>
+              <span class="badge badge--success"><i class="ri-checkbox-circle-fill"></i> RUNNING</span>
             {:else if v.installed}
-              <span class="status-pill stopped"><i class="ri-stop-circle-line"></i> STOPPED</span>
+              <span class="badge badge--danger"><i class="ri-stop-circle-line"></i> STOPPED</span>
             {:else}
-              <span class="status-pill uninstalled">BELUM TERPASANG</span>
+              <span class="badge badge--neutral">BELUM TERPASANG</span>
             {/if}
           </div>
           {#if v.installed}
@@ -867,283 +869,273 @@
       </div>
     {/each}
   </div>
-</div>
 
 <!-- ===================================================================== -->
 <!-- Modal Komprehensif PHP-X.XManage (Gabungan Gambar 1, 2, 3, 4, 5 aaPanel) -->
 <!-- ===================================================================== -->
-{#if showManageModal && activeVersion}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget) showManageModal = false; }}
-  >
-    <div class="manage-modal" role="dialog" aria-modal="true" aria-labelledby="manage-modal-title">
-      <!-- Modal Header -->
-      <div class="manage-modal-header">
-        <div class="flex items-center gap-3">
-          <div class="header-icon">
-            <i class="ri-code-s-slash-line"></i>
-          </div>
-          <div>
-            <h3 class="manage-title" id="manage-modal-title">php-{activeVersion}Manage</h3>
-            <span class="manage-sub">Panel Konfigurasi Dinamis PHP & Worker Pool FastCGI</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          {#if activeDetail?.running}
-            <span class="status-pill running"><i class="ri-record-circle-line"></i> RUNNING (PID: {activeDetail.serviceStatus?.pid || '-'})</span>
-          {:else if activeDetail?.installed}
-            <span class="status-pill stopped"><i class="ri-stop-circle-line"></i> STOPPED</span>
-          {/if}
-          <button
-            class="modal-close-btn"
-            onclick={() => (showManageModal = false)}
-            aria-label="Tutup Modal"
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
+<Modal
+  open={Boolean(showManageModal && activeVersion)}
+  size="xl"
+  onclose={() => (showManageModal = false)}
+>
+  {#snippet header()}
+    <div class="flex items-center gap-3">
+      <div class="header-icon">
+        <i class="ri-code-s-slash-line"></i>
       </div>
+      <div class="modal__head-text">
+        <h3 class="modal__title">php-{activeVersion}Manage</h3>
+        <span class="modal__sub">Panel Konfigurasi Dinamis PHP & Worker Pool FastCGI</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      {#if activeDetail?.running}
+        <span class="badge badge--success"><i class="ri-record-circle-line"></i> RUNNING (PID: {activeDetail.serviceStatus?.pid || '-'})</span>
+      {:else if activeDetail?.installed}
+        <span class="badge badge--danger"><i class="ri-stop-circle-line"></i> STOPPED</span>
+      {/if}
+    </div>
+  {/snippet}
 
-      <!-- Modal Body: 2 Kolom (Sidebar Navigasi + Area Konten) -->
-      <div class="manage-modal-body">
-        <!-- Sidebar Menu Kiri (aaPanel Screenshot 3 Style) -->
-        <aside class="manage-sidebar">
-          <nav class="sidebar-nav">
-            <button
-              class="nav-item {activeTab === 'service' ? 'active' : ''}"
-              onclick={() => switchTab('service')}
-            >
-              <i class="ri-pulse-line"></i> Service
-            </button>
+  {#if activeVersion}
+    <!-- Modal Body: 2 Kolom (Sidebar Navigasi + Area Konten) -->
+    <div class="manage-modal-body">
+      <!-- Sidebar Menu Kiri (aaPanel Screenshot 3 Style) -->
+      <aside class="manage-sidebar">
+        <nav class="tabs tabs--vertical">
+          <button
+            class="tabs__tab {activeTab === 'service' ? 'is-active' : ''}"
+            onclick={() => switchTab('service')}
+          >
+            <i class="ri-pulse-line"></i> Service
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'sites' ? 'active' : ''}"
-              onclick={() => switchTab('sites')}
-            >
-              <i class="ri-global-line"></i> Situs Terhubung
-              {#if activeDetail?.sites_count}
-                <span class="nav-badge">{activeDetail.sites_count}</span>
-              {/if}
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'sites' ? 'is-active' : ''}"
+            onclick={() => switchTab('sites')}
+          >
+            <i class="ri-global-line"></i> Situs Terhubung
+            {#if activeDetail?.sites_count}
+              <span class="nav-badge">{activeDetail.sites_count}</span>
+            {/if}
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'config' ? 'active' : ''}"
-              onclick={() => switchTab('config')}
-            >
-              <i class="ri-sliders-line"></i> Configuration
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'config' ? 'is-active' : ''}"
+            onclick={() => switchTab('config')}
+          >
+            <i class="ri-sliders-line"></i> Configuration
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'raw_ini' ? 'active' : ''}"
-              onclick={() => switchTab('raw_ini')}
-            >
-              <i class="ri-file-code-line"></i> Configuration file
-              {#if isRawIniDirty}
-                <span class="dirty-dot" title="Perubahan belum disimpan"></span>
-              {/if}
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'raw_ini' ? 'is-active' : ''}"
+            onclick={() => switchTab('raw_ini')}
+          >
+            <i class="ri-file-code-line"></i> Configuration file
+            {#if isRawIniDirty}
+              <span class="dirty-dot" title="Perubahan belum disimpan"></span>
+            {/if}
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'fpm_pool' ? 'active' : ''}"
-              onclick={() => switchTab('fpm_pool')}
-            >
-              <i class="ri-cpu-line"></i> FPM profile
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'fpm_pool' ? 'is-active' : ''}"
+            onclick={() => switchTab('fpm_pool')}
+          >
+            <i class="ri-cpu-line"></i> FPM profile
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'raw_fpm' ? 'active' : ''}"
-              onclick={() => switchTab('raw_fpm')}
-            >
-              <i class="ri-file-settings-line"></i> FPM www.conf
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'raw_fpm' ? 'is-active' : ''}"
+            onclick={() => switchTab('raw_fpm')}
+          >
+            <i class="ri-file-settings-line"></i> FPM www.conf
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'disabled_func' ? 'active' : ''}"
-              onclick={() => switchTab('disabled_func')}
-            >
-              <i class="ri-forbid-2-line"></i> Disabled functions
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'disabled_func' ? 'is-active' : ''}"
+            onclick={() => switchTab('disabled_func')}
+          >
+            <i class="ri-forbid-2-line"></i> Disabled functions
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'extensions' ? 'active' : ''}"
-              onclick={() => switchTab('extensions')}
-            >
-              <i class="ri-puzzle-line"></i> Install extensions
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'extensions' ? 'is-active' : ''}"
+            onclick={() => switchTab('extensions')}
+          >
+            <i class="ri-puzzle-line"></i> Install extensions
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'opcache' ? 'active' : ''}"
-              onclick={() => switchTab('opcache')}
-            >
-              <i class="ri-flashlight-line"></i> Optimization
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'opcache' ? 'is-active' : ''}"
+            onclick={() => switchTab('opcache')}
+          >
+            <i class="ri-flashlight-line"></i> Optimization
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'logs' ? 'active' : ''}"
-              onclick={() => switchTab('logs')}
-            >
-              <i class="ri-file-list-3-line"></i> Logs
-            </button>
+          <button
+            class="tabs__tab {activeTab === 'logs' ? 'is-active' : ''}"
+            onclick={() => switchTab('logs')}
+          >
+            <i class="ri-file-list-3-line"></i> Logs
+          </button>
 
-            <button
-              class="nav-item {activeTab === 'phpinfo' ? 'active' : ''}"
-              onclick={() => switchTab('phpinfo')}
-            >
-              <i class="ri-information-line"></i> phpinfo
-            </button>
-          </nav>
-        </aside>
+          <button
+            class="tabs__tab {activeTab === 'phpinfo' ? 'is-active' : ''}"
+            onclick={() => switchTab('phpinfo')}
+          >
+            <i class="ri-information-line"></i> phpinfo
+          </button>
+        </nav>
+      </aside>
 
-        <!-- Area Konten Utama Kanan -->
-        <main class="manage-content">
-          {#if loadingDetail}
-            <div class="content-loader">
-              <i class="ri-loader-4-line spin text-2xl"></i>
-              <span>Memuat konfigurasi PHP {activeVersion}...</span>
+      <!-- Area Konten Utama Kanan -->
+      <main class="manage-content">
+        {#if loadingDetail}
+          <div class="state state--loading">
+            <i class="ri-loader-4-line spin"></i>
+            <span>Memuat konfigurasi PHP {activeVersion}...</span>
+          </div>
+
+        <!-- ================= TAB 1: SERVICE ================= -->
+        {:else if activeTab === 'service'}
+          <div class="tab-pane">
+            <div class="section-title-wrap">
+              <h4 class="section-title">Status & Kontrol Layanan PHP-FPM</h4>
+              <p class="section-desc">Kelola daemon FastCGI Process Manager untuk runtime PHP {activeVersion}.</p>
             </div>
 
-          <!-- ================= TAB 1: SERVICE ================= -->
-          {:else if activeTab === 'service'}
-            <div class="tab-pane">
-              <div class="section-title-wrap">
-                <h4 class="section-title">Status & Kontrol Layanan PHP-FPM</h4>
-                <p class="section-desc">Kelola daemon FastCGI Process Manager untuk runtime PHP {activeVersion}.</p>
+            <div class="status-cards-grid">
+              <div class="php-stat-box">
+                <span class="stat-lbl">Daemon Service</span>
+                <span class="stat-val mono">php{activeVersion}-fpm.service</span>
               </div>
-
-              <div class="status-cards-grid">
-                <div class="stat-card">
-                  <span class="stat-lbl">Daemon Service</span>
-                  <span class="stat-val mono">php{activeVersion}-fpm.service</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-lbl">Master Process PID</span>
-                  <span class="stat-val mono">{activeDetail?.serviceStatus?.pid || 'Tidak aktif'}</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-lbl">FastCGI Socket</span>
-                  <span class="stat-val mono text-xs truncate" title={activeDetail?.fpmSocket}>{activeDetail?.fpmSocket || '-'}</span>
-                </div>
-                <div class="stat-card">
-                  <span class="stat-lbl">Status Layanan</span>
-                  <span class="stat-val font-semibold {activeDetail?.running ? 'text-accent' : 'text-danger'}">
-                    {activeDetail?.running ? 'Aktif (Running)' : 'Berhenti (Stopped)'}
-                  </span>
-                </div>
+              <div class="php-stat-box">
+                <span class="stat-lbl">Master Process PID</span>
+                <span class="stat-val mono">{activeDetail?.serviceStatus?.pid || 'Tidak aktif'}</span>
               </div>
-
-              <div class="actions-group-card">
-                <h5 class="group-title">Operasi Layanan Systemd</h5>
-                <div class="flex flex-wrap gap-2">
-                  <button class="btn btn-primary" onclick={() => controlService('restart')}>
-                    <i class="ri-restart-line"></i> Restart Layanan
-                  </button>
-                  <button class="btn btn-ghost" onclick={() => controlService('reload')}>
-                    <i class="ri-refresh-line"></i> Reload Konfigurasi
-                  </button>
-                  {#if activeDetail?.running}
-                    <button class="btn btn-danger" onclick={() => controlService('stop')}>
-                      <i class="ri-stop-circle-line"></i> Hentikan (Stop)
-                    </button>
-                  {:else}
-                    <button class="btn btn-primary" onclick={() => controlService('start')}>
-                      <i class="ri-play-circle-line"></i> Jalankan (Start)
-                    </button>
-                  {/if}
-                </div>
+              <div class="php-stat-box">
+                <span class="stat-lbl">FastCGI Socket</span>
+                <span class="stat-val mono text-xs truncate" title={activeDetail?.fpmSocket}>{activeDetail?.fpmSocket || '-'}</span>
+              </div>
+              <div class="php-stat-box">
+                <span class="stat-lbl">Status Layanan</span>
+                <span class="stat-val font-semibold {activeDetail?.running ? 'text-accent' : 'text-danger'}">
+                  {activeDetail?.running ? 'Aktif (Running)' : 'Berhenti (Stopped)'}
+                </span>
               </div>
             </div>
 
-          <!-- ================= TAB: SITUS TERHUBUNG (HESTIACP / AAPANEL STYLE) ================= -->
-          {:else if activeTab === 'sites'}
-            <div class="tab-pane">
-              <div class="section-title-wrap flex justify-between items-center">
-                <div>
-                  <h4 class="section-title">Situs Terhubung: PHP {activeVersion}</h4>
-                  <p class="section-desc">
-                    Daftar seluruh virtual host web di server yang mengeksekusi skrip PHP melalui socket php{activeVersion}-fpm.
-                  </p>
-                </div>
-                <a href="#/sites" class="btn btn-ghost btn-sm">
-                  <i class="ri-external-link-line"></i> Buka Menu Websites
-                </a>
+            <div class="actions-group-card">
+              <h5 class="group-title">Operasi Layanan Systemd</h5>
+              <div class="flex flex-wrap gap-2">
+                <button class="btn btn-primary" onclick={() => controlService('restart')}>
+                  <i class="ri-restart-line"></i> Restart Layanan
+                </button>
+                <button class="btn btn-ghost" onclick={() => controlService('reload')}>
+                  <i class="ri-refresh-line"></i> Reload Konfigurasi
+                </button>
+                {#if activeDetail?.running}
+                  <button class="btn btn-danger" onclick={() => controlService('stop')}>
+                    <i class="ri-stop-circle-line"></i> Hentikan (Stop)
+                  </button>
+                {:else}
+                  <button class="btn btn-primary" onclick={() => controlService('start')}>
+                    <i class="ri-play-circle-line"></i> Jalankan (Start)
+                  </button>
+                {/if}
               </div>
+            </div>
+          </div>
 
-              {#if activeDetail?.sites && activeDetail.sites.length > 0}
-                <div class="sites-table-card">
-                  <table class="sites-table">
-                    <thead>
+        <!-- ================= TAB: SITUS TERHUBUNG (HESTIACP / AAPANEL STYLE) ================= -->
+        {:else if activeTab === 'sites'}
+          <div class="tab-pane">
+            <div class="section-title-wrap flex justify-between items-center">
+              <div>
+                <h4 class="section-title">Situs Terhubung: PHP {activeVersion}</h4>
+                <p class="section-desc">
+                  Daftar seluruh virtual host web di server yang mengeksekusi skrip PHP melalui socket php{activeVersion}-fpm.
+                </p>
+              </div>
+              <a href="#/sites" class="btn btn-ghost btn-sm">
+                <i class="ri-external-link-line"></i> Buka Menu Websites
+              </a>
+            </div>
+
+            {#if activeDetail?.sites && activeDetail.sites.length > 0}
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Domain Situs</th>
+                      <th>Pengguna Linux</th>
+                      <th>Direktori Root</th>
+                      <th>Status</th>
+                      <th>Ganti Versi PHP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each activeDetail.sites as site (site.id)}
                       <tr>
-                        <th>Domain Situs</th>
-                        <th>Pengguna Linux</th>
-                        <th>Direktori Root</th>
-                        <th>Status</th>
-                        <th>Ganti Versi PHP</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each activeDetail.sites as site (site.id)}
-                        <tr>
-                          <td>
-                            <div class="flex items-center gap-2">
-                              <span class="status-indicator {site.enabled ? 'active' : 'disabled'}"></span>
-                              <span class="domain-title font-semibold">{site.domain}</span>
-                              <a href="http://{site.domain}" target="_blank" rel="noopener noreferrer" class="link-external" title="Kunjungi website">
-                                <i class="ri-external-link-line"></i>
-                              </a>
-                            </div>
-                          </td>
-                          <td>
-                            <span class="user-pill"><i class="ri-user-line"></i> {site.user}</span>
-                          </td>
-                          <td>
-                            <span class="mono text-xs text-subtle truncate max-w-xs" title={site.root_path}>{site.root_path}</span>
-                          </td>
-                          <td>
-                            {#if site.enabled}
-                              <span class="badge badge-success">Aktif</span>
-                            {:else}
-                              <span class="badge badge-subtle">Nonaktif</span>
+                        <td>
+                          <div class="flex items-center gap-2">
+                            <span class="dot {site.enabled ? 'dot--success' : ''}"></span>
+                            <span class="domain-title font-semibold">{site.domain}</span>
+                            <a href="http://{site.domain}" target="_blank" rel="noopener noreferrer" class="link-external" title="Kunjungi website">
+                              <i class="ri-external-link-line"></i>
+                            </a>
+                          </div>
+                        </td>
+                        <td>
+                          <span class="user-pill"><i class="ri-user-line"></i> {site.user}</span>
+                        </td>
+                        <td>
+                          <span class="mono text-xs text-subtle truncate max-w-xs" title={site.root_path}>{site.root_path}</span>
+                        </td>
+                        <td>
+                          {#if site.enabled}
+                            <span class="badge badge--success">Aktif</span>
+                          {:else}
+                            <span class="badge badge--neutral">Nonaktif</span>
+                          {/if}
+                        </td>
+                        <td>
+                          <div class="inline-flex items-center gap-2">
+                            <select
+                              class="form-select form-select-sm"
+                              value={activeVersion}
+                              onchange={(e) => switchSitePHP(site.id, site.domain, e.currentTarget.value)}
+                              disabled={switchingSiteId === site.id}
+                            >
+                              {#each versions.filter((ver) => ver.installed) as pv (pv.version)}
+                                <option value={pv.version}>PHP {pv.version} {pv.running ? '(FPM Aktif)' : ''}</option>
+                              {/each}
+                            </select>
+                            {#if switchingSiteId === site.id}
+                              <i class="ri-loader-4-line spin text-accent"></i>
                             {/if}
-                          </td>
-                          <td>
-                            <div class="inline-flex items-center gap-2">
-                              <select
-                                class="form-select form-select-sm"
-                                value={activeVersion}
-                                onchange={(e) => switchSitePHP(site.id, site.domain, e.currentTarget.value)}
-                                disabled={switchingSiteId === site.id}
-                              >
-                                {#each versions.filter((ver) => ver.installed) as pv (pv.version)}
-                                  <option value={pv.version}>PHP {pv.version} {pv.running ? '(FPM Aktif)' : ''}</option>
-                                {/each}
-                              </select>
-                              {#if switchingSiteId === site.id}
-                                <i class="ri-loader-4-line spin text-accent"></i>
-                              {/if}
-                            </div>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {:else}
-                <div class="empty-sites-box">
-                  <div class="empty-icon-ring">
-                    <i class="ri-global-line"></i>
-                  </div>
-                  <h5 class="empty-title">Belum Ada Situs Terhubung</h5>
-                  <p class="empty-desc">
-                    Saat ini belum ada virtual host yang dikonfigurasi untuk mengeksekusi skrip melalui PHP {activeVersion}. Anda dapat memilih versi ini saat menambah situs baru atau mengalihkan situs yang ada di menu Websites.
-                  </p>
-                  <a href="#/sites" class="btn btn-primary btn-sm mt-3">
+                          </div>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {:else}
+              <div class="state">
+                <i class="ri-global-line state__icon"></i>
+                <h5 class="state__title">Belum Ada Situs Terhubung</h5>
+                <p class="state__desc">
+                  Saat ini belum ada virtual host yang dikonfigurasi untuk mengeksekusi skrip melalui PHP {activeVersion}. Anda dapat memilih versi ini saat menambah situs baru atau mengalihkan situs yang ada di menu Websites.
+                </p>
+                <div class="state__actions">
+                  <a href="#/sites" class="btn btn-primary btn-sm">
                     <i class="ri-arrow-right-line"></i> Buka Menu Websites
                   </a>
                 </div>
-              {/if}
-            </div>
+              </div>
+            {/if}
+          </div>
 
           <!-- ================= TAB 2: CONFIGURATION (VISUAL ALA GAMBAR 1) ================= -->
           {:else if activeTab === 'config'}
@@ -1315,7 +1307,7 @@
                     <i class="ri-file-text-line"></i> {rawIniPath || 'php.ini'}
                   </span>
                   {#if isRawIniDirty}
-                    <span class="badge-dirty">Belum Disimpan</span>
+                    <span class="badge badge--warning">Belum Disimpan</span>
                   {/if}
                 </div>
               </div>
@@ -1377,7 +1369,7 @@
                 <p class="editor-note text-xs text-subtle">
                   • Berkas konfigurasi utama PHP {activeVersion}. Jangan mengedit sembarangan jika belum memahami format sintaks direktif PHP INI.
                 </p>
-                <button class="btn btn-success" onclick={submitRawIni} disabled={savingRawIni || loadingRawIni}>
+                <button class="btn btn-primary" onclick={submitRawIni} disabled={savingRawIni || loadingRawIni}>
                   <i class="ri-save-line" aria-hidden="true"></i> {savingRawIni ? 'Menyimpan...' : 'Save'}
                 </button>
               </div>
@@ -1512,7 +1504,7 @@
                 <p class="editor-note text-xs text-subtle">
                   • Berkas pool FPM www.conf asli. Mengubah konfigurasi socket atau user worker di sini akan langsung di-reload ke daemon.
                 </p>
-                <button class="btn btn-success" onclick={submitRawFpm} disabled={savingRawFpm || loadingRawFpm}>
+                <button class="btn btn-primary" onclick={submitRawFpm} disabled={savingRawFpm || loadingRawFpm}>
                   <i class="ri-save-line"></i> {savingRawFpm ? 'Menyimpan...' : 'Save'}
                 </button>
               </div>
@@ -1609,8 +1601,8 @@
                 </div>
               </div>
 
-              <div class="extensions-table-wrap">
-                <table class="ext-table">
+              <div class="table-wrap extensions-table-wrap">
+                <table class="table">
                   <thead>
                     <tr>
                       <th>Nama Ekstensi</th>
@@ -1631,9 +1623,9 @@
                         <td class="text-xs text-muted">{ext.description}</td>
                         <td>
                           {#if ext.installed}
-                            <span class="status-pill running"><i class="ri-check-line"></i> Terpasang</span>
+                            <span class="badge badge--success"><i class="ri-check-line"></i> Terpasang</span>
                           {:else}
-                            <span class="status-pill uninstalled">Belum ada</span>
+                            <span class="badge badge--neutral">Belum ada</span>
                           {/if}
                         </td>
                         <td>
@@ -1648,7 +1640,7 @@
                               {#if !ext.is_core}
                                 <button
                                   type="button"
-                                  class="btn btn-xs btn-danger-subtle"
+                                  class="btn btn-xs btn-danger"
                                   onclick={() => uninstallExtension(ext)}
                                   disabled={actionExtName === ext.name}
                                   title="Copot paket ekstensi {ext.name}"
@@ -1663,7 +1655,7 @@
                             {:else}
                               <button
                                 type="button"
-                                class="btn btn-xs btn-success"
+                                class="btn btn-xs btn-primary"
                                 onclick={() => installExtension(ext)}
                                 disabled={actionExtName === ext.name}
                                 title="Pasang ekstensi {ext.name} secara otomatis (1-Klik via Panel)"
@@ -1678,7 +1670,7 @@
 
                             <button
                               type="button"
-                              class="btn btn-xs btn-terminal-opt"
+                              class="btn btn-xs btn-ghost"
                               onclick={() => openSshModal(ext)}
                               title="Lihat & Salin Perintah Instalasi via Terminal / SSH"
                             >
@@ -1816,1205 +1808,122 @@
           {/if}
         </main>
       </div>
-    </div>
-  </div>
-{/if}
+  {/if}
+</Modal>
 
-{#if showSshModal && sshModalExt}
-  <div class="modal-backdrop" onclick={() => (showSshModal = false)}>
-    <div class="ssh-modal-card" onclick={(e) => e.stopPropagation()}>
-      <div class="ssh-modal-head flex justify-between items-center">
-        <div class="flex items-center gap-3">
-          <div class="ssh-modal-icon">
-            <i class="ri-terminal-box-line"></i>
-          </div>
-          <div>
-            <h3 class="ssh-modal-title">Perintah Terminal / SSH: {sshModalExt.name}</h3>
-            <p class="ssh-modal-sub">
-              Ekstensi PHP {activeVersion} &bull; Paket APT: <span class="mono text-accent">{sshModalExt.package_name || `php${activeVersion}-${sshModalExt.name}`}</span>
-            </p>
-          </div>
+<Modal
+  open={Boolean(showSshModal && sshModalExt)}
+  size="xl"
+  onclose={() => (showSshModal = false)}
+>
+  {#snippet header()}
+    {#if sshModalExt}
+      <div class="flex items-center gap-3">
+        <div class="header-icon">
+          <i class="ri-terminal-box-line"></i>
         </div>
-        <button type="button" class="btn-close-modal" onclick={() => (showSshModal = false)} aria-label="Tutup">
-          <i class="ri-close-line"></i>
-        </button>
+        <div class="modal__head-text">
+          <h3 class="modal__title">Perintah Terminal / SSH: {sshModalExt.name}</h3>
+          <p class="modal__sub">
+            Ekstensi PHP {activeVersion} &bull; Paket APT: <span class="mono text-accent">{sshModalExt.package_name || `php${activeVersion}-${sshModalExt.name}`}</span>
+          </p>
+        </div>
+      </div>
+    {/if}
+  {/snippet}
+
+  {#if sshModalExt}
+    <div class="flex flex-col gap-3">
+      <div class="ssh-notice">
+        <i class="ri-information-line"></i>
+        <span>
+          Jika Anda ingin menginstal atau mengelola ekstensi ini langsung melalui sesi terminal SSH server, gunakan perintah siap-pakai berikut:
+        </span>
       </div>
 
-      <div class="ssh-modal-body">
-        <div class="ssh-notice">
-          <i class="ri-information-line"></i>
-          <span>
-            Jika Anda ingin menginstal atau mengelola ekstensi ini langsung melalui sesi terminal SSH server, gunakan perintah siap-pakai berikut:
-          </span>
+      <!-- Perintah Install -->
+      <div class="terminal-cmd-box">
+        <div class="terminal-cmd-header flex justify-between items-center">
+          <span class="cmd-type-label"><i class="ri-download-2-line"></i> Perintah Instalasi (Install)</span>
+          <button
+            type="button"
+            class="btn btn-xs btn-ghost"
+            onclick={() =>
+              copyToClipboard(
+                sshModalExt?.install_command ||
+                  `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
+                'Perintah Install'
+              )}
+          >
+            <i class="ri-file-copy-line"></i> Salin Perintah
+          </button>
         </div>
+        <pre class="terminal-snippet mono"><code>{sshModalExt.install_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
+      </div>
 
-        <!-- Perintah Install -->
-        <div class="terminal-cmd-box">
+      <!-- Perintah Uninstall (Jika bukan core) -->
+      {#if !sshModalExt.is_core}
+        <div class="terminal-cmd-box mt-3">
           <div class="terminal-cmd-header flex justify-between items-center">
-            <span class="cmd-type-label"><i class="ri-download-2-line"></i> Perintah Instalasi (Install)</span>
+            <span class="cmd-type-label text-warning"><i class="ri-delete-bin-line"></i> Perintah Copot (Uninstall)</span>
             <button
               type="button"
-              class="btn btn-xs btn-ghost-copy"
+              class="btn btn-xs btn-ghost"
               onclick={() =>
                 copyToClipboard(
-                  sshModalExt?.install_command ||
-                    `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
-                  'Perintah Install'
+                  sshModalExt?.uninstall_command ||
+                    `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
+                  'Perintah Uninstall'
                 )}
             >
               <i class="ri-file-copy-line"></i> Salin Perintah
             </button>
           </div>
-          <pre class="terminal-snippet mono"><code>{sshModalExt.install_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
+          <pre class="terminal-snippet mono"><code>{sshModalExt.uninstall_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
         </div>
+      {/if}
 
-        <!-- Perintah Uninstall (Jika bukan core) -->
-        {#if !sshModalExt.is_core}
-          <div class="terminal-cmd-box mt-3">
-            <div class="terminal-cmd-header flex justify-between items-center">
-              <span class="cmd-type-label text-warning"><i class="ri-delete-bin-line"></i> Perintah Copot (Uninstall)</span>
-              <button
-                type="button"
-                class="btn btn-xs btn-ghost-copy"
-                onclick={() =>
-                  copyToClipboard(
-                    sshModalExt?.uninstall_command ||
-                      `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt?.name} && sudo systemctl restart php${activeVersion}-fpm`,
-                    'Perintah Uninstall'
-                  )}
-              >
-                <i class="ri-file-copy-line"></i> Salin Perintah
-              </button>
-            </div>
-            <pre class="terminal-snippet mono"><code>{sshModalExt.uninstall_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
+      <!-- Pilihan Instalasi Otomatis 1-Klik -->
+      <div class="one-click-promo mt-4">
+        <div class="flex justify-between items-center flex-wrap gap-2">
+          <div>
+            <span class="font-semibold text-text text-sm">Tidak ingin repot buka terminal SSH?</span>
+            <p class="text-xs text-subtle">FikPanel dapat mengeksekusi instalasi paket ini secara otomatis di latar belakang.</p>
           </div>
-        {/if}
-
-        <!-- Pilihan Instalasi Otomatis 1-Klik -->
-        <div class="one-click-promo mt-4">
-          <div class="flex justify-between items-center flex-wrap gap-2">
-            <div>
-              <span class="font-semibold text-text text-sm">Tidak ingin repot buka terminal SSH?</span>
-              <p class="text-xs text-subtle">FikPanel dapat mengeksekusi instalasi paket ini secara otomatis di latar belakang.</p>
-            </div>
-            {#if sshModalExt.installed}
-              {#if !sshModalExt.is_core}
-                <button
-                  type="button"
-                  class="btn btn-sm btn-danger"
-                  onclick={() => {
-                    const ext = sshModalExt;
-                    showSshModal = false;
-                    if (ext) uninstallExtension(ext);
-                  }}
-                >
-                  <i class="ri-delete-bin-line"></i> Copot via Panel
-                </button>
-              {/if}
-            {:else}
+          {#if sshModalExt.installed}
+            {#if !sshModalExt.is_core}
               <button
                 type="button"
-                class="btn btn-sm btn-success"
+                class="btn btn-sm btn-danger"
                 onclick={() => {
                   const ext = sshModalExt;
                   showSshModal = false;
-                  if (ext) installExtension(ext);
+                  if (ext) uninstallExtension(ext);
                 }}
               >
-                <i class="ri-download-2-line"></i> Pasang Otomatis Sekarang
+                <i class="ri-delete-bin-line"></i> Copot via Panel
               </button>
             {/if}
-          </div>
+          {:else}
+            <button
+              type="button"
+              class="btn btn-sm btn-primary"
+              onclick={() => {
+                const ext = sshModalExt;
+                showSshModal = false;
+                if (ext) installExtension(ext);
+              }}
+            >
+              <i class="ri-download-2-line"></i> Pasang Otomatis Sekarang
+            </button>
+          {/if}
         </div>
       </div>
-
-      <div class="ssh-modal-foot flex justify-end">
-        <button type="button" class="btn btn-ghost" onclick={() => (showSshModal = false)}>Tutup</button>
-      </div>
     </div>
-  </div>
-{/if}
+  {/if}
 
-<style>
-  .php-view {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  .page-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  .page-title {
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin: 0;
-  }
-  .page-sub {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin: 0.25rem 0 0 0;
-  }
-  .page-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  /* Grid Kartu Versi PHP */
-  .versions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
-  }
-  .v-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .v-card.installed:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px var(--tint-accent);
-  }
-  .v-card.not-installed {
-    opacity: 0.65;
-    background: var(--bg-surface-soft);
-  }
-  .v-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .v-tag {
-    font-size: 1.15rem;
-    font-weight: 800;
-    color: var(--text);
-    letter-spacing: -0.02em;
-  }
-  .fpm-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--accent);
-    background: var(--tint-accent);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-  }
-  .v-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-height: 60px;
-  }
-  .meta-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
-  }
-  .meta-lbl {
-    color: var(--text-muted);
-  }
-  .meta-val {
-    color: var(--text);
-  }
-
-  /* ═══ Bagian Situs Terhubung (Card Grid) ═══ */
-  .connected-section {
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px dashed var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-  .connected-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .connected-label {
-    font-size: 0.72rem;
-    font-weight: var(--weight-semibold);
-    color: var(--text-secondary);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .connected-label i {
-    color: var(--accent);
-    font-size: 0.8rem;
-  }
-  .site-count-badge {
-    font-size: 0.65rem;
-    font-weight: var(--weight-bold);
-    color: var(--accent);
-    background: var(--tint-accent);
-    padding: 0.1rem 0.45rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-    cursor: pointer;
-    transition: all var(--duration-fast) ease;
-  }
-  .site-count-badge:hover {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-  .site-count-zero {
-    font-size: 0.65rem;
-    color: var(--text-disabled);
-    background: var(--bg-raised);
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
-  }
-  .site-chips-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .site-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0.5rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    text-decoration: none;
-    color: var(--text);
-    transition: all var(--duration-fast) ease;
-  }
-  .site-chip:hover {
-    background: var(--bg-hover);
-    border-color: var(--border-strong);
-    transform: translateX(2px);
-  }
-  .site-user-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.62rem;
-    font-weight: var(--weight-medium);
-    color: var(--text-subtle);
-    background: var(--bg-inset);
-    padding: 0.05rem 0.35rem;
-    border-radius: 3px;
-    font-family: var(--font-mono);
-  }
-  .site-domain-text {
-    font-size: 0.72rem;
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .site-chip-more {
-    font-size: 0.68rem;
-    color: var(--accent);
-    background: transparent;
-    border: 1px dashed var(--border);
-    cursor: pointer;
-    justify-content: center;
-    padding: 0.2rem;
-  }
-  .site-chip-more:hover {
-    background: var(--tint-accent);
-    border-color: var(--accent);
-  }
-  .site-empty-hint {
-    font-size: 0.7rem;
-    color: var(--text-disabled);
-    margin: 0;
-    font-style: italic;
-  }
-
-  /* ═══ Modal: Situs Terhubung Tab & Table ═══ */
-  .nav-badge {
-    margin-left: auto;
-    font-size: 0.65rem;
-    font-weight: var(--weight-bold);
-    background: var(--tint-accent);
-    color: var(--accent);
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
-  }
-  .sites-table-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-  .sites-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-    font-size: 0.82rem;
-  }
-  .sites-table th {
-    background: var(--bg-raised);
-    padding: 0.75rem 1rem;
-    color: var(--text-muted);
-    font-weight: var(--weight-semibold);
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--border);
-  }
-  .sites-table td {
-    padding: 0.85rem 1rem;
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-  }
-  .sites-table tbody tr:hover {
-    background: var(--bg-hover);
-  }
-  .status-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .status-indicator.active {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent);
-  }
-  .status-indicator.disabled {
-    background: var(--text-disabled);
-  }
-  .domain-title {
-    color: var(--text);
-    font-size: 0.85rem;
-  }
-  .link-external {
-    color: var(--text-subtle);
-    transition: color var(--duration-fast) ease;
-  }
-  .link-external:hover {
-    color: var(--accent);
-  }
-  .user-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.72rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-  }
-  .empty-sites-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 3rem 1.5rem;
-    background: var(--bg-surface);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-lg);
-  }
-  .empty-icon-ring {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: var(--tint-accent);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-  }
-  .empty-title {
-    font-size: 1.05rem;
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin: 0 0 0.4rem 0;
-  }
-  .empty-desc {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    max-width: 440px;
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .v-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  /* Status Pills */
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    letter-spacing: 0.02em;
-  }
-  .status-pill.running {
-    background: var(--tint-accent);
-    color: var(--accent);
-    border: 1px solid var(--ring-accent);
-  }
-  .status-pill.stopped {
-    background: var(--tint-danger);
-    color: var(--danger);
-    border: 1px solid var(--ring-danger);
-  }
-  .status-pill.uninstalled {
-    background: var(--bg-inset);
-    color: var(--text-subtle);
-  }
-
-  /* ================= Modal Komprehensif PHP Manage ================= */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-    padding: 1.5rem;
-  }
-  .manage-modal {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-2xl);
-    width: 100%;
-    max-width: 1100px;
-    height: 90vh;
-    max-height: 850px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 25px 60px -15px var(--bg-app);
-  }
-  .manage-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.1rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .header-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: var(--radius-lg);
-    background: var(--tint-accent);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-  }
-  .manage-title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .manage-sub {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-  .modal-close-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 1.25rem;
-    transition: all 0.15s;
-  }
-  .modal-close-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-    border-color: var(--border);
-  }
-
-  /* Modal Body: 2 Kolom Layout */
-  .manage-modal-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-  .manage-sidebar {
-    width: 240px;
-    background: var(--bg-inset);
-    border-right: 1px solid var(--border);
-    overflow-y: auto;
-    padding: 0.75rem 0.5rem;
-    flex-shrink: 0;
-  }
-  .sidebar-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.65rem 0.9rem;
-    border-radius: var(--radius-md);
-    font-size: 0.84rem;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: transparent;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.15s;
-    position: relative;
-    width: 100%;
-  }
-  .nav-item:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .nav-item.active {
-    background: var(--bg-surface);
-    color: var(--accent);
-    font-weight: 700;
-    box-shadow: 0 1px 3px var(--bg-inset);
-  }
-  .dirty-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--warning);
-    margin-left: auto;
-  }
-  .manage-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-surface);
-  }
-  .tab-pane {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-  .full-height-pane {
-    flex: 1;
-    min-height: 0;
-  }
-  .section-title-wrap {
-    margin-bottom: 0.25rem;
-  }
-  .section-title {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .section-desc {
-    margin: 0.25rem 0 0 0;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-
-  /* Service Tab */
-  .status-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.75rem;
-  }
-  .stat-card {
-    background: var(--bg-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 0.9rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .stat-lbl {
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .stat-val {
-    font-size: 0.88rem;
-    color: var(--text);
-  }
-  .actions-group-card {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    padding: 1.25rem;
-  }
-  .group-title {
-    margin: 0 0 0.9rem 0;
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  /* Visual Configuration Form (Screenshot 1) */
-  .visual-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .form-row {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 1.5rem;
-    align-items: center;
-    padding-bottom: 0.9rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .form-label-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .f-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--text);
-    font-family: var(--font-mono);
-  }
-  .f-hint {
-    font-size: 0.74rem;
-    color: var(--text-subtle);
-    line-height: 1.4;
-  }
-  .form-input-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-  .form-input, .form-select {
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: 0.85rem;
-    outline: none;
-    box-sizing: border-box;
-    transition: border-color 0.15s;
-  }
-  .form-input:focus, .form-select:focus {
-    border-color: var(--accent);
-  }
-  .quick-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-  }
-  .chip {
-    padding: 0.15rem 0.5rem;
-    background: var(--bg-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    font-size: 0.7rem;
-    font-family: var(--font-mono);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .chip:hover {
-    background: var(--tint-accent);
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .form-footer {
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-  }
-
-  /* ================= Code Editor php.ini (Screenshot 4 & 5) ================= */
-  .editor-tips-bar {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.5rem 0.8rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-  .tips-text kbd {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--text);
-  }
-  .file-path-badge {
-    font-size: 0.7rem;
-    color: var(--text-subtle);
-  }
-  .badge-dirty {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--warning);
-    background: var(--tint-warning);
-    padding: 2px 6px;
-    border-radius: 3px;
-  }
-  .editor-search-bar {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.35rem 0.5rem;
-  }
-  .search-input-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .search-icon {
-    position: absolute;
-    left: 8px;
-    color: var(--text-subtle);
-    font-size: 0.85rem;
-  }
-  .editor-search-input {
-    width: 100%;
-    padding: 0.3rem 0.5rem 0.3rem 1.8rem;
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-size: 0.8rem;
-    outline: none;
-  }
-  .code-editor-wrapper {
-    display: flex;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--bg-inset);
-    overflow: hidden;
-    position: relative;
-    min-height: 380px;
-  }
-  .editor-gutter {
-    width: 48px;
-    background: var(--bg-app);
-    border-right: 1px solid var(--border-subtle);
-    color: var(--text-disabled);
-    padding: 0.65rem 0;
-    text-align: right;
-    user-select: none;
-    overflow: hidden;
-    font-size: 0.78rem;
-    line-height: 20px;
-    flex-shrink: 0;
-  }
-  .gutter-num {
-    padding-right: 8px;
-    height: 20px;
-  }
-  .editor-textarea {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-size: 0.78rem;
-    line-height: 20px;
-    padding: 0.65rem 0.75rem;
-    outline: none;
-    resize: none;
-    tab-size: 4;
-    white-space: pre;
-    overflow: auto;
-  }
-  .editor-footer {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding-top: 0.5rem;
-  }
-  .btn-success {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border: none;
-    padding: 0.55rem 1.4rem;
-    border-radius: var(--radius-md);
-    font-weight: 700;
-    font-size: 0.85rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: background 0.15s;
-  }
-  .btn-success:hover {
-    background: var(--accent-hover);
-  }
-  .editor-loading {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    background: var(--bg-overlay);
-    color: var(--text-muted);
-  }
-
-  /* Preset Box */
-  .preset-box {
-    background: var(--bg-inset);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-lg);
-    padding: 0.8rem 1rem;
-  }
-  .preset-title {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  /* Disabled Functions Chips */
-  .chips-container {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    min-height: 180px;
-    max-height: 350px;
-    overflow-y: auto;
-    align-content: flex-start;
-  }
-  .func-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    padding: 0.25rem 0.6rem;
-    border-radius: var(--radius-md);
-    font-size: 0.8rem;
-    color: var(--text);
-  }
-  .chip-remove {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    padding: 0;
-  }
-  .chip-remove:hover {
-    color: var(--danger);
-  }
-
-  /* Extensions Table */
-  .extensions-table-wrap {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    max-height: 480px;
-    overflow-y: auto;
-  }
-  .ext-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-  .ext-table th {
-    background: var(--bg-raised);
-    padding: 0.65rem 0.9rem;
-    text-align: left;
-    color: var(--text-muted);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border);
-  }
-  .ext-table td {
-    padding: 0.65rem 0.9rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .ext-table tr:hover {
-    background: var(--bg-hover);
-  }
-  .cat-pill {
-    font-size: 0.68rem;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-    text-transform: capitalize;
-    background: var(--bg-inset);
-    color: var(--text-muted);
-  }
-  .cat-pill.cache { color: var(--info); background: var(--tint-info); }
-  .cat-pill.database { color: var(--accent); background: var(--tint-accent); }
-  .cat-pill.graphics { color: var(--warning); background: var(--tint-warning); }
-  .cat-pill.network { color: var(--violet); background: var(--tint-violet); }
-  .apt-hint {
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-  }
-  .search-mini-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .search-mini-wrap i {
-    position: absolute;
-    left: 8px;
-    color: var(--text-subtle);
-    font-size: 0.8rem;
-  }
-  .search-mini-input {
-    padding: 0.35rem 0.6rem 0.35rem 1.8rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: 0.78rem;
-    outline: none;
-    width: 220px;
-  }
-
-  /* Log & PHPInfo Pre Terminal */
-  .terminal-log-viewer {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    overflow: auto;
-    max-height: 480px;
-  }
-  .log-pre {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  /* Util */
-  .spin { animation: spin 1s linear infinite; }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
-  .flex { display: flex; }
-  .justify-between { justify-content: space-between; }
-  .items-center { align-items: center; }
-  .flex-wrap { flex-wrap: wrap; }
-  .gap-2 { gap: 0.5rem; }
-  .gap-3 { gap: 0.75rem; }
-  .flex-1 { flex: 1; }
-  .w-full { width: 100%; }
-  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mono { font-family: var(--font-mono); }
-  .font-semibold { font-weight: 600; }
-  .font-bold { font-weight: 700; }
-  .text-xs { font-size: 0.75rem; }
-  .text-sm { font-size: 0.85rem; }
-  .text-muted { color: var(--text-muted); }
-  .text-subtle { color: var(--text-subtle); }
-  .text-text { color: var(--text); }
-  .text-accent { color: var(--accent); }
-  .text-danger { color: var(--danger); }
-  .content-loader {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    min-height: 300px;
-    color: var(--text-muted);
-  }
-
-  /* Ekstensi Actions & SSH Modal */
-  .badge-active-runtime {
-    color: var(--success);
-    font-size: 0.75rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .btn-danger-subtle {
-    background: var(--tint-danger);
-    color: var(--danger);
-    border: 1px solid var(--border-subtle);
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-danger-subtle:hover:not(:disabled) {
-    background: var(--danger);
-    color: var(--bg-surface);
-  }
-  .btn-terminal-opt {
-    background: var(--bg-inset);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    padding: 0.25rem 0.6rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    transition: all 0.2s;
-  }
-  .btn-terminal-opt:hover:not(:disabled) {
-    background: var(--bg-overlay);
-    color: var(--accent);
-    border-color: var(--border-strong);
-  }
-  .ext-action-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .ssh-modal-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-xl);
-    width: min(650px, 94vw);
-    max-height: 90vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 24px 64px var(--tint-accent);
-    animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ssh-modal-head {
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .ssh-modal-icon {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--radius-lg);
-    background: var(--tint-accent);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-  }
-  .ssh-modal-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text);
-    margin: 0;
-  }
-  .ssh-modal-sub {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    margin: 0.2rem 0 0 0;
-  }
-  .ssh-modal-body {
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .ssh-notice {
-    background: var(--tint-accent);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: 0.75rem 1rem;
-    font-size: 0.825rem;
-    color: var(--text-muted);
-    display: flex;
-    gap: 0.6rem;
-    align-items: flex-start;
-    line-height: 1.4;
-  }
-  .terminal-cmd-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-  .terminal-cmd-header {
-    background: var(--bg-surface);
-    padding: 0.5rem 0.85rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .cmd-type-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .btn-ghost-copy {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--accent);
-    padding: 0.2rem 0.55rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-ghost-copy:hover {
-    background: var(--tint-accent);
-  }
-  .terminal-snippet {
-    padding: 0.85rem 1rem;
-    margin: 0;
-    font-size: 0.825rem;
-    color: var(--text);
-    background: var(--bg-inset);
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .one-click-promo {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 1rem 1.25rem;
-  }
-  .ssh-modal-foot {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border);
-  }
-</style>
+  {#snippet footer()}
+    <button type="button" class="btn btn-ghost" onclick={() => (showSshModal = false)}>Tutup</button>
+  {/snippet}
+</Modal>
+</div>
