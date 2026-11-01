@@ -1,0 +1,8 @@
+@layer pages {
+  .pg-docker-repository {
+    .text-sm {
+      font-size: var(--text-sm);
+    }
+  }
+}
+
