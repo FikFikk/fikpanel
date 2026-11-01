@@ -1,0 +1,8 @@
+@layer pages {
+  .pg-docker-volume {
+    .text-sm {
+      font-size: var(--text-sm);
+    }
+  }
+}
+
