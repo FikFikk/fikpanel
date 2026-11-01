@@ -12,6 +12,7 @@
   import StatusBar from './files/StatusBar.svelte';
   import ContextMenu from './files/ContextMenu.svelte';
   import CodeEditor from './files/CodeEditor.svelte';
+  import RemoteDownloadModal from './files/RemoteDownloadModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1807,56 +1808,15 @@
   {/if}
 
   <!-- ═════════ MODAL: Remote Download ═════════ -->
-  <Modal
+  <RemoteDownloadModal
     open={showRemoteModal}
-    title="Remote Download (Unduh URL)"
-    size="md"
-    onclose={() => (showRemoteModal = false)}
-  >
-    <form id="form-remote-dl" onsubmit={handleRemoteDownload}>
-      <div class="field">
-        <label class="field__label" for="f-rem-url">URL Berkas</label>
-        <input
-          id="f-rem-url"
-          class="input"
-          type="text"
-          placeholder="https://example.com/package.tar.gz"
-          bind:value={remoteUrl}
-          required
-        />
-      </div>
-      <div class="field">
-        <label class="field__label" for="f-rem-fname"
-          >Nama Berkas Simpan (Opsional)</label
-        >
-        <input
-          id="f-rem-fname"
-          class="input"
-          type="text"
-          placeholder="Kosongkan untuk nama otomatis dari URL"
-          bind:value={remoteFilename}
-        />
-      </div>
-      <div class="field-meta">
-        Tujuan: <span class="mono">{currentPath}</span>
-      </div>
-    </form>
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showRemoteModal = false)}>Batal</button
-      >
-      <button
-        type="submit"
-        form="form-remote-dl"
-        class="btn btn--primary"
-        disabled={remoteDownloading}
-      >
-        {remoteDownloading ? "Mengunduh..." : "Mulai Unduh"}
-      </button>
-    {/snippet}
-  </Modal>
+    bind:remoteUrl
+    bind:remoteFilename
+    {currentPath}
+    {remoteDownloading}
+    onClose={() => (showRemoteModal = false)}
+    onSubmit={handleRemoteDownload}
+  />
 
   <!-- ═════════ MODAL: Soft Link (Symlink) ═════════ -->
   <Modal
