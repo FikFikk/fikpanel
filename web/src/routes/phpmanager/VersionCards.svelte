@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PHPVersionInfo } from '../../lib/types';
+  import SitesList from './SitesList.svelte';
   import '../../styles/pages/phpmanager/version-cards.css';
 
   type ManageTab = 'service' | 'sites' | 'config' | 'raw_ini' | 'fpm_pool' | 'raw_fpm' | 'disabled_func' | 'extensions' | 'opcache' | 'logs' | 'phpinfo';
@@ -56,52 +57,12 @@
           </div>
 
           <!-- Bagian Situs Terhubung (HestiaCP / aaPanel Style) -->
-          <div class="connected-section">
-            <div class="connected-header">
-              <span class="connected-label">
-                <i class="ri-global-line"></i> Situs Terhubung
-              </span>
-              {#if (v.sites_count || 0) > 0}
-                <button
-                  type="button"
-                  class="site-count-badge"
-                  onclick={() => onOpenManageModal(v.version, 'sites')}
-                  title="Buka daftar situs terhubung"
-                >
-                  {v.sites_count} Situs
-                </button>
-              {:else}
-                <span class="site-count-zero">0 Situs</span>
-              {/if}
-            </div>
-
-            {#if v.sites && v.sites.length > 0}
-              <div class="site-chips-list">
-                {#each v.sites.slice(0, 3) as site (site.id)}
-                  <a
-                    href="#/sites"
-                    class="site-chip"
-                    title="Situs: {site.domain} | Pengguna: {site.user} | Path: {site.root_path}"
-                  >
-                    <span class="site-user-badge"><i class="ri-user-line"></i> {site.user}</span>
-                    <span class="site-domain-text">{site.domain}</span>
-                  </a>
-                {/each}
-                {#if v.sites.length > 3}
-                  <button
-                    type="button"
-                    class="site-chip site-chip-more"
-                    onclick={() => onOpenManageModal(v.version, 'sites')}
-                    title="Lihat semua {v.sites.length} situs yang terhubung"
-                  >
-                    +{v.sites.length - 3} lainnya…
-                  </button>
-                {/if}
-              </div>
-            {:else}
-              <p class="site-empty-hint">Belum ada situs yang terhubung</p>
-            {/if}
-          </div>
+          <SitesList
+            version={v.version}
+            sites={v.sites}
+            sitesCount={v.sites_count}
+            {onOpenManageModal}
+          />
         {:else}
           <p class="text-subtle text-xs">
             Tersedia di repositori sistem operasi. Dapat dipasang dalam 1-klik melalui antrean APT.
