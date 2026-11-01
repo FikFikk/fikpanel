@@ -29,6 +29,7 @@
   import SettingsTab from './docker/SettingsTab.svelte';
   import CreateContainerModal from './docker/CreateContainerModal.svelte';
   import PullImageModal from './docker/PullImageModal.svelte';
+  import ContainerLogsModal from './docker/ContainerLogsModal.svelte';
   import '../styles/pages/docker/shared.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
@@ -1255,47 +1256,12 @@
   />
 
   <!-- ══════════════ MODAL: LOG KONTAINER ══════════════ -->
-  <Modal
-    open={showLogsModal}
-    size="lg"
-    onclose={() => (showLogsModal = false)}
-  >
-    {#snippet header()}
-      <div class="flex-row items-center gap-3 flex-1">
-        <h2 class="modal__title flex-1">
-          <i class="ri-file-list-3-line" aria-hidden="true"></i>
-          <span>Log Kontainer: {selectedContainerLogs.name}</span>
-        </h2>
-        <select
-          class="input input--sm w-28"
-          bind:value={selectedContainerLogs.lines}
-          onchange={refreshContainerLogs}
-        >
-          <option value={100}>100 baris</option>
-          <option value={200}>200 baris</option>
-          <option value={500}>500 baris</option>
-          <option value={1000}>1000 baris</option>
-        </select>
-        <button
-          class="btn btn--secondary btn--sm btn--icon"
-          title="Segarkan Log"
-          aria-label="Segarkan Log"
-          onclick={refreshContainerLogs}
-        >
-          <i class="ri-refresh-line {logsLoading ? 'spin' : ''}" aria-hidden="true"></i>
-        </button>
-      </div>
-    {/snippet}
-
-    <pre class="terminal-log-viewer font-mono text-xs">{selectedContainerLogs.content}</pre>
-
-    {#snippet footer()}
-      <span class="text-xs text-muted flex-1">ID: {selectedContainerLogs.id.slice(0, 12)}</span>
-      <button class="btn btn--secondary btn--sm" onclick={() => (showLogsModal = false)}>
-        Tutup
-      </button>
-    {/snippet}
-  </Modal>
+  <ContainerLogsModal
+    bind:showLogsModal
+    bind:selectedContainerLogs
+    {logsLoading}
+    onRefreshContainerLogs={refreshContainerLogs}
+  />
 
   <!-- ══════════════ MODAL: DOCKER COMPOSE EDITOR ══════════════ -->
   <Modal

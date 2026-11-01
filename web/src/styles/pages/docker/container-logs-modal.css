@@ -1,0 +1,18 @@
+@layer pages {
+  .pg-docker-container-logs-modal {
+    &.terminal-log-viewer,
+    .terminal-log-viewer {
+      background: var(--bg-inset);
+      color: var(--text-secondary);
+      padding: var(--space-4);
+      margin: 0;
+      max-height: 480px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+    }
+  }
+}
+
