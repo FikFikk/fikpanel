@@ -20,6 +20,7 @@
   import PropertiesModal from './files/PropertiesModal.svelte';
   import CompressModal from './files/CompressModal.svelte';
   import NewItemModal from './files/NewItemModal.svelte';
+  import RenameModal from './files/RenameModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1897,47 +1898,13 @@
   />
 
   <!-- ═════════ MODAL: Ganti Nama (Rename) ═════════ -->
-  <Modal
+  <RenameModal
     open={showRenameModal && !!renameTarget}
-    title="Ganti Nama (Rename)"
-    size="md"
-    onclose={() => (showRenameModal = false)}
-  >
-    {#if renameTarget}
-      <form id="form-rename" onsubmit={handleRename}>
-        <div class="field">
-          <label class="field__label" for="f-old-name">Nama Saat Ini</label>
-          <input
-            id="f-old-name"
-            class="input"
-            type="text"
-            value={renameTarget.name}
-            disabled
-          />
-        </div>
-        <div class="field">
-          <label class="field__label" for="f-new-rname">Nama Baru</label>
-          <input
-            id="f-new-rname"
-            class="input"
-            type="text"
-            bind:value={renameNewName}
-            required
-          />
-        </div>
-      </form>
-    {/if}
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showRenameModal = false)}>Batal</button
-      >
-      <button type="submit" form="form-rename" class="btn btn--primary"
-        >Simpan Nama Baru</button
-      >
-    {/snippet}
-  </Modal>
+    {renameTarget}
+    bind:renameNewName
+    onClose={() => (showRenameModal = false)}
+    onSubmit={handleRename}
+  />
 
   <!-- ═════════ MODAL: Hak Akses / PMSN (chmod) ═════════ -->
   <Modal
