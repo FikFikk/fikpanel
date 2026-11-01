@@ -1,0 +1,56 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PHP MANAGER DISABLED FUNCTIONS TAB — Daftar fungsi PHP yang diblokir (.pg-phpmanager-disabled-functions-tab)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-phpmanager-disabled-functions-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+
+    .chips-container {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      min-height: 180px;
+      max-height: 350px;
+      overflow-y: auto;
+      align-content: flex-start;
+    }
+
+    .func-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-md);
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+
+    .chip-remove {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 0;
+    }
+
+    .chip-remove:hover {
+      color: var(--danger);
+    }
+
+    .form-footer {
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+  }
+}
