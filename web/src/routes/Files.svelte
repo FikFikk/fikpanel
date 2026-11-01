@@ -18,6 +18,7 @@
   import FavoritesModal from './files/FavoritesModal.svelte';
   import CloudStorageModal from './files/CloudStorageModal.svelte';
   import PropertiesModal from './files/PropertiesModal.svelte';
+  import CompressModal from './files/CompressModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1874,55 +1875,15 @@
   />
 
   <!-- ═════════ MODAL: Kompresi Arsip Zip ═════════ -->
-  <Modal
+  <CompressModal
     open={showCompressModal && !!compressTarget}
-    title="Kompresi Berkas ke Zip"
-    size="md"
-    onclose={() => (showCompressModal = false)}
-  >
-    {#if compressTarget}
-      <form id="form-compress" onsubmit={handleExecuteCompress}>
-        <div class="field">
-          <label class="field__label" for="f-zip-src">Item Sumber</label>
-          <input
-            id="f-zip-src"
-            class="input"
-            type="text"
-            value={compressTarget.name}
-            disabled
-          />
-        </div>
-        <div class="field">
-          <label class="field__label" for="f-zip-name">Nama Arsip Zip</label>
-          <input
-            id="f-zip-name"
-            class="input"
-            type="text"
-            bind:value={compressZipName}
-            required
-          />
-        </div>
-        <div class="field-meta">
-          Lokasi output: <span class="mono">{currentPath}</span>
-        </div>
-      </form>
-    {/if}
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showCompressModal = false)}>Batal</button
-      >
-      <button
-        type="submit"
-        form="form-compress"
-        class="btn btn--primary"
-        disabled={compressing}
-      >
-        {compressing ? "Mengompresi..." : "Mulai Kompresi"}
-      </button>
-    {/snippet}
-  </Modal>
+    {compressTarget}
+    bind:compressZipName
+    {currentPath}
+    {compressing}
+    onClose={() => (showCompressModal = false)}
+    onSubmit={handleExecuteCompress}
+  />
 
   <!-- ═════════ MODAL: Buat File / Folder Baru ═════════ -->
   <Modal
