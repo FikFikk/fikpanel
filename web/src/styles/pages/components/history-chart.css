@@ -1,0 +1,42 @@
+/* Styling komponen HistoryChart pada layer pages */
+@layer pages {
+  .cmp-history-chart {
+    position: relative;
+    width: 100%;
+    user-select: none;
+    canvas {
+      display: block;
+      width: 100%;
+      height: var(--hc-h, 260px);
+    }
+    .hover-tooltip {
+      position: absolute;
+      top: 15px;
+      left: var(--tip-x, 120px);
+      transform: translateX(-50%);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.6rem 0.8rem;
+      pointer-events: none;
+      box-shadow: var(--shadow-modal);
+      z-index: 10;
+      font-size: 0.75rem;
+      color: var(--text);
+      min-width: 130px;
+    }
+    .tip-time {
+      color: var(--text-subtle);
+      margin-bottom: 0.35rem;
+      font-size: 0.7rem;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 0.25rem;
+    }
+    .tip-row { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.25rem; }
+    .tip-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .tip-dot--info { background: var(--info); }
+    .tip-dot--violet { background: var(--violet); }
+    .tip-dot--accent { background: var(--accent); }
+    .tip-dot--warning { background: var(--warning); }
+  }
+}

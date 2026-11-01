@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { MonitorSnapshot } from '../types';
+  import { readToken } from '../utils/browser';
+  import '../../styles/pages/components/history-chart.css';
 
   interface Props {
     snapshots: MonitorSnapshot[];
@@ -15,7 +17,7 @@
   let ctx: CanvasRenderingContext2D | null = null;
   let viewW = $state(800);
 
-  // Hover state
+  // State interaksi hover
   let isHovering = $state(false);
   let hoveredIndex = $state(-1);
   let mouseX = $state(0);
@@ -36,7 +38,7 @@
   }
 
   $effect(() => {
-    // Redraw whenever snapshots, mode, or viewW changes
+    // Gambar ulang setiap kali snapshots, mode, atau viewW berubah
     const _snaps = snapshots;
     const _m = mode;
     const _w = viewW;
@@ -48,6 +50,13 @@
     const dpr = window.devicePixelRatio || 1;
     const w = canvasEl.width / dpr;
     const h = canvasEl.height / dpr;
+
+    const colorMuted = readToken('--text-muted', 'slategray');
+    const colorInfo = readToken('--info', 'dodgerblue');
+    const colorViolet = readToken('--violet', 'mediumpurple');
+    const colorAccent = readToken('--accent', 'teal');
+    const colorWarning = readToken('--warning', 'orange');
+    const fontMono = readToken('--font-mono', 'monospace');
 
     ctx.save();
     ctx.scale(dpr, dpr);
@@ -62,13 +71,13 @@
     const plotH = h - padTop - padBottom;
 
     // Grid garis horizontal & label
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.strokeStyle = colorMuted;
     ctx.lineWidth = 1;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.font = '10px var(--font-mono, monospace)';
+    ctx.fillStyle = colorMuted;
+    ctx.font = `10px ${fontMono}`;
     ctx.textAlign = 'right';
 
-    // Cari max Y value
+    // Cari nilai maksimum sumbu Y
     let maxY = 1.0;
     if (mode === 'load') {
       for (const s of snapshots) {
@@ -92,6 +101,7 @@
       const y = padTop + (plotH / steps) * i;
       const val = maxY - (maxY / steps) * i;
 
+      ctx.globalAlpha = 0.14;
       ctx.beginPath();
       ctx.moveTo(padLeft, y);
       ctx.lineTo(padLeft + plotW, y);
@@ -100,11 +110,12 @@
       let label = val.toFixed(1);
       if (mode === 'resource') label = val.toFixed(0) + '%';
       else if (mode === 'network') label = formatBytes(val) + '/s';
+      ctx.globalAlpha = 0.7;
       ctx.fillText(label, padLeft - 6, y + 3);
     }
 
     if (snapshots.length < 2) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.globalAlpha = 0.6;
       ctx.textAlign = 'center';
       ctx.fillText('Belum ada data rekaman histori pada rentang waktu ini.', padLeft + plotW / 2, padTop + plotH / 2);
       ctx.restore();
@@ -116,6 +127,7 @@
     const getY = (val: number) => padTop + plotH - (Math.min(val, maxY) / maxY) * plotH;
 
     // Garis waktu bawah (X-axis ticks)
+    ctx.globalAlpha = 0.7;
     ctx.textAlign = 'center';
     const xStep = Math.max(Math.floor(snapshots.length / 4), 1);
     for (let i = 0; i < snapshots.length; i += xStep) {
@@ -124,18 +136,19 @@
       const timeStr = timeFormatter.format(new Date(s.timestamp * 1000));
       ctx.fillText(timeStr, x, h - 10);
     }
+    ctx.globalAlpha = 1;
 
-    // Render Kurva berdasarkan Mode
+    // Render kurva berdasarkan mode
     if (mode === 'load') {
-      drawLine(snapshots.map((s) => s.load_1m), 'var(--info)', 2);
-      drawLine(snapshots.map((s) => s.load_5m), 'var(--violet)', 1.5);
-      drawLine(snapshots.map((s) => s.load_15m), 'var(--accent)', 1.5);
+      drawLine(snapshots.map((s) => s.load_1m), colorInfo, 2);
+      drawLine(snapshots.map((s) => s.load_5m), colorViolet, 1.5);
+      drawLine(snapshots.map((s) => s.load_15m), colorAccent, 1.5);
     } else if (mode === 'resource') {
-      drawLine(snapshots.map((s) => s.cpu), 'var(--info)', 2);
-      drawLine(snapshots.map((s) => (s.ram_total > 0 ? (s.ram_used / s.ram_total) * 100 : 0)), 'var(--violet)', 2);
+      drawLine(snapshots.map((s) => s.cpu), colorInfo, 2);
+      drawLine(snapshots.map((s) => (s.ram_total > 0 ? (s.ram_used / s.ram_total) * 100 : 0)), colorViolet, 2);
     } else if (mode === 'network') {
-      drawLine(snapshots.map((s) => s.net_in), 'var(--accent)', 2);
-      drawLine(snapshots.map((s) => s.net_out), 'var(--warning)', 2);
+      drawLine(snapshots.map((s) => s.net_in), colorAccent, 2);
+      drawLine(snapshots.map((s) => s.net_out), colorWarning, 2);
     }
 
     function drawLine(vals: number[], color: string, lineWidth: number) {
@@ -158,13 +171,15 @@
     // Gambar indikator hover
     if (isHovering && hoveredIndex >= 0 && hoveredIndex < snapshots.length) {
       const x = getX(hoveredIndex);
+      ctx.globalAlpha = 0.45;
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.strokeStyle = colorMuted;
       ctx.setLineDash([4, 4]);
       ctx.moveTo(x, padTop);
       ctx.lineTo(x, padTop + plotH);
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -216,76 +231,29 @@
 </script>
 
 <div
-  class="chart-container"
+  class="cmp-history-chart chart-container"
   bind:this={containerEl}
   onmousemove={handleMouseMove}
   onmouseleave={handleMouseLeave}
   role="presentation"
 >
-  <canvas bind:this={canvasEl} style="width: 100%; height: {height}px;"></canvas>
+  <canvas bind:this={canvasEl} style="--hc-h: {height}px;"></canvas>
 
   {#if isHovering && hoveredIndex >= 0 && hoveredIndex < snapshots.length}
     {@const s = snapshots[hoveredIndex]}
-    <div class="hover-tooltip" style="left: {Math.min(Math.max(mouseX, 120), viewW - 140)}px;">
+    <div class="hover-tooltip" style="--tip-x: {Math.min(Math.max(mouseX, 120), viewW - 140)}px;">
       <div class="tip-time mono">{timeFormatter.format(new Date(s.timestamp * 1000))}</div>
       {#if mode === 'load'}
-        <div class="tip-row"><span class="tip-dot" style="background: var(--info);"></span> 1 Menit: <b>{s.load_1m.toFixed(2)}</b></div>
-        <div class="tip-row"><span class="tip-dot" style="background: var(--violet);"></span> 5 Menit: <b>{s.load_5m.toFixed(2)}</b></div>
-        <div class="tip-row"><span class="tip-dot" style="background: var(--accent);"></span> 15 Menit: <b>{s.load_15m.toFixed(2)}</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--info"></span> 1 Menit: <b>{s.load_1m.toFixed(2)}</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--violet"></span> 5 Menit: <b>{s.load_5m.toFixed(2)}</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--accent"></span> 15 Menit: <b>{s.load_15m.toFixed(2)}</b></div>
       {:else if mode === 'resource'}
-        <div class="tip-row"><span class="tip-dot" style="background: var(--info);"></span> CPU: <b>{s.cpu.toFixed(1)}%</b></div>
-        <div class="tip-row"><span class="tip-dot" style="background: var(--violet);"></span> RAM: <b>{s.ram_total > 0 ? ((s.ram_used / s.ram_total) * 100).toFixed(1) : 0}%</b> ({formatBytes(s.ram_used)})</div>
+        <div class="tip-row"><span class="tip-dot tip-dot--info"></span> CPU: <b>{s.cpu.toFixed(1)}%</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--violet"></span> RAM: <b>{s.ram_total > 0 ? ((s.ram_used / s.ram_total) * 100).toFixed(1) : 0}%</b> ({formatBytes(s.ram_used)})</div>
       {:else if mode === 'network'}
-        <div class="tip-row"><span class="tip-dot" style="background: var(--accent);"></span> Masuk: <b>{formatBytes(s.net_in)}/s</b></div>
-        <div class="tip-row"><span class="tip-dot" style="background: var(--warning);"></span> Keluar: <b>{formatBytes(s.net_out)}/s</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--accent"></span> Masuk: <b>{formatBytes(s.net_in)}/s</b></div>
+        <div class="tip-row"><span class="tip-dot tip-dot--warning"></span> Keluar: <b>{formatBytes(s.net_out)}/s</b></div>
       {/if}
     </div>
   {/if}
 </div>
-
-<style>
-  .chart-container {
-    position: relative;
-    width: 100%;
-    user-select: none;
-  }
-  canvas {
-    display: block;
-  }
-  .hover-tooltip {
-    position: absolute;
-    top: 15px;
-    transform: translateX(-50%);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.6rem 0.8rem;
-    pointer-events: none;
-    box-shadow: var(--shadow-modal);
-    z-index: 10;
-    font-size: 0.75rem;
-    color: var(--text);
-    min-width: 130px;
-  }
-  .tip-time {
-    color: var(--text-subtle);
-    margin-bottom: 0.35rem;
-    font-size: 0.7rem;
-    border-bottom: 1px solid var(--border-soft);
-    padding-bottom: 0.25rem;
-  }
-  .tip-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.25rem;
-  }
-  .tip-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-  .mono {
-    font-family: var(--font-mono, monospace);
-  }
-</style>
