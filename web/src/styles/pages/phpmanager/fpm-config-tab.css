@@ -1,0 +1,17 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PHP MANAGER FPM CONFIG TAB — Editor berkas konfigurasi pool FPM www.conf (.pg-phpmanager-fpm-config-tab)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-phpmanager-fpm-config-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    flex: 1;
+    min-height: 0;
+
+    .editor-note {
+      margin: 0;
+    }
+  }
+}

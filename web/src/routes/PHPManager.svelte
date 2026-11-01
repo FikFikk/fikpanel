@@ -11,6 +11,7 @@
   import ConfigTab from './phpmanager/ConfigTab.svelte';
   import ConfigFileTab from './phpmanager/ConfigFileTab.svelte';
   import FpmProfileTab from './phpmanager/FpmProfileTab.svelte';
+  import FpmConfigTab from './phpmanager/FpmConfigTab.svelte';
   import '../styles/pages/phpmanager/shared.css';
   import '../styles/pages/phpmanager.css';
 
@@ -963,41 +964,14 @@
 
           <!-- ================= TAB 5: RAW FPM WWW.CONF ================= -->
           {:else if activeTab === 'raw_fpm'}
-            <div class="tab-pane full-height-pane">
-              <div class="editor-tips-bar flex justify-between items-center">
-                <div class="tips-text">
-                  <span class="font-semibold text-accent"><i class="ri-settings-line"></i> Pool Config:</span>
-                  <span><kbd>Ctrl+S</kbd> Simpan berkas pool www.conf</span>
-                </div>
-                <span class="file-path-badge mono">{rawFpmPath || 'pool.d/www.conf'}</span>
-              </div>
-
-              <div class="code-editor-wrapper flex-1">
-                {#if loadingRawFpm}
-                  <div class="editor-loading">
-                    <i class="ri-loader-4-line spin text-2xl"></i>
-                    <span>Membaca berkas pool www.conf...</span>
-                  </div>
-                {:else}
-                  <textarea
-                    class="editor-textarea mono p-4"
-                    bind:value={rawFpmContent}
-                    onkeydown={handleEditorKeydown}
-                    spellcheck="false"
-                    wrap="off"
-                  ></textarea>
-                {/if}
-              </div>
-
-              <div class="editor-footer flex justify-between items-center">
-                <p class="editor-note text-xs text-subtle">
-                  • Berkas pool FPM www.conf asli. Mengubah konfigurasi socket atau user worker di sini akan langsung di-reload ke daemon.
-                </p>
-                <button class="btn btn-primary" onclick={submitRawFpm} disabled={savingRawFpm || loadingRawFpm}>
-                  <i class="ri-save-line"></i> {savingRawFpm ? 'Menyimpan...' : 'Save'}
-                </button>
-              </div>
-            </div>
+            <FpmConfigTab
+              {rawFpmPath}
+              bind:rawFpmContent
+              {loadingRawFpm}
+              {savingRawFpm}
+              onHandleEditorKeydown={handleEditorKeydown}
+              onSubmitRawFpm={submitRawFpm}
+            />
 
           <!-- ================= TAB 6: DISABLED FUNCTIONS ================= -->
           {:else if activeTab === 'disabled_func'}
