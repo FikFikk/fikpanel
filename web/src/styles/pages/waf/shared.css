@@ -757,31 +757,6 @@
       border: 1px solid var(--ring-info);
     }
 
-    .cf-token-guide-box {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.75rem 0.85rem;
-    }
-    .cf-guide-list {
-      margin: 0;
-      padding-left: 1.1rem;
-      font-size: 0.73rem;
-      color: var(--text-muted);
-      line-height: 1.55;
-    }
-    .cf-guide-list code {
-      color: var(--text);
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-    }
-
-    .bg-inset-box {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.65rem 0.85rem;
-    }
     .cf-quick-sync-bar {
       display: flex;
       align-items: center;
