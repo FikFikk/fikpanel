@@ -1,0 +1,487 @@
+@layer pages {
+  .pg-cron {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-6);
+
+    /* Kolom tabel tugas cron */
+    .job-name-col {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2-5);
+    }
+
+    .spec-cell {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+    }
+
+    .badge-spec {
+      display: inline-block;
+      width: fit-content;
+      padding: 2px var(--sp-2);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+
+    .spec-human {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .col-cmd {
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-muted);
+    }
+
+    .cmd-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .actions-col {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--sp-1);
+      white-space: nowrap;
+    }
+
+    /* Pill pintasan berkas log pada tabel */
+    .log-file-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      margin-top: var(--sp-1-5);
+      padding: 2px var(--sp-2);
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      border-radius: var(--radius-full);
+      color: var(--accent);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .log-file-pill:hover {
+      background: var(--ring-accent);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    /* Info jam sistem pada modal form cron */
+    .modal-sub-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-3);
+      flex-wrap: wrap;
+      margin-bottom: var(--sp-3);
+      padding-bottom: var(--sp-3);
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .modal-sub {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .server-clock-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      padding: var(--sp-1) var(--sp-2-5);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    /* Form tambah/edit tugas cron */
+    .form-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-2);
+      margin-bottom: var(--sp-1-5);
+    }
+
+    .label-row .field__label {
+      margin-bottom: 0;
+    }
+
+    .hint-inline {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    /* Kartu pembuat jadwal visual (Schedule Builder) */
+    .schedule-builder-card {
+      background: var(--bg-surface-soft);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .builder-head {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2-5);
+      padding: var(--sp-3) var(--sp-4);
+      background: var(--bg-inset);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .builder-label {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .builder-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+      padding: var(--sp-4);
+    }
+
+    .tab-content {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+    }
+
+    .content-desc {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .custom-tab-head {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1-5);
+    }
+
+    .quick-cron-examples {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-1-5);
+      padding-top: var(--sp-1);
+    }
+
+    .quick-examples-label {
+      font-size: var(--text-xs);
+      font-weight: 500;
+      color: var(--text-subtle);
+    }
+
+    .example-chip,
+    .btn-shortcut {
+      padding: var(--sp-1) var(--sp-2);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .example-chip:hover,
+    .btn-shortcut:hover {
+      background: var(--tint-accent);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+
+    .input-inline-wrap {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+      font-size: var(--text-sm);
+      color: var(--text);
+    }
+
+    .wrap-weekly {
+      gap: var(--sp-4);
+    }
+
+    .select-inline {
+      width: auto;
+      min-width: 160px;
+    }
+
+    /* Bar pengalih basis zona waktu */
+    .tz-switch-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+      padding: var(--sp-2) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-sm);
+    }
+
+    .tz-prompt {
+      font-size: var(--text-xs);
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .time-inputs {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .field-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+    }
+
+    .field-item label {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
+
+    .time-sep-colon {
+      margin-top: var(--sp-4);
+      font-size: var(--text-lg);
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    /* Kotak grid 5 kolom crontab */
+    .crontab-grid-box {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: var(--sp-2);
+      padding: var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-sm);
+    }
+
+    .cron-field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1);
+    }
+
+    .cron-field-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: var(--text-2xs);
+      font-weight: 500;
+      color: var(--text-subtle);
+    }
+
+    .cron-field-input {
+      width: 100%;
+      padding: var(--sp-2);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-sm);
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .cron-field-input:disabled {
+      background: var(--bg-inset);
+      border-color: var(--border-soft);
+      color: var(--text);
+      opacity: 0.9;
+    }
+
+    .cron-field-sub {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+      text-align: center;
+    }
+
+    /* Kotak penjelasan jadwal bahasa manusia */
+    .explanation-box {
+      padding: var(--sp-3) var(--sp-4);
+      background: var(--tint-info);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+    }
+
+    .explanation-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+    }
+
+    .explanation-text {
+      font-size: var(--text-xs);
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    /* Peringatan keamanan perintah shell */
+    .security-warning {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      margin-top: var(--sp-1-5);
+      font-size: var(--text-xs);
+      color: var(--text-subtle);
+    }
+
+    .security-warning code {
+      padding: 2px var(--sp-1-5);
+      background: var(--bg-inset);
+      border-radius: var(--radius-xs);
+      color: var(--danger);
+    }
+
+    .checkbox-row {
+      padding-top: var(--sp-1);
+    }
+
+    .custom-chk {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    /* Input berkas log fisik (.log) */
+    .log-file-input-box {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      margin-top: var(--sp-1);
+      padding: var(--sp-3-5);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .shortcut-pills {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-1-5);
+      font-size: var(--text-xs);
+    }
+
+    .shortcut-label {
+      color: var(--text-subtle);
+    }
+
+    /* Penampil riwayat log pada modal */
+    .log-container {
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .log-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+    }
+
+    .log-item {
+      padding: var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .log-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--sp-2);
+      font-size: var(--text-xs);
+    }
+
+    .log-output {
+      max-height: 180px;
+      margin: 0;
+      padding: var(--sp-2-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
+    .file-log-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-4);
+      margin-bottom: var(--sp-3);
+      padding: var(--sp-2) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .file-path-info {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-muted);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: var(--sp-2);
+    }
+
+    .file-log-viewer {
+      max-height: 55vh;
+      padding: var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow-y: auto;
+    }
+
+    .file-log-pre {
+      margin: 0;
+      color: var(--text);
+      font-size: var(--text-xs);
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  }
+}
