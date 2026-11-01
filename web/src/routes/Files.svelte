@@ -21,6 +21,7 @@
   import CompressModal from './files/CompressModal.svelte';
   import NewItemModal from './files/NewItemModal.svelte';
   import RenameModal from './files/RenameModal.svelte';
+  import ChmodModal from './files/ChmodModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1907,75 +1908,14 @@
   />
 
   <!-- ═════════ MODAL: Hak Akses / PMSN (chmod) ═════════ -->
-  <Modal
+  <ChmodModal
     open={showChmodModal && !!chmodTarget}
-    title="Atur Perizinan (Permission / chmod)"
-    size="md"
-    onclose={() => (showChmodModal = false)}
-  >
-    {#if chmodTarget}
-      <div class="pmsn-body">
-        <p class="target-name mono">{chmodTarget.name}</p>
-        <div class="chmod-matrix">
-          <div class="matrix-col">
-            <h4>Owner</h4>
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.ownerR} /> Read (4)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.ownerW} /> Write (2)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.ownerX} /> Execute
-              (1)</label
-            >
-          </div>
-          <div class="matrix-col">
-            <h4>Group</h4>
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.groupR} /> Read (4)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.groupW} /> Write (2)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.groupX} /> Execute
-              (1)</label
-            >
-          </div>
-          <div class="matrix-col">
-            <h4>Public</h4>
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.publicR} /> Read (4)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.publicW} /> Write
-              (2)</label
-            >
-            <label
-              ><input type="checkbox" bind:checked={chmodPerms.publicX} /> Execute
-              (1)</label
-            >
-          </div>
-        </div>
-
-        <div class="octal-display">
-          <span>Nilai chmod:</span>
-          <span class="octal-badge mono">{chmodOctal}</span>
-        </div>
-      </div>
-    {/if}
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showChmodModal = false)}>Batal</button
-      >
-      <button type="button" class="btn btn--primary" onclick={handleSaveChmod}
-        >Terapkan Izin</button
-      >
-    {/snippet}
-  </Modal>
+    {chmodTarget}
+    bind:chmodPerms
+    {chmodOctal}
+    onClose={() => (showChmodModal = false)}
+    onSave={handleSaveChmod}
+  />
 
   <!-- ═════════ MODAL: Editor Berkas Teks ═════════ -->
   <!-- ═════════ MODAL: Modern Code Studio Editor ═════════ -->
