@@ -3,7 +3,9 @@
   import { apiFetch, formatBytes } from '../lib/api';
   import { copyText } from '../lib/utils/browser';
   import { confirmDialog, promptDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
+  import '../styles/pages/files.css';
 
   interface Props {
     onNotify: (msg: string) => void;
@@ -116,7 +118,7 @@
   let editorIsDirty = $derived(editorContent !== editorInitialContent);
   let editorLineCount = $derived(editorContent ? editorContent.split('\n').length : 1);
   let editorLines = $derived(Array.from({ length: editorLineCount }, (_, i) => i + 1));
-  let editorLangInfo = $derived(editorTarget ? detectFileLanguage(editorTarget.name) : { label: 'Plain Text', icon: 'ri-file-text-line', color: '#94a3b8' });
+  let editorLangInfo = $derived(editorTarget ? detectFileLanguage(editorTarget.name) : { label: 'Plain Text', icon: 'ri-file-text-line', color: 'var(--text-muted)' });
 
   let showUploadModal = $state(false);
   let uploadFiles = $state<FileList | null>(null);
@@ -634,28 +636,28 @@
   function detectFileLanguage(filename: string): { label: string; icon: string; color: string } {
     const lower = filename.toLowerCase();
     if (lower === '.htaccess' || (lower.endsWith('.conf') && lower.includes('apache'))) {
-      return { label: 'Apache Conf', icon: 'ri-server-line', color: '#f59e0b' };
+      return { label: 'Apache Conf', icon: 'ri-server-line', color: 'var(--warning)' };
     }
     if (lower.endsWith('.conf') || lower.includes('nginx')) {
-      return { label: 'Nginx Conf', icon: 'ri-server-line', color: '#10b981' };
+      return { label: 'Nginx Conf', icon: 'ri-server-line', color: 'var(--accent)' };
     }
-    if (lower.endsWith('.go')) return { label: 'Go', icon: 'ri-code-s-slash-line', color: '#00add8' };
-    if (lower.endsWith('.ts')) return { label: 'TypeScript', icon: 'ri-javascript-line', color: '#3178c6' };
-    if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return { label: 'JavaScript', icon: 'ri-javascript-line', color: '#f7df1e' };
-    if (lower.endsWith('.svelte')) return { label: 'Svelte', icon: 'ri-code-line', color: '#ff3e00' };
-    if (lower.endsWith('.json')) return { label: 'JSON', icon: 'ri-braces-line', color: '#cbd5e1' };
-    if (lower.endsWith('.html') || lower.endsWith('.htm')) return { label: 'HTML', icon: 'ri-html5-line', color: '#e34f26' };
-    if (lower.endsWith('.css')) return { label: 'CSS', icon: 'ri-css3-line', color: '#264de4' };
-    if (lower.endsWith('.scss') || lower.endsWith('.sass')) return { label: 'SCSS', icon: 'ri-css3-line', color: '#cc6699' };
-    if (lower.endsWith('.php')) return { label: 'PHP', icon: 'ri-code-line', color: '#777bb4' };
-    if (lower.endsWith('.py')) return { label: 'Python', icon: 'ri-terminal-box-line', color: '#3776ab' };
-    if (lower.endsWith('.sh') || lower.endsWith('.bash')) return { label: 'Shell Script', icon: 'ri-terminal-line', color: '#4ade80' };
-    if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return { label: 'YAML', icon: 'ri-file-list-2-line', color: '#cb171e' };
-    if (lower.endsWith('.sql')) return { label: 'SQL', icon: 'ri-database-2-line', color: '#00758f' };
-    if (lower.endsWith('.md')) return { label: 'Markdown', icon: 'ri-markdown-line', color: '#0284c7' };
-    if (lower.startsWith('.env')) return { label: 'Environment', icon: 'ri-key-2-line', color: '#eab308' };
-    if (lower.endsWith('.xml')) return { label: 'XML', icon: 'ri-code-line', color: '#f97316' };
-    return { label: 'Plain Text', icon: 'ri-file-text-line', color: '#94a3b8' };
+    if (lower.endsWith('.go')) return { label: 'Go', icon: 'ri-code-s-slash-line', color: 'var(--info)' };
+    if (lower.endsWith('.ts')) return { label: 'TypeScript', icon: 'ri-javascript-line', color: 'var(--info)' };
+    if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return { label: 'JavaScript', icon: 'ri-javascript-line', color: 'var(--warning)' };
+    if (lower.endsWith('.svelte')) return { label: 'Svelte', icon: 'ri-code-line', color: 'var(--danger)' };
+    if (lower.endsWith('.json')) return { label: 'JSON', icon: 'ri-braces-line', color: 'var(--text-secondary)' };
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return { label: 'HTML', icon: 'ri-html5-line', color: 'var(--warning)' };
+    if (lower.endsWith('.css')) return { label: 'CSS', icon: 'ri-css3-line', color: 'var(--info)' };
+    if (lower.endsWith('.scss') || lower.endsWith('.sass')) return { label: 'SCSS', icon: 'ri-css3-line', color: 'var(--violet)' };
+    if (lower.endsWith('.php')) return { label: 'PHP', icon: 'ri-code-line', color: 'var(--violet)' };
+    if (lower.endsWith('.py')) return { label: 'Python', icon: 'ri-terminal-box-line', color: 'var(--info)' };
+    if (lower.endsWith('.sh') || lower.endsWith('.bash')) return { label: 'Shell Script', icon: 'ri-terminal-line', color: 'var(--accent-strong)' };
+    if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return { label: 'YAML', icon: 'ri-file-list-2-line', color: 'var(--danger)' };
+    if (lower.endsWith('.sql')) return { label: 'SQL', icon: 'ri-database-2-line', color: 'var(--info)' };
+    if (lower.endsWith('.md')) return { label: 'Markdown', icon: 'ri-markdown-line', color: 'var(--info)' };
+    if (lower.startsWith('.env')) return { label: 'Environment', icon: 'ri-key-2-line', color: 'var(--warning)' };
+    if (lower.endsWith('.xml')) return { label: 'XML', icon: 'ri-code-line', color: 'var(--warning)' };
+    return { label: 'Plain Text', icon: 'ri-file-text-line', color: 'var(--text-muted)' };
   }
 
   // Buka editor modern untuk membaca dan menyunting berkas teks
@@ -974,7 +976,7 @@
   // Helper Ikon Berkas Berdasarkan Ekstensi
   function getFileIcon(item: FileItem): { icon: string; color: string } {
     if (item.is_dir) {
-      return { icon: 'ri-folder-fill', color: '#f59e0b' };
+      return { icon: 'ri-folder-fill', color: 'var(--warning)' };
     }
     const ext = item.ext.toLowerCase();
     switch (ext) {
@@ -987,27 +989,27 @@
       case '.html':
       case '.css':
       case '.json':
-        return { icon: 'ri-file-code-fill', color: '#10b981' };
+        return { icon: 'ri-file-code-fill', color: 'var(--accent)' };
       case '.png':
       case '.jpg':
       case '.jpeg':
       case '.svg':
       case '.webp':
       case '.gif':
-        return { icon: 'ri-image-fill', color: '#ec4899' };
+        return { icon: 'ri-image-fill', color: 'var(--violet)' };
       case '.zip':
       case '.tar':
       case '.gz':
       case '.rar':
-        return { icon: 'ri-file-zip-fill', color: '#f97316' };
+        return { icon: 'ri-file-zip-fill', color: 'var(--warning)' };
       case '.md':
       case '.txt':
       case '.log':
       case '.conf':
       case '.env':
-        return { icon: 'ri-file-text-fill', color: '#38bdf8' };
+        return { icon: 'ri-file-text-fill', color: 'var(--info)' };
       default:
-        return { icon: 'ri-file-3-fill', color: '#94a3b8' };
+        return { icon: 'ri-file-3-fill', color: 'var(--text-muted)' };
     }
   }
 
@@ -1028,7 +1030,7 @@
   });
 </script>
 
-<div class="files-view">
+<div class="pg-files files-view">
   <!-- ═════════ 1. Tab Bar Direktori (Multi-Tab aaPanel) ═════════ -->
   <div class="tabs-bar">
     <div class="tab-list">
@@ -1111,7 +1113,7 @@
   </div>
 
   <!-- ═════════ 3. Toolbar Aksi (Action Toolbar aaPanel Asli) ═════════ -->
-  <div class="action-toolbar">
+  <div class="toolbar action-toolbar">
     <div class="tool-left">
       <!-- 1. Dropdown Upload > -->
       <div class="tool-dropdown-wrap">
@@ -1363,24 +1365,24 @@
   <!-- ═════════ 4. Area Konten File (Table / Grid) ═════════ -->
   <div class="file-content-panel">
     {#if loading}
-      <div class="state-box">
+      <div class="state state--loading state-box">
         <i class="ri-loader-4-line spin-icon"></i>
         <p>Memuat direktori...</p>
       </div>
     {:else if filteredItems.length === 0}
-      <div class="state-box">
+      <div class="state state--empty state-box">
         <i class="ri-folder-open-line empty-icon"></i>
         <p>Direktori ini kosong atau berkas tidak ditemukan.</p>
         <div class="empty-actions">
-          <button class="btn btn-outline" onclick={() => openNewModal('file')}>+ Buat Berkas</button>
-          <button class="btn btn-outline" onclick={() => openNewModal('dir')}>+ Buat Folder</button>
-          <button class="btn btn-primary" onclick={() => (showUploadModal = true)}>Upload Berkas</button>
+          <button class="btn btn--secondary btn-outline" onclick={() => openNewModal('file')}>+ Buat Berkas</button>
+          <button class="btn btn--secondary btn-outline" onclick={() => openNewModal('dir')}>+ Buat Folder</button>
+          <button class="btn btn--primary btn-primary" onclick={() => (showUploadModal = true)}>Upload Berkas</button>
         </div>
       </div>
     {:else if viewMode === 'list'}
       <!-- Tampilan Tabel List Gaya aaPanel -->
-      <div class="table-container">
-        <table class="file-table">
+      <div class="table-wrap table-container">
+        <table class="table file-table">
           <thead>
             <tr>
               <th class="col-check">
@@ -1680,398 +1682,331 @@
   {/if}
 
   <!-- ═════════ MODAL: Remote Download ═════════ -->
-  {#if showRemoteModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Remote Download (Unduh URL)</h3>
-          <button class="btn-close" onclick={() => (showRemoteModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleRemoteDownload}>
-          <div class="field">
-            <label for="f-rem-url">URL Berkas</label>
-            <input
-              id="f-rem-url"
-              type="text"
-              placeholder="https://example.com/package.tar.gz"
-              bind:value={remoteUrl}
-              required
-            />
-          </div>
-          <div class="field">
-            <label for="f-rem-fname">Nama Berkas Simpan (Opsional)</label>
-            <input
-              id="f-rem-fname"
-              type="text"
-              placeholder="Kosongkan untuk nama otomatis dari URL"
-              bind:value={remoteFilename}
-            />
-          </div>
-          <div class="field-meta">
-            Tujuan: <span class="mono">{currentPath}</span>
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showRemoteModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary" disabled={remoteDownloading}>
-              {remoteDownloading ? 'Mengunduh...' : 'Mulai Unduh'}
-            </button>
-          </div>
-        </form>
+  <Modal open={showRemoteModal} title="Remote Download (Unduh URL)" size="md" onclose={() => (showRemoteModal = false)}>
+    <form id="form-remote-dl" onsubmit={handleRemoteDownload}>
+      <div class="field">
+        <label class="field__label" for="f-rem-url">URL Berkas</label>
+        <input
+          id="f-rem-url"
+          class="input"
+          type="text"
+          placeholder="https://example.com/package.tar.gz"
+          bind:value={remoteUrl}
+          required
+        />
       </div>
-    </div>
-  {/if}
+      <div class="field">
+        <label class="field__label" for="f-rem-fname">Nama Berkas Simpan (Opsional)</label>
+        <input
+          id="f-rem-fname"
+          class="input"
+          type="text"
+          placeholder="Kosongkan untuk nama otomatis dari URL"
+          bind:value={remoteFilename}
+        />
+      </div>
+      <div class="field-meta">
+        Tujuan: <span class="mono">{currentPath}</span>
+      </div>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showRemoteModal = false)}>Batal</button>
+      <button type="submit" form="form-remote-dl" class="btn btn--primary" disabled={remoteDownloading}>
+        {remoteDownloading ? 'Mengunduh...' : 'Mulai Unduh'}
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Soft Link (Symlink) ═════════ -->
-  {#if showSymlinkModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Buat Soft Link (Symbolic Link)</h3>
-          <button class="btn-close" onclick={() => (showSymlinkModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleCreateSymlink}>
-          <div class="field">
-            <label for="f-sym-tgt">Path Target (Asal Berkas/Folder)</label>
-            <input
-              id="f-sym-tgt"
-              type="text"
-              placeholder="/var/log/nginx atau C:\data\app"
-              bind:value={symlinkTarget}
-              required
-            />
-          </div>
-          <div class="field">
-            <label for="f-sym-name">Nama Tautan Link</label>
-            <input
-              id="f-sym-name"
-              type="text"
-              placeholder="contoh: nginx_logs_link"
-              bind:value={symlinkName}
-              required
-            />
-          </div>
-          <div class="field-meta">
-            Lokasi pembuatan: <span class="mono">{currentPath}</span>
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showSymlinkModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary" disabled={creatingSymlink}>
-              {creatingSymlink ? 'Membuat...' : 'Buat Tautan'}
-            </button>
-          </div>
-        </form>
+  <Modal open={showSymlinkModal} title="Buat Soft Link (Symbolic Link)" size="md" onclose={() => (showSymlinkModal = false)}>
+    <form id="form-symlink" onsubmit={handleCreateSymlink}>
+      <div class="field">
+        <label class="field__label" for="f-sym-tgt">Path Target (Asal Berkas/Folder)</label>
+        <input
+          id="f-sym-tgt"
+          class="input"
+          type="text"
+          placeholder="/var/log/nginx atau C:\data\app"
+          bind:value={symlinkTarget}
+          required
+        />
       </div>
-    </div>
-  {/if}
+      <div class="field">
+        <label class="field__label" for="f-sym-name">Nama Tautan Link</label>
+        <input
+          id="f-sym-name"
+          class="input"
+          type="text"
+          placeholder="contoh: nginx_logs_link"
+          bind:value={symlinkName}
+          required
+        />
+      </div>
+      <div class="field-meta">
+        Lokasi pembuatan: <span class="mono">{currentPath}</span>
+      </div>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showSymlinkModal = false)}>Batal</button>
+      <button type="submit" form="form-symlink" class="btn btn--primary" disabled={creatingSymlink}>
+        {creatingSymlink ? 'Membuat...' : 'Buat Tautan'}
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Search File Content ═════════ -->
-  {#if showSearchContentModal}
-    <div class="modal-backdrop">
-      <div class="modal-card modal-wide">
-        <div class="modal-header">
-          <h3>Search File Content (Cari Isi Berkas)</h3>
-          <button class="btn-close" onclick={() => (showSearchContentModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleSearchContent} class="search-content-form">
-          <div class="search-content-input-wrap">
-            <input
-              type="text"
-              placeholder="Masukkan kata kunci yang ingin dicari di dalam teks berkas..."
-              bind:value={contentSearchQuery}
-              required
-            />
-            <button type="submit" class="btn btn-primary" disabled={searchingContent}>
-              {searchingContent ? 'Mencari...' : 'Cari'}
-            </button>
-          </div>
-        </form>
-        <div class="search-results-box">
-          {#if searchingContent}
-            <div class="search-loading">Memindai berkas di {currentPath}...</div>
-          {:else if contentSearchResults.length === 0}
-            <div class="search-empty">Tidak ada hasil cocok atau belum dilakukan pencarian.</div>
-          {:else}
-            <div class="results-list">
-              {#each contentSearchResults as res}
-                <div class="result-row">
-                  <div class="res-head">
-                    <span class="res-file font-bold mono">{res.file}</span>
-                    <span class="res-line mono">Baris {res.line}</span>
-                  </div>
-                  <pre class="res-code mono">{res.text}</pre>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-primary" onclick={() => (showSearchContentModal = false)}>Tutup</button>
-        </div>
+  <Modal open={showSearchContentModal} title="Search File Content (Cari Isi Berkas)" size="lg" onclose={() => (showSearchContentModal = false)}>
+    <form onsubmit={handleSearchContent} class="search-content-form">
+      <div class="search-content-input-wrap">
+        <input
+          class="input"
+          type="text"
+          placeholder="Masukkan kata kunci yang ingin dicari di dalam teks berkas..."
+          bind:value={contentSearchQuery}
+          required
+        />
+        <button type="submit" class="btn btn--primary" disabled={searchingContent}>
+          {searchingContent ? 'Mencari...' : 'Cari'}
+        </button>
       </div>
+    </form>
+    <div class="search-results-box">
+      {#if searchingContent}
+        <div class="search-loading">Memindai berkas di {currentPath}...</div>
+      {:else if contentSearchResults.length === 0}
+        <div class="search-empty">Tidak ada hasil cocok atau belum dilakukan pencarian.</div>
+      {:else}
+        <div class="results-list">
+          {#each contentSearchResults as res}
+            <div class="result-row">
+              <div class="res-head">
+                <span class="res-file font-bold mono">{res.file}</span>
+                <span class="res-line mono">Baris {res.line}</span>
+              </div>
+              <pre class="res-code mono">{res.text}</pre>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
-  {/if}
+    {#snippet footer()}
+      <button class="btn btn--primary" onclick={() => (showSearchContentModal = false)}>Tutup</button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Manajemen Favorit ═════════ -->
-  {#if showFavManageModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Favorite Management</h3>
-          <button class="btn-close" onclick={() => (showFavManageModal = false)}>&times;</button>
-        </div>
-        <div class="fav-manager-body">
-          <div class="fav-add-action">
-            <button class="btn btn-outline w-full" onclick={addCurrentToFavorites}>
-              + Tambahkan Folder Saat Ini ke Favorit
+  <Modal open={showFavManageModal} title="Favorite Management" size="md" onclose={() => (showFavManageModal = false)}>
+    <div class="fav-manager-body">
+      <div class="fav-add-action">
+        <button class="btn btn--secondary w-full" onclick={addCurrentToFavorites}>
+          + Tambahkan Folder Saat Ini ke Favorit
+        </button>
+      </div>
+      <div class="fav-list">
+        {#each customFavorites as fav, idx}
+          <div class="fav-row">
+            <div>
+              <div class="fav-row-name font-bold">{fav.name}</div>
+              <div class="fav-row-path mono text-muted">{fav.path || 'Root'}</div>
+            </div>
+            <button class="btn-icon link-danger" onclick={() => removeFavorite(idx)} title="Hapus">
+              <i class="ri-delete-bin-line"></i>
             </button>
           </div>
-          <div class="fav-list">
-            {#each customFavorites as fav, idx}
-              <div class="fav-row">
-                <div>
-                  <div class="fav-row-name font-bold">{fav.name}</div>
-                  <div class="fav-row-path mono text-muted">{fav.path || 'Root'}</div>
-                </div>
-                <button class="btn-icon link-danger" onclick={() => removeFavorite(idx)} title="Hapus">
-                  <i class="ri-delete-bin-line"></i>
-                </button>
-              </div>
-            {/each}
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-primary" onclick={() => (showFavManageModal = false)}>Selesai</button>
-        </div>
+        {/each}
       </div>
     </div>
-  {/if}
+    {#snippet footer()}
+      <button class="btn btn--primary" onclick={() => (showFavManageModal = false)}>Selesai</button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Cloud Storage Connector ═════════ -->
-  {#if showCloudStorageModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>{selectedCloud} Connector</h3>
-          <button class="btn-close" onclick={() => (showCloudStorageModal = false)}>&times;</button>
+  <Modal open={showCloudStorageModal} title={`${selectedCloud} Connector`} size="md" onclose={() => (showCloudStorageModal = false)}>
+    <div class="cloud-info-body">
+      <i class="ri-cloud-line cloud-huge-icon"></i>
+      <p>Konektor penyimpanan awan untuk <strong>{selectedCloud}</strong> telah terintegrasi.</p>
+      <div class="field">
+        <label class="field__label" for="f-cloud-ep">Storage Bucket / Endpoint</label>
+        <input id="f-cloud-ep" class="input" type="text" placeholder="misal: my-backup-bucket atau ftp.domain.com" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="f-cloud-key">Access Key / Credential</label>
+        <input id="f-cloud-key" class="input" type="password" placeholder="API Key / Password" />
+      </div>
+    </div>
+    {#snippet footer()}
+      <button class="btn btn--ghost" onclick={() => (showCloudStorageModal = false)}>Batal</button>
+      <button class="btn btn--primary" onclick={() => { showCloudStorageModal = false; onNotify(`Konfigurasi ${selectedCloud} tersimpan`); }}>
+        Hubungkan Sekarang
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- ═════════ MODAL: Properties (Detail Metadata Berkas) ═════════ -->
+  <Modal open={showPropertiesModal && !!propTarget} title={`Properties: ${propTarget?.name || ''}`} size="md" onclose={() => (showPropertiesModal = false)}>
+    {#if propTarget}
+      <div class="prop-table">
+        <div class="prop-row">
+          <span class="prop-label">Name:</span>
+          <span class="prop-val font-bold">{propTarget.name}</span>
         </div>
-        <div class="cloud-info-body">
-          <i class="ri-cloud-line cloud-huge-icon"></i>
-          <p>Konektor penyimpanan awan untuk <strong>{selectedCloud}</strong> telah terintegrasi.</p>
-          <div class="field">
-            <label for="f-cloud-ep">Storage Bucket / Endpoint</label>
-            <input id="f-cloud-ep" type="text" placeholder="misal: my-backup-bucket atau ftp.domain.com" />
-          </div>
-          <div class="field">
-            <label for="f-cloud-key">Access Key / Credential</label>
-            <input id="f-cloud-key" type="password" placeholder="API Key / Password" />
-          </div>
+        <div class="prop-row">
+          <span class="prop-label">Full Path:</span>
+          <span class="prop-val mono select-all">{propTarget.path}</span>
         </div>
-        <div class="modal-foot">
-          <button class="btn btn-ghost" onclick={() => (showCloudStorageModal = false)}>Batal</button>
-          <button class="btn btn-primary" onclick={() => { showCloudStorageModal = false; onNotify(`Konfigurasi ${selectedCloud} tersimpan`); }}>
-            Hubungkan Sekarang
+        <div class="prop-row">
+          <span class="prop-label">Type:</span>
+          <span class="prop-val">{propTarget.is_dir ? 'Directory (Folder)' : `File (${propTarget.ext || 'Plain'})`}</span>
+        </div>
+        <div class="prop-row">
+          <span class="prop-label">Size:</span>
+          <span class="prop-val mono">{formatBytes(propTarget.size)} ({propTarget.size} bytes)</span>
+        </div>
+        <div class="prop-row">
+          <span class="prop-label">PMSN / Permissions:</span>
+          <span class="prop-val mono badge-green">{propTarget.mode}</span>
+        </div>
+        <div class="prop-row">
+          <span class="prop-label">Owner:</span>
+          <span class="prop-val mono">{propTarget.owner}</span>
+        </div>
+        <div class="prop-row">
+          <span class="prop-label">Modified Time:</span>
+          <span class="prop-val mono">{propTarget.mod_time}</span>
+        </div>
+      </div>
+    {/if}
+    {#snippet footer()}
+      <button class="btn btn--primary" onclick={() => (showPropertiesModal = false)}>Tutup</button>
+    {/snippet}
+  </Modal>
+
+  <!-- ═════════ MODAL: Kompresi Arsip Zip ═════════ -->
+  <Modal open={showCompressModal && !!compressTarget} title="Kompresi Berkas ke Zip" size="md" onclose={() => (showCompressModal = false)}>
+    {#if compressTarget}
+      <form id="form-compress" onsubmit={handleExecuteCompress}>
+        <div class="field">
+          <label class="field__label" for="f-zip-src">Item Sumber</label>
+          <input id="f-zip-src" class="input" type="text" value={compressTarget.name} disabled />
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-zip-name">Nama Arsip Zip</label>
+          <input id="f-zip-name" class="input" type="text" bind:value={compressZipName} required />
+        </div>
+        <div class="field-meta">
+          Lokasi output: <span class="mono">{currentPath}</span>
+        </div>
+      </form>
+    {/if}
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showCompressModal = false)}>Batal</button>
+      <button type="submit" form="form-compress" class="btn btn--primary" disabled={compressing}>
+        {compressing ? 'Mengompresi...' : 'Mulai Kompresi'}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- ═════════ MODAL: Buat File / Folder Baru ═════════ -->
+  <Modal open={showNewModal} title={`Buat ${newType === 'dir' ? 'Folder' : 'Berkas'} Baru`} size="md" onclose={() => (showNewModal = false)}>
+    <form id="form-create-new" onsubmit={handleCreateNew}>
+      <div class="field">
+        <label class="field__label" for="f-new-type">Tipe Item</label>
+        <div class="type-segmented">
+          <button
+            type="button"
+            class="seg-btn {newType === 'file' ? 'active' : ''}"
+            onclick={() => (newType = 'file')}
+          >
+            <i class="ri-file-line"></i> Berkas (File)
+          </button>
+          <button
+            type="button"
+            class="seg-btn {newType === 'dir' ? 'active' : ''}"
+            onclick={() => (newType = 'dir')}
+          >
+            <i class="ri-folder-line"></i> Direktori (Folder)
           </button>
         </div>
       </div>
-    </div>
-  {/if}
-
-  <!-- ═════════ MODAL: Properties (Detail Metadata Berkas) ═════════ -->
-  {#if showPropertiesModal && propTarget}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Properties: {propTarget.name}</h3>
-          <button class="btn-close" onclick={() => (showPropertiesModal = false)}>&times;</button>
-        </div>
-        <div class="prop-table">
-          <div class="prop-row">
-            <span class="prop-label">Name:</span>
-            <span class="prop-val font-bold">{propTarget.name}</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Full Path:</span>
-            <span class="prop-val mono select-all">{propTarget.path}</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Type:</span>
-            <span class="prop-val">{propTarget.is_dir ? 'Directory (Folder)' : `File (${propTarget.ext || 'Plain'})`}</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Size:</span>
-            <span class="prop-val mono">{formatBytes(propTarget.size)} ({propTarget.size} bytes)</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">PMSN / Permissions:</span>
-            <span class="prop-val mono badge-green">{propTarget.mode}</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Owner:</span>
-            <span class="prop-val mono">{propTarget.owner}</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Modified Time:</span>
-            <span class="prop-val mono">{propTarget.mod_time}</span>
-          </div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-primary" onclick={() => (showPropertiesModal = false)}>Tutup</button>
-        </div>
+      <div class="field">
+        <label class="field__label" for="f-new-name">Nama {newType === 'dir' ? 'Folder' : 'Berkas'}</label>
+        <input
+          id="f-new-name"
+          class="input"
+          type="text"
+          placeholder={newType === 'dir' ? 'contoh: config atau assets' : 'contoh: index.html atau .env'}
+          bind:value={newName}
+          required
+        />
       </div>
-    </div>
-  {/if}
-
-  <!-- ═════════ MODAL: Kompresi Arsip Zip ═════════ -->
-  {#if showCompressModal && compressTarget}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Kompresi Berkas ke Zip</h3>
-          <button class="btn-close" onclick={() => (showCompressModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleExecuteCompress}>
-          <div class="field">
-            <label for="f-zip-src">Item Sumber</label>
-            <input id="f-zip-src" type="text" value={compressTarget.name} disabled />
-          </div>
-          <div class="field">
-            <label for="f-zip-name">Nama Arsip Zip</label>
-            <input id="f-zip-name" type="text" bind:value={compressZipName} required />
-          </div>
-          <div class="field-meta">
-            Lokasi output: <span class="mono">{currentPath}</span>
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showCompressModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary" disabled={compressing}>
-              {compressing ? 'Mengompresi...' : 'Mulai Kompresi'}
-            </button>
-          </div>
-        </form>
+      <div class="field-meta">
+        Lokasi: <span class="mono">{currentPath}</span>
       </div>
-    </div>
-  {/if}
-
-  <!-- ═════════ MODAL: Buat File / Folder Baru ═════════ -->
-  {#if showNewModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Buat {newType === 'dir' ? 'Folder' : 'Berkas'} Baru</h3>
-          <button class="btn-close" onclick={() => (showNewModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleCreateNew}>
-          <div class="field">
-            <label for="f-new-type">Tipe Item</label>
-            <div class="type-segmented">
-              <button
-                type="button"
-                class="seg-btn {newType === 'file' ? 'active' : ''}"
-                onclick={() => (newType = 'file')}
-              >
-                <i class="ri-file-line"></i> Berkas (File)
-              </button>
-              <button
-                type="button"
-                class="seg-btn {newType === 'dir' ? 'active' : ''}"
-                onclick={() => (newType = 'dir')}
-              >
-                <i class="ri-folder-line"></i> Direktori (Folder)
-              </button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="f-new-name">Nama {newType === 'dir' ? 'Folder' : 'Berkas'}</label>
-            <input
-              id="f-new-name"
-              type="text"
-              placeholder={newType === 'dir' ? 'contoh: config atau assets' : 'contoh: index.html atau .env'}
-              bind:value={newName}
-              required
-            />
-          </div>
-          <div class="field-meta">
-            Lokasi: <span class="mono">{currentPath}</span>
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showNewModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary">Buat Sekarang</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {/if}
+    </form>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showNewModal = false)}>Batal</button>
+      <button type="submit" form="form-create-new" class="btn btn--primary">Buat Sekarang</button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Ganti Nama (Rename) ═════════ -->
-  {#if showRenameModal && renameTarget}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Ganti Nama (Rename)</h3>
-          <button class="btn-close" onclick={() => (showRenameModal = false)}>&times;</button>
+  <Modal open={showRenameModal && !!renameTarget} title="Ganti Nama (Rename)" size="md" onclose={() => (showRenameModal = false)}>
+    {#if renameTarget}
+      <form id="form-rename" onsubmit={handleRename}>
+        <div class="field">
+          <label class="field__label" for="f-old-name">Nama Saat Ini</label>
+          <input id="f-old-name" class="input" type="text" value={renameTarget.name} disabled />
         </div>
-        <form onsubmit={handleRename}>
-          <div class="field">
-            <label for="f-old-name">Nama Saat Ini</label>
-            <input id="f-old-name" type="text" value={renameTarget.name} disabled />
-          </div>
-          <div class="field">
-            <label for="f-new-rname">Nama Baru</label>
-            <input id="f-new-rname" type="text" bind:value={renameNewName} required />
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showRenameModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary">Simpan Nama Baru</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {/if}
+        <div class="field">
+          <label class="field__label" for="f-new-rname">Nama Baru</label>
+          <input id="f-new-rname" class="input" type="text" bind:value={renameNewName} required />
+        </div>
+      </form>
+    {/if}
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showRenameModal = false)}>Batal</button>
+      <button type="submit" form="form-rename" class="btn btn--primary">Simpan Nama Baru</button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Hak Akses / PMSN (chmod) ═════════ -->
-  {#if showChmodModal && chmodTarget}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Atur Perizinan (Permission / chmod)</h3>
-          <button class="btn-close" onclick={() => (showChmodModal = false)}>&times;</button>
+  <Modal open={showChmodModal && !!chmodTarget} title="Atur Perizinan (Permission / chmod)" size="md" onclose={() => (showChmodModal = false)}>
+    {#if chmodTarget}
+      <div class="pmsn-body">
+        <p class="target-name mono">{chmodTarget.name}</p>
+        <div class="chmod-matrix">
+          <div class="matrix-col">
+            <h4>Owner</h4>
+            <label><input type="checkbox" bind:checked={chmodPerms.ownerR} /> Read (4)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.ownerW} /> Write (2)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.ownerX} /> Execute (1)</label>
+          </div>
+          <div class="matrix-col">
+            <h4>Group</h4>
+            <label><input type="checkbox" bind:checked={chmodPerms.groupR} /> Read (4)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.groupW} /> Write (2)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.groupX} /> Execute (1)</label>
+          </div>
+          <div class="matrix-col">
+            <h4>Public</h4>
+            <label><input type="checkbox" bind:checked={chmodPerms.publicR} /> Read (4)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.publicW} /> Write (2)</label>
+            <label><input type="checkbox" bind:checked={chmodPerms.publicX} /> Execute (1)</label>
+          </div>
         </div>
-        <div class="pmsn-body">
-          <p class="target-name mono">{chmodTarget.name}</p>
-          <div class="chmod-matrix">
-            <div class="matrix-col">
-              <h4>Owner</h4>
-              <label><input type="checkbox" bind:checked={chmodPerms.ownerR} /> Read (4)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.ownerW} /> Write (2)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.ownerX} /> Execute (1)</label>
-            </div>
-            <div class="matrix-col">
-              <h4>Group</h4>
-              <label><input type="checkbox" bind:checked={chmodPerms.groupR} /> Read (4)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.groupW} /> Write (2)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.groupX} /> Execute (1)</label>
-            </div>
-            <div class="matrix-col">
-              <h4>Public</h4>
-              <label><input type="checkbox" bind:checked={chmodPerms.publicR} /> Read (4)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.publicW} /> Write (2)</label>
-              <label><input type="checkbox" bind:checked={chmodPerms.publicX} /> Execute (1)</label>
-            </div>
-          </div>
 
-          <div class="octal-display">
-            <span>Nilai chmod:</span>
-            <span class="octal-badge mono">{chmodOctal}</span>
-          </div>
-
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showChmodModal = false)}>Batal</button>
-            <button type="button" class="btn btn-primary" onclick={handleSaveChmod}>Terapkan Izin</button>
-          </div>
+        <div class="octal-display">
+          <span>Nilai chmod:</span>
+          <span class="octal-badge mono">{chmodOctal}</span>
         </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showChmodModal = false)}>Batal</button>
+      <button type="button" class="btn btn--primary" onclick={handleSaveChmod}>Terapkan Izin</button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Editor Berkas Teks ═════════ -->
   <!-- ═════════ MODAL: Modern Code Studio Editor ═════════ -->
@@ -2327,1586 +2262,29 @@
   {/if}
 
   <!-- ═════════ MODAL: Upload Berkas ═════════ -->
-  {#if showUploadModal}
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Upload Berkas ke Server</h3>
-          <button class="btn-close" onclick={() => (showUploadModal = false)}>&times;</button>
-        </div>
-        <form onsubmit={handleUploadSubmit}>
-          <div class="field">
-            <label for="f-upload-dest">Direktori Tujuan</label>
-            <input id="f-upload-dest" type="text" value={currentPath} disabled />
-          </div>
-          <div class="field">
-            <label for="f-upload-input">Pilih Berkas</label>
-            <input
-              id="f-upload-input"
-              type="file"
-              multiple
-              onchange={(e) => (uploadFiles = (e.target as HTMLInputElement).files)}
-              required
-            />
-          </div>
-          <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" onclick={() => (showUploadModal = false)}>Batal</button>
-            <button type="submit" class="btn btn-primary" disabled={uploadSubmitting}>
-              {uploadSubmitting ? 'Mengunggah...' : 'Mulai Upload'}
-            </button>
-          </div>
-        </form>
+  <Modal open={showUploadModal} title="Upload Berkas ke Server" size="md" onclose={() => (showUploadModal = false)}>
+    <form id="form-upload-files" onsubmit={handleUploadSubmit}>
+      <div class="field">
+        <label class="field__label" for="f-upload-dest">Direktori Tujuan</label>
+        <input id="f-upload-dest" class="input" type="text" value={currentPath} disabled />
       </div>
-    </div>
-  {/if}
+      <div class="field">
+        <label class="field__label" for="f-upload-input">Pilih Berkas</label>
+        <input
+          id="f-upload-input"
+          class="input"
+          type="file"
+          multiple
+          onchange={(e) => (uploadFiles = (e.target as HTMLInputElement).files)}
+          required
+        />
+      </div>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showUploadModal = false)}>Batal</button>
+      <button type="submit" form="form-upload-files" class="btn btn--primary" disabled={uploadSubmitting}>
+        {uploadSubmitting ? 'Mengunggah...' : 'Mulai Upload'}
+      </button>
+    {/snippet}
+  </Modal>
 </div>
-
-<style>
-  .files-view {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    height: 100%;
-  }
-
-  /* 1. Multi-Tab Bar */
-  .tabs-bar {
-    display: flex;
-    align-items: center;
-    background: var(--bg-surface);
-    border-radius: 8px;
-    padding: 0.25rem 0.5rem;
-    border: 1px solid var(--border);
-  }
-  .tab-list {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    overflow-x: auto;
-  }
-  .tab-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--bg-hover);
-    color: var(--text-muted);
-    padding: 0.35rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    border: 1px solid transparent;
-    user-select: none;
-    transition: all 0.15s ease;
-  }
-  .tab-item:hover {
-    color: var(--text);
-    background: var(--bg-active);
-  }
-  .tab-item.active {
-    background: var(--bg-raised);
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 27%, transparent);
-    font-weight: 600;
-  }
-  .tab-icon {
-    font-size: 0.95rem;
-    color: var(--warning);
-  }
-  .tab-close {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    font-size: 1rem;
-    cursor: pointer;
-    line-height: 1;
-    padding: 0 0.15rem;
-  }
-  .tab-close:hover {
-    color: var(--danger-strong);
-  }
-  .btn-add-tab {
-    background: transparent;
-    border: 1px dashed var(--border-strong);
-    color: var(--text-muted);
-    padding: 0.3rem 0.5rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    display: flex;
-    align-items: center;
-  }
-  .btn-add-tab:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-
-  /* 2. Breadcrumbs & Search */
-  .nav-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.4rem 0.6rem;
-  }
-  .nav-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1;
-    min-width: 0;
-  }
-  .btn-icon {
-    background: var(--bg-active);
-    border: 1px solid var(--border-strong);
-    color: var(--text-secondary);
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  .btn-icon:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .btn-icon:not(:disabled):hover {
-    background: var(--border-strong);
-    color: var(--text);
-  }
-  .breadcrumb-trail {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.25rem 0.6rem;
-    flex: 1;
-    overflow-x: auto;
-    white-space: nowrap;
-    font-size: 0.8rem;
-  }
-  .path-icon {
-    color: var(--warning);
-    font-size: 0.95rem;
-  }
-  .crumb-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0.1rem 0.25rem;
-    border-radius: 4px;
-    font-size: 0.8rem;
-  }
-  .crumb-btn:hover {
-    color: var(--accent);
-    background: var(--bg-active);
-  }
-  .crumb-sep {
-    color: var(--text-disabled);
-    font-size: 0.75rem;
-  }
-  .nav-right {
-    display: flex;
-    align-items: center;
-  }
-  .search-box {
-    display: flex;
-    align-items: center;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0 0.5rem;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-  .search-box:focus-within {
-    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
-  }
-  .search-icon {
-    color: var(--text-subtle);
-    font-size: 0.85rem;
-  }
-  .search-box input {
-    background: transparent;
-    border: none;
-    padding: 0.35rem 0.5rem;
-    color: var(--text);
-    font-size: 0.78rem;
-    outline: none;
-    width: 200px;
-  }
-  .btn-clear-search {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0.1rem;
-    display: flex;
-    align-items: center;
-  }
-  .btn-clear-search:hover {
-    color: var(--text);
-  }
-
-  /* 3. Action Toolbar */
-  .action-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.35rem 0.6rem;
-    flex-wrap: wrap;
-  }
-  .tool-left, .tool-right {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .tool-dropdown-wrap {
-    position: relative;
-    display: inline-block;
-  }
-  .tool-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    padding: 0.35rem 0.65rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.15s ease;
-  }
-  .tool-btn:hover {
-    background: var(--bg-active);
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-  .tool-btn.is-active {
-    background: var(--bg-raised);
-    border-color: var(--accent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .toolbar-dropdown-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
-    min-width: 200px;
-    z-index: 999;
-    padding: 0.35rem 0;
-    display: flex;
-    flex-direction: column;
-    animation: fadeIn 0.12s ease;
-  }
-  .tb-menu-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.65rem;
-    padding: 0.45rem 0.85rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    transition: background 0.1s ease, color 0.1s ease;
-  }
-  .tb-menu-item:hover:not(:disabled) {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-  .tb-menu-item:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .tb-menu-item.item-danger:hover:not(:disabled) {
-    background: var(--bg-active);
-    color: var(--danger-strong);
-  }
-  .tb-item-left {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .badge-vip {
-    color: var(--warning);
-    font-size: 0.8rem;
-  }
-
-  .tool-primary {
-    background: var(--bg-raised);
-    border-color: color-mix(in srgb, var(--accent) 33%, transparent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .tool-primary:hover {
-    background: var(--bg-active);
-    color: var(--accent-strong);
-  }
-  .paste-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-  }
-  .btn-cancel-clip {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0 0.2rem;
-  }
-  .btn-cancel-clip:hover {
-    color: var(--danger-strong);
-  }
-
-  /* View Mode Switcher */
-  .view-toggle {
-    display: flex;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .toggle-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-  .toggle-btn.active {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-
-  /* 4. Content Panel & Table */
-  .file-content-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    min-height: 480px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .table-container {
-    overflow-x: auto;
-    width: 100%;
-  }
-  .file-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.78rem;
-    text-align: left;
-  }
-  .file-table th {
-    background: var(--bg-raised);
-    color: var(--text-muted);
-    padding: 0.55rem 0.75rem;
-    font-weight: 600;
-    border-bottom: 1px solid var(--border);
-    user-select: none;
-  }
-  .file-table td {
-    padding: 0.45rem 0.75rem;
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-secondary);
-  }
-  .file-table tr:hover {
-    background: var(--bg-hover);
-  }
-  .selected-row {
-    background: var(--bg-raised) !important;
-  }
-  .highlight-row {
-    background: var(--bg-active) !important;
-  }
-  .col-check {
-    width: 32px;
-    text-align: center;
-  }
-  .col-name {
-    min-width: 240px;
-  }
-  .name-cell {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-  }
-  .name-cell:hover .item-name {
-    color: var(--accent);
-    text-decoration: underline;
-  }
-  .item-icon {
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
-  .item-name {
-    color: var(--text);
-    font-weight: 500;
-  }
-  .dir-name {
-    font-weight: 600;
-  }
-  .badge-prot {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-  }
-  .pmsn-pill {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--accent);
-    font-family: 'Fira Code', monospace;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.4rem;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .pmsn-pill:hover {
-    border-color: var(--accent);
-  }
-  .calc-text {
-    color: var(--accent);
-    cursor: pointer;
-  }
-  .col-ops {
-    width: 170px;
-    text-align: right;
-  }
-
-  /* Operation Row Styling */
-  .row-operations {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.4rem;
-    position: relative;
-  }
-  .hover-shortcuts {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.15s ease, visibility 0.15s ease;
-  }
-  .file-table tr:hover .hover-shortcuts {
-    opacity: 1;
-    visibility: visible;
-  }
-  .quick-icon-btn {
-    background: var(--bg-active);
-    border: 1px solid var(--border-strong);
-    color: var(--text-secondary);
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 0.78rem;
-    transition: all 0.12s ease;
-  }
-  .quick-icon-btn:hover {
-    background: var(--bg-active);
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-  .quick-icon-btn.link-danger:hover {
-    background: var(--bg-active);
-    color: var(--danger-strong);
-    border-color: var(--danger);
-  }
-
-  .btn-operate {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--accent);
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    transition: all 0.12s ease;
-  }
-  .btn-operate:hover, .btn-operate.is-active {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 27%, transparent);
-  }
-  .btn-operate i {
-    font-size: 0.9rem;
-    transition: transform 0.15s ease;
-  }
-  .btn-operate.is-active i {
-    transform: rotate(180deg);
-  }
-
-  /* Floating Dropdown Menu */
-  .operate-dropdown {
-    position: fixed;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
-    min-width: 215px;
-    z-index: 9999;
-    padding: 0.35rem 0;
-    display: flex;
-    flex-direction: column;
-    animation: fadeIn 0.12s ease;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .operate-item {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.45rem 0.85rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 0.78rem;
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    transition: background 0.1s ease, color 0.1s ease;
-  }
-  .operate-item:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-  .operate-item.item-danger:hover {
-    background: var(--bg-active);
-    color: var(--danger-strong);
-  }
-  .operate-divider {
-    height: 1px;
-    background: var(--bg-active);
-    margin: 0.3rem 0;
-  }
-  .op-icon {
-    font-size: 1rem;
-    width: 18px;
-    text-align: center;
-  }
-  .icon-amber { color: var(--warning); }
-  .icon-blue { color: var(--info); }
-  .icon-green { color: var(--accent); }
-  .icon-cyan { color: var(--info); }
-  .icon-yellow { color: var(--warning); }
-
-  /* Grid Mode */
-  .grid-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 0.75rem;
-    padding: 1rem;
-  }
-  .grid-card {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.6rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    position: relative;
-  }
-  .grid-card:hover {
-    background: var(--bg-active);
-    border-color: var(--border-strong);
-  }
-  .selected-card {
-    border-color: var(--accent);
-    background: var(--bg-raised);
-  }
-  .card-top {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .card-operate-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0 0.2rem;
-  }
-  .card-operate-btn:hover {
-    color: var(--accent);
-  }
-  .card-icon {
-    font-size: 2.2rem;
-    margin: 0.5rem 0;
-  }
-  .card-name {
-    font-size: 0.75rem;
-    color: var(--text);
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-  }
-  .card-size {
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    margin-top: 0.2rem;
-  }
-
-  /* Loading & Empty States */
-  .state-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 4rem 1rem;
-    color: var(--text-subtle);
-    gap: 0.75rem;
-  }
-  .spin-icon {
-    font-size: 1.8rem;
-    animation: spin 1s linear infinite;
-    color: var(--accent);
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  .empty-icon {
-    font-size: 3rem;
-    color: var(--text-disabled);
-  }
-  .empty-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  /* 5. Footer Bar */
-  .footer-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0.75rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .foot-left {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .foot-left strong {
-    color: var(--text);
-  }
-  .foot-right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .pager {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .btn-page {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .btn-page:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  .page-num {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--accent);
-    font-weight: 600;
-    padding: 0.15rem 0.55rem;
-    border-radius: 4px;
-  }
-  .select-pagesize {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    border-radius: 4px;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.72rem;
-  }
-  .goto-box {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .goto-box input {
-    width: 44px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    padding: 0.1rem 0.3rem;
-    font-size: 0.72rem;
-    text-align: center;
-  }
-  .total-badge {
-    background: var(--bg-active);
-    color: var(--text-muted);
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-  }
-
-  /* Modal Styles */
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    backdrop-filter: blur(4px);
-    padding: 1rem;
-  }
-  .modal-card {
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 10px;
-    width: 100%;
-    max-width: 460px;
-    padding: 1.25rem;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
-  }
-  .modal-wide {
-    max-width: 680px;
-  }
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .modal-header h3 {
-    font-size: 1rem;
-    color: var(--text);
-  }
-  .btn-close {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.3rem;
-    cursor: pointer;
-  }
-  .field {
-    margin-bottom: 1rem;
-  }
-  .field label {
-    display: block;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-bottom: 0.35rem;
-  }
-  .field input[type="text"], .field input[type="file"], .field input[type="password"] {
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.45rem 0.65rem;
-    color: var(--text);
-    font-size: 0.8rem;
-    outline: none;
-  }
-  .field input:disabled {
-    opacity: 0.6;
-    background: var(--bg-inset);
-  }
-  .type-segmented {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-  }
-  .seg-btn {
-    background: var(--bg-active);
-    border: 1px solid var(--border-strong);
-    color: var(--text-muted);
-    padding: 0.4rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-  }
-  .seg-btn.active {
-    background: color-mix(in srgb, var(--accent) 13%, transparent);
-    border-color: var(--accent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .field-meta {
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-    margin-bottom: 1rem;
-    word-break: break-all;
-  }
-  .modal-foot {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-  }
-  .btn {
-    padding: 0.45rem 0.85rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    cursor: pointer;
-    font-weight: 600;
-    border: none;
-  }
-  .btn-primary {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-  .btn-primary:hover {
-    background: var(--accent);
-  }
-  .btn-ghost {
-    background: transparent;
-    color: var(--text-muted);
-  }
-  .btn-ghost:hover {
-    color: var(--text);
-    background: var(--bg-active);
-  }
-  .btn-outline {
-    background: transparent;
-    border: 1px solid var(--border-strong);
-    color: var(--text-secondary);
-  }
-  .w-full {
-    width: 100%;
-  }
-
-  /* Search File Content */
-  .search-content-form {
-    margin-bottom: 1rem;
-  }
-  .search-content-input-wrap {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .search-content-input-wrap input {
-    flex: 1;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.45rem 0.65rem;
-    color: var(--text);
-    font-size: 0.8rem;
-  }
-  .search-results-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    max-height: 320px;
-    overflow-y: auto;
-    padding: 0.5rem;
-  }
-  .search-loading, .search-empty {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-subtle);
-    font-size: 0.78rem;
-  }
-  .results-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .result-row {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.45rem 0.65rem;
-  }
-  .res-head {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 0.25rem;
-  }
-  .res-file {
-    color: var(--info);
-    font-size: 0.75rem;
-  }
-  .res-line {
-    color: var(--accent);
-    font-size: 0.72rem;
-  }
-  .res-code {
-    background: var(--bg-inset);
-    padding: 0.35rem 0.5rem;
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    overflow-x: auto;
-    margin: 0;
-  }
-
-  /* Favorite Manager */
-  .fav-manager-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  .fav-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    max-height: 240px;
-    overflow-y: auto;
-  }
-  .fav-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg-surface);
-    padding: 0.4rem 0.65rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-  }
-  .fav-row-name {
-    font-size: 0.78rem;
-    color: var(--text);
-  }
-  .fav-row-path {
-    font-size: 0.7rem;
-  }
-
-  /* Cloud Storage Body */
-  .cloud-info-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    text-align: center;
-  }
-  .cloud-huge-icon {
-    font-size: 3rem;
-    color: var(--info);
-    margin: 0.5rem 0;
-  }
-  .cloud-info-body p {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-
-  /* Properties Table */
-  .prop-table {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.75rem;
-    font-size: 0.78rem;
-  }
-  .prop-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 0.4rem;
-  }
-  .prop-label {
-    color: var(--text-subtle);
-    font-size: 0.7rem;
-    text-transform: uppercase;
-  }
-  .prop-val {
-    color: var(--text);
-    word-break: break-all;
-  }
-  .badge-green {
-    color: var(--accent);
-    font-weight: 700;
-  }
-
-  /* PMSN Matrix */
-  .pmsn-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  .target-name {
-    font-size: 0.8rem;
-    color: var(--info);
-    background: var(--bg-surface);
-    padding: 0.35rem 0.5rem;
-    border-radius: 4px;
-    word-break: break-all;
-  }
-  .chmod-matrix {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.75rem;
-    background: var(--bg-surface);
-    padding: 0.75rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-  }
-  .matrix-col h4 {
-    font-size: 0.75rem;
-    color: var(--text);
-    margin-bottom: 0.4rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.2rem;
-  }
-  .matrix-col label {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.3rem;
-    cursor: pointer;
-  }
-  .octal-display {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-  .octal-badge {
-    background: var(--bg-raised);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 27%, transparent);
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    font-weight: 700;
-  }
-
-  /* ═════════ MODERN CODE STUDIO EDITOR STYLES ═════════ */
-  .editor-backdrop {
-    background: color-mix(in srgb, var(--bg-app) 85%, transparent);
-    backdrop-filter: blur(10px);
-    z-index: 1050;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .studio-window {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    width: 95vw;
-    max-width: 1440px;
-    height: 88vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
-    overflow: hidden;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .studio-window.is-fullscreen {
-    width: 100vw;
-    max-width: 100vw;
-    height: 100vh;
-    border-radius: 0;
-    border: none;
-  }
-
-  /* Bar Judul Atas: Tab + Breadcrumb + Kontrol */
-  .studio-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 0.8rem;
-    height: 42px;
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--border);
-    user-select: none;
-  }
-
-  .studio-tab-bar {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    overflow: hidden;
-  }
-
-  .studio-tab {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.8rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-bottom: none;
-    border-top: 2px solid var(--accent);
-    border-radius: 6px 6px 0 0;
-    color: var(--text);
-    font-size: 0.82rem;
-    font-weight: 500;
-  }
-
-  .studio-tab .tab-icon {
-    font-size: 1rem;
-  }
-
-  .studio-tab .dirty-dot {
-    color: var(--warning);
-    font-size: 0.75rem;
-    margin-left: 2px;
-    animation: pulse 1.5s infinite;
-  }
-
-  .studio-path-crumbs {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .studio-win-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .win-ctrl-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1.05rem;
-    transition: all 0.15s ease;
-  }
-
-  .win-ctrl-btn:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-
-  .win-ctrl-btn.btn-win-close:hover {
-    background: var(--danger-strong);
-    color: var(--text);
-  }
-
-  /* Toolbar Studio Aksi */
-  .studio-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.35rem 0.8rem;
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--border);
-    gap: 0.8rem;
-  }
-
-  .studio-toolbar .tb-left,
-  .studio-toolbar .tb-right {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .studio-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.3rem 0.65rem;
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    font-size: 0.76rem;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.15s ease;
-  }
-
-  .studio-btn:hover {
-    background: var(--bg-active);
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-
-  .studio-btn.active {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .studio-btn-save {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
-    color: var(--text);
-  }
-
-  .studio-btn-save:hover:not(:disabled) {
-    background: var(--accent-hover);
-    border-color: var(--accent);
-    color: var(--text);
-  }
-
-  .studio-btn-save.glow-green {
-    background: var(--accent-hover);
-    border-color: var(--accent);
-    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent);
-  }
-
-  .studio-btn-save:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .kbd-hint {
-    background: rgba(0, 0, 0, 0.25);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-family: monospace;
-    opacity: 0.85;
-  }
-
-  .tool-group {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.15rem 0.4rem;
-  }
-
-  .tool-label {
-    font-size: 0.7rem;
-    color: var(--text-subtle);
-    margin-right: 2px;
-  }
-
-  .font-step-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    padding: 0.15rem 0.35rem;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-
-  .font-step-btn:hover {
-    background: var(--border-strong);
-    color: var(--text);
-  }
-
-  .font-size-val {
-    font-size: 0.72rem;
-    color: var(--info);
-    min-width: 32px;
-    text-align: center;
-  }
-
-  /* Floating Search & Replace Bar */
-  .studio-search-bar {
-    background: var(--bg-hover);
-    border-bottom: 1px solid var(--border);
-    padding: 0.4rem 0.8rem;
-    animation: slideDown 0.18s ease-out;
-  }
-
-  .search-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .search-input-wrap,
-  .replace-input-wrap {
-    display: flex;
-    align-items: center;
-    background: var(--bg-inset);
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 0.25rem 0.5rem;
-    gap: 0.4rem;
-  }
-
-  .search-input-wrap {
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .replace-input-wrap {
-    flex: 1;
-    min-width: 200px;
-  }
-
-  .search-input-wrap input,
-  .replace-input-wrap input {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: 0.78rem;
-    width: 100%;
-  }
-
-  .search-icon {
-    color: var(--text-subtle);
-    font-size: 0.9rem;
-  }
-
-  .match-count {
-    font-size: 0.7rem;
-    color: var(--accent);
-    white-space: nowrap;
-    padding-left: 0.3rem;
-  }
-
-  .search-nav-btns {
-    display: flex;
-    gap: 2px;
-  }
-
-  .search-action-btn {
-    background: var(--bg-active);
-    border: 1px solid var(--border-strong);
-    color: var(--text-secondary);
-    border-radius: 5px;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .search-action-btn:hover {
-    background: var(--border-strong);
-    color: var(--text);
-  }
-
-  .replace-btn {
-    font-size: 0.72rem;
-    padding: 0.3rem 0.6rem;
-  }
-
-  .search-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 0.2rem;
-  }
-
-  .search-close-btn:hover {
-    color: var(--text);
-  }
-
-  /* Body Studio: Gutter + Textarea Canvas */
-  .studio-body {
-    flex: 1;
-    display: flex;
-    background: var(--bg-inset);
-    overflow: hidden;
-    position: relative;
-  }
-
-  .studio-gutter {
-    width: 52px;
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border);
-    padding: 0.75rem 0.4rem 0.75rem 0;
-    text-align: right;
-    color: var(--text-disabled);
-    font-size: 0.8rem;
-    line-height: 1.6;
-    user-select: none;
-    overflow: hidden;
-  }
-
-  .gutter-line {
-    padding-right: 0.4rem;
-  }
-
-  .gutter-line.active-line {
-    color: var(--accent);
-    font-weight: 600;
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-  }
-
-  .studio-canvas {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .studio-textarea {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
-    line-height: 1.6;
-    padding: 0.75rem 0.9rem;
-    resize: none;
-    tab-size: 2;
-    caret-color: var(--accent);
-    overflow: auto;
-  }
-
-  /* Status Bar Bawah Studio */
-  .studio-statusbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.3rem 0.8rem;
-    background: var(--bg-inset);
-    border-top: 1px solid var(--border);
-    font-size: 0.7rem;
-    color: var(--text-subtle);
-    user-select: none;
-  }
-
-  .sb-left,
-  .sb-right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .sb-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-
-  .sb-divider {
-    color: var(--text-on-accent);
-  }
-
-  .sb-text {
-    max-width: 320px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cursor-pos {
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .lang-tag {
-    font-weight: 500;
-    background: color-mix(in srgb, var(--text) 4%, transparent);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-  }
-
-  .save-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-weight: 500;
-  }
-
-  .save-status.saved {
-    color: var(--accent);
-  }
-
-  .save-status.unsaved {
-    color: var(--warning);
-  }
-
-  .save-status.saving {
-    color: var(--info);
-  }
-
-  .dirty-indicator {
-    font-size: 0.7rem;
-    animation: pulse 1.5s infinite;
-  }
-
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-</style>
