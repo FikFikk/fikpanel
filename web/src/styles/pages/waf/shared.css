@@ -668,31 +668,6 @@
       border-bottom: 1px solid var(--border-subtle);
       vertical-align: middle;
     }
-    .badge-intercept-count {
-      color: var(--danger);
-      font-weight: 700;
-    }
-    .badge-tag {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-    }
-    .badge-pill {
-      padding: 0.2rem 0.5rem;
-      border-radius: 9999px;
-      font-size: 0.7rem;
-      font-weight: 600;
-    }
-    .badge-pill.active {
-      background: var(--tint-accent);
-      color: var(--accent-strong);
-    }
-    .badge-pill.disabled {
-      background: var(--tint-danger);
-      color: var(--danger);
-    }
     .badge-attack-tag {
       background: var(--tint-warning);
       color: var(--warning-strong);
