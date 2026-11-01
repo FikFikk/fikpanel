@@ -9,6 +9,16 @@
     gap: 1.5rem;
   }
 
+  .nav-badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: var(--weight-bold);
+    background: var(--tint-accent);
+    color: var(--accent);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+  }
+
   /* Layout 2 kolom di dalam modal manajemen PHP */
   .pg-phpmanager-manage-header-icon {
     width: 38px;

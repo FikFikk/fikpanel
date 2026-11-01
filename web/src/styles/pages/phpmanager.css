@@ -10,39 +10,6 @@
 
 
 
-    /* Elemen spesifik tab situs terhubung */
-    .nav-badge {
-      margin-left: auto;
-      font-size: 0.65rem;
-      font-weight: var(--weight-bold);
-      background: var(--tint-accent);
-      color: var(--accent);
-      padding: 0.1rem 0.4rem;
-      border-radius: var(--radius-sm);
-    }
-    .domain-title {
-      color: var(--text);
-      font-size: 0.85rem;
-    }
-    .link-external {
-      color: var(--text-subtle);
-      transition: color var(--duration-fast) ease;
-    }
-    .link-external:hover {
-      color: var(--accent);
-    }
-    .user-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      font-size: 0.72rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: var(--radius-sm);
-      background: var(--bg-raised);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-    }
 
     /* Layout 2 kolom di dalam modal manajemen PHP */
     .header-icon {
