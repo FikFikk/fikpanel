@@ -1,0 +1,37 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PROGRESS — bilah progres penggunaan sumber daya (.progress, .progress__bar)
+   Gunakan custom property style="--w: {persen}%" pada .progress__bar.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .progress {
+    width: 100%;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--bg-inset);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+  }
+  .progress--sm {
+    height: 5px;
+  }
+  .progress--lg {
+    height: 12px;
+  }
+  .progress__bar {
+    width: var(--w, 0%);
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    transition: width var(--duration-base) var(--ease-out), background var(--duration-fast) ease;
+  }
+  .progress__bar--info {
+    background: var(--info);
+  }
+  .progress__bar--warning {
+    background: var(--warning);
+  }
+  .progress__bar--danger {
+    background: var(--danger);
+  }
+}

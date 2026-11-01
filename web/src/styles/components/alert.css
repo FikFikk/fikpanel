@@ -1,0 +1,30 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   ALERT — pesan kontekstual di dalam halaman (.alert, .alert--success/warning/danger/info)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .alert {
+    --alert-fg: var(--text-secondary);
+    --alert-tone: var(--info);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--alert-tone) 28%, transparent);
+    background: color-mix(in srgb, var(--alert-tone) 7%, transparent);
+    color: var(--alert-fg);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+  }
+  .alert > i {
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-size: 1.1rem;
+    color: var(--alert-tone);
+  }
+  .alert--info    { --alert-tone: var(--info); }
+  .alert--success { --alert-tone: var(--accent); }
+  .alert--warning { --alert-tone: var(--warning); }
+  .alert--danger  { --alert-tone: var(--danger); }
+}

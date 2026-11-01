@@ -1,0 +1,43 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   BADGE & DOT — lencana status semantik (.badge--*) dan indikator titik (.dot--*)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .badge {
+    --badge-fg: var(--text-muted);
+    --badge-bg: var(--bg-active);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 22px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--badge-bg);
+    color: var(--badge-fg);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+  }
+  .badge--neutral { --badge-fg: var(--text-muted);    --badge-bg: var(--bg-active); }
+  .badge--success { --badge-fg: var(--accent-strong); --badge-bg: var(--tint-accent); }
+  .badge--info    { --badge-fg: var(--info);          --badge-bg: var(--tint-info); }
+  .badge--warning { --badge-fg: var(--warning-strong);--badge-bg: var(--tint-warning); }
+  .badge--danger  { --badge-fg: var(--danger-strong); --badge-bg: var(--tint-danger); }
+  .badge--violet  { --badge-fg: var(--violet);        --badge-bg: var(--tint-violet); }
+  .badge--pill    { border-radius: var(--radius-full); }
+
+  /* Titik indikator status: <span class="dot dot--success"></span> */
+  .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-subtle);
+    flex-shrink: 0;
+  }
+  .dot--success { background: var(--accent); box-shadow: 0 0 0 3px var(--tint-accent); }
+  .dot--info    { background: var(--info); box-shadow: 0 0 0 3px var(--tint-info); }
+  .dot--warning { background: var(--warning); box-shadow: 0 0 0 3px var(--tint-warning); }
+  .dot--danger  { background: var(--danger); box-shadow: 0 0 0 3px var(--tint-danger); }
+  .dot--pulse   { animation: fp-pulse 1.6s ease-in-out infinite; }
+}
