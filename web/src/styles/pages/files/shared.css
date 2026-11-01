@@ -79,31 +79,6 @@
       margin-top: 0.5rem;
     }
 
-    /* Elemen Form & Segmented di Modal */
-    .type-segmented {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-    }
-    .seg-btn {
-      background: var(--bg-active);
-      border: 1px solid var(--border-strong);
-      color: var(--text-muted);
-      padding: 0.4rem;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.78rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-    }
-    .seg-btn.active {
-      background: color-mix(in srgb, var(--accent) 13%, transparent);
-      border-color: var(--accent);
-      color: var(--accent);
-      font-weight: 600;
-    }
     .field-meta {
       font-size: 0.72rem;
       color: var(--text-subtle);

@@ -19,6 +19,7 @@
   import CloudStorageModal from './files/CloudStorageModal.svelte';
   import PropertiesModal from './files/PropertiesModal.svelte';
   import CompressModal from './files/CompressModal.svelte';
+  import NewItemModal from './files/NewItemModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1886,62 +1887,14 @@
   />
 
   <!-- ═════════ MODAL: Buat File / Folder Baru ═════════ -->
-  <Modal
+  <NewItemModal
     open={showNewModal}
-    title={`Buat ${newType === "dir" ? "Folder" : "Berkas"} Baru`}
-    size="md"
-    onclose={() => (showNewModal = false)}
-  >
-    <form id="form-create-new" onsubmit={handleCreateNew}>
-      <div class="field">
-        <label class="field__label" for="f-new-type">Tipe Item</label>
-        <div class="type-segmented">
-          <button
-            type="button"
-            class="seg-btn {newType === 'file' ? 'active' : ''}"
-            onclick={() => (newType = "file")}
-          >
-            <i class="ri-file-line"></i> Berkas (File)
-          </button>
-          <button
-            type="button"
-            class="seg-btn {newType === 'dir' ? 'active' : ''}"
-            onclick={() => (newType = "dir")}
-          >
-            <i class="ri-folder-line"></i> Direktori (Folder)
-          </button>
-        </div>
-      </div>
-      <div class="field">
-        <label class="field__label" for="f-new-name"
-          >Nama {newType === "dir" ? "Folder" : "Berkas"}</label
-        >
-        <input
-          id="f-new-name"
-          class="input"
-          type="text"
-          placeholder={newType === "dir"
-            ? "contoh: config atau assets"
-            : "contoh: index.html atau .env"}
-          bind:value={newName}
-          required
-        />
-      </div>
-      <div class="field-meta">
-        Lokasi: <span class="mono">{currentPath}</span>
-      </div>
-    </form>
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showNewModal = false)}>Batal</button
-      >
-      <button type="submit" form="form-create-new" class="btn btn--primary"
-        >Buat Sekarang</button
-      >
-    {/snippet}
-  </Modal>
+    bind:newType
+    bind:newName
+    {currentPath}
+    onClose={() => (showNewModal = false)}
+    onSubmit={handleCreateNew}
+  />
 
   <!-- ═════════ MODAL: Ganti Nama (Rename) ═════════ -->
   <Modal
