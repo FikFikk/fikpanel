@@ -5,6 +5,7 @@
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
   import type { DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
+  import '../../styles/pages/components/site-settings.css';
 
   interface Props {
     siteId: number;
@@ -791,6 +792,7 @@
   }
 </script>
 
+<div class="cmp-site-settings">
 <ManagerModal
   title={site ? site.domain : 'Memuat…'}
   subtitle={site ? `${site.kind.toUpperCase()} · ${site.kind === 'proxy' ? site.upstream : site.root_path}` : ''}
@@ -812,7 +814,7 @@
 
   {#snippet children(tab: string)}
     {#if loadError}
-      <div class="ss-empty"><i class="ri-error-warning-line"></i><p>{loadError}</p><button class="btn-ghost" onclick={load}>Coba lagi</button></div>
+      <div class="ss-empty"><i class="ri-error-warning-line"></i><p>{loadError}</p><button class="btn btn-ghost" onclick={load}>Coba lagi</button></div>
     {:else if !detail}
       <div class="ss-empty"><i class="ri-loader-4-line spin"></i><p>Memuat data situs…</p></div>
 
@@ -840,7 +842,7 @@
           <div class="note warn"><i class="ri-error-warning-line"></i><span>Perubahan domain akan mereset sertifikat SSL untuk menjaga integritas keamanan HTTPS.</span></div>
         {/if}
         <div class="ss-actions">
-          <button class="btn-primary" id="ss-save-domains" onclick={saveDomains}
+          <button class="btn btn-primary" id="ss-save-domains" onclick={saveDomains}
             disabled={domainSaving || domainChecking || (domainReport !== null && !domainReport.valid) || domainText.trim() === detail.domains.join('\n')}>
             {#if domainSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Domain
           </button>
@@ -883,7 +885,7 @@
           <div class="meta-row"><span>Hak Akses Linux:</span><b class="mono">0755 (Direktori) / 0644 (Berkas)</b></div>
         </div>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveDirectory} disabled={dirSaving}>
+          <button class="btn btn-primary" onclick={saveDirectory} disabled={dirSaving}>
             {#if dirSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Direktori
           </button>
         </div>
@@ -892,10 +894,10 @@
     <!-- 3. TAB: LIMIT ACCESS -->
     {:else if tab === 'limit_access'}
       <section class="ss-sec">
-        <div class="sub-nav">
-          <button class="sub-btn" class:active={limitSubTab === 'auth'} onclick={() => (limitSubTab = 'auth')}>Limit Access (Auth)</button>
-          <button class="sub-btn" class:active={limitSubTab === 'deny'} onclick={() => (limitSubTab = 'deny')}>Deny Access (Files)</button>
-          <button class="sub-btn" class:active={limitSubTab === 'traffic'} onclick={() => (limitSubTab = 'traffic')}>Traffic Control</button>
+        <div class="tabs tabs--pill sub-nav">
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={limitSubTab === 'auth'} onclick={() => (limitSubTab = 'auth')}>Limit Access (Auth)</button>
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={limitSubTab === 'deny'} onclick={() => (limitSubTab = 'deny')}>Deny Access (Files)</button>
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={limitSubTab === 'traffic'} onclick={() => (limitSubTab = 'traffic')}>Traffic Control</button>
         </div>
         {#if limitSubTab === 'auth'}
           <label class="fld" for="ss-limit-path"><span>Path Yang Dilindungi</span>
@@ -920,7 +922,7 @@
           </label>
         {/if}
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveLimitAccess} disabled={limitSaving}>
+          <button class="btn btn-primary" onclick={saveLimitAccess} disabled={limitSaving}>
             {#if limitSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-keyhole-line"></i>{/if} Terapkan Aturan
           </button>
         </div>
@@ -947,12 +949,12 @@
               {/if}
             </select>
           </div>
-          <button class="btn-mini" onclick={() => copyText(rewriteContent, 'Aturan Rewrite')}><i class="ri-file-copy-line"></i> Salin</button>
+          <button class="btn btn-secondary btn-xs btn-mini" onclick={() => copyText(rewriteContent, 'Aturan Rewrite')}><i class="ri-file-copy-line"></i> Salin</button>
         </div>
         <textarea class="code-editor" rows="10" spellcheck="false" bind:value={rewriteContent}></textarea>
         <p class="hint-text">• Pilih template routing yang sesuai dengan proyek Anda atau tulis direktif lokasi Nginx kustom. Sintaks diuji otomatis saat disimpan.</p>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveRewrite} disabled={rewriteSaving}>
+          <button class="btn btn-primary" onclick={saveRewrite} disabled={rewriteSaving}>
             {#if rewriteSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Rewrite
           </button>
         </div>
@@ -972,7 +974,7 @@
           Contoh: {detail.site.kind === 'static' ? 'index.html index.htm default.html' : 'index.php index.html index.htm default.html'}
         </p>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveDefaultDoc} disabled={defaultDocSaving}>
+          <button class="btn btn-primary" onclick={saveDefaultDoc} disabled={defaultDocSaving}>
             {#if defaultDocSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Dokumen
           </button>
         </div>
@@ -1003,11 +1005,11 @@
         </div>
 
         <div class="ep-nav-row">
-          <div class="sub-nav">
-            <button class="sub-btn" class:active={errorPreviewCode === '404'} onclick={() => loadErrorPreview('404')}>404 Not Found</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '403'} onclick={() => loadErrorPreview('403')}>403 Forbidden</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '502'} onclick={() => loadErrorPreview('502')}>502 Bad Gateway</button>
-            <button class="sub-btn" class:active={errorPreviewCode === '200'} onclick={() => loadErrorPreview('200')}>200 Welcome</button>
+          <div class="tabs tabs--pill sub-nav">
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={errorPreviewCode === '404'} onclick={() => loadErrorPreview('404')}>404 Not Found</button>
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={errorPreviewCode === '403'} onclick={() => loadErrorPreview('403')}>403 Forbidden</button>
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={errorPreviewCode === '502'} onclick={() => loadErrorPreview('502')}>502 Bad Gateway</button>
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={errorPreviewCode === '200'} onclick={() => loadErrorPreview('200')}>200 Welcome</button>
           </div>
           <a
             href="/api/sites/error-pages/preview?code={errorPreviewCode}"
@@ -1038,13 +1040,13 @@
             <p class="ss-desc">Edit langsung file konfigurasi Nginx vhost. Sintaks akan diuji otomatis via nginx -t.</p>
           </div>
           <div class="btn-group">
-            <button class="btn-mini" onclick={loadVhost} disabled={vhostLoading}><i class="ri-refresh-line" class:spin={vhostLoading}></i> Refresh</button>
-            <button class="btn-mini" onclick={() => copyText(vhost, 'Vhost Nginx')} disabled={!vhost}><i class="ri-file-copy-line"></i> Salin</button>
+            <button class="btn btn-secondary btn-xs btn-mini" onclick={loadVhost} disabled={vhostLoading}><i class="ri-refresh-line" class:spin={vhostLoading}></i> Refresh</button>
+            <button class="btn btn-secondary btn-xs btn-mini" onclick={() => copyText(vhost, 'Vhost Nginx')} disabled={!vhost}><i class="ri-file-copy-line"></i> Salin</button>
           </div>
         </div>
         <textarea class="code-editor" rows="14" spellcheck="false" bind:value={vhost}></textarea>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveRawVhost} disabled={vhostSaving || vhostLoading}>
+          <button class="btn btn-primary" onclick={saveRawVhost} disabled={vhostSaving || vhostLoading}>
             {#if vhostSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-check-line"></i>{/if} Simpan & Terapkan Vhost
           </button>
         </div>
@@ -1053,10 +1055,10 @@
     <!-- 7. TAB: SSL -->
     {:else if tab === 'ssl'}
       <section class="ss-sec">
-        <div class="sub-nav">
-          <button class="sub-btn" class:active={sslSubTab === 'current'} onclick={() => (sslSubTab = 'current')}>Current Certs - [Deployed]</button>
-          <button class="sub-btn" class:active={sslSubTab === 'custom'} onclick={() => (sslSubTab = 'custom')}>Custom Certificate</button>
-          <button class="sub-btn" class:active={sslSubTab === 'letsencrypt'} onclick={() => (sslSubTab = 'letsencrypt')}>Let's Encrypt</button>
+        <div class="tabs tabs--pill sub-nav">
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={sslSubTab === 'current'} onclick={() => (sslSubTab = 'current')}>Current Certs - [Deployed]</button>
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={sslSubTab === 'custom'} onclick={() => (sslSubTab = 'custom')}>Custom Certificate</button>
+          <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={sslSubTab === 'letsencrypt'} onclick={() => (sslSubTab = 'letsencrypt')}>Let's Encrypt</button>
         </div>
 
         {#if sslSubTab === 'current'}
@@ -1088,7 +1090,7 @@
           </div>
           <div class="ss-actions">
             {#if sslEnabled}
-              <button class="btn-ghost" onclick={() => { sslEnabled = false; saveSSL(false); }} disabled={sslSaving}>Nonaktifkan SSL</button>
+              <button class="btn btn-ghost" onclick={() => { sslEnabled = false; saveSSL(false); }} disabled={sslSaving}>Nonaktifkan SSL</button>
             {/if}
           </div>
 
@@ -1105,7 +1107,7 @@
           </div>
           <p class="hint-text">• Tempelkan konten kunci privat (.key) dan sertifikat gabungan (.crt / fullchain.pem). Server akan memverifikasi pasangan kunci secara instan.</p>
           <div class="ss-actions">
-            <button class="btn-primary" onclick={saveCustomSSL} disabled={customSaving || !customKey.trim() || !customCert.trim()}>
+            <button class="btn btn-primary" onclick={saveCustomSSL} disabled={customSaving || !customKey.trim() || !customCert.trim()}>
               {#if customSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan & Pasang Sertifikat
             </button>
           </div>
@@ -1119,7 +1121,7 @@
             <div class="dns-box mt">
               <div class="dns-head">
                 <span><i class="ri-route-line"></i> Kesiapan DNS Sebelum Validasi ACME</span>
-                <button class="btn-mini" onclick={checkDNS} disabled={dnsLoading}><i class="ri-refresh-line" class:spin={dnsLoading}></i> Cek ulang</button>
+                <button class="btn btn-secondary btn-xs btn-mini" onclick={checkDNS} disabled={dnsLoading}><i class="ri-refresh-line" class:spin={dnsLoading}></i> Cek ulang</button>
               </div>
               {#if dnsReport}
                 <ul class="dns-list">
@@ -1157,9 +1159,9 @@
           {/if}
           <div class="ss-actions">
             {#if certIssued && sslEnabled}
-              <button class="btn-ghost" onclick={() => saveSSL(true)} disabled={sslSaving || jobRunning}><i class="ri-refresh-line"></i> Terbitkan Ulang</button>
+              <button class="btn btn-ghost" onclick={() => saveSSL(true)} disabled={sslSaving || jobRunning}><i class="ri-refresh-line"></i> Terbitkan Ulang</button>
             {/if}
-            <button class="btn-primary" onclick={() => saveSSL(false)} disabled={sslSaving || jobRunning}>
+            <button class="btn btn-primary" onclick={() => saveSSL(false)} disabled={sslSaving || jobRunning}>
               {#if sslSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-check-line"></i>{/if}
               {sslEnabled && !certIssued ? 'Simpan & Terbitkan SSL' : 'Simpan'}
             </button>
@@ -1188,7 +1190,7 @@
           <input id="ss-session-iso" type="checkbox" bind:checked={sessionIsolation} /><span class="track"></span>
         </label>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={switchPHP} disabled={phpSaving}>
+          <button class="btn btn-primary" onclick={switchPHP} disabled={phpSaving}>
             {#if phpSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-refresh-line"></i>{/if} Switch PHP Version
           </button>
         </div>
@@ -1204,7 +1206,7 @@
               Buat akun Super Admin baru atau reset password & izin role <code>super_admin</code> secara instan tanpa perlu membuka terminal.
             </p>
           </div>
-          <button class="btn-mini" onclick={loadLaravelAdmin} disabled={laravelLoading}>
+          <button class="btn btn-secondary btn-xs btn-mini" onclick={loadLaravelAdmin} disabled={laravelLoading}>
             <i class="ri-refresh-line" class:spin={laravelLoading}></i> Refresh
           </button>
         </div>
@@ -1234,7 +1236,7 @@
           </div>
           <div class="ss-actions">
             <button
-              class="btn-primary"
+              class="btn btn-primary"
               onclick={saveLaravelAdmin}
               disabled={laravelSaving || !lAdminEmail.trim() || lAdminPass.length < 4}
             >
@@ -1274,7 +1276,7 @@
                   {/if}
                   <button
                     type="button"
-                    class="btn-mini"
+                    class="btn btn-secondary btn-xs btn-mini"
                     onclick={() => {
                       lAdminName = u.name || 'Super Admin';
                       lAdminEmail = u.email;
@@ -1328,7 +1330,7 @@
           <input id="ss-proxy-ws" type="checkbox" bind:checked={proxyWs} /><span class="track"></span>
         </label>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveProxy} disabled={proxySaving}>
+          <button class="btn btn-primary" onclick={saveProxy} disabled={proxySaving}>
             {#if proxySaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if}
             {detail.site.kind === 'proxy' ? 'Simpan Reverse Proxy' : 'Simpan Pengaturan Runtime'}
           </button>
@@ -1355,7 +1357,7 @@
           <input id="ss-redir-to" class="mono" type="text" bind:value={redirectTo} placeholder="https://domain-baru.com$request_uri" />
         </label>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveRedirect} disabled={redirectSaving || !redirectTo.trim()}>
+          <button class="btn btn-primary" onclick={saveRedirect} disabled={redirectSaving || !redirectTo.trim()}>
             {#if redirectSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-guide-line"></i>{/if} Simpan Pengalihan
           </button>
         </div>
@@ -1379,7 +1381,7 @@
           <input id="ss-hotlink-dom" class="mono" type="text" bind:value={hotlinkDomains} />
         </label>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveHotlink} disabled={hotlinkSaving}>
+          <button class="btn btn-primary" onclick={saveHotlink} disabled={hotlinkSaving}>
             {#if hotlinkSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-check-line"></i>{/if} Simpan Hotlink
           </button>
         </div>
@@ -1400,7 +1402,7 @@
           <textarea id="ss-maint-msg" rows="4" bind:value={maintenanceMsg}></textarea>
         </label>
         <div class="ss-actions">
-          <button class="btn-primary" onclick={saveMaintenance} disabled={maintenanceSaving}>
+          <button class="btn btn-primary" onclick={saveMaintenance} disabled={maintenanceSaving}>
             {#if maintenanceSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-tools-line"></i>{/if} Terapkan Status
           </button>
         </div>
@@ -1410,14 +1412,14 @@
     {:else if tab === 'logs'}
       <section class="ss-sec fill">
         <div class="conf-head">
-          <div class="sub-nav compact">
-            <button class="sub-btn" class:active={logSubTab === 'access'} onclick={() => { logSubTab = 'access'; loadLogs('access'); }}>Access Log</button>
-            <button class="sub-btn" class:active={logSubTab === 'error'} onclick={() => { logSubTab = 'error'; loadLogs('error'); }}>Error Log</button>
+          <div class="tabs tabs--pill sub-nav compact">
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={logSubTab === 'access'} onclick={() => { logSubTab = 'access'; loadLogs('access'); }}>Access Log</button>
+            <button class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={logSubTab === 'error'} onclick={() => { logSubTab = 'error'; loadLogs('error'); }}>Error Log</button>
           </div>
           <div class="btn-group">
-            <button class="btn-mini" onclick={() => loadLogs(logSubTab)} disabled={logLoading}><i class="ri-refresh-line" class:spin={logLoading}></i> Refresh</button>
-            <button class="btn-mini" onclick={clearLogs} disabled={logClearing}><i class="ri-delete-bin-line"></i> Kosongkan</button>
-            <button class="btn-mini" onclick={() => copyText(logContent, `Log ${logSubTab}`)}><i class="ri-file-copy-line"></i> Salin</button>
+            <button class="btn btn-secondary btn-xs btn-mini" onclick={() => loadLogs(logSubTab)} disabled={logLoading}><i class="ri-refresh-line" class:spin={logLoading}></i> Refresh</button>
+            <button class="btn btn-secondary btn-xs btn-mini" onclick={clearLogs} disabled={logClearing}><i class="ri-delete-bin-line"></i> Kosongkan</button>
+            <button class="btn btn-secondary btn-xs btn-mini" onclick={() => copyText(logContent, `Log ${logSubTab}`)}><i class="ri-file-copy-line"></i> Salin</button>
           </div>
         </div>
         <pre class="log-viewer">{logLoading ? 'Memuat log real-time…' : logContent}</pre>
@@ -1425,146 +1427,4 @@
     {/if}
   {/snippet}
 </ManagerModal>
-
-<style>
-  .ss-logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-strong); font-size: 1.1rem; }
-  .ss-badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; background: var(--bg-active); color: var(--text-muted); }
-  .ss-badge.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-strong); }
-  .ss-badge.pending { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning-strong); }
-  .ss-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; color: var(--text-subtle); }
-  .ss-empty i { font-size: 1.8rem; }
-  .ss-sec { display: flex; flex-direction: column; gap: 0.85rem; max-width: 760px; }
-  .ss-sec.fill { max-width: none; height: 100%; }
-  .sec-title h4 { margin: 0; font-size: 0.95rem; color: var(--text); }
-  .ss-desc { margin: 0.2rem 0 0; font-size: 0.76rem; color: var(--text-subtle); line-height: 1.45; }
-  .hint-text { margin: -0.3rem 0 0; font-size: 0.73rem; color: var(--text-subtle); line-height: 1.4; }
-  .ss-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.2rem; }
-  .mono { font-family: 'Fira Code', monospace; }
-  .mt { margin-top: 0.6rem; }
-
-  textarea, input[type='text'], input[type='password'], select {
-    width: 100%; box-sizing: border-box; padding: 0.55rem 0.75rem; background: var(--bg-surface); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text); font-size: 0.83rem; transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-  textarea { font-family: 'Fira Code', monospace; resize: vertical; line-height: 1.5; }
-  textarea:focus, input[type='text']:focus, input[type='password']:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
-  .fld { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); }
-  .fld-h { display: flex; align-items: center; gap: 0.6rem; }
-  .label-inline { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
-
-  .sub-nav { display: flex; gap: 0.3rem; padding: 3px; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 8px; width: fit-content; }
-  .sub-nav.compact { padding: 2px; }
-  .sub-btn { padding: 0.35rem 0.75rem; font-size: 0.75rem; font-weight: 600; border: none; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s ease; }
-  .sub-btn:hover { color: var(--text); }
-  .sub-btn.active { background: var(--bg-surface); color: var(--accent-strong); box-shadow: 0 2px 6px color-mix(in srgb, var(--bg-app) 50%, transparent); }
-
-  .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.55rem; border-radius: 7px; background: var(--bg-raised); border: 1px solid var(--border); font-size: 0.74rem; color: var(--text-secondary); }
-  .chip.bad { border-color: color-mix(in srgb, var(--danger-strong) 40%, transparent); color: var(--danger-strong); }
-  .chip.bad i { color: var(--danger-strong); }
-  .chip small { color: var(--danger-strong); }
-  .tag { font-size: 0.62rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-strong); text-transform: uppercase; }
-  i.ok { color: var(--accent); }
-  i.warn { color: var(--warning); }
-
-  .toggle-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--border); cursor: pointer; }
-  .toggle-row div { display: flex; flex-direction: column; gap: 0.15rem; }
-  .toggle-row b { font-size: 0.83rem; color: var(--text); }
-  .toggle-row small { font-size: 0.72rem; color: var(--text-subtle); }
-  .toggle-row.dim { opacity: 0.5; }
-  .toggle-row input { position: absolute; opacity: 0; pointer-events: none; }
-  .track { width: 36px; height: 20px; border-radius: 99px; background: var(--bg-active); position: relative; flex-shrink: 0; transition: background 0.15s ease; }
-  .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-secondary); transition: transform 0.18s ease, background 0.18s ease; }
-  .toggle-row input:checked + .track { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-  .toggle-row input:checked + .track::after { transform: translateX(16px); background: var(--accent-strong); }
-  .sub { display: flex; flex-direction: column; gap: 0.5rem; padding-left: 1rem; border-left: 2px solid var(--border); }
-
-  .meta-card { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0.9rem; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); font-size: 0.78rem; }
-  .meta-row { display: flex; justify-content: space-between; align-items: center; }
-  .meta-row span { color: var(--text-subtle); }
-  .meta-row b { color: var(--text-secondary); }
-
-  .error-info-card {
-    display: flex; flex-direction: column; gap: 0.5rem; padding: 0.85rem 1rem;
-    border-radius: 9px; background: color-mix(in srgb, var(--info) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
-    color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5;
-  }
-  .eic-header { display: flex; align-items: center; gap: 0.45rem; color: var(--info); font-size: 0.82rem; }
-  .eic-text { margin: 0; color: var(--text-muted); }
-  .eic-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.2rem; }
-  .eic-tags code {
-    font-family: 'Fira Code', monospace; font-size: 0.72rem; padding: 0.15rem 0.45rem;
-    border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border);
-    color: var(--accent-strong);
-  }
-  .ep-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
-  .ep-link-btn {
-    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 600;
-    color: var(--accent-strong); text-decoration: none; padding: 0.35rem 0.65rem; border-radius: 6px;
-    background: var(--bg-raised); border: 1px solid var(--border); transition: all 0.15s ease;
-  }
-  .ep-link-btn:hover { background: var(--bg-active); border-color: var(--accent); }
-  .ep-frame-wrap {
-    width: 100%; height: 520px; border-radius: 9px; overflow: hidden;
-    border: 1px solid var(--border); background: var(--bg-app);
-  }
-  .ep-iframe { width: 100%; height: 100%; border: none; display: block; }
-
-  .cert-overview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; padding: 0.85rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid var(--border); font-size: 0.78rem; }
-  .cov-item { display: flex; flex-direction: column; gap: 0.15rem; }
-  .cov-item span { font-size: 0.72rem; color: var(--text-subtle); }
-  .cov-item b { color: var(--accent-strong); word-break: break-all; }
-  .cov-item b.warn { color: var(--warning-strong); }
-
-  .dual-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-top: 0.4rem; }
-  .box-col { display: flex; flex-direction: column; gap: 0.3rem; }
-  .box-head { font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); }
-
-  .dns-box { padding: 0.8rem 0.9rem; border-radius: 10px; border: 1px dashed var(--border-strong); display: flex; flex-direction: column; gap: 0.5rem; }
-  .dns-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
-  .dns-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
-  .dns-list li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; color: var(--text); }
-  .dns-list small { color: var(--text-subtle); margin-left: auto; }
-  .ip-note { margin: 0; font-size: 0.72rem; color: var(--text-subtle); }
-  .check { display: flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--warning-strong); cursor: pointer; }
-  .check input { accent-color: var(--warning); }
-
-  .job { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.8rem 0.9rem; border-radius: 10px; background: color-mix(in srgb, var(--accent) 5%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); }
-  .step { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-disabled); transition: color 0.2s ease; }
-  .step.done { color: var(--accent-strong); }
-  .step.now { color: var(--text); font-weight: 600; }
-
-  .note { display: flex; gap: 0.55rem; padding: 0.65rem 0.8rem; border-radius: 9px; font-size: 0.76rem; line-height: 1.5; }
-  .note.warn { background: color-mix(in srgb, var(--warning) 7%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent); color: var(--warning-strong); }
-  .note.bad { background: color-mix(in srgb, var(--danger-strong) 7%, transparent); border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent); color: var(--danger-strong); }
-
-  .conf-head { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
-  .conf-head h4 { margin: 0; font-size: 0.92rem; color: var(--text); }
-  .btn-group { display: flex; gap: 0.4rem; }
-
-  .code-editor { flex: 1; min-height: 240px; margin: 0; padding: 0.85rem 1rem; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--accent-strong); font: 0.78rem/1.6 'Fira Code', monospace; white-space: pre; }
-  .code-editor-sm { margin: 0; padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--accent-strong); font: 0.72rem/1.5 'Fira Code', monospace; white-space: pre; }
-  .log-viewer { flex: 1; min-height: 280px; margin: 0; padding: 0.85rem 1rem; overflow: auto; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-secondary); font: 0.74rem/1.6 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; }
-
-  .btn-primary, .btn-ghost, .btn-mini { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: 600; transition: all 0.15s ease; }
-  .btn-primary { padding: 0.55rem 1rem; border: none; border-radius: 8px; font-size: 0.82rem; color: var(--text-on-accent); background: linear-gradient(135deg, var(--accent-strong), var(--accent)); box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
-  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
-  .btn-primary:disabled, .btn-ghost:disabled, .btn-mini:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
-  .btn-ghost { padding: 0.55rem 1rem; border-radius: 8px; font-size: 0.82rem; background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
-  .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
-  .btn-mini { padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.72rem; background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-muted); }
-  .btn-mini:hover:not(:disabled) { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-
-  .ladmin-form-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-  .ladmin-form-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text); }
-  .ladmin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
-  .ladmin-user-list { display: flex; flex-direction: column; gap: 0.45rem; }
-  .ladmin-user-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border); }
-  .ladmin-user-info { display: flex; flex-direction: column; gap: 0.12rem; font-size: 0.78rem; color: var(--text); }
-  .ladmin-user-info span { font-size: 0.74rem; color: var(--text-muted); }
-  .ladmin-user-roles { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
-
-  .spin { display: inline-block; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-</style>
+</div>

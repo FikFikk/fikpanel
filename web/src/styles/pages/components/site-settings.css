@@ -1,0 +1,137 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SITE SETTINGS — cakupan .cmp-site-settings di @layer pages (Fase 7.3)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .cmp-site-settings .ss-logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-strong); font-size: 1.1rem; }
+  .cmp-site-settings .ss-badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.55rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; background: var(--bg-active); color: var(--text-muted); }
+  .cmp-site-settings .ss-badge.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-strong); }
+  .cmp-site-settings .ss-badge.pending { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning-strong); }
+  .cmp-site-settings .ss-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; color: var(--text-subtle); }
+  .cmp-site-settings .ss-empty i { font-size: 1.8rem; }
+  .cmp-site-settings .ss-sec { display: flex; flex-direction: column; gap: 0.85rem; max-width: 760px; }
+  .cmp-site-settings .ss-sec.fill { max-width: none; height: 100%; }
+  .cmp-site-settings .sec-title h4 { margin: 0; font-size: 0.95rem; color: var(--text); }
+  .cmp-site-settings .ss-desc { margin: 0.2rem 0 0; font-size: 0.76rem; color: var(--text-subtle); line-height: 1.45; }
+  .cmp-site-settings .hint-text { margin: -0.3rem 0 0; font-size: 0.73rem; color: var(--text-subtle); line-height: 1.4; }
+  .cmp-site-settings .ss-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.2rem; }
+  .cmp-site-settings .mt { margin-top: 0.6rem; }
+
+  .cmp-site-settings textarea,
+  .cmp-site-settings input[type='text'],
+  .cmp-site-settings input[type='email'],
+  .cmp-site-settings input[type='password'],
+  .cmp-site-settings select {
+    width: 100%; box-sizing: border-box; padding: 0.55rem 0.75rem; background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.83rem; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .cmp-site-settings textarea { font-family: var(--font-mono); resize: vertical; line-height: 1.5; }
+  .cmp-site-settings textarea:focus,
+  .cmp-site-settings input[type='text']:focus,
+  .cmp-site-settings input[type='email']:focus,
+  .cmp-site-settings input[type='password']:focus,
+  .cmp-site-settings select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .cmp-site-settings .fld { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); }
+  .cmp-site-settings .fld-h { display: flex; align-items: center; gap: 0.6rem; }
+  .cmp-site-settings .label-inline { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+
+  .cmp-site-settings .sub-nav { width: fit-content; }
+  .cmp-site-settings .sub-nav.compact { padding: 2px; }
+
+  .cmp-site-settings .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .cmp-site-settings .chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.55rem; border-radius: 7px; background: var(--bg-raised); border: 1px solid var(--border); font-size: 0.74rem; color: var(--text-secondary); }
+  .cmp-site-settings .chip.bad { border-color: color-mix(in srgb, var(--danger-strong) 40%, transparent); color: var(--danger-strong); }
+  .cmp-site-settings .chip.bad i, .cmp-site-settings .chip small { color: var(--danger-strong); }
+  .cmp-site-settings .tag { font-size: 0.62rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-strong); text-transform: uppercase; }
+  .cmp-site-settings i.ok { color: var(--accent); }
+  .cmp-site-settings i.warn { color: var(--warning); }
+
+  .cmp-site-settings .toggle-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--border); cursor: pointer; }
+  .cmp-site-settings .toggle-row div { display: flex; flex-direction: column; gap: 0.15rem; }
+  .cmp-site-settings .toggle-row b { font-size: 0.83rem; color: var(--text); }
+  .cmp-site-settings .toggle-row small { font-size: 0.72rem; color: var(--text-subtle); }
+  .cmp-site-settings .toggle-row.dim { opacity: 0.5; }
+  .cmp-site-settings .toggle-row input { position: absolute; opacity: 0; pointer-events: none; }
+  .cmp-site-settings .track { width: 36px; height: 20px; border-radius: 99px; background: var(--bg-active); position: relative; flex-shrink: 0; transition: background 0.15s ease; }
+  .cmp-site-settings .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-secondary); transition: transform 0.18s ease, background 0.18s ease; }
+  .cmp-site-settings .toggle-row input:checked + .track { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .cmp-site-settings .toggle-row input:checked + .track::after { transform: translateX(16px); background: var(--accent-strong); }
+  .cmp-site-settings .sub { display: flex; flex-direction: column; gap: 0.5rem; padding-left: 1rem; border-left: 2px solid var(--border); }
+
+  .cmp-site-settings .meta-card { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.75rem 0.9rem; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); font-size: 0.78rem; }
+  .cmp-site-settings .meta-row { display: flex; justify-content: space-between; align-items: center; }
+  .cmp-site-settings .meta-row span { color: var(--text-subtle); }
+  .cmp-site-settings .meta-row b { color: var(--text-secondary); }
+
+  .cmp-site-settings .error-info-card {
+    display: flex; flex-direction: column; gap: 0.5rem; padding: 0.85rem 1rem;
+    border-radius: 9px; background: color-mix(in srgb, var(--info) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+    color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5;
+  }
+  .cmp-site-settings .eic-header { display: flex; align-items: center; gap: 0.45rem; color: var(--info); font-size: 0.82rem; }
+  .cmp-site-settings .eic-text { margin: 0; color: var(--text-muted); }
+  .cmp-site-settings .eic-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.2rem; }
+  .cmp-site-settings .eic-tags code {
+    font-family: var(--font-mono); font-size: 0.72rem; padding: 0.15rem 0.45rem;
+    border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--accent-strong);
+  }
+  .cmp-site-settings .ep-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; }
+  .cmp-site-settings .ep-link-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 600;
+    color: var(--accent-strong); text-decoration: none; padding: 0.35rem 0.65rem; border-radius: 6px;
+    background: var(--bg-raised); border: 1px solid var(--border); transition: all 0.15s ease;
+  }
+  .cmp-site-settings .ep-link-btn:hover { background: var(--bg-active); border-color: var(--accent); }
+  .cmp-site-settings .ep-frame-wrap {
+    width: 100%; height: 520px; border-radius: 9px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--bg-app);
+  }
+  .cmp-site-settings .ep-iframe { width: 100%; height: 100%; border: none; display: block; }
+
+  .cmp-site-settings .cert-overview-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; padding: 0.85rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid var(--border); font-size: 0.78rem; }
+  .cmp-site-settings .cov-item { display: flex; flex-direction: column; gap: 0.15rem; }
+  .cmp-site-settings .cov-item span { font-size: 0.72rem; color: var(--text-subtle); }
+  .cmp-site-settings .cov-item b { color: var(--accent-strong); word-break: break-all; }
+  .cmp-site-settings .cov-item b.warn { color: var(--warning-strong); }
+
+  .cmp-site-settings .dual-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-top: 0.4rem; }
+  .cmp-site-settings .box-col { display: flex; flex-direction: column; gap: 0.3rem; }
+  .cmp-site-settings .box-head { font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); }
+
+  .cmp-site-settings .dns-box { padding: 0.8rem 0.9rem; border-radius: 10px; border: 1px dashed var(--border-strong); display: flex; flex-direction: column; gap: 0.5rem; }
+  .cmp-site-settings .dns-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
+  .cmp-site-settings .dns-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+  .cmp-site-settings .dns-list li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; color: var(--text); }
+  .cmp-site-settings .dns-list small { color: var(--text-subtle); margin-left: auto; }
+  .cmp-site-settings .ip-note { margin: 0; font-size: 0.72rem; color: var(--text-subtle); }
+  .cmp-site-settings .check { display: flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--warning-strong); cursor: pointer; }
+  .cmp-site-settings .check input { accent-color: var(--warning); }
+
+  .cmp-site-settings .job { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.8rem 0.9rem; border-radius: 10px; background: color-mix(in srgb, var(--accent) 5%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); }
+  .cmp-site-settings .step { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-disabled); transition: color 0.2s ease; }
+  .cmp-site-settings .step.done { color: var(--accent-strong); }
+  .cmp-site-settings .step.now { color: var(--text); font-weight: 600; }
+
+  .cmp-site-settings .note { display: flex; gap: 0.55rem; padding: 0.65rem 0.8rem; border-radius: 9px; font-size: 0.76rem; line-height: 1.5; }
+  .cmp-site-settings .note.warn { background: color-mix(in srgb, var(--warning) 7%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent); color: var(--warning-strong); }
+  .cmp-site-settings .note.bad { background: color-mix(in srgb, var(--danger-strong) 7%, transparent); border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent); color: var(--danger-strong); }
+
+  .cmp-site-settings .conf-head { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
+  .cmp-site-settings .conf-head h4 { margin: 0; font-size: 0.92rem; color: var(--text); }
+  .cmp-site-settings .btn-group { display: flex; gap: 0.4rem; }
+
+  .cmp-site-settings .code-editor { flex: 1; min-height: 240px; margin: 0; padding: 0.85rem 1rem; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--accent-strong); font: 0.78rem/1.6 var(--font-mono); white-space: pre; }
+  .cmp-site-settings .code-editor-sm { margin: 0; padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--accent-strong); font: 0.72rem/1.5 var(--font-mono); white-space: pre; }
+  .cmp-site-settings .log-viewer { flex: 1; min-height: 280px; margin: 0; padding: 0.85rem 1rem; overflow: auto; border-radius: 9px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-secondary); font: 0.74rem/1.6 var(--font-mono); white-space: pre-wrap; word-break: break-all; }
+
+  .cmp-site-settings .ladmin-form-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem; border-radius: 10px; background: var(--bg-surface); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .cmp-site-settings .ladmin-form-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text); }
+  .cmp-site-settings .ladmin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+  .cmp-site-settings .ladmin-user-list { display: flex; flex-direction: column; gap: 0.45rem; }
+  .cmp-site-settings .ladmin-user-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border); }
+  .cmp-site-settings .ladmin-user-info { display: flex; flex-direction: column; gap: 0.12rem; font-size: 0.78rem; color: var(--text); }
+  .cmp-site-settings .ladmin-user-info span { font-size: 0.74rem; color: var(--text-muted); }
+  .cmp-site-settings .ladmin-user-roles { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+}
