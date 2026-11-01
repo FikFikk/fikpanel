@@ -1,4 +1,6 @@
 <script lang="ts">
+  import '../../styles/pages/components/gauge.css';
+
   interface Props {
     percent: number;
     title: string;
@@ -18,7 +20,7 @@
     percent = 0,
     title = '',
     subtitle = '',
-    color = '#0ea5e9',
+    color = 'var(--info)',
     icon = 'ri-dashboard-line',
     warningThreshold = 85,
     detailLabel = '',
@@ -53,12 +55,12 @@
   );
 
   const accent = $derived(
-    level === 'crit' ? '#ef4444' : level === 'warn' ? '#f59e0b' : color
+    level === 'crit' ? 'var(--danger)' : level === 'warn' ? 'var(--warning)' : color
   );
   const status = $derived(STATUS[level]);
 </script>
 
-<section class="gauge" data-level={level} style:--accent={accent}>
+<section class="cmp-gauge gauge" data-level={level} style:--accent={accent}>
   <header class="head">
     <h3 class="title">
       <i class={icon} aria-hidden="true"></i>
@@ -73,8 +75,7 @@
 
   <div
     class="dial"
-    style:width="{size}px"
-    style:height="{size}px"
+    style:--dial-size="{size}px"
     role="meter"
     aria-label={title}
     aria-valuemin="0"
@@ -144,240 +145,9 @@
   {#if showMiniBar}
     <div class="bar" aria-hidden="true">
       <div class="bar-track">
-        <div class="bar-fill" style:transform="scaleX({clamped / 100})"></div>
+        <div class="bar-fill" style:--bar-scale={clamped / 100}></div>
       </div>
-      <div class="bar-limit" style:left="{limit}%"></div>
+      <div class="bar-limit" style:--bar-limit="{limit}%"></div>
     </div>
   {/if}
 </section>
-
-<style>
-  .gauge {
-    /* Bisa dioverride dari parent: --gauge-surface, --gauge-border, dst. */
-    --g-surface: var(--gauge-surface, var(--bg-surface));
-    --g-border: var(--gauge-border, var(--bg-active));
-    --g-track: var(--gauge-track, var(--bg-active));
-    --g-text: var(--gauge-text, var(--text));
-    --g-muted: var(--gauge-text-muted, var(--text-secondary));
-
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
-    padding: 1rem;
-    background: var(--g-surface);
-    border: 1px solid var(--g-border);
-    border-radius: 10px;
-    color: var(--g-text);
-    font-family: inherit;
-    font-variant-numeric: tabular-nums;
-    transition: border-color 0.2s ease;
-  }
-
-  .gauge[data-level='warn'] {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--g-border));
-  }
-
-  .gauge[data-level='crit'] {
-    border-color: color-mix(in srgb, var(--accent) 55%, var(--g-border));
-  }
-
-  /* Header */
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0;
-    min-width: 0;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  .title i {
-    flex: none;
-    font-size: 1.125rem;
-    color: var(--g-muted);
-  }
-
-  .title span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Status: tenang saat normal, menonjol saat waspada/kritis */
-  .status {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1.2;
-    color: var(--g-muted);
-  }
-
-  .status i {
-    font-size: 0.9375rem;
-  }
-
-  .gauge[data-level='ok'] .status i {
-    color: var(--accent);
-  }
-
-  .gauge[data-level='warn'] .status,
-  .gauge[data-level='crit'] .status {
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    font-weight: 600;
-  }
-
-  /* Dial */
-  .dial {
-    position: relative;
-    align-self: center;
-    flex: none;
-  }
-
-  .progress {
-    transition:
-      stroke-dashoffset 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-      stroke 0.2s ease;
-  }
-
-  .limit-tick {
-    stroke: var(--g-text);
-    stroke-width: 2;
-    opacity: 0.55;
-  }
-
-  .readout {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    padding-top: 0;
-    align-content: center;
-    line-height: 1;
-  }
-
-  .readout {
-    align-items: center;
-  }
-
-  .value {
-    font-size: 1.875rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-
-  .unit {
-    margin-left: 0.125rem;
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--g-muted);
-  }
-
-  /* Data */
-  .facts {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-    margin: 0;
-  }
-
-  .fact {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.75rem;
-    font-size: 0.8125rem;
-    line-height: 1.4;
-  }
-
-  .fact dt {
-    color: var(--g-muted);
-  }
-
-  .fact dd {
-    margin: 0;
-    text-align: right;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .fact-main {
-    font-size: 0.9375rem;
-    font-weight: 600;
-  }
-
-  .fact-note {
-    width: 100%;
-    color: var(--g-muted);
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-
-  /* Mini bar */
-  .bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: 8px;
-  }
-
-  .bar-track {
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--g-track);
-    overflow: hidden;
-  }
-
-  .bar-fill {
-    width: 100%;
-    height: 100%;
-    background: var(--accent);
-    transform-origin: left center;
-    will-change: transform;
-    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .bar-limit {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--g-text);
-    opacity: 0.55;
-    border-radius: 1px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .progress,
-    .bar-fill,
-    .gauge {
-      transition: none;
-    }
-  }
-</style>
