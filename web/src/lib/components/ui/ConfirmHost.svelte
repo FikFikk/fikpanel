@@ -55,7 +55,7 @@
 <svelte:window onkeydowncapture={onKeydown} />
 
 {#if confirmState.open}
-  <div class="cd-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) resolveConfirm(false); }}>
+  <div class="confirm cd-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) resolveConfirm(false); }}>
     <div
       bind:this={dialogEl}
       class="cd-card"
@@ -112,74 +112,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  .cd-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-confirm);
-    display: grid;
-    place-items: center;
-    padding: var(--space-6);
-    background: var(--bg-overlay);
-    backdrop-filter: blur(4px);
-    animation: fp-fade var(--duration-base) ease-out;
-  }
-  .cd-card {
-    width: min(440px, 100%);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
-    animation: fp-pop var(--duration-slow) var(--ease-spring);
-  }
-  .cd-body {
-    display: flex;
-    gap: var(--space-4);
-    padding: var(--space-5);
-  }
-  .cd-icon {
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--tint-info);
-    color: var(--info);
-    font-size: 1.25rem;
-  }
-  .cd-icon.danger {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-  }
-  .cd-text {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-width: 0;
-    flex: 1;
-  }
-  .cd-text h2 {
-    font-size: var(--text-lg);
-  }
-  .cd-text p {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    white-space: pre-line;
-  }
-  .cd-text .field {
-    margin-top: var(--space-2);
-  }
-  .cd-text code {
-    color: var(--danger-strong);
-  }
-  .cd-foot {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-5);
-    border-top: 1px solid var(--border-subtle);
-  }
-</style>
