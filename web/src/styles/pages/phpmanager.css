@@ -78,54 +78,6 @@
       color: var(--text-muted);
     }
 
-
-
-
-
-    /* Tabel ekstensi & filter pencarian */
-    .extensions-table-wrap {
-      max-height: 480px;
-      overflow-y: auto;
-    }
-    .cat-pill {
-      font-size: 0.68rem;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-weight: 600;
-      text-transform: capitalize;
-      background: var(--bg-inset);
-      color: var(--text-muted);
-    }
-    .cat-pill.cache { color: var(--info); background: var(--tint-info); }
-    .cat-pill.database { color: var(--accent); background: var(--tint-accent); }
-    .cat-pill.graphics { color: var(--warning); background: var(--tint-warning); }
-    .cat-pill.network { color: var(--violet); background: var(--tint-violet); }
-    .apt-hint {
-      font-size: 0.72rem;
-      color: var(--text-subtle);
-    }
-    .search-mini-wrap {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-    .search-mini-wrap i {
-      position: absolute;
-      left: 8px;
-      color: var(--text-subtle);
-      font-size: 0.8rem;
-    }
-    .search-mini-input {
-      padding: 0.35rem 0.6rem 0.35rem 1.8rem;
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      color: var(--text);
-      font-size: 0.78rem;
-      outline: none;
-      width: 220px;
-    }
-
     /* Penampil log & phpinfo */
     .terminal-log-viewer {
       background: var(--bg-inset);
@@ -145,20 +97,6 @@
     }
 
     /* Tindakan ekstensi & isi modal perintah SSH */
-    .badge-active-runtime {
-      color: var(--success);
-      font-size: 0.75rem;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .ext-action-group {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
     .ssh-notice {
       background: var(--tint-accent);
       border: 1px solid var(--border-subtle);
