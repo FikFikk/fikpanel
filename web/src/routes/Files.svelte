@@ -3,7 +3,6 @@
   import { apiFetch, formatBytes } from '../lib/api';
   import { copyText } from '../lib/utils/browser';
   import { confirmDialog, promptDialog } from '../lib/stores/confirm.svelte';
-  import Modal from '../lib/components/ui/Modal.svelte';
   import DirTabs from './files/DirTabs.svelte';
   import PathBar from './files/PathBar.svelte';
   import FileToolbar from './files/FileToolbar.svelte';
@@ -22,6 +21,7 @@
   import NewItemModal from './files/NewItemModal.svelte';
   import RenameModal from './files/RenameModal.svelte';
   import ChmodModal from './files/ChmodModal.svelte';
+  import UploadModal from './files/UploadModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1954,49 +1954,12 @@
   {/if}
 
   <!-- ═════════ MODAL: Upload Berkas ═════════ -->
-  <Modal
+  <UploadModal
     open={showUploadModal}
-    title="Upload Berkas ke Server"
-    size="md"
-    onclose={() => (showUploadModal = false)}
-  >
-    <form id="form-upload-files" onsubmit={handleUploadSubmit}>
-      <div class="field">
-        <label class="field__label" for="f-upload-dest">Direktori Tujuan</label>
-        <input
-          id="f-upload-dest"
-          class="input"
-          type="text"
-          value={currentPath}
-          disabled
-        />
-      </div>
-      <div class="field">
-        <label class="field__label" for="f-upload-input">Pilih Berkas</label>
-        <input
-          id="f-upload-input"
-          class="input"
-          type="file"
-          multiple
-          onchange={(e) => (uploadFiles = (e.target as HTMLInputElement).files)}
-          required
-        />
-      </div>
-    </form>
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showUploadModal = false)}>Batal</button
-      >
-      <button
-        type="submit"
-        form="form-upload-files"
-        class="btn btn--primary"
-        disabled={uploadSubmitting}
-      >
-        {uploadSubmitting ? "Mengunggah..." : "Mulai Upload"}
-      </button>
-    {/snippet}
-  </Modal>
+    {currentPath}
+    bind:uploadFiles
+    {uploadSubmitting}
+    onClose={() => (showUploadModal = false)}
+    onSubmit={handleUploadSubmit}
+  />
 </div>
