@@ -4,7 +4,9 @@
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import { notify } from '../lib/stores/toast.svelte';
   import type { DatabaseEngineInfo, DatabaseItem, SystemTask } from '../lib/types';
+  import Modal from '../lib/components/ui/Modal.svelte';
   import Backup from './Backup.svelte';
+  import '../styles/pages/databases.css';
 
   // State Tampilan Utama (Database atau Cadangan S3) & Engine Aktif
   let mainView = $state<'database' | 'backup'>('database');
@@ -471,7 +473,7 @@
       title: `Konfirmasi Alih Versi ${currentEngine.display_name}`,
       message: `PERINGATAN ARSITEKTUR: MySQL/MariaDB hanya dapat menjalankan 1 versi aktif native pada port 3306. Sistem FikPanel akan mencadangkan seluruh database sebelum beralih ke versi ${switchTargetVersion}. Lanjutkan alih versi?`,
       confirmText: 'Mulai Alih Versi',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -785,7 +787,7 @@
       title: 'Hapus Database',
       message: `Apakah Anda yakin ingin menghapus database "${d.name}" beserta akun penggunanya? Tindakan ini tidak dapat dibatalkan.`,
       confirmText: 'Hapus Permanen',
-      danger: true,
+      tone: 'danger',
     });
 
     if (!confirmed) return;
@@ -871,7 +873,7 @@
   }
 </script>
 
-<div class="databases-view">
+<div class="pg-databases databases-view">
   <!-- Header & Bar Navigasi Engine (MySQL, PostgreSQL, MongoDB, Redis) -->
   <header class="engine-tabs-header">
     <div class="engine-tabs" role="tablist">
@@ -1072,22 +1074,22 @@
     <!-- Tabel Database -->
     <div class="table-card">
       {#if loadingDatabases}
-        <div class="table-loading">
-          <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+        <div class="state state--loading">
+          <span class="spinner" aria-hidden="true"></span>
           <span>Memuat data database...</span>
         </div>
       {:else if filteredDatabases.length === 0}
-        <div class="table-empty">
-          <i class="ri-database-2-line empty-icon" aria-hidden="true"></i>
-          <p class="empty-title">Belum ada database pada {currentEngine.display_name}</p>
-          <p class="empty-sub">Klik tombol "Tambah DB" di atas untuk membuat database baru.</p>
+        <div class="state">
+          <i class="ri-database-2-line state__icon" aria-hidden="true"></i>
+          <p class="state__title">Belum ada database pada {currentEngine.display_name}</p>
+          <p class="state__desc">Klik tombol "Tambah DB" di atas untuk membuat database baru.</p>
         </div>
       {:else}
-        <div class="table-responsive">
-          <table class="data-table">
+        <div class="table-wrap">
+          <table class="table">
             <thead>
               <tr>
-                <th style="width: 40px;"><input type="checkbox" aria-label="Pilih semua" /></th>
+                <th class="col-check"><input type="checkbox" aria-label="Pilih semua" /></th>
                 <th>Nama Database</th>
                 <th>Username</th>
                 <th>Password</th>
@@ -1095,7 +1097,7 @@
                 <th>Backup</th>
                 <th>Lokasi</th>
                 <th>Catatan</th>
-                <th style="text-align: right;">Operasi</th>
+                <th class="text-right">Operasi</th>
               </tr>
             </thead>
             <tbody>
@@ -1169,2664 +1171,1026 @@
     </div>
 
   {/if}
-</div>
 
-<!-- Modal Quick Install (ala aaPanel) -->
-{#if showInstallModal}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget && !installing) showInstallModal = false; }}
+  <!-- Modal Quick Install (ala aaPanel) -->
+  <Modal
+    open={showInstallModal}
+    size="md"
+    onclose={() => { if (!installing) showInstallModal = false; }}
   >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <div class="modal-title-with-icon">
-          <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
-          <div>
-            <h3 class="modal-title">Instalasi {currentEngine.display_name}</h3>
-            <p class="modal-subtitle">Pasang paket engine database ke server</p>
-          </div>
+    {#snippet header()}
+      <div class="modal-title-with-icon">
+        <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
+        <div>
+          <h3 class="modal__title">Instalasi {currentEngine.display_name}</h3>
+          <p class="modal__subtitle">Pasang paket engine database ke server</p>
         </div>
+      </div>
+    {/snippet}
+
+    <div class="form-group">
+      <label for="install-ver" class="form-label">Pilih Versi</label>
+      <select id="install-ver" class="form-select" bind:value={installVersion} disabled={installing}>
+        {#if currentEngine.versions && currentEngine.versions.length > 0}
+          {#each currentEngine.versions as v}
+            <option value={v.version}>{v.label}</option>
+          {/each}
+        {:else}
+          {#each currentEngine.supported_versions as ver}
+            <option value={ver}>{ver}</option>
+          {/each}
+        {/if}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="install-mode" class="form-label">Metode Instalasi</label>
+      <select id="install-mode" class="form-select" bind:value={installMode} disabled={installing}>
+        <option value="native">Native Package (APT / Systemd Linux)</option>
+        <option value="docker">Docker Container (Terisolasi & Mandiri)</option>
+      </select>
+    </div>
+
+    <div class="plugin-desc-box">
+      <p class="plugin-desc-title">Petunjuk Instalasi:</p>
+      <ul class="plugin-desc-list">
+        <li>Jika paket ini telah ada, berkas biner lama akan diperbarui secara aman.</li>
+        <li>Port default ({currentEngine.port}) akan dikonfigurasi pada localhost (127.0.0.1).</li>
+        <li>Proses instalasi membutuhkan waktu 1-3 menit, silakan tunggu hingga selesai.</li>
+      </ul>
+    </div>
+
+    {#snippet footer()}
+      <button
+        class="btn btn-outline"
+        disabled={installing}
+        onclick={() => (showInstallModal = false)}
+      >
+        Batal
+      </button>
+      <button class="btn btn-primary" disabled={installing} onclick={submitInstall}>
+        {#if installing}
+          <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+          <span>Memulai...</span>
+        {:else}
+          <i class="ri-play-fill" aria-hidden="true"></i>
+          <span>Mulai Instalasi (Install Now)</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Quick Install phpMyAdmin Resmi (ala aaPanel App Store) -->
+  <Modal
+    open={showPmaInstallModal}
+    size="md"
+    onclose={() => { if (!installingPma) showPmaInstallModal = false; }}
+  >
+    {#snippet header()}
+      <div class="modal-title-with-icon">
+        <i class="ri-database-2-line engine-install-icon" aria-hidden="true"></i>
+        <div>
+          <h3 class="modal__title">Quick Install phpMyAdmin Resmi</h3>
+          <p class="modal__subtitle">Pasang paket resmi phpMyAdmin dari repositori ke server</p>
+        </div>
+      </div>
+    {/snippet}
+
+    <div class="form-group">
+      <label for="pma-install-ver" class="form-label">Pilih Versi phpMyAdmin</label>
+      <select id="pma-install-ver" class="form-select" bind:value={installPmaVersion} disabled={installingPma}>
+        <option value="5.2.1">phpMyAdmin 5.2.1 (Rekomendasi Stabil - PHP 7.2 - 8.3)</option>
+        <option value="5.1.4">phpMyAdmin 5.1.4 (LTS Kompatibilitas Luas)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="pma-install-php" class="form-label">Versi PHP Runtime</label>
+      <select id="pma-install-php" class="form-select" bind:value={installPmaPhp} disabled={installingPma}>
+        <option value="8.2">PHP 8.2 (FPM - Rekomendasi Keamanan)</option>
+        <option value="8.1">PHP 8.1 (FPM - Standar Stabil)</option>
+        <option value="8.0">PHP 8.0 (FPM - Legacy)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <span class="form-label">Metode Pemasangan</span>
+      <div class="install-mode-cards">
+        <label class="mode-card" class:selected={installPmaMode === 'native'}>
+          <input
+            type="radio"
+            name="pma-install-mode"
+            value="native"
+            bind:group={installPmaMode}
+            disabled={installingPma}
+          />
+          <div class="mode-card-content">
+            <div class="mode-card-title">
+              <i class="ri-download-cloud-line" aria-hidden="true"></i>
+              <span>Fast Install (Rekomendasi)</span>
+            </div>
+            <p class="mode-card-desc">
+              Mengunduh paket resmi phpMyAdmin dari situs resmi dan mengonfigurasi FastCGI Nginx secara otomatis.
+            </p>
+          </div>
+        </label>
+        <label class="mode-card" class:selected={installPmaMode === 'docker'}>
+          <input
+            type="radio"
+            name="pma-install-mode"
+            value="docker"
+            bind:group={installPmaMode}
+            disabled={installingPma}
+          />
+          <div class="mode-card-content">
+            <div class="mode-card-title">
+              <i class="ri-ubuntu-line" aria-hidden="true"></i>
+              <span>Container (Docker)</span>
+            </div>
+            <p class="mode-card-desc">
+              Menjalankan instance image phpmyadmin/phpmyadmin terisolasi dalam container Docker.
+            </p>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div class="install-notice">
+      <i class="ri-information-line" aria-hidden="true"></i>
+      <span>
+        Instalasi berlangsung di latar belakang melalui Antrean Tugas (Messages Box). Anda dapat terus menggunakan panel saat proses berjalan.
+      </span>
+    </div>
+
+    {#snippet footer()}
+      <button
+        class="btn btn-outline"
+        disabled={installingPma}
+        onclick={() => (showPmaInstallModal = false)}
+      >
+        Batal
+      </button>
+      <button class="btn btn-primary" disabled={installingPma} onclick={submitPmaInstall}>
+        {#if installingPma}
+          <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+          <span>Memulai...</span>
+        {:else}
+          <i class="ri-play-fill" aria-hidden="true"></i>
+          <span>Mulai Instalasi (Install Now)</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Tambah Database -->
+  <Modal
+    open={showAddModal}
+    title="Tambah Database {currentEngine.display_name}"
+    size="md"
+    onclose={() => { if (!creatingDb) showAddModal = false; }}
+  >
+    <!-- DB Name & Charset (Screenshot 2 aaPanel) -->
+    <div class="form-group">
+      <label for="db-name" class="form-label">Nama Database & Charset</label>
+      <div class="input-with-select">
+        <input
+          id="db-name"
+          type="text"
+          class="form-input flex-1"
+          placeholder="Nama database baru"
+          value={dbName}
+          oninput={(e) => onDbNameInput((e.target as HTMLInputElement).value)}
+          disabled={creatingDb}
+        />
+        <select class="form-select charset-select" bind:value={dbCharset} disabled={creatingDb}>
+          <option value="utf8mb4">utf8mb4 (Rekomendasi)</option>
+          <option value="utf8">utf8</option>
+          <option value="latin1">latin1</option>
+          <option value="gbk">gbk</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Username -->
+    <div class="form-group">
+      <label for="db-user" class="form-label">Username Pengguna</label>
+      <input
+        id="db-user"
+        type="text"
+        class="form-input"
+        placeholder="Username database"
+        value={dbUser}
+        oninput={(e) => onDbUserInput((e.target as HTMLInputElement).value)}
+        disabled={creatingDb}
+      />
+    </div>
+
+    <!-- Password dengan tombol Refresh acak di samping input -->
+    <div class="form-group">
+      <label for="db-pass" class="form-label">Password</label>
+      <div class="input-with-button">
+        <input
+          id="db-pass"
+          type="text"
+          class="form-input"
+          placeholder="Kata sandi akses"
+          bind:value={dbPass}
+          disabled={creatingDb}
+        />
         <button
-          class="modal-close-btn"
-          disabled={installing}
-          onclick={() => (showInstallModal = false)}
-          aria-label="Tutup"
+          type="button"
+          class="btn btn-outline btn-refresh-pass"
+          onclick={generatePassword}
+          disabled={creatingDb}
+          title="Acak ulang password otomatis"
         >
-          <i class="ri-close-line" aria-hidden="true"></i>
+          <i class="ri-refresh-line" aria-hidden="true"></i>
         </button>
       </div>
+    </div>
 
-      <div class="modal-body">
+    <!-- Hak Akses (Permission) -->
+    <div class="form-group">
+      <label for="db-perm" class="form-label">Hak Akses (Permission)</label>
+      <select id="db-perm" class="form-select" bind:value={dbPermission} disabled={creatingDb}>
+        <option value="localhost">Local server (127.0.0.1)</option>
+        <option value="%">Semua Host (Public / %)</option>
+        <option value="custom">IP Tertentu (Spesifik)</option>
+      </select>
+      {#if dbPermission === 'custom'}
+        <input
+          type="text"
+          class="form-input mt-2"
+          placeholder="Masukkan alamat IP (mis. 192.168.1.100)"
+          bind:value={customIp}
+          disabled={creatingDb}
+        />
+      {/if}
+    </div>
+
+    <!-- Add to Server Lokasi (LocalServer) -->
+    <div class="form-group">
+      <div class="add-to-header">
+        <label for="add-to-select" class="form-label">Tambahkan Ke (Add to)</label>
+        <span class="remote-servers-link">Remote servers</span>
+      </div>
+      <select id="add-to-select" class="form-select" disabled>
+        <option value="local">LocalServer (127.0.0.1)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="db-note" class="form-label">Catatan (Opsional)</label>
+      <input
+        id="db-note"
+        type="text"
+        class="form-input"
+        placeholder="Keterangan singkat database ini"
+        bind:value={dbNote}
+        disabled={creatingDb}
+      />
+    </div>
+
+    {#snippet footer()}
+      <button class="btn btn-outline" disabled={creatingDb} onclick={() => (showAddModal = false)}>
+        Batal
+      </button>
+      <button class="btn btn-primary" disabled={creatingDb} onclick={submitAddDatabase}>
+        {#if creatingDb}
+          <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+          <span>Menyimpan...</span>
+        {:else}
+          <span>Konfirmasi Buat DB</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Database Engine Manager (Status, Ganti Versi, Konfigurasi my.cnf, Log Error) -->
+  <Modal
+    open={showEngineManager}
+    size="lg"
+    onclose={() => { if (!switchingVersion) showEngineManager = false; }}
+  >
+    {#snippet header()}
+      <div class="modal-title-with-icon">
+        <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
+        <div>
+          <h3 class="modal__title">{currentEngine.display_name} Manager</h3>
+          <p class="modal__subtitle">Kelola status layanan, alih versi, berkas konfigurasi, dan log</p>
+        </div>
+      </div>
+    {/snippet}
+
+    <!-- Navigasi Tab Internal Engine Manager -->
+    <div class="tabs tabs--underline engine-manager-tabs">
+      <button
+        class="tabs__tab"
+        class:is-active={engineTab === 'service'}
+        onclick={() => (engineTab = 'service')}
+      >
+        <i class="ri-dashboard-line" aria-hidden="true"></i>
+        <span>Layanan (Service)</span>
+      </button>
+      <button
+        class="tabs__tab"
+        class:is-active={engineTab === 'switch_version'}
+        onclick={() => (engineTab = 'switch_version')}
+      >
+        <i class="ri-shuffle-line" aria-hidden="true"></i>
+        <span>Ganti Versi</span>
+      </button>
+      <button
+        class="tabs__tab"
+        class:is-active={engineTab === 'config'}
+        onclick={() => {
+          engineTab = 'config';
+          fetchEngineConfig();
+        }}
+      >
+        <i class="ri-file-settings-line" aria-hidden="true"></i>
+        <span>Konfigurasi (my.cnf)</span>
+      </button>
+      <button
+        class="tabs__tab"
+        class:is-active={engineTab === 'logs'}
+        onclick={() => {
+          engineTab = 'logs';
+          fetchEngineLogs();
+        }}
+      >
+        <i class="ri-file-list-3-line" aria-hidden="true"></i>
+        <span>Log Galat</span>
+      </button>
+    </div>
+
+    {#if engineTab === 'service'}
+      <!-- Tab 1: Status Layanan -->
+      <div class="service-panel">
+        <div class="service-status-box">
+          <div class="status-indicator-large">
+            <span class="status-dot-large {currentEngine.running ? 'online' : 'offline'}"></span>
+            <div>
+              <h4 class="service-status-heading">
+                Status: {currentEngine.running ? 'Aktif (Running)' : 'Berhenti (Stopped)'}
+              </h4>
+              <p class="service-status-sub">
+                Unit: <code>{currentEngine.service_unit || activeEngine + '.service'}</code> • Port: <code>{currentEngine.port}</code>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="service-actions-grid">
+          <button
+            class="service-action-card"
+            disabled={serviceActionLoading}
+            onclick={() => handleServiceAction('restart')}
+          >
+            <i class="ri-restart-line action-icon" aria-hidden="true"></i>
+            <div class="action-info">
+              <strong>Restart Layanan</strong>
+              <span>Mulai ulang proses daemon</span>
+            </div>
+          </button>
+
+          {#if currentEngine.running}
+            <button
+              class="service-action-card danger"
+              disabled={serviceActionLoading}
+              onclick={() => handleServiceAction('stop')}
+            >
+              <i class="ri-stop-circle-line action-icon" aria-hidden="true"></i>
+              <div class="action-info">
+                <strong>Hentikan Layanan</strong>
+                <span>Stop daemon {currentEngine.display_name}</span>
+              </div>
+            </button>
+          {:else}
+            <button
+              class="service-action-card success"
+              disabled={serviceActionLoading}
+              onclick={() => handleServiceAction('start')}
+            >
+              <i class="ri-play-circle-line action-icon" aria-hidden="true"></i>
+              <div class="action-info">
+                <strong>Nyalakan Layanan</strong>
+                <span>Start daemon {currentEngine.display_name}</span>
+              </div>
+            </button>
+          {/if}
+
+          <button
+            class="service-action-card"
+            disabled={serviceActionLoading}
+            onclick={() => handleServiceAction('reload')}
+          >
+            <i class="ri-refresh-line action-icon" aria-hidden="true"></i>
+            <div class="action-info">
+              <strong>Reload Konfigurasi</strong>
+              <span>Terapkan konfigurasi tanpa downtime</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    {:else if engineTab === 'switch_version'}
+      <!-- Tab 2: Ganti Versi (Switch Version) -->
+      <div class="switch-version-panel">
+        <div class="version-warning-banner">
+          <i class="ri-alert-fill warning-icon" aria-hidden="true"></i>
+          <div>
+            <strong>Perhatian Arsitektur SQL:</strong>
+            <p>
+              Satu server host Linux hanya dapat menjalankan 1 versi aktif native pada port 3306.
+              Mengganti versi secara langsung tanpa backup dapat menyebabkan ketidakcocokan format direktori data InnoDB.
+              FikPanel akan mengekspor backup seluruh database secara otomatis sebelum memasang biner versi target.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group mt-3">
+          <label for="current-ver-info" class="form-label">Versi Saat Ini yang Aktif</label>
+          <div class="current-version-badge">
+            <i class="ri-checkbox-circle-fill active-check" aria-hidden="true"></i>
+            <span>{currentEngine.display_name} <strong>{currentEngine.version || '10.11'}</strong> (Sedang Berjalan)</span>
+          </div>
+        </div>
+
         <div class="form-group">
-          <label for="install-ver" class="form-label">Pilih Versi</label>
-          <select id="install-ver" class="form-select" bind:value={installVersion} disabled={installing}>
+          <label for="target-ver-select" class="form-label">Pilih Versi Target yang Ingin Dituju</label>
+          <select id="target-ver-select" class="form-select" bind:value={switchTargetVersion} disabled={switchingVersion}>
             {#if currentEngine.versions && currentEngine.versions.length > 0}
               {#each currentEngine.versions as v}
-                <option value={v.version}>{v.label}</option>
+                <option value={v.version}>
+                  {v.label} {v.version === currentEngine.version ? '(Versi Saat Ini)' : ''}
+                </option>
               {/each}
             {:else}
-              {#each currentEngine.supported_versions as ver}
-                <option value={ver}>{ver}</option>
+              {#each currentEngine.supported_versions as sv}
+                <option value={sv}>{currentEngine.display_name} {sv}</option>
               {/each}
             {/if}
           </select>
         </div>
 
-        <div class="form-group">
-          <label for="install-mode" class="form-label">Metode Instalasi</label>
-          <select id="install-mode" class="form-select" bind:value={installMode} disabled={installing}>
-            <option value="native">Native Package (APT / Systemd Linux)</option>
-            <option value="docker">Docker Container (Terisolasi & Mandiri)</option>
-          </select>
+        <div class="checkbox-row mt-2">
+          <label class="custom-checkbox-label">
+            <input type="checkbox" bind:checked={switchBackupFirst} disabled={switchingVersion} />
+            <span>
+              <strong>Buat cadangan snapshot otomatis seluruh database</strong> (mysqldump --all-databases) sebelum beralih versi (Sangat Direkomendasikan).
+            </span>
+          </label>
         </div>
 
-        <div class="plugin-desc-box">
-          <p class="plugin-desc-title">Petunjuk Instalasi:</p>
-          <ul class="plugin-desc-list">
-            <li>Jika paket ini telah ada, berkas biner lama akan diperbarui secara aman.</li>
-            <li>Port default ({currentEngine.port}) akan dikonfigurasi pada localhost (127.0.0.1).</li>
-            <li>Proses instalasi membutuhkan waktu 1-3 menit, silakan tunggu hingga selesai.</li>
-          </ul>
+        <div class="switch-action-row mt-4">
+          <button
+            class="btn btn-primary"
+            disabled={switchingVersion || switchTargetVersion === currentEngine.version}
+            onclick={submitSwitchVersion}
+          >
+            {#if switchingVersion}
+              <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+              <span>Memproses Alih Versi...</span>
+            {:else}
+              <i class="ri-shuffle-line" aria-hidden="true"></i>
+              <span>Beralih ke Versi Ini (Switch Version)</span>
+            {/if}
+          </button>
         </div>
       </div>
+    {:else if engineTab === 'config'}
+      <!-- Tab 3: Konfigurasi my.cnf -->
+      <div class="config-panel">
+        <div class="config-panel-header">
+          <span class="config-path-badge">Berkas: <code>{engineConfigPath || '/etc/mysql/my.cnf'}</code></span>
+          <button
+            class="btn btn-outline btn-sm"
+            disabled={loadingEngineConfig}
+            onclick={fetchEngineConfig}
+          >
+            <i class="ri-refresh-line" aria-hidden="true"></i>
+            <span>Muat Ulang</span>
+          </button>
+        </div>
 
-      <div class="modal-footer">
-        <button
-          class="btn btn-outline"
-          disabled={installing}
-          onclick={() => (showInstallModal = false)}
-        >
-          Batal
-        </button>
-        <button class="btn btn-primary" disabled={installing} onclick={submitInstall}>
-          {#if installing}
-            <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-            <span>Memulai...</span>
-          {:else}
-            <i class="ri-play-fill" aria-hidden="true"></i>
-            <span>Mulai Instalasi (Install Now)</span>
-          {/if}
-        </button>
+        <textarea
+          class="config-editor-textarea"
+          bind:value={engineConfigContent}
+          disabled={loadingEngineConfig || savingEngineConfig}
+          spellcheck="false"
+        ></textarea>
+
+        <div class="config-footer-row">
+          <span class="config-hint">Simpan perubahan dan restart layanan untuk menerapkan pengaturan baru.</span>
+          <button
+            class="btn btn-primary"
+            disabled={savingEngineConfig || loadingEngineConfig}
+            onclick={saveEngineConfig}
+          >
+            {#if savingEngineConfig}
+              <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+              <span>Menyimpan...</span>
+            {:else}
+              <i class="ri-save-line" aria-hidden="true"></i>
+              <span>Simpan Konfigurasi</span>
+            {/if}
+          </button>
+        </div>
       </div>
-    </div>
-  </div>
-{/if}
+    {:else if engineTab === 'logs'}
+      <!-- Tab 4: Log Galat -->
+      <div class="logs-panel">
+        <div class="config-panel-header">
+          <span class="config-path-badge">Log Galat Terkini (Error Log)</span>
+          <button
+            class="btn btn-outline btn-sm"
+            disabled={loadingEngineLogs}
+            onclick={fetchEngineLogs}
+          >
+            <i class="ri-refresh-line" aria-hidden="true"></i>
+            <span>Segarkan Log</span>
+          </button>
+        </div>
+        <pre class="logs-terminal-viewer">{engineLogsContent || 'Tidak ada catatan log galat.'}</pre>
+      </div>
+    {/if}
 
-<!-- Modal Quick Install phpMyAdmin Resmi (ala aaPanel App Store) -->
-{#if showPmaInstallModal}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget && !installingPma) showPmaInstallModal = false; }}
+    {#snippet footer()}
+      <button
+        class="btn btn-outline"
+        disabled={switchingVersion}
+        onclick={() => (showEngineManager = false)}
+      >
+        Tutup
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Web GUI Database (phpMyAdmin / Adminer ala aaPanel Screenshot 4) -->
+  <Modal
+    open={showWebGuiModal}
+    size="md"
+    onclose={() => (showWebGuiModal = false)}
   >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <div class="modal-title-with-icon">
-          <i class="ri-database-2-line engine-install-icon" aria-hidden="true"></i>
-          <div>
-            <h3 class="modal-title">Quick Install phpMyAdmin Resmi</h3>
-            <p class="modal-subtitle">Pasang paket resmi phpMyAdmin dari repositori ke server</p>
-          </div>
-        </div>
-        <button
-          class="modal-close-btn"
-          disabled={installingPma}
-          onclick={() => (showPmaInstallModal = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <div class="form-group">
-          <label for="pma-install-ver" class="form-label">Pilih Versi phpMyAdmin</label>
-          <select id="pma-install-ver" class="form-select" bind:value={installPmaVersion} disabled={installingPma}>
-            <option value="5.2.1">phpMyAdmin 5.2.1 (Rekomendasi Stabil - PHP 7.2 - 8.3)</option>
-            <option value="5.1.4">phpMyAdmin 5.1.4 (LTS Kompatibilitas Luas)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="pma-install-php" class="form-label">Versi PHP Runtime</label>
-          <select id="pma-install-php" class="form-select" bind:value={installPmaPhp} disabled={installingPma}>
-            <option value="8.2">PHP 8.2 (FPM - Rekomendasi Keamanan)</option>
-            <option value="8.1">PHP 8.1 (FPM - Standar Stabil)</option>
-            <option value="8.0">PHP 8.0 (FPM - Legacy)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <span class="form-label">Metode Pemasangan</span>
-          <div class="install-mode-cards">
-            <label class="mode-card" class:selected={installPmaMode === 'native'}>
-              <input
-                type="radio"
-                name="pma-install-mode"
-                value="native"
-                bind:group={installPmaMode}
-                disabled={installingPma}
-              />
-              <div class="mode-card-content">
-                <div class="mode-card-title">
-                  <i class="ri-download-cloud-line" aria-hidden="true"></i>
-                  <span>Fast Install (Rekomendasi)</span>
-                </div>
-                <p class="mode-card-desc">
-                  Mengunduh paket resmi phpMyAdmin dari situs resmi dan mengonfigurasi FastCGI Nginx secara otomatis.
-                </p>
-              </div>
-            </label>
-            <label class="mode-card" class:selected={installPmaMode === 'docker'}>
-              <input
-                type="radio"
-                name="pma-install-mode"
-                value="docker"
-                bind:group={installPmaMode}
-                disabled={installingPma}
-              />
-              <div class="mode-card-content">
-                <div class="mode-card-title">
-                  <i class="ri-ubuntu-line" aria-hidden="true"></i>
-                  <span>Container (Docker)</span>
-                </div>
-                <p class="mode-card-desc">
-                  Menjalankan instance image phpmyadmin/phpmyadmin terisolasi dalam container Docker.
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div class="install-notice">
-          <i class="ri-information-line" aria-hidden="true"></i>
-          <span>
-            Instalasi berlangsung di latar belakang melalui Antrean Tugas (Messages Box). Anda dapat terus menggunakan panel saat proses berjalan.
-          </span>
+    {#snippet header()}
+      <div class="modal-title-with-icon">
+        <i class="ri-terminal-box-line engine-install-icon" aria-hidden="true"></i>
+        <div>
+          <h3 class="modal__title">Web GUI Database (phpMyAdmin / Adminer)</h3>
+          <p class="modal__subtitle">Antarmuka visual manajemen database, tabel, dan eksekusi query SQL</p>
         </div>
       </div>
+    {/snippet}
 
-      <div class="modal-footer">
-        <button
-          class="btn btn-outline"
-          disabled={installingPma}
-          onclick={() => (showPmaInstallModal = false)}
-        >
-          Batal
-        </button>
-        <button class="btn btn-primary" disabled={installingPma} onclick={submitPmaInstall}>
-          {#if installingPma}
-            <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-            <span>Memulai...</span>
-          {:else}
-            <i class="ri-play-fill" aria-hidden="true"></i>
-            <span>Mulai Instalasi (Install Now)</span>
-          {/if}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Modal Tambah Database -->
-{#if showAddModal}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget && !creatingDb) showAddModal = false; }}
-  >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <h3 class="modal-title">Tambah Database {currentEngine.display_name}</h3>
-        <button
-          class="modal-close-btn"
-          disabled={creatingDb}
-          onclick={() => (showAddModal = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <!-- DB Name & Charset (Screenshot 2 aaPanel) -->
-        <div class="form-group">
-          <label for="db-name" class="form-label">Nama Database & Charset</label>
-          <div class="input-with-select">
-            <input
-              id="db-name"
-              type="text"
-              class="form-input flex-1"
-              placeholder="Nama database baru"
-              value={dbName}
-              oninput={(e) => onDbNameInput((e.target as HTMLInputElement).value)}
-              disabled={creatingDb}
-            />
-            <select class="form-select charset-select" bind:value={dbCharset} disabled={creatingDb}>
-              <option value="utf8mb4">utf8mb4 (Rekomendasi)</option>
-              <option value="utf8">utf8</option>
-              <option value="latin1">latin1</option>
-              <option value="gbk">gbk</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Username -->
-        <div class="form-group">
-          <label for="db-user" class="form-label">Username Pengguna</label>
-          <input
-            id="db-user"
-            type="text"
-            class="form-input"
-            placeholder="Username database"
-            value={dbUser}
-            oninput={(e) => onDbUserInput((e.target as HTMLInputElement).value)}
-            disabled={creatingDb}
-          />
-        </div>
-
-        <!-- Password dengan tombol Refresh acak di samping input -->
-        <div class="form-group">
-          <label for="db-pass" class="form-label">Password</label>
-          <div class="input-with-button">
-            <input
-              id="db-pass"
-              type="text"
-              class="form-input"
-              placeholder="Kata sandi akses"
-              bind:value={dbPass}
-              disabled={creatingDb}
-            />
-            <button
-              type="button"
-              class="btn btn-outline btn-refresh-pass"
-              onclick={generatePassword}
-              disabled={creatingDb}
-              title="Acak ulang password otomatis"
-            >
-              <i class="ri-refresh-line" aria-hidden="true"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- Hak Akses (Permission) -->
-        <div class="form-group">
-          <label for="db-perm" class="form-label">Hak Akses (Permission)</label>
-          <select id="db-perm" class="form-select" bind:value={dbPermission} disabled={creatingDb}>
-            <option value="localhost">Local server (127.0.0.1)</option>
-            <option value="%">Semua Host (Public / %)</option>
-            <option value="custom">IP Tertentu (Spesifik)</option>
-          </select>
-          {#if dbPermission === 'custom'}
-            <input
-              type="text"
-              class="form-input mt-2"
-              placeholder="Masukkan alamat IP (mis. 192.168.1.100)"
-              bind:value={customIp}
-              disabled={creatingDb}
-            />
-          {/if}
-        </div>
-
-        <!-- Add to Server Lokasi (LocalServer) -->
-        <div class="form-group">
-          <div class="add-to-header">
-            <label for="add-to-select" class="form-label">Tambahkan Ke (Add to)</label>
-            <span class="remote-servers-link">Remote servers</span>
-          </div>
-          <select id="add-to-select" class="form-select" disabled>
-            <option value="local">LocalServer (127.0.0.1)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="db-note" class="form-label">Catatan (Opsional)</label>
-          <input
-            id="db-note"
-            type="text"
-            class="form-input"
-            placeholder="Keterangan singkat database ini"
-            bind:value={dbNote}
-            disabled={creatingDb}
-          />
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" disabled={creatingDb} onclick={() => (showAddModal = false)}>
-          Batal
-        </button>
-        <button class="btn btn-primary" disabled={creatingDb} onclick={submitAddDatabase}>
-          {#if creatingDb}
-            <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-            <span>Menyimpan...</span>
-          {:else}
-            <span>Konfirmasi Buat DB</span>
-          {/if}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Modal Database Engine Manager (Status, Ganti Versi, Konfigurasi my.cnf, Log Error) -->
-{#if showEngineManager}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget && !switchingVersion) showEngineManager = false; }}
-  >
-    <div class="modal-card engine-manager-modal" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <div class="modal-title-with-icon">
-          <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
-          <div>
-            <h3 class="modal-title">{currentEngine.display_name} Manager</h3>
-            <p class="modal-subtitle">Kelola status layanan, alih versi, berkas konfigurasi, dan log</p>
-          </div>
-        </div>
-        <button
-          class="modal-close-btn"
-          disabled={switchingVersion}
-          onclick={() => (showEngineManager = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <!-- Navigasi Tab Internal Engine Manager -->
-      <div class="engine-manager-tabs">
-        <button
-          class="em-tab-btn"
-          class:active={engineTab === 'service'}
-          onclick={() => (engineTab = 'service')}
-        >
-          <i class="ri-dashboard-line" aria-hidden="true"></i>
-          <span>Layanan (Service)</span>
-        </button>
-        <button
-          class="em-tab-btn"
-          class:active={engineTab === 'switch_version'}
-          onclick={() => (engineTab = 'switch_version')}
-        >
-          <i class="ri-shuffle-line" aria-hidden="true"></i>
-          <span>Ganti Versi</span>
-        </button>
-        <button
-          class="em-tab-btn"
-          class:active={engineTab === 'config'}
-          onclick={() => {
-            engineTab = 'config';
-            fetchEngineConfig();
-          }}
-        >
-          <i class="ri-file-settings-line" aria-hidden="true"></i>
-          <span>Konfigurasi (my.cnf)</span>
-        </button>
-        <button
-          class="em-tab-btn"
-          class:active={engineTab === 'logs'}
-          onclick={() => {
-            engineTab = 'logs';
-            fetchEngineLogs();
-          }}
-        >
-          <i class="ri-file-list-3-line" aria-hidden="true"></i>
-          <span>Log Galat</span>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        {#if engineTab === 'service'}
-          <!-- Tab 1: Status Layanan -->
-          <div class="service-panel">
-            <div class="service-status-box">
-              <div class="status-indicator-large">
-                <span class="status-dot-large {currentEngine.running ? 'online' : 'offline'}"></span>
-                <div>
-                  <h4 class="service-status-heading">
-                    Status: {currentEngine.running ? 'Aktif (Running)' : 'Berhenti (Stopped)'}
-                  </h4>
-                  <p class="service-status-sub">
-                    Unit: <code>{currentEngine.service_unit || activeEngine + '.service'}</code> • Port: <code>{currentEngine.port}</code>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div class="service-actions-grid">
-              <button
-                class="service-action-card"
-                disabled={serviceActionLoading}
-                onclick={() => handleServiceAction('restart')}
-              >
-                <i class="ri-restart-line action-icon" aria-hidden="true"></i>
-                <div class="action-info">
-                  <strong>Restart Layanan</strong>
-                  <span>Mulai ulang proses daemon</span>
-                </div>
-              </button>
-
-              {#if currentEngine.running}
-                <button
-                  class="service-action-card danger"
-                  disabled={serviceActionLoading}
-                  onclick={() => handleServiceAction('stop')}
-                >
-                  <i class="ri-stop-circle-line action-icon" aria-hidden="true"></i>
-                  <div class="action-info">
-                    <strong>Hentikan Layanan</strong>
-                    <span>Stop daemon {currentEngine.display_name}</span>
-                  </div>
-                </button>
-              {:else}
-                <button
-                  class="service-action-card success"
-                  disabled={serviceActionLoading}
-                  onclick={() => handleServiceAction('start')}
-                >
-                  <i class="ri-play-circle-line action-icon" aria-hidden="true"></i>
-                  <div class="action-info">
-                    <strong>Nyalakan Layanan</strong>
-                    <span>Start daemon {currentEngine.display_name}</span>
-                  </div>
-                </button>
-              {/if}
-
-              <button
-                class="service-action-card"
-                disabled={serviceActionLoading}
-                onclick={() => handleServiceAction('reload')}
-              >
-                <i class="ri-refresh-line action-icon" aria-hidden="true"></i>
-                <div class="action-info">
-                  <strong>Reload Konfigurasi</strong>
-                  <span>Terapkan konfigurasi tanpa downtime</span>
-                </div>
-              </button>
-            </div>
-          </div>
-        {:else if engineTab === 'switch_version'}
-          <!-- Tab 2: Ganti Versi (Switch Version) -->
-          <div class="switch-version-panel">
-            <div class="version-warning-banner">
-              <i class="ri-alert-fill warning-icon" aria-hidden="true"></i>
-              <div>
-                <strong>Perhatian Arsitektur SQL:</strong>
-                <p>
-                  Satu server host Linux hanya dapat menjalankan 1 versi aktif native pada port 3306.
-                  Mengganti versi secara langsung tanpa backup dapat menyebabkan ketidakcocokan format direktori data InnoDB.
-                  FikPanel akan mengekspor backup seluruh database secara otomatis sebelum memasang biner versi target.
-                </p>
-              </div>
-            </div>
-
-            <div class="form-group mt-3">
-              <label for="current-ver-info" class="form-label">Versi Saat Ini yang Aktif</label>
-              <div class="current-version-badge">
-                <i class="ri-checkbox-circle-fill active-check" aria-hidden="true"></i>
-                <span>{currentEngine.display_name} <strong>{currentEngine.version || '10.11'}</strong> (Sedang Berjalan)</span>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="target-ver-select" class="form-label">Pilih Versi Target yang Ingin Dituju</label>
-              <select id="target-ver-select" class="form-select" bind:value={switchTargetVersion} disabled={switchingVersion}>
-                {#if currentEngine.versions && currentEngine.versions.length > 0}
-                  {#each currentEngine.versions as v}
-                    <option value={v.version}>
-                      {v.label} {v.version === currentEngine.version ? '(Versi Saat Ini)' : ''}
-                    </option>
-                  {/each}
-                {:else}
-                  {#each currentEngine.supported_versions as sv}
-                    <option value={sv}>{currentEngine.display_name} {sv}</option>
-                  {/each}
-                {/if}
-              </select>
-            </div>
-
-            <div class="checkbox-row mt-2">
-              <label class="custom-checkbox-label">
-                <input type="checkbox" bind:checked={switchBackupFirst} disabled={switchingVersion} />
-                <span>
-                  <strong>Buat cadangan snapshot otomatis seluruh database</strong> (mysqldump --all-databases) sebelum beralih versi (Sangat Direkomendasikan).
-                </span>
-              </label>
-            </div>
-
-            <div class="switch-action-row mt-4">
-              <button
-                class="btn btn-primary"
-                disabled={switchingVersion || switchTargetVersion === currentEngine.version}
-                onclick={submitSwitchVersion}
-              >
-                {#if switchingVersion}
-                  <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-                  <span>Memproses Alih Versi...</span>
-                {:else}
-                  <i class="ri-shuffle-line" aria-hidden="true"></i>
-                  <span>Beralih ke Versi Ini (Switch Version)</span>
-                {/if}
-              </button>
-            </div>
-          </div>
-        {:else if engineTab === 'config'}
-          <!-- Tab 3: Konfigurasi my.cnf -->
-          <div class="config-panel">
-            <div class="config-panel-header">
-              <span class="config-path-badge">Berkas: <code>{engineConfigPath || '/etc/mysql/my.cnf'}</code></span>
-              <button
-                class="btn btn-outline btn-sm"
-                disabled={loadingEngineConfig}
-                onclick={fetchEngineConfig}
-              >
-                <i class="ri-refresh-line" aria-hidden="true"></i>
-                <span>Muat Ulang</span>
-              </button>
-            </div>
-
-            <textarea
-              class="config-editor-textarea"
-              bind:value={engineConfigContent}
-              disabled={loadingEngineConfig || savingEngineConfig}
-              spellcheck="false"
-            ></textarea>
-
-            <div class="config-footer-row">
-              <span class="config-hint">Simpan perubahan dan restart layanan untuk menerapkan pengaturan baru.</span>
-              <button
-                class="btn btn-primary"
-                disabled={savingEngineConfig || loadingEngineConfig}
-                onclick={saveEngineConfig}
-              >
-                {#if savingEngineConfig}
-                  <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-                  <span>Menyimpan...</span>
-                {:else}
-                  <i class="ri-save-line" aria-hidden="true"></i>
-                  <span>Simpan Konfigurasi</span>
-                {/if}
-              </button>
-            </div>
-          </div>
-        {:else if engineTab === 'logs'}
-          <!-- Tab 4: Log Galat -->
-          <div class="logs-panel">
-            <div class="config-panel-header">
-              <span class="config-path-badge">Log Galat Terkini (Error Log)</span>
-              <button
-                class="btn btn-outline btn-sm"
-                disabled={loadingEngineLogs}
-                onclick={fetchEngineLogs}
-              >
-                <i class="ri-refresh-line" aria-hidden="true"></i>
-                <span>Segarkan Log</span>
-              </button>
-            </div>
-            <pre class="logs-terminal-viewer">{engineLogsContent || 'Tidak ada catatan log galat.'}</pre>
-          </div>
+    <div class="webgui-info-card">
+      <div class="webgui-badge-row">
+        {#if webGuiStatus?.installed}
+          <span class="badge-status-online">● Layanan Aktif</span>
+          <span class="badge-php-version">{webGuiStatus?.software || 'phpMyAdmin 5.2.1'}</span>
+        {:else}
+          <span class="badge-status-not-installed">● Belum Terpasang</span>
+          <span class="badge-php-version">phpMyAdmin Resmi</span>
+        {/if}
+        {#if targetWebGuiDb}
+          <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
         {/if}
       </div>
 
-      <div class="modal-footer">
-        <button
-          class="btn btn-outline"
-          disabled={switchingVersion}
-          onclick={() => (showEngineManager = false)}
-        >
-          Tutup
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Modal Web GUI Database (phpMyAdmin / Adminer ala aaPanel Screenshot 4) -->
-{#if showWebGuiModal}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget) showWebGuiModal = false; }}
-  >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <div class="modal-title-with-icon">
-          <i class="ri-terminal-box-line engine-install-icon" aria-hidden="true"></i>
-          <div>
-            <h3 class="modal-title">Web GUI Database (phpMyAdmin / Adminer)</h3>
-            <p class="modal-subtitle">Antarmuka visual manajemen database, tabel, dan eksekusi query SQL</p>
+      {#if !webGuiStatus?.installed}
+        <div class="webgui-not-installed-box mt-3">
+          <div class="not-installed-content">
+            <i class="ri-alert-line not-installed-icon" aria-hidden="true"></i>
+            <div class="not-installed-info">
+              <h4 class="not-installed-title">Layanan phpMyAdmin Belum Terpasang</h4>
+              <p class="not-installed-desc">
+                Paket resmi phpMyAdmin belum dipasang pada server ini. Silakan pasang paket phpMyAdmin terlebih dahulu melalui Quick Install agar dapat mengelola basis data secara visual.
+              </p>
+            </div>
+          </div>
+          <div class="not-installed-actions mt-3">
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick={openPmaInstallModal}
+            >
+              <i class="ri-download-cloud-line" aria-hidden="true"></i>
+              <span>Quick Install phpMyAdmin Sekarang</span>
+            </button>
           </div>
         </div>
-        <button
-          class="modal-close-btn"
-          onclick={() => (showWebGuiModal = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <div class="webgui-info-card">
-          <div class="webgui-badge-row">
-            {#if webGuiStatus?.installed}
-              <span class="badge-status-online">● Layanan Aktif</span>
-              <span class="badge-php-version">{webGuiStatus?.software || 'phpMyAdmin 5.2.1'}</span>
-            {:else}
-              <span class="badge-status-not-installed">● Belum Terpasang</span>
-              <span class="badge-php-version">phpMyAdmin Resmi</span>
-            {/if}
-            {#if targetWebGuiDb}
-              <span class="badge-target-db">Basis Data: <strong>{targetWebGuiDb}</strong></span>
-            {/if}
-          </div>
-
-          {#if !webGuiStatus?.installed}
-            <div class="webgui-not-installed-box mt-3">
-              <div class="not-installed-content">
-                <i class="ri-alert-line not-installed-icon" aria-hidden="true"></i>
-                <div class="not-installed-info">
-                  <h4 class="not-installed-title">Layanan phpMyAdmin Belum Terpasang</h4>
-                  <p class="not-installed-desc">
-                    Paket resmi phpMyAdmin belum dipasang pada server ini. Silakan pasang paket phpMyAdmin terlebih dahulu melalui Quick Install agar dapat mengelola basis data secara visual.
-                  </p>
-                </div>
-              </div>
-              <div class="not-installed-actions mt-3">
+      {:else}
+        {#if targetWebGuiUser || targetWebGuiPass}
+          <div class="webgui-credentials-box">
+            <div class="credentials-box-header">
+              <i class="ri-key-2-line" aria-hidden="true"></i>
+              <span class="credentials-box-title">Kredensial Login phpMyAdmin</span>
+            </div>
+            <div class="credentials-box-body">
+              <div class="credential-row">
+                <span class="credential-label">Username:</span>
+                <code class="credential-value">{targetWebGuiUser || targetWebGuiDb}</code>
                 <button
                   type="button"
-                  class="btn btn-primary"
-                  onclick={openPmaInstallModal}
+                  class="btn-icon"
+                  onclick={() => copyText(targetWebGuiUser || targetWebGuiDb, 'Username')}
+                  title="Salin Username"
+                  aria-label="Salin Username"
                 >
-                  <i class="ri-download-cloud-line" aria-hidden="true"></i>
-                  <span>Quick Install phpMyAdmin Sekarang</span>
+                  <i class="ri-file-copy-line" aria-hidden="true"></i>
                 </button>
               </div>
-            </div>
-          {:else}
-            {#if targetWebGuiUser || targetWebGuiPass}
-              <div class="webgui-credentials-box">
-                <div class="credentials-box-header">
-                  <i class="ri-key-2-line" aria-hidden="true"></i>
-                  <span class="credentials-box-title">Kredensial Login phpMyAdmin</span>
-                </div>
-                <div class="credentials-box-body">
-                  <div class="credential-row">
-                    <span class="credential-label">Username:</span>
-                    <code class="credential-value">{targetWebGuiUser || targetWebGuiDb}</code>
-                    <button
-                      type="button"
-                      class="btn-icon"
-                      onclick={() => copyText(targetWebGuiUser || targetWebGuiDb, 'Username')}
-                      title="Salin Username"
-                      aria-label="Salin Username"
-                    >
-                      <i class="ri-file-copy-line" aria-hidden="true"></i>
-                    </button>
-                  </div>
-                  {#if targetWebGuiPass}
-                    <div class="credential-row">
-                      <span class="credential-label">Password:</span>
-                      <code class="credential-value">
-                        {showWebGuiPassword ? targetWebGuiPass : '••••••••••••'}
-                      </code>
-                      <button
-                        type="button"
-                        class="btn-icon"
-                        onclick={() => (showWebGuiPassword = !showWebGuiPassword)}
-                        title={showWebGuiPassword ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}
-                        aria-label="Toggle Tampilan Sandi"
-                      >
-                        <i class={showWebGuiPassword ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-icon"
-                        onclick={() => copyText(targetWebGuiPass, 'Password')}
-                        title="Salin Password"
-                        aria-label="Salin Password"
-                      >
-                        <i class="ri-file-copy-line" aria-hidden="true"></i>
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-                <p class="credential-hint">
-                  <i class="ri-information-line" aria-hidden="true"></i>
-                  <span>Formulir <strong>Log in</strong> phpMyAdmin otomatis terisi dengan Username di atas. Masukkan Password jika diminta.</span>
-                </p>
-              </div>
-            {/if}
-
-            <p class="webgui-desc">
-              Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
-            </p>
-
-            <!-- Pilihan Jalur Akses (Access Mode Selector) -->
-            <div class="webgui-mode-selector mt-2">
-              <button
-                type="button"
-                class="mode-tab-btn"
-                class:active={webGuiAccessMode === 'panel'}
-                onclick={() => (webGuiAccessMode = 'panel')}
-              >
-                <i class="ri-dashboard-line" aria-hidden="true"></i>
-                <span>Melalui FikPanel (Independen)</span>
-              </button>
-              <button
-                type="button"
-                class="mode-tab-btn"
-                class:active={webGuiAccessMode === 'domain'}
-                onclick={() => (webGuiAccessMode = 'domain')}
-              >
-                <i class="ri-global-line" aria-hidden="true"></i>
-                <span>Melalui Domain Situs</span>
-              </button>
-              <button
-                type="button"
-                class="mode-tab-btn"
-                class:active={webGuiAccessMode === 'custom_port'}
-                onclick={() => (webGuiAccessMode = 'custom_port')}
-              >
-                <i class="ri-terminal-box-line" aria-hidden="true"></i>
-                <span>Port Standalone Khusus</span>
-              </button>
-            </div>
-
-            <!-- Konfigurasi sesuai Mode Terpilih -->
-            {#if webGuiAccessMode === 'domain'}
-              <div class="mode-config-box mt-3">
-                {#if webGuiStatus?.available_domains && webGuiStatus.available_domains.length > 0}
-                  <label for="webgui-domain-select" class="form-label">Pilih Domain Situs yang Terpasang:</label>
-                  <select id="webgui-domain-select" class="form-input" bind:value={selectedWebGuiDomain}>
-                    {#each webGuiStatus.available_domains as d}
-                      <option value={d.domain}>{d.domain} ({d.ssl ? 'HTTPS:443' : 'HTTP:80'})</option>
-                    {/each}
-                  </select>
-                  <p class="mode-help-text">
-                    Mengakses phpMyAdmin via subpath domain <code>/{selectedWebGuiDomain}/phpmyadmin</code> pada port standar web (80/443).
-                  </p>
-                {:else}
-                  <div class="mode-alert-box">
-                    <i class="ri-alert-line" aria-hidden="true"></i>
-                    <span>Belum ada situs terdaftar di menu Sites. Mengalihkan ke mode FikPanel Independen yang langsung aktif.</span>
-                  </div>
-                {/if}
-              </div>
-            {:else if webGuiAccessMode === 'custom_port'}
-              <div class="mode-config-box mt-3">
-                <label for="webgui-port-input" class="form-label">Nomor Port Khusus phpMyAdmin:</label>
-                <div class="input-with-unit">
-                  <input
-                    id="webgui-port-input"
-                    type="number"
-                    class="form-input"
-                    bind:value={customWebGuiPort}
-                    placeholder="888"
-                    min="1"
-                    max="65535"
-                  />
-                  <span class="unit-badge">TCP</span>
-                </div>
-                <p class="mode-help-text">
-                  Gunakan mode ini jika Anda menjalankan daemon phpMyAdmin pada port standalone (mis. 888 atau 8080). Pastikan port telah dibuka di firewall VPS.
-                </p>
-              </div>
-            {:else}
-              <div class="mode-config-box mt-3">
-                <div class="mode-panel-info">
-                  <i class="ri-shield-check-line mode-panel-icon" aria-hidden="true"></i>
-                  <div>
-                    <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
-                    <p class="mode-help-text">
-                      Berjalan langsung di port panel (<code>{window.location.origin}/phpmyadmin/index.php</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            {/if}
-
-            <div class="webgui-cards-container mt-3">
-              <!-- Opsi 1: Akses Bebas Sandi (Password-Free Access / SSO) -->
-              <div class="webgui-choice-card highlight">
-                <div class="choice-card-header">
-                  <span class="badge-new-sso">FITUR UTAMA</span>
-                  <h4 class="choice-card-title">Akses Bebas Sandi (One-Click SSO)</h4>
-                </div>
-                <p class="choice-card-desc">
-                  Masuk langsung ke antarmuka web database tanpa perlu mengetik ulang root password secara manual.
-                  Menggunakan token sesi panel yang aman dan otomatis kedaluwarsa.
-                </p>
-                <div class="webgui-public-url-box mt-2">
-                  <div class="public-url-wrapper">
-                    <span class="public-url-label">Target URL:</span>
-                    <code class="public-url-text">{getComputedPublicUrl()}</code>
-                  </div>
-                </div>
-                <button
-                  class="btn btn-primary mt-2"
-                  onclick={openWebGuiSso}
-                >
-                  <i class="ri-external-link-line" aria-hidden="true"></i>
-                  <span>Buka Akses Bebas Sandi (Tab Baru)</span>
-                </button>
-              </div>
-
-              <!-- Opsi 2: Akses Publik (Public Access) -->
-              <div class="webgui-choice-card">
-                <div class="choice-card-header">
-                  <h4 class="choice-card-title">Akses Publik (Public Access)</h4>
-                  <label class="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={publicAccessEnabled}
-                      onchange={(e) => onToggleWebGuiPublic((e.target as HTMLInputElement).checked)}
-                    />
-                    <span class="slider"></span>
-                  </label>
-                </div>
-                <p class="choice-card-desc">
-                  Membuka port / URL antarmuka web database ke internet publik untuk diakses via URL domain/IP.
-                  Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
-                </p>
-                {#if publicAccessEnabled}
-                  <div class="webgui-public-url-box mt-2">
-                    <div class="public-url-wrapper">
-                      <span class="public-url-label">URL Publik:</span>
-                      <code class="public-url-text">{getComputedPublicUrl()}</code>
-                    </div>
-                    <button
-                      type="button"
-                      class="btn-icon"
-                      onclick={() => copyText(getComputedPublicUrl(), 'URL Web GUI')}
-                      title="Salin URL Publik"
-                      aria-label="Salin URL Publik"
-                    >
-                      <i class="ri-file-copy-line" aria-hidden="true"></i>
-                    </button>
-                  </div>
+              {#if targetWebGuiPass}
+                <div class="credential-row">
+                  <span class="credential-label">Password:</span>
+                  <code class="credential-value">
+                    {showWebGuiPassword ? targetWebGuiPass : '••••••••••••'}
+                  </code>
                   <button
-                    class="btn btn-outline mt-2"
-                    onclick={openWebGuiPublic}
+                    type="button"
+                    class="btn-icon"
+                    onclick={() => (showWebGuiPassword = !showWebGuiPassword)}
+                    title={showWebGuiPassword ? 'Sembunyikan Sandi' : 'Tampilkan Sandi'}
+                    aria-label="Toggle Tampilan Sandi"
                   >
-                    <i class="ri-global-line" aria-hidden="true"></i>
-                    <span>Buka URL Publik (Tab Baru)</span>
+                    <i class={showWebGuiPassword ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
                   </button>
-                {/if}
-              </div>
+                  <button
+                    type="button"
+                    class="btn-icon"
+                    onclick={() => copyText(targetWebGuiPass, 'Password')}
+                    title="Salin Password"
+                    aria-label="Salin Password"
+                  >
+                    <i class="ri-file-copy-line" aria-hidden="true"></i>
+                  </button>
+                </div>
+              {/if}
             </div>
-
-            <!-- Penjelasan Komprehensif Port 888 vs Domain vs Panel -->
-            <div class="webgui-environment-hint mt-3">
-              <i class="ri-information-line hint-icon" aria-hidden="true"></i>
-              <div class="hint-content">
-                <span class="hint-title">Mengapa phpMyAdmin Tidak Wajib Port 888?</span>
-                <p class="hint-text">
-                  Di industri hosting (seperti cPanel, DirectAdmin, atau CloudPanel), phpMyAdmin umumnya diakses melalui domain situs (mis. <code>kostash.my.id/phpmyadmin</code>) pada port standar 80/443 dengan SSL HTTPS, atau disajikan langsung melalui port panel itu sendiri. Port 888 adalah default warisan aaPanel yang sering terblokir firewall cloud. FikPanel memberikan fleksibilitas penuh: Anda bisa mengakses via domain situs, port khusus, atau langsung melalui FikPanel Built-in Client tanpa hambatan port!
-                </p>
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick={() => (showWebGuiModal = false)}>
-          Tutup
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Modal Atur Kuota Kapasitas Database (Screenshot 3 aaPanel) -->
-{#if showQuotaModal && quotaTargetDb}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget && !savingQuota) showQuotaModal = false; }}
-  >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <h3 class="modal-title">Atur Kuota Baru [{quotaTargetDb.name}]</h3>
-        <button
-          class="modal-close-btn"
-          disabled={savingQuota}
-          onclick={() => (showQuotaModal = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <div class="form-group">
-          <label for="quota-used-info" class="form-label">Kapasitas Terpakai Saat Ini</label>
-          <div class="input-with-unit">
-            <input
-              id="quota-used-info"
-              type="text"
-              class="form-input"
-              value={formatBytes(quotaTargetDb.size_bytes)}
-              disabled
-            />
+            <p class="credential-hint">
+              <i class="ri-information-line" aria-hidden="true"></i>
+              <span>Formulir <strong>Log in</strong> phpMyAdmin otomatis terisi dengan Username di atas. Masukkan Password jika diminta.</span>
+            </p>
           </div>
-        </div>
+        {/if}
 
-        <div class="form-group">
-          <label for="quota-val-input" class="form-label">Kapasitas Batas Kuota (Quota)</label>
-          <div class="input-with-unit">
-            <input
-              id="quota-val-input"
-              type="number"
-              class="form-input"
-              min="0"
-              bind:value={quotaMB}
-              disabled={savingQuota}
-            />
-            <span class="unit-badge">MB</span>
-          </div>
-        </div>
-
-        <div class="quota-reminder-box">
-          <p class="reminder-line">
-            • <strong>Catatan:</strong> Fitur pembatasan kuota kapasitas database menggunakan kuota sistem file OS (XFS / ext4 prjquota).
-          </p>
-          <p class="reminder-line">
-            • Untuk menonaktifkan atau membatalkan batasan kuota, isi nilai dengan <strong>"0"</strong>.
-          </p>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline" disabled={savingQuota} onclick={() => (showQuotaModal = false)}>
-          Batal
-        </button>
-        <button class="btn btn-primary" disabled={savingQuota} onclick={saveQuota}>
-          Konfirmasi Kuota
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-
-<!-- Modal Password Root -->
-{#if showRootPassModal}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget) showRootPassModal = false; }}
-  >
-    <div class="modal-card" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="modal-header">
-        <h3 class="modal-title">Password Root / Administrator</h3>
-        <button
-          class="modal-close-btn"
-          onclick={() => (showRootPassModal = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <p class="modal-subtitle">
-          Kredensial root administrator digunakan untuk menghubungkan panel dengan layanan engine {currentEngine.display_name}.
+        <p class="webgui-desc">
+          Pilih jalur akses yang sesuai dengan konfigurasi server Anda:
         </p>
 
-        <div class="form-group">
-          <label for="root-pass" class="form-label">Password Root Saat Ini</label>
-          <div class="input-with-button">
-            <input
-              id="root-pass"
-              type={showRootPass ? 'text' : 'password'}
-              class="form-input"
-              bind:value={rootPassword}
-            />
-            <button
-              type="button"
-              class="btn btn-outline"
-              aria-label={showRootPass ? 'Sembunyikan password' : 'Lihat password'}
-              onclick={() => (showRootPass = !showRootPass)}
-            >
-              <i class={showRootPass ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-            </button>
-            <button
-              type="button"
-              class="btn btn-outline"
-              onclick={() => copyText(rootPassword, 'Password root')}
-            >
-              Salin
-            </button>
-          </div>
+        <!-- Pilihan Jalur Akses (Access Mode Selector) -->
+        <div class="webgui-mode-selector mt-2">
+          <button
+            type="button"
+            class="mode-tab-btn"
+            class:active={webGuiAccessMode === 'panel'}
+            onclick={() => (webGuiAccessMode = 'panel')}
+          >
+            <i class="ri-dashboard-line" aria-hidden="true"></i>
+            <span>Melalui FikPanel (Independen)</span>
+          </button>
+          <button
+            type="button"
+            class="mode-tab-btn"
+            class:active={webGuiAccessMode === 'domain'}
+            onclick={() => (webGuiAccessMode = 'domain')}
+          >
+            <i class="ri-global-line" aria-hidden="true"></i>
+            <span>Melalui Domain Situs</span>
+          </button>
+          <button
+            type="button"
+            class="mode-tab-btn"
+            class:active={webGuiAccessMode === 'custom_port'}
+            onclick={() => (webGuiAccessMode = 'custom_port')}
+          >
+            <i class="ri-terminal-box-line" aria-hidden="true"></i>
+            <span>Port Standalone Khusus</span>
+          </button>
         </div>
-      </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick={() => (showRootPassModal = false)}>
-          Tutup
-        </button>
-        <button
-          class="btn btn-primary"
-          onclick={() => {
-            notify('Password root berhasil diperbarui', 'success');
-            showRootPassModal = false;
-          }}
-        >
-          Simpan Perubahan
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Drawer / Modal Messages Box & Real-Time Log Execution (ala aaPanel) -->
-{#if showTasksDrawer}
-  <div
-    class="modal-backdrop"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget) showTasksDrawer = false; }}
-  >
-    <div class="messages-box-modal" role="dialog" aria-modal="true" tabindex="-1">
-      <div class="messages-header">
-        <div class="messages-title">
-          <i class="ri-terminal-window-fill" aria-hidden="true"></i>
-          <span>Messages Box / Antrean Eksekusi</span>
-        </div>
-        <button
-          class="modal-close-btn"
-          onclick={() => (showTasksDrawer = false)}
-          aria-label="Tutup"
-        >
-          <i class="ri-close-line" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="messages-body">
-        <!-- Sidebar Daftar Task -->
-        <aside class="messages-sidebar">
-          <div class="task-list-title">
-            <span>Daftar Tugas ({tasks.length})</span>
-          </div>
-          <div class="task-items-list">
-            {#each tasks as t (t.id)}
-              <button
-                class="task-item"
-                class:active={activeTask?.id === t.id}
-                onclick={() => openTaskStream(t.id)}
-              >
-                <span class="task-status-dot {t.status}"></span>
-                <div class="task-item-meta">
-                  <div class="task-item-name">{t.target}</div>
-                  <div class="task-item-status">{t.status}</div>
-                </div>
-              </button>
-            {/each}
-          </div>
-        </aside>
-
-        <!-- Area Log Terminal Real-time -->
-        <main class="messages-log-area">
-          <div class="log-area-topbar">
-            <span class="log-target-label">
-              Eksekusi: <strong>{activeTask?.target || 'Pilih tugas'}</strong>
-            </span>
-            <div class="log-topbar-actions">
-              <span class="log-tip">Tip: Jika tugas terhenti, klik muat ulang antrean.</span>
-              <button
-                class="btn-refresh-task"
-                onclick={() => {
-                  fetchTasks();
-                  if (activeTask) openTaskStream(activeTask.id);
-                }}
-              >
-                <i class="ri-refresh-line" aria-hidden="true"></i>
-                <span>Muat Ulang</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="terminal-container" bind:this={terminalEl}>
-            {#if streamLogs.length === 0}
-              <div class="terminal-waiting">
-                <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-                <span>Menghubungkan ke stream eksekusi tugas...</span>
-              </div>
+        <!-- Konfigurasi sesuai Mode Terpilih -->
+        {#if webGuiAccessMode === 'domain'}
+          <div class="mode-config-box mt-3">
+            {#if webGuiStatus?.available_domains && webGuiStatus.available_domains.length > 0}
+              <label for="webgui-domain-select" class="form-label">Pilih Domain Situs yang Terpasang:</label>
+              <select id="webgui-domain-select" class="form-input" bind:value={selectedWebGuiDomain}>
+                {#each webGuiStatus.available_domains as d}
+                  <option value={d.domain}>{d.domain} ({d.ssl ? 'HTTPS:443' : 'HTTP:80'})</option>
+                {/each}
+              </select>
+              <p class="mode-help-text">
+                Mengakses phpMyAdmin via subpath domain <code>/{selectedWebGuiDomain}/phpmyadmin</code> pada port standar web (80/443).
+              </p>
             {:else}
-              {#each streamLogs as line, i}
-                <div class="terminal-line">{line}</div>
-              {/each}
+              <div class="mode-alert-box">
+                <i class="ri-alert-line" aria-hidden="true"></i>
+                <span>Belum ada situs terdaftar di menu Sites. Mengalihkan ke mode FikPanel Independen yang langsung aktif.</span>
+              </div>
             {/if}
           </div>
-        </main>
+        {:else if webGuiAccessMode === 'custom_port'}
+          <div class="mode-config-box mt-3">
+            <label for="webgui-port-input" class="form-label">Nomor Port Khusus phpMyAdmin:</label>
+            <div class="input-with-unit">
+              <input
+                id="webgui-port-input"
+                type="number"
+                class="form-input"
+                bind:value={customWebGuiPort}
+                placeholder="888"
+                min="1"
+                max="65535"
+              />
+              <span class="unit-badge">TCP</span>
+            </div>
+            <p class="mode-help-text">
+              Gunakan mode ini jika Anda menjalankan daemon phpMyAdmin pada port standalone (mis. 888 atau 8080). Pastikan port telah dibuka di firewall VPS.
+            </p>
+          </div>
+        {:else}
+          <div class="mode-config-box mt-3">
+            <div class="mode-panel-info">
+              <i class="ri-shield-check-line mode-panel-icon" aria-hidden="true"></i>
+              <div>
+                <span class="mode-panel-title">Akses Mandiri FikPanel (Rekomendasi Utama)</span>
+                <p class="mode-help-text">
+                  Berjalan langsung di port panel (<code>{window.location.origin}/phpmyadmin/index.php</code>). Tidak terikat ke domain manapun, bebas dari port 888, dan tidak perlu membuka port baru di firewall VPS atau cloud security group.
+                </p>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <div class="webgui-cards-container mt-3">
+          <!-- Opsi 1: Akses Bebas Sandi (Password-Free Access / SSO) -->
+          <div class="webgui-choice-card highlight">
+            <div class="choice-card-header">
+              <span class="badge-new-sso">FITUR UTAMA</span>
+              <h4 class="choice-card-title">Akses Bebas Sandi (One-Click SSO)</h4>
+            </div>
+            <p class="choice-card-desc">
+              Masuk langsung ke antarmuka web database tanpa perlu mengetik ulang root password secara manual.
+              Menggunakan token sesi panel yang aman dan otomatis kedaluwarsa.
+            </p>
+            <div class="webgui-public-url-box mt-2">
+              <div class="public-url-wrapper">
+                <span class="public-url-label">Target URL:</span>
+                <code class="public-url-text">{getComputedPublicUrl()}</code>
+              </div>
+            </div>
+            <button
+              class="btn btn-primary mt-2"
+              onclick={openWebGuiSso}
+            >
+              <i class="ri-external-link-line" aria-hidden="true"></i>
+              <span>Buka Akses Bebas Sandi (Tab Baru)</span>
+            </button>
+          </div>
+
+          <!-- Opsi 2: Akses Publik (Public Access) -->
+          <div class="webgui-choice-card">
+            <div class="choice-card-header">
+              <h4 class="choice-card-title">Akses Publik (Public Access)</h4>
+              <label class="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={publicAccessEnabled}
+                  onchange={(e) => onToggleWebGuiPublic((e.target as HTMLInputElement).checked)}
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="choice-card-desc">
+              Membuka port / URL antarmuka web database ke internet publik untuk diakses via URL domain/IP.
+              Matikan akses publik bila tidak digunakan untuk meningkatkan keamanan server dari serangan brute-force.
+            </p>
+            {#if publicAccessEnabled}
+              <div class="webgui-public-url-box mt-2">
+                <div class="public-url-wrapper">
+                  <span class="public-url-label">URL Publik:</span>
+                  <code class="public-url-text">{getComputedPublicUrl()}</code>
+                </div>
+                <button
+                  type="button"
+                  class="btn-icon"
+                  onclick={() => copyText(getComputedPublicUrl(), 'URL Web GUI')}
+                  title="Salin URL Publik"
+                  aria-label="Salin URL Publik"
+                >
+                  <i class="ri-file-copy-line" aria-hidden="true"></i>
+                </button>
+              </div>
+              <button
+                class="btn btn-outline mt-2"
+                onclick={openWebGuiPublic}
+              >
+                <i class="ri-global-line" aria-hidden="true"></i>
+                <span>Buka URL Publik (Tab Baru)</span>
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Penjelasan Komprehensif Port 888 vs Domain vs Panel -->
+        <div class="webgui-environment-hint mt-3">
+          <i class="ri-information-line hint-icon" aria-hidden="true"></i>
+          <div class="hint-content">
+            <span class="hint-title">Mengapa phpMyAdmin Tidak Wajib Port 888?</span>
+            <p class="hint-text">
+              Di industri hosting (seperti cPanel, DirectAdmin, atau CloudPanel), phpMyAdmin umumnya diakses melalui domain situs (mis. <code>kostash.my.id/phpmyadmin</code>) pada port standar 80/443 dengan SSL HTTPS, atau disajikan langsung melalui port panel itu sendiri. Port 888 adalah default warisan aaPanel yang sering terblokir firewall cloud. FikPanel memberikan fleksibilitas penuh: Anda bisa mengakses via domain situs, port khusus, atau langsung melalui FikPanel Built-in Client tanpa hambatan port!
+            </p>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    {#snippet footer()}
+      <button class="btn btn-outline" onclick={() => (showWebGuiModal = false)}>
+        Tutup
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Atur Kuota Kapasitas Database (Screenshot 3 aaPanel) -->
+  <Modal
+    open={showQuotaModal && Boolean(quotaTargetDb)}
+    title={quotaTargetDb ? `Atur Kuota Baru [${quotaTargetDb.name}]` : 'Atur Kuota Baru'}
+    size="md"
+    onclose={() => { if (!savingQuota) showQuotaModal = false; }}
+  >
+    {#if quotaTargetDb}
+      <div class="form-group">
+        <label for="quota-used-info" class="form-label">Kapasitas Terpakai Saat Ini</label>
+        <div class="input-with-unit">
+          <input
+            id="quota-used-info"
+            type="text"
+            class="form-input"
+            value={formatBytes(quotaTargetDb.size_bytes)}
+            disabled
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="quota-val-input" class="form-label">Kapasitas Batas Kuota (Quota)</label>
+        <div class="input-with-unit">
+          <input
+            id="quota-val-input"
+            type="number"
+            class="form-input"
+            min="0"
+            bind:value={quotaMB}
+            disabled={savingQuota}
+          />
+          <span class="unit-badge">MB</span>
+        </div>
+      </div>
+
+      <div class="quota-reminder-box">
+        <p class="reminder-line">
+          • <strong>Catatan:</strong> Fitur pembatasan kuota kapasitas database menggunakan kuota sistem file OS (XFS / ext4 prjquota).
+        </p>
+        <p class="reminder-line">
+          • Untuk menonaktifkan atau membatalkan batasan kuota, isi nilai dengan <strong>"0"</strong>.
+        </p>
+      </div>
+    {/if}
+
+    {#snippet footer()}
+      <button class="btn btn-outline" disabled={savingQuota} onclick={() => (showQuotaModal = false)}>
+        Batal
+      </button>
+      <button class="btn btn-primary" disabled={savingQuota} onclick={saveQuota}>
+        Konfirmasi Kuota
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Password Root -->
+  <Modal
+    open={showRootPassModal}
+    title="Password Root / Administrator"
+    size="md"
+    onclose={() => (showRootPassModal = false)}
+  >
+    <p class="modal__subtitle">
+      Kredensial root administrator digunakan untuk menghubungkan panel dengan layanan engine {currentEngine.display_name}.
+    </p>
+
+    <div class="form-group">
+      <label for="root-pass" class="form-label">Password Root Saat Ini</label>
+      <div class="input-with-button">
+        <input
+          id="root-pass"
+          type={showRootPass ? 'text' : 'password'}
+          class="form-input"
+          bind:value={rootPassword}
+        />
+        <button
+          type="button"
+          class="btn btn-outline"
+          aria-label={showRootPass ? 'Sembunyikan password' : 'Lihat password'}
+          onclick={() => (showRootPass = !showRootPass)}
+        >
+          <i class={showRootPass ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline"
+          onclick={() => copyText(rootPassword, 'Password root')}
+        >
+          Salin
+        </button>
       </div>
     </div>
-  </div>
-{/if}
 
-<style>
-  .databases-view {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    padding: 1.5rem;
-  }
-
-  /* Header Tabs Bar */
-  .engine-tabs-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.5rem;
-  }
-
-  .engine-tabs {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .engine-tab {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.125rem;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
-    color: var(--text-muted);
-    font-size: 0.9375rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .engine-tab:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-  }
-
-  .engine-tab.active {
-    color: var(--accent);
-    background: var(--bg-surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .tab-icon {
-    font-size: 1.125rem;
-  }
-
-  .engine-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-
-  .engine-dot.active {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent);
-  }
-
-  .engine-dot.uninstalled {
-    background: var(--danger);
-  }
-
-  .btn-task-queue {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.875rem;
-    border-radius: var(--radius-md);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .btn-task-queue:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-  }
-
-  .badge-running-count {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.125rem 0.375rem;
-    border-radius: 999px;
-  }
-
-  /* Uninstalled State Card (aaPanel Screenshot 2) */
-  .uninstalled-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 2.5rem 2rem;
-    margin: 1.5rem 0;
-  }
-
-  .uninstalled-card__body {
-    display: flex;
-    gap: 1.5rem;
-    align-items: flex-start;
-  }
-
-  .alert-icon-box {
-    font-size: 2.5rem;
-    color: var(--warning);
-    line-height: 1;
-  }
-
-  .uninstalled-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 0.5rem 0;
-  }
-
-  .uninstalled-desc {
-    color: var(--text-muted);
-    font-size: 0.9375rem;
-    line-height: 1.5;
-    margin: 0 0 1.25rem 0;
-    max-width: 650px;
-  }
-
-  .uninstalled-actions {
-    display: flex;
-    gap: 0.75rem;
-  }
-
-  /* Action Bar Card (aaPanel Screenshot 1) */
-  .action-bar-card {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1rem 1.25rem;
-  }
-
-  .auto-backup-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .auto-backup-label {
-    font-size: 0.875rem;
-    color: var(--text-muted);
-  }
-
-  .auto-backup-label strong {
-    color: var(--text-primary);
-  }
-
-  /* Toggle Switch */
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 20px;
-  }
-
-  .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  .slider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background-color: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    transition: 0.3s;
-    border-radius: 20px;
-  }
-
-  .slider:before {
-    position: absolute;
-    content: '';
-    height: 14px;
-    width: 14px;
-    left: 2px;
-    bottom: 2px;
-    background-color: var(--text-muted);
-    transition: 0.3s;
-    border-radius: 50%;
-  }
-
-  input:checked + .slider {
-    background-color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  input:checked + .slider:before {
-    transform: translateX(16px);
-    background-color: var(--text-on-accent);
-  }
-
-  .action-buttons-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  .btn-group-left {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .btn-group-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .engine-status-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.75rem;
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .status-indicator-dot {
-    width: 7px;
-    height: 7px;
-    background: var(--status-online);
-    border-radius: 50%;
-    box-shadow: 0 0 5px var(--status-online);
-  }
-
-  .search-box {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .search-icon {
-    position: absolute;
-    left: 0.625rem;
-    color: var(--text-muted);
-  }
-
-  .search-input {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    padding: 0.4375rem 0.625rem 0.4375rem 2rem;
-    font-size: 0.875rem;
-  }
-
-  .search-input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-
-  /* Tabel Data */
-  .table-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-  }
-
-  .table-responsive {
-    overflow-x: auto;
-  }
-
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-  }
-
-  .data-table th {
-    background: var(--bg-canvas);
-    color: var(--text-muted);
-    font-weight: 500;
-    text-align: left;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .data-table td {
-    padding: 0.875rem 1rem;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-primary);
-  }
-
-  .col-mono {
-    font-family: var(--font-mono, monospace);
-    font-size: 0.8125rem;
-  }
-
-  .col-pass {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-
-  .btn-icon {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0.125rem 0.25rem;
-  }
-
-  .btn-icon:hover {
-    color: var(--text-primary);
-  }
-
-  .badge-backup {
-    font-size: 0.75rem;
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-  }
-
-  .badge-backup.exists {
-    background: var(--tint-accent);
-    color: var(--accent);
-  }
-
-  .badge-backup.empty {
-    background: var(--bg-hover);
-    color: var(--text-muted);
-  }
-
-  .action-link {
-    background: transparent;
-    border: none;
-    color: var(--accent);
-    cursor: pointer;
-    font-size: 0.8125rem;
-    padding: 0 0.25rem;
-  }
-
-  .action-link:hover {
-    text-decoration: underline;
-  }
-
-  .action-link.danger {
-    color: var(--status-offline);
-  }
-
-  .table-empty,
-  .table-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 4rem 2rem;
-    color: var(--text-muted);
-    gap: 0.75rem;
-  }
-
-  .empty-icon {
-    font-size: 3rem;
-  }
-
-  .spinner {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* Tombol Global */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border: 1px solid var(--accent);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.1);
-  }
-
-  .btn-outline {
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-  }
-
-  .btn-outline:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--text-muted);
-  }
-
-  .btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  /* Modals */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: var(--z-modal);
-  }
-
-  .modal-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    width: 100%;
-    max-width: 520px;
-    box-shadow: var(--shadow-lg);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .modal-title-with-icon {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .engine-install-icon {
-    font-size: 2rem;
-    color: var(--accent);
-  }
-
-  .modal-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-  }
-
-  .modal-subtitle {
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    margin: 0;
-  }
-
-  .modal-close-btn {
-    background: transparent;
-    border: none;
-    font-size: 1.25rem;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-
-  .modal-close-btn:hover {
-    color: var(--text-primary);
-  }
-
-  .modal-body {
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-color);
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .form-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .form-input,
-  .form-select {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0.5rem 0.75rem;
-    color: var(--text);
-    font-size: 0.875rem;
-    color-scheme: dark;
-  }
-
-  .form-select option {
-    color-scheme: dark;
-    background-color: var(--bg-surface);
-    color: var(--text);
-    padding: 0.5rem 0.75rem;
-  }
-
-  .form-select option:checked {
-    background-color: var(--bg-active);
-    color: var(--accent);
-  }
-
-  .form-input:focus,
-  .form-select:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-
-  .input-with-button {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .input-with-button .form-input {
-    flex: 1;
-  }
-
-  .plugin-desc-box {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.875rem 1rem;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
-
-  .plugin-desc-title {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 0.5rem 0;
-  }
-
-  .plugin-desc-list {
-    margin: 0;
-    padding-left: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  /* Messages Box Modal (aaPanel Screenshot 4) */
-  .messages-box-modal {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    width: 90%;
-    max-width: 860px;
-    height: 540px;
-    display: flex;
-    flex-direction: column;
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-  }
-
-  .messages-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.875rem 1.25rem;
-    background: var(--bg-canvas);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .messages-title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .messages-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .messages-sidebar {
-    width: 220px;
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .task-list-title {
-    padding: 0.75rem 1rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .task-items-list {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .task-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.75rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--border-color);
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .task-item:hover {
-    background: var(--bg-hover);
-  }
-
-  .task-item.active {
-    background: var(--bg-canvas);
-  }
-
-  .task-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-  }
-
-  .task-status-dot.running {
-    background: var(--status-online);
-    box-shadow: 0 0 6px var(--status-online);
-  }
-
-  .task-status-dot.success {
-    background: var(--status-online);
-  }
-
-  .task-status-dot.failed {
-    background: var(--status-offline);
-  }
-
-  .task-item-name {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .task-item-status {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    text-transform: capitalize;
-  }
-
-  .messages-log-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-inset);
-  }
-
-  .log-area-topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.625rem 1rem;
-    background: var(--bg-canvas);
-    border-bottom: 1px solid var(--border-color);
-    font-size: 0.8125rem;
-  }
-
-  .log-target-label {
-    color: var(--text-primary);
-  }
-
-  .log-topbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .log-tip {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .btn-refresh-task {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .btn-refresh-task:hover {
-    background: var(--bg-hover);
-  }
-
-  .terminal-container {
-    flex: 1;
-    padding: 1rem;
-    overflow-y: auto;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .terminal-waiting {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--text-muted);
-  }
-
-  .terminal-line {
-    line-height: 1.4;
-  }
-
-  /* Clickable Engine Status Badge (ala aaPanel) */
-  .engine-status-badge.is-clickable {
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .engine-status-badge.is-clickable:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-  }
-
-  .badge-play-icon {
-    font-size: 0.75rem;
-    color: var(--accent);
-    margin-left: 0.125rem;
-  }
-
-  /* Form Tambah DB Input with Select / Refresh */
-  .input-with-select {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .input-with-select .flex-1 {
-    flex: 1;
-  }
-
-  .charset-select {
-    width: 170px;
-    flex-shrink: 0;
-  }
-
-  .btn-refresh-pass {
-    padding: 0.5rem 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .add-to-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .remote-servers-link {
-    font-size: 0.8125rem;
-    color: var(--accent);
-    cursor: pointer;
-  }
-
-  .remote-servers-link:hover {
-    text-decoration: underline;
-  }
-
-  /* Engine Manager Modal */
-  .engine-manager-modal {
-    max-width: 720px;
-  }
-
-  .engine-manager-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-canvas);
-    padding: 0 1rem;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .em-tab-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.75rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .em-tab-btn:hover {
-    color: var(--text-primary);
-  }
-
-  .em-tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    font-weight: 600;
-  }
-
-  /* Service Tab */
-  .service-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  .service-status-box {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.25rem;
-  }
-
-  .status-indicator-large {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .status-dot-large {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .status-dot-large.online {
-    background: var(--status-online);
-    box-shadow: 0 0 10px var(--status-online);
-  }
-
-  .status-dot-large.offline {
-    background: var(--status-offline);
-    box-shadow: 0 0 10px var(--status-offline);
-  }
-
-  .service-status-heading {
-    margin: 0 0 0.25rem 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .service-status-sub {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
-
-  .service-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .service-action-card {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    padding: 1rem;
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    text-align: left;
-    transition: all 0.2s ease;
-    color: var(--text-primary);
-  }
-
-  .service-action-card:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-  }
-
-  .service-action-card.danger:hover:not(:disabled) {
-    border-color: var(--status-offline);
-  }
-
-  .service-action-card.success:hover:not(:disabled) {
-    border-color: var(--status-online);
-  }
-
-  .service-action-card .action-icon {
-    font-size: 1.5rem;
-    color: var(--accent);
-  }
-
-  .service-action-card.danger .action-icon {
-    color: var(--status-offline);
-  }
-
-  .service-action-card.success .action-icon {
-    color: var(--status-online);
-  }
-
-  .action-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .action-info strong {
-    font-size: 0.875rem;
-  }
-
-  .action-info span {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  /* Switch Version Tab */
-  .switch-version-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .version-warning-banner {
-    display: flex;
-    gap: 0.875rem;
-    padding: 1rem;
-    background: var(--bg-inset);
-    border-left: 4px solid var(--warning);
-    border-radius: var(--radius-md);
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    color: var(--text-primary);
-  }
-
-  .version-warning-banner .warning-icon {
-    font-size: 1.375rem;
-    color: var(--warning);
-    flex-shrink: 0;
-  }
-
-  .version-warning-banner p {
-    margin: 0.25rem 0 0 0;
-    color: var(--text-muted);
-  }
-
-  .current-version-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    color: var(--text-primary);
-  }
-
-  .active-check {
-    color: var(--status-online);
-    font-size: 1.125rem;
-  }
-
-  .custom-checkbox-label {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-
-  .custom-checkbox-label input {
-    margin-top: 0.125rem;
-  }
-
-  .custom-checkbox-label strong {
-    color: var(--text-primary);
-  }
-
-  /* Config & Logs */
-  .config-panel,
-  .logs-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .config-panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .config-path-badge {
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
-
-  .config-path-badge code {
-    color: var(--accent);
-    background: var(--bg-canvas);
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-  }
-
-  .config-editor-textarea {
-    width: 100%;
-    height: 280px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.75rem 1rem;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.8125rem;
-    color: var(--text-primary);
-    line-height: 1.5;
-    resize: vertical;
-    white-space: pre;
-  }
-
-  .config-editor-textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-
-  .config-footer-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .config-hint {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .logs-terminal-viewer {
-    background: var(--bg-inset);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1rem;
-    font-family: var(--font-mono, monospace);
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    height: 280px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    margin: 0;
-  }
-
-  /* Web GUI Modal (Screenshot 4) */
-  .webgui-info-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .webgui-badge-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .badge-status-online {
-    background: var(--tint-accent);
-    color: var(--accent);
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.25rem 0.625rem;
-    border-radius: 999px;
-  }
-
-  .badge-status-not-installed {
-    background: var(--tint-warning);
-    color: var(--warning);
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.25rem 0.625rem;
-    border-radius: 999px;
-  }
-
-  .webgui-not-installed-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .not-installed-content {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-  }
-
-  .not-installed-icon {
-    font-size: 2rem;
-    color: var(--warning);
-    flex-shrink: 0;
-  }
-
-  .not-installed-info {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .not-installed-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0;
-  }
-
-  .not-installed-desc {
-    font-size: 0.875rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    margin: 0;
-  }
-
-  .not-installed-actions {
-    display: flex;
-    justify-content: flex-start;
-  }
-
-  .badge-php-version {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 999px;
-  }
-
-  .badge-target-db {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 999px;
-  }
-
-  .webgui-credentials-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .credentials-box-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--accent);
-  }
-
-  .credentials-box-title {
-    color: var(--text);
-  }
-
-  .credentials-box-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .credential-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: 0.375rem 0.625rem;
-  }
-
-  .credential-label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    min-width: 70px;
-  }
-
-  .credential-value {
-    font-size: 0.8125rem;
-    color: var(--text);
-    font-family: var(--font-mono, monospace);
-    flex: 1;
-  }
-
-  .credential-hint {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin: 0;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.375rem;
-    line-height: 1.4;
-  }
-
-  .webgui-desc {
-    font-size: 0.875rem;
-    color: var(--text-muted);
-    margin: 0;
-  }
-
-  .webgui-cards-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    margin-top: 0.5rem;
-  }
-
-  .webgui-choice-card {
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .webgui-choice-card.highlight {
-    border-color: var(--accent);
-    background: var(--bg-surface);
-  }
-
-  .choice-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .badge-new-sso {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-    letter-spacing: 0.05em;
-  }
-
-  .choice-card-title {
-    margin: 0;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .choice-card-desc {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-
-  .webgui-mode-selector {
-    display: flex;
-    gap: 0.375rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.25rem;
-  }
-
-  .mode-tab-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    padding: 0.5rem 0.625rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .mode-tab-btn:hover {
-    color: var(--text-primary);
-  }
-
-  .mode-tab-btn.active {
-    background: var(--bg-surface);
-    color: var(--accent);
-    border-color: var(--border-color);
-    font-weight: 600;
-  }
-
-  .mode-config-box {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.875rem 1rem;
-  }
-
-  .mode-help-text {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 0.375rem;
-    margin-bottom: 0;
-    line-height: 1.4;
-  }
-
-  .mode-alert-box {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--warning);
-    font-size: 0.8125rem;
-  }
-
-  .mode-panel-info {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-
-  .mode-panel-icon {
-    font-size: 1.25rem;
-    color: var(--accent);
-    margin-top: 0.125rem;
-    flex-shrink: 0;
-  }
-
-  .mode-panel-title {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    display: block;
-  }
-
-  .webgui-public-url-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 0.5rem 0.75rem;
-    gap: 0.5rem;
-  }
-
-  .public-url-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    overflow: hidden;
-  }
-
-  .public-url-label {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-
-  .public-url-text {
-    font-size: 0.75rem;
-    color: var(--accent);
-    font-family: monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .webgui-environment-hint {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.75rem 1rem;
-  }
-
-  .hint-icon {
-    font-size: 1.125rem;
-    color: var(--accent);
-    margin-top: 0.125rem;
-    flex-shrink: 0;
-  }
-
-  .hint-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .hint-title {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .hint-text {
-    margin: 0;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-
-  /* Quota Modal */
-  .input-with-unit {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .input-with-unit .form-input {
-    width: 100%;
-    padding-right: 3rem;
-  }
-
-  .unit-badge {
-    position: absolute;
-    right: 0.75rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-muted);
-  }
-
-  .quota-reminder-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 0.875rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .reminder-line {
-    margin: 0;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-
-  .reminder-line strong {
-    color: var(--warning);
-  }
-
-  .mt-2 { margin-top: 0.5rem; }
-  .mt-3 { margin-top: 0.75rem; }
-  .mt-4 { margin-top: 1rem; }
-  .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
-</style>
+    {#snippet footer()}
+      <button class="btn btn-outline" onclick={() => (showRootPassModal = false)}>
+        Tutup
+      </button>
+      <button
+        class="btn btn-primary"
+        onclick={() => {
+          notify('Password root berhasil diperbarui', 'success');
+          showRootPassModal = false;
+        }}
+      >
+        Simpan Perubahan
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Drawer / Modal Messages Box & Real-Time Log Execution (ala aaPanel) -->
+  <Modal
+    open={showTasksDrawer}
+    size="xl"
+    onclose={() => (showTasksDrawer = false)}
+  >
+    {#snippet header()}
+      <div class="messages-title">
+        <i class="ri-terminal-window-fill" aria-hidden="true"></i>
+        <span>Messages Box / Antrean Eksekusi</span>
+      </div>
+    {/snippet}
+
+    <div class="messages-body">
+      <!-- Sidebar Daftar Task -->
+      <aside class="messages-sidebar">
+        <div class="task-list-title">
+          <span>Daftar Tugas ({tasks.length})</span>
+        </div>
+        <div class="task-items-list">
+          {#each tasks as t (t.id)}
+            <button
+              class="task-item"
+              class:active={activeTask?.id === t.id}
+              onclick={() => openTaskStream(t.id)}
+            >
+              <span class="task-status-dot {t.status}"></span>
+              <div class="task-item-meta">
+                <div class="task-item-name">{t.target}</div>
+                <div class="task-item-status">{t.status}</div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      </aside>
+
+      <!-- Area Log Terminal Real-time -->
+      <main class="messages-log-area">
+        <div class="log-area-topbar">
+          <span class="log-target-label">
+            Eksekusi: <strong>{activeTask?.target || 'Pilih tugas'}</strong>
+          </span>
+          <div class="log-topbar-actions">
+            <span class="log-tip">Tip: Jika tugas terhenti, klik muat ulang antrean.</span>
+            <button
+              class="btn-refresh-task"
+              onclick={() => {
+                fetchTasks();
+                if (activeTask) openTaskStream(activeTask.id);
+              }}
+            >
+              <i class="ri-refresh-line" aria-hidden="true"></i>
+              <span>Muat Ulang</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="terminal-container" bind:this={terminalEl}>
+          {#if streamLogs.length === 0}
+            <div class="terminal-waiting">
+              <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
+              <span>Menghubungkan ke stream eksekusi tugas...</span>
+            </div>
+          {:else}
+            {#each streamLogs as line}
+              <div class="terminal-line">{line}</div>
+            {/each}
+          {/if}
+        </div>
+      </main>
+    </div>
+  </Modal>
+</div>
