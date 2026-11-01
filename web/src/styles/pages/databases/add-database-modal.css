@@ -1,0 +1,39 @@
+@layer pages {
+  .pg-databases-add-database-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+
+    .input-with-select {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .input-with-select .flex-1 {
+      flex: 1;
+    }
+    .charset-select {
+      width: 170px;
+      flex-shrink: 0;
+    }
+    .btn-refresh-pass {
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .add-to-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .remote-servers-link {
+      font-size: 0.8125rem;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .remote-servers-link:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
