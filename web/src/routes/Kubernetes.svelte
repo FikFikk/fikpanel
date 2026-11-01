@@ -11,6 +11,8 @@
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/kubernetes.css';
 
   // State utama cluster
   let loading = $state(true);
@@ -298,27 +300,32 @@ spec:
   }
 </script>
 
-<div class="k8s-page">
+<div class="pg-kubernetes k8s-page">
   <div class="page-header">
     <div>
-      <h1 class="page-title">
+      <h1 class="page-header__title">
         <i class="ri-bubble-chart-line"></i> Kubernetes Orchestrator
       </h1>
-      <p class="page-desc">
-        Pusat kendaliorkestrasi cluster Kubernetes & K3s host, pengelolaan Pod, Deployment, Service, dan deklarasi YAML.
+      <p class="page-header__sub">
+        Pusat kendali orkestrasi cluster Kubernetes & K3s host, pengelolaan Pod, Deployment, Service, dan deklarasi YAML.
       </p>
     </div>
-    <div class="header-actions">
-      <button class="btn btn-secondary" onclick={refreshCluster} disabled={loading}>
-        <i class="ri-refresh-line" class:spin={loading}></i> Refresh Cluster
+    <div class="page-header__actions">
+      <button class="btn btn--secondary" onclick={refreshCluster} disabled={loading}>
+        {#if loading}
+          <span class="spinner"></span>
+        {:else}
+          <i class="ri-refresh-line"></i>
+        {/if}
+        Refresh Cluster
       </button>
     </div>
   </div>
 
   {#if loading && !status}
-    <div class="card loading-card">
-      <i class="ri-loader-4-line spin"></i>
-      <p>Menghubungkan ke cluster Kubernetes host...</p>
+    <div class="card state state--loading">
+      <span class="spinner"></span>
+      <p class="state__desc">Menghubungkan ke cluster Kubernetes host...</p>
     </div>
   {:else if !status?.available}
     <!-- Tampilan fallback saat Kubernetes belum aktif di server -->
@@ -331,9 +338,9 @@ spec:
         Server ini belum memiliki cluster Kubernetes aktif. Anda dapat memasang <strong>K3s (Lightweight Kubernetes by Rancher)</strong> secara otomatis dengan 1-klik, atau menggunakan cluster yang sudah ada via <code>/etc/rancher/k3s/k3s.yaml</code>.
       </p>
       <div class="uninstalled-actions">
-        <button class="btn btn-primary" onclick={triggerInstallK3s} disabled={installingK3s}>
+        <button class="btn btn--primary" onclick={triggerInstallK3s} disabled={installingK3s}>
           {#if installingK3s}
-            <i class="ri-loader-4-line spin"></i> Memulai Pemasangan...
+            <span class="spinner"></span> Memulai Pemasangan...
           {:else}
             <i class="ri-download-cloud-line"></i> Pasang K3s Otomatis (1-Klik)
           {/if}
@@ -349,10 +356,10 @@ spec:
     <div class="card status-overview-card">
       <div class="status-badge-row">
         <div class="status-indicator">
-          <span class="dot-online"></span>
+          <span class="dot dot--success dot--pulse"></span>
           <span class="status-name">Cluster Online</span>
         </div>
-        <span class="cluster-type-tag">{status.cluster_type.toUpperCase()}</span>
+        <span class="badge badge--info">{status.cluster_type.toUpperCase()}</span>
       </div>
 
       <div class="stats-grid">
@@ -377,32 +384,40 @@ spec:
 
     <!-- Navigasi Sub-Tab dan Pemilih Namespace -->
     <div class="tab-toolbar">
-      <div class="tab-buttons">
+      <div class="tabs tabs--pill" role="tablist">
         <button
-          class="tab-btn"
-          class:active={activeTab === 'workloads'}
+          class="tabs__tab"
+          class:is-active={activeTab === 'workloads'}
           onclick={() => (activeTab = 'workloads')}
+          role="tab"
+          aria-selected={activeTab === 'workloads'}
         >
           <i class="ri-apps-line"></i> Workloads (Pods & Deployments)
         </button>
         <button
-          class="tab-btn"
-          class:active={activeTab === 'services'}
+          class="tabs__tab"
+          class:is-active={activeTab === 'services'}
           onclick={() => (activeTab = 'services')}
+          role="tab"
+          aria-selected={activeTab === 'services'}
         >
           <i class="ri-links-line"></i> Services & Jaringan
         </button>
         <button
-          class="tab-btn"
-          class:active={activeTab === 'manifest'}
+          class="tabs__tab"
+          class:is-active={activeTab === 'manifest'}
           onclick={() => (activeTab = 'manifest')}
+          role="tab"
+          aria-selected={activeTab === 'manifest'}
         >
           <i class="ri-file-code-line"></i> Deploy Manifest (YAML)
         </button>
         <button
-          class="tab-btn"
-          class:active={activeTab === 'nodes'}
+          class="tabs__tab"
+          class:is-active={activeTab === 'nodes'}
           onclick={() => (activeTab = 'nodes')}
+          role="tab"
+          aria-selected={activeTab === 'nodes'}
         >
           <i class="ri-server-line"></i> Node Cluster ({nodes.length})
         </button>
@@ -412,7 +427,7 @@ spec:
         <label for="ns-select"><i class="ri-folder-shared-line"></i> Namespace:</label>
         <select
           id="ns-select"
-          class="select-input"
+          class="input namespace-select"
           bind:value={selectedNamespace}
           onchange={handleNamespaceChange}
         >
@@ -438,10 +453,12 @@ spec:
           </div>
 
           {#if deployments.length === 0}
-            <p class="empty-state">Tidak ada deployment pada namespace '{selectedNamespace || 'semua'}'.</p>
+            <div class="state state--empty">
+              <p class="state__desc">Tidak ada deployment pada namespace '{selectedNamespace || 'semua'}'.</p>
+            </div>
           {:else}
-            <div class="table-container">
-              <table class="data-table">
+            <div class="table-wrap">
+              <table class="table">
                 <thead>
                   <tr>
                     <th>Nama</th>
@@ -455,29 +472,34 @@ spec:
                 <tbody>
                   {#each deployments as dep}
                     <tr>
-                      <td class="bold-cell">{dep.name}</td>
-                      <td><span class="badge-subtle">{dep.namespace}</span></td>
+                      <td class="font-bold">{dep.name}</td>
+                      <td><span class="badge badge--neutral">{dep.namespace}</span></td>
                       <td>
-                        <span class="replica-badge" class:ready={dep.ready_replicas === dep.replicas}>
+                        <span class="badge {dep.ready_replicas === dep.replicas ? 'badge--success' : 'badge--warning'}">
                           {dep.ready_replicas} / {dep.replicas} Siap
                         </span>
                       </td>
                       <td>{dep.age}</td>
-                      <td class="image-cell">
-                        {#each dep.images as img}
-                          <span class="image-tag">{img}</span>
-                        {/each}
+                      <td>
+                        <div class="image-cell">
+                          {#each dep.images as img}
+                            <span class="badge badge--neutral mono">{img}</span>
+                          {/each}
+                        </div>
                       </td>
                       <td class="actions-col">
-                        <button class="btn btn-sm btn-secondary" onclick={() => openScaleModal(dep)}>
-                          <i class="ri-equalizer-line"></i> Scale
-                        </button>
-                        <button
-                          class="btn btn-sm btn-danger"
-                          onclick={() => deleteResource('deployment', dep.name, dep.namespace)}
-                        >
-                          <i class="ri-delete-bin-line"></i>
-                        </button>
+                        <div class="row-actions">
+                          <button class="btn btn--sm btn--secondary" onclick={() => openScaleModal(dep)}>
+                            <i class="ri-equalizer-line"></i> Scale
+                          </button>
+                          <button
+                            class="btn btn--sm btn--icon btn--danger"
+                            onclick={() => deleteResource('deployment', dep.name, dep.namespace)}
+                            aria-label="Hapus deployment {dep.name}"
+                          >
+                            <i class="ri-delete-bin-line"></i>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   {/each}
@@ -494,10 +516,12 @@ spec:
           </div>
 
           {#if pods.length === 0}
-            <p class="empty-state">Tidak ada Pod yang berjalan pada namespace '{selectedNamespace || 'semua'}'.</p>
+            <div class="state state--empty">
+              <p class="state__desc">Tidak ada Pod yang berjalan pada namespace '{selectedNamespace || 'semua'}'.</p>
+            </div>
           {:else}
-            <div class="table-container">
-              <table class="data-table">
+            <div class="table-wrap">
+              <table class="table">
                 <thead>
                   <tr>
                     <th>Nama Pod</th>
@@ -513,14 +537,15 @@ spec:
                 <tbody>
                   {#each pods as pod}
                     <tr>
-                      <td class="bold-cell code-font">{pod.name}</td>
-                      <td><span class="badge-subtle">{pod.namespace}</span></td>
+                      <td class="font-bold mono">{pod.name}</td>
+                      <td><span class="badge badge--neutral">{pod.namespace}</span></td>
                       <td>
                         <span
-                          class="status-pill"
-                          class:running={pod.status === 'Running'}
-                          class:pending={pod.status === 'Pending'}
-                          class:failed={pod.status !== 'Running' && pod.status !== 'Pending'}
+                          class="badge badge--pill {pod.status === 'Running'
+                            ? 'badge--success'
+                            : pod.status === 'Pending'
+                              ? 'badge--warning'
+                              : 'badge--danger'}"
                         >
                           {pod.status}
                         </span>
@@ -528,17 +553,20 @@ spec:
                       <td>{pod.ready}</td>
                       <td>{pod.restarts}x</td>
                       <td>{pod.age}</td>
-                      <td class="code-font">{pod.ip || '-'}</td>
+                      <td class="mono">{pod.ip || '-'}</td>
                       <td class="actions-col">
-                        <button class="btn btn-sm btn-secondary" onclick={() => openLogsModal(pod)}>
-                          <i class="ri-file-text-line"></i> Log
-                        </button>
-                        <button
-                          class="btn btn-sm btn-danger"
-                          onclick={() => deleteResource('pod', pod.name, pod.namespace)}
-                        >
-                          <i class="ri-delete-bin-line"></i>
-                        </button>
+                        <div class="row-actions">
+                          <button class="btn btn--sm btn--secondary" onclick={() => openLogsModal(pod)}>
+                            <i class="ri-file-text-line"></i> Log
+                          </button>
+                          <button
+                            class="btn btn--sm btn--icon btn--danger"
+                            onclick={() => deleteResource('pod', pod.name, pod.namespace)}
+                            aria-label="Hapus pod {pod.name}"
+                          >
+                            <i class="ri-delete-bin-line"></i>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   {/each}
@@ -558,10 +586,12 @@ spec:
         </div>
 
         {#if services.length === 0}
-          <p class="empty-state">Tidak ada Service pada namespace '{selectedNamespace || 'semua'}'.</p>
+          <div class="state state--empty">
+            <p class="state__desc">Tidak ada Service pada namespace '{selectedNamespace || 'semua'}'.</p>
+          </div>
         {:else}
-          <div class="table-container">
-            <table class="data-table">
+          <div class="table-wrap">
+            <table class="table">
               <thead>
                 <tr>
                   <th>Nama Service</th>
@@ -577,16 +607,16 @@ spec:
               <tbody>
                 {#each services as svc}
                   <tr>
-                    <td class="bold-cell code-font">{svc.name}</td>
-                    <td><span class="badge-subtle">{svc.namespace}</span></td>
-                    <td><span class="badge-type">{svc.type}</span></td>
-                    <td class="code-font">{svc.cluster_ip}</td>
-                    <td class="code-font">{svc.external_ip}</td>
-                    <td class="code-font">{svc.ports}</td>
+                    <td class="font-bold mono">{svc.name}</td>
+                    <td><span class="badge badge--neutral">{svc.namespace}</span></td>
+                    <td><span class="badge badge--info">{svc.type}</span></td>
+                    <td class="mono">{svc.cluster_ip}</td>
+                    <td class="mono">{svc.external_ip}</td>
+                    <td class="mono">{svc.ports}</td>
                     <td>{svc.age}</td>
                     <td class="actions-col">
                       <button
-                        class="btn btn-sm btn-danger"
+                        class="btn btn--sm btn--danger"
                         onclick={() => deleteResource('service', svc.name, svc.namespace)}
                       >
                         <i class="ri-delete-bin-line"></i> Hapus
@@ -611,9 +641,9 @@ spec:
           Terapkan konfigurasi Pod, Deployment, Service, Ingress, atau ConfigMap secara deklaratif langsung ke cluster.
         </p>
 
-        <div class="yaml-editor-wrapper">
+        <div>
           <textarea
-            class="yaml-textarea"
+            class="input input--mono"
             bind:value={yamlContent}
             rows="18"
             placeholder="Ketik atau tempel konfigurasi YAML di sini..."
@@ -621,9 +651,9 @@ spec:
         </div>
 
         <div class="manifest-actions">
-          <button class="btn btn-primary" onclick={applyManifest} disabled={applyingYaml}>
+          <button class="btn btn--primary" onclick={applyManifest} disabled={applyingYaml}>
             {#if applyingYaml}
-              <i class="ri-loader-4-line spin"></i> Menerapkan ke Cluster...
+              <span class="spinner"></span> Menerapkan ke Cluster...
             {:else}
               <i class="ri-check-line"></i> Terapkan Manifest (Apply)
             {/if}
@@ -633,7 +663,7 @@ spec:
         {#if yamlResult}
           <div class="yaml-result-box" class:result-success={yamlResult.ok} class:result-error={!yamlResult.ok}>
             <span class="result-title">
-              <i class={yamlResult.ok ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'}></i>
+              <i class={yamlResult.ok ? 'ri-checkbox-circle-line text-accent' : 'ri-error-warning-line text-danger'}></i>
               {yamlResult.message}
             </span>
             {#if yamlResult.output}
@@ -652,10 +682,12 @@ spec:
         </div>
 
         {#if nodes.length === 0}
-          <p class="empty-state">Tidak ada informasi node yang ditemukan.</p>
+          <div class="state state--empty">
+            <p class="state__desc">Tidak ada informasi node yang ditemukan.</p>
+          </div>
         {:else}
-          <div class="table-container">
-            <table class="data-table">
+          <div class="table-wrap">
+            <table class="table">
               <thead>
                 <tr>
                   <th>Nama Node</th>
@@ -668,14 +700,14 @@ spec:
               <tbody>
                 {#each nodes as node}
                   <tr>
-                    <td class="bold-cell code-font">{node.name}</td>
+                    <td class="font-bold mono">{node.name}</td>
                     <td>
-                      <span class="status-pill" class:running={node.status === 'Ready'}>
+                      <span class="badge badge--pill {node.status === 'Ready' ? 'badge--success' : 'badge--neutral'}">
                         {node.status}
                       </span>
                     </td>
-                    <td><span class="badge-subtle">{node.roles}</span></td>
-                    <td class="code-font">{node.version}</td>
+                    <td><span class="badge badge--neutral">{node.roles}</span></td>
+                    <td class="mono">{node.version}</td>
                     <td>{node.os_image}</td>
                   </tr>
                 {/each}
@@ -686,680 +718,77 @@ spec:
       </div>
     {/if}
   {/if}
-</div>
 
-<!-- Modal Scale Deployment -->
-{#if showScaleModal}
-  <div class="modal-backdrop">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3><i class="ri-equalizer-line"></i> Ubah Skala Deployment</h3>
-        <button class="close-btn" onclick={() => (showScaleModal = false)}>
-          <i class="ri-close-line"></i>
+  <!-- Modal Scale Deployment -->
+  <Modal
+    open={showScaleModal}
+    title="Ubah Skala Deployment"
+    size="md"
+    onclose={() => (showScaleModal = false)}
+  >
+    <p class="modal-info">
+      Atur jumlah replika Pod yang berjalan untuk deployment <strong>{scaleTarget.name}</strong> pada namespace <strong>{scaleTarget.namespace}</strong>.
+    </p>
+
+    <div class="field">
+      <label class="field__label" for="scale-input">Jumlah Replika (Replicas):</label>
+      <div class="stepper-row">
+        <button
+          class="btn btn--secondary stepper-btn"
+          onclick={() => { if (scaleReplicas > 0) scaleReplicas--; }}
+        >
+          -
         </button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-info">
-          Atur jumlah replika Pod yang berjalan untuk deployment <strong>{scaleTarget.name}</strong> pada namespace <strong>{scaleTarget.namespace}</strong>.
-        </p>
-
-        <div class="form-group">
-          <label for="scale-input">Jumlah Replika (Replicas):</label>
-          <div class="stepper-row">
-            <button
-              class="btn btn-secondary stepper-btn"
-              onclick={() => { if (scaleReplicas > 0) scaleReplicas--; }}
-            >
-              -
-            </button>
-            <input
-              id="scale-input"
-              type="number"
-              min="0"
-              max="50"
-              class="scale-input"
-              bind:value={scaleReplicas}
-            />
-            <button
-              class="btn btn-secondary stepper-btn"
-              onclick={() => scaleReplicas++}
-            >
-              +
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick={() => (showScaleModal = false)}>Batal</button>
-        <button class="btn btn-primary" onclick={submitScale} disabled={scaling}>
-          {#if scaling}
-            <i class="ri-loader-4-line spin"></i> Menyimpan...
-          {:else}
-            Simpan Skala
-          {/if}
+        <input
+          id="scale-input"
+          type="number"
+          min="0"
+          max="50"
+          class="input scale-input"
+          bind:value={scaleReplicas}
+        />
+        <button
+          class="btn btn--secondary stepper-btn"
+          onclick={() => scaleReplicas++}
+        >
+          +
         </button>
       </div>
     </div>
-  </div>
-{/if}
 
-<!-- Modal Pembacaan Log Pod -->
-{#if showLogsModal}
-  <div class="modal-backdrop">
-    <div class="modal-card modal-lg">
-      <div class="modal-header">
-        <h3><i class="ri-terminal-box-line"></i> Log Pod: {logTarget.name}</h3>
-        <button class="close-btn" onclick={() => (showLogsModal = false)}>
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        {#if loadingLogs}
-          <div class="log-loading">
-            <i class="ri-loader-4-line spin"></i> Memuat baris log kontainer...
-          </div>
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showScaleModal = false)}>Batal</button>
+      <button class="btn btn--primary" onclick={submitScale} disabled={scaling}>
+        {#if scaling}
+          <span class="spinner"></span> Menyimpan...
         {:else}
-          <pre class="terminal-log-viewer"><code>{podLogs}</code></pre>
+          Simpan Skala
         {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Pembacaan Log Pod -->
+  <Modal
+    open={showLogsModal}
+    title={`Log Pod: ${logTarget.name}`}
+    size="lg"
+    onclose={() => (showLogsModal = false)}
+  >
+    {#if loadingLogs}
+      <div class="state state--loading">
+        <span class="spinner"></span>
+        <span class="state__desc">Memuat baris log kontainer...</span>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick={() => openLogsModal({ name: logTarget.name, namespace: logTarget.namespace } as K8sPod)}>
-          <i class="ri-refresh-line"></i> Refresh Log
-        </button>
-        <button class="btn btn-primary" onclick={() => (showLogsModal = false)}>Tutup</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<style>
-  .k8s-page {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    padding-bottom: 2rem;
-  }
-
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .page-desc {
-    margin: 0.35rem 0 0;
-    font-size: 0.875rem;
-    color: var(--text-muted);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 0.75rem;
-  }
-
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.25rem;
-  }
-
-  .loading-card {
-    text-align: center;
-    padding: 3rem;
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .uninstalled-card {
-    text-align: center;
-    padding: 3.5rem 2rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .uninstalled-icon {
-    font-size: 3.5rem;
-    color: var(--primary);
-    background: var(--bg-inset);
-    width: 5rem;
-    height: 5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-  }
-
-  .uninstalled-card h2 {
-    margin: 0;
-    font-size: 1.35rem;
-    color: var(--text);
-  }
-
-  .uninstalled-card p {
-    max-width: 650px;
-    margin: 0;
-    color: var(--text-muted);
-    line-height: 1.6;
-    font-size: 0.95rem;
-  }
-
-  .manual-guide {
-    margin-top: 1.5rem;
-    text-align: left;
-    width: 100%;
-    max-width: 600px;
-  }
-
-  .guide-title {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .code-box {
-    margin-top: 0.5rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0.75rem 1rem;
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    color: var(--text);
-    overflow-x: auto;
-  }
-
-  .status-overview-card {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  .status-badge-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--text);
-  }
-
-  .dot-online {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 8px var(--success);
-  }
-
-  .cluster-type-tag {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.25rem 0.65rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: var(--primary);
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-  }
-
-  .stat-box {
-    background: var(--bg-inset);
-    padding: 1rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .stat-label {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-
-  .stat-val {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .tab-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.75rem;
-  }
-
-  .tab-buttons {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .tab-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text-muted);
-    padding: 0.5rem 0.85rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: all 0.15s ease;
-  }
-
-  .tab-btn:hover {
-    color: var(--text);
-    background: var(--bg-inset);
-  }
-
-  .tab-btn.active {
-    color: var(--text);
-    background: var(--bg-card);
-    border-color: var(--border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  }
-
-  .namespace-filter {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    color: var(--text-muted);
-  }
-
-  .select-input {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 0.35rem 0.65rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-  }
-
-  .section-card {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .card-title-row h3 {
-    margin: 0;
-    font-size: 1.05rem;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .empty-state {
-    color: var(--text-muted);
-    font-style: italic;
-    margin: 0.5rem 0;
-  }
-
-  .table-container {
-    overflow-x: auto;
-  }
-
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-    text-align: left;
-  }
-
-  .data-table th {
-    padding: 0.65rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-muted);
-    font-weight: 600;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .data-table td {
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-  }
-
-  .bold-cell {
-    font-weight: 600;
-  }
-
-  .code-font {
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
-  }
-
-  .actions-col {
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  .badge-subtle {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.15rem 0.45rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .badge-type {
-    background: var(--bg-inset);
-    color: var(--primary);
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-  }
-
-  .replica-badge {
-    background: var(--bg-inset);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    font-size: 0.75rem;
-    color: var(--warning);
-  }
-
-  .replica-badge.ready {
-    color: var(--success);
-  }
-
-  .status-pill {
-    display: inline-block;
-    padding: 0.2rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--bg-inset);
-    color: var(--text-muted);
-  }
-
-  .status-pill.running {
-    background: color-mix(in srgb, var(--success) 15%, transparent);
-    color: var(--success);
-  }
-
-  .status-pill.pending {
-    background: color-mix(in srgb, var(--warning) 15%, transparent);
-    color: var(--warning);
-  }
-
-  .status-pill.failed {
-    background: color-mix(in srgb, var(--danger) 15%, transparent);
-    color: var(--danger);
-  }
-
-  .image-cell {
-    display: flex;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-
-  .image-tag {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    background: var(--bg-inset);
-    padding: 0.15rem 0.4rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-  }
-
-  .manifest-desc {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--text-muted);
-  }
-
-  .yaml-editor-wrapper {
-    margin-top: 0.5rem;
-  }
-
-  .yaml-textarea {
-    width: 100%;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    padding: 0.85rem;
-    box-sizing: border-box;
-    line-height: 1.5;
-    resize: vertical;
-  }
-
-  .manifest-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .yaml-result-box {
-    margin-top: 1rem;
-    padding: 1rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--bg-inset);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .yaml-result-box.result-success {
-    border-color: var(--success);
-  }
-
-  .yaml-result-box.result-error {
-    border-color: var(--danger);
-  }
-
-  .result-title {
-    font-weight: 600;
-    font-size: 0.9rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .result-output {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    color: var(--text);
-    background: var(--bg-card);
-    padding: 0.75rem;
-    border-radius: var(--radius-sm);
-    overflow-x: auto;
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    width: 90%;
-    max-width: 500px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .modal-lg {
-    max-width: 800px;
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .modal-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .close-btn {
-    background: transparent;
-    border: none;
-    font-size: 1.25rem;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-
-  .modal-body {
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .modal-info {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .form-group label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .stepper-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .stepper-btn {
-    width: 2.5rem;
-    height: 2.5rem;
-    padding: 0;
-    font-size: 1.2rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .scale-input {
-    width: 5rem;
-    text-align: center;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: 1.1rem;
-    font-weight: 700;
-    padding: 0.4rem;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1rem 1.25rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg-inset);
-  }
-
-  .terminal-log-viewer {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 1rem;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    color: var(--text);
-    max-height: 400px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    line-height: 1.45;
-  }
-
-  .log-loading {
-    padding: 2rem;
-    text-align: center;
-    color: var(--text-muted);
-  }
-
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-</style>
+    {:else}
+      <pre class="terminal-log-viewer"><code>{podLogs}</code></pre>
+    {/if}
+
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => openLogsModal({ name: logTarget.name, namespace: logTarget.namespace } as K8sPod)}>
+        <i class="ri-refresh-line"></i> Refresh Log
+      </button>
+      <button class="btn btn--primary" onclick={() => (showLogsModal = false)}>Tutup</button>
+    {/snippet}
+  </Modal>
+</div>
