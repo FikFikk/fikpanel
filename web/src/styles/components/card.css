@@ -1,0 +1,42 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   CARD — wadah konten standar (.card, .card__head, .card__title, .card__body, .card__foot)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+  .card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .card__title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--text);
+  }
+  .card__title i {
+    color: var(--accent-strong);
+  }
+  .card__body {
+    padding: var(--space-4);
+  }
+  .card__foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--bg-app) 40%, transparent);
+  }
+}

@@ -17,5 +17,6 @@
 @import './tokens.css' layer(tokens);
 @import './base.css' layer(base);
 @import './layout.css' layer(layout);
+@import './components/index.css' layer(components);
 @import './components.css' layer(components);
 @import './utilities.css' layer(utilities);

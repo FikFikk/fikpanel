@@ -1,0 +1,8 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   COMPONENTS INDEX — titik masuk seluruh primitif komponen bersama
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@import './button.css';
+@import './form.css';
+@import './card.css';
+@import './stat-card.css';
