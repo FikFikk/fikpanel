@@ -111,74 +111,6 @@
       box-shadow: 0 0 6px var(--warning);
     }
 
-    /* Grid Kartu Overview */
-    .overview-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-    }
-    .stat-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 1.15rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-    }
-    .stat-card.danger {
-      border-color: var(--ring-danger);
-      background: var(--tint-danger);
-    }
-    .stat-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .stat-label {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-    .stat-icon {
-      font-size: 1.2rem;
-    }
-    .stat-num {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .stat-unit {
-      font-size: 0.85rem;
-      font-weight: 400;
-      color: var(--text-subtle);
-    }
-    .stat-sub {
-      font-size: 0.72rem;
-      color: var(--text-subtle);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .trend-badge.down {
-      background: var(--tint-accent);
-      color: var(--accent-strong);
-      padding: 0.1rem 0.35rem;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-
-    /* Bento 2 Kolom */
-    .bento-two-col {
-      display: grid;
-      grid-template-columns: 2fr 1.2fr;
-      gap: 1.25rem;
-    }
-    @media (max-width: 1024px) {
-      .bento-two-col {
-        grid-template-columns: 1fr;
-      }
-    }
-
     .bento-panel {
       background: var(--bg-surface);
       border: 1px solid var(--border);
@@ -204,39 +136,6 @@
       font-size: 0.95rem;
       margin: 0;
       color: var(--text);
-    }
-
-    /* Kontainer Peta Leaflet */
-    .world-map-wrapper {
-      position: relative;
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      background: var(--bg-inset);
-    }
-    .overview-leaflet-container {
-      width: 100%;
-      height: 300px;
-      background: var(--bg-inset);
-      border-radius: var(--radius-sm);
-    }
-    .panel-header-badges {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-    .attribution-main {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-    }
-    .country-name {
-      font-weight: 500;
-      color: var(--text);
-    }
-    .attribution-isp {
-      font-size: var(--text-2xs);
-      color: var(--text-subtle);
-      margin-top: 2px;
     }
 
     /* Panel Studio Serangan */
@@ -743,73 +642,12 @@
       gap: 0.25rem;
     }
 
-    /* Tabel Ringkas */
-    .waf-table-compact {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.78rem;
-    }
-    .waf-table-compact th {
-      text-align: left;
-      padding: 0.5rem 0.6rem;
-      color: var(--text-subtle);
-      border-bottom: 1px solid var(--border);
-    }
-    .waf-table-compact td {
-      padding: 0.55rem 0.6rem;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .badge-attack-count {
-      background: var(--tint-danger);
-      color: var(--danger);
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      font-weight: 600;
-    }
     .flag-code {
       background: var(--bg-inset);
       padding: 0.1rem 0.3rem;
       border-radius: 3px;
       font-size: 0.68rem;
       color: var(--accent);
-    }
-
-    /* Grid 3 Bawah */
-    .bottom-three-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.25rem;
-    }
-    .rank-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-    }
-    .rank-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      padding: 0.45rem 0.6rem;
-      background: var(--bg-inset);
-      border-radius: var(--radius-sm);
-      font-size: 0.78rem;
-    }
-    .rank-num {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--bg-surface);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.68rem;
-      font-weight: bold;
-      color: var(--text-muted);
-    }
-    .rank-num.first {
-      background: var(--danger);
-      color: var(--text);
     }
 
     /* Tabel Utama WAF */
@@ -1177,128 +1015,6 @@
       border-radius: 9999px;
       font-size: 0.68rem;
       font-weight: 700;
-    }
-
-    .status-telemetry-strip {
-      padding: 0.9rem 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
-    }
-    .telemetry-strip-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-    }
-    .strip-title {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .strip-badges {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-    }
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 6px;
-      font-size: 0.72rem;
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      color: var(--text-subtle);
-    }
-    .status-pill .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-    }
-    .status-pill.s2xx .dot { background: var(--accent); }
-    .status-pill.s3xx .dot { background: var(--info); }
-    .status-pill.s4xx .dot { background: var(--warning); }
-    .status-pill.s5xx .dot { background: var(--danger); }
-
-    .status-progress-bar {
-      height: 7px;
-      width: 100%;
-      background: var(--bg-inset);
-      border-radius: 9999px;
-      overflow: hidden;
-      display: flex;
-      gap: 2px;
-    }
-    .status-progress-bar .seg {
-      height: 100%;
-      transition: width 0.4s ease;
-    }
-    .seg-2xx { background: var(--accent); }
-    .seg-3xx { background: var(--info); }
-    .seg-4xx { background: var(--warning); }
-    .seg-5xx { background: var(--danger); }
-
-    .live-mini-dot {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--danger);
-      box-shadow: 0 0 6px var(--danger);
-      margin-right: 4px;
-      vertical-align: middle;
-    }
-
-    .rank-item-rich {
-      align-items: flex-start;
-      padding: 0.55rem 0.65rem;
-    }
-    .rank-rich-body {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-    .rank-rich-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .rank-rich-meta {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.55rem;
-      color: var(--text-muted);
-    }
-    .rank-list-scroll {
-      max-height: 320px;
-      overflow-y: auto;
-      padding-right: 2px;
-    }
-    .rank-item-clickable {
-      width: 100%;
-      text-align: left;
-      background: var(--bg-inset);
-      border: 1px solid transparent;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .rank-item-clickable:hover {
-      border-color: var(--ring-accent);
-      background: var(--tint-accent);
-    }
-    .rank-threat-row {
-      border-left: 2px solid var(--danger);
     }
 
     .method-mini {
@@ -2082,3 +1798,4 @@
     to { stroke-dashoffset: 0; }
   }
 }
+
