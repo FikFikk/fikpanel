@@ -67,9 +67,6 @@
       color: var(--text-muted);
       margin-top: 2px;
     }
-    .input-retention-w {
-      width: 120px;
-    }
 
     /* Hasil pemindaian kerentanan */
     .scan-empty-icon {

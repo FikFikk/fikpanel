@@ -1,0 +1,11 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY BRUTE FORCE TAB — proteksi login, whitelist, dan blacklist (.pg-security-bruteforce)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-bruteforce {
+    .input-retention-w {
+      width: 120px;
+    }
+  }
+}
