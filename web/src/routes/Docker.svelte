@@ -32,6 +32,7 @@
   import ContainerLogsModal from './docker/ContainerLogsModal.svelte';
   import ComposeModal from './docker/ComposeModal.svelte';
   import CreateNetworkModal from './docker/CreateNetworkModal.svelte';
+  import CreateVolumeModal from './docker/CreateVolumeModal.svelte';
   import '../styles/pages/docker/shared.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
@@ -1282,43 +1283,12 @@
   />
 
   <!-- ══════════════ MODAL: BUAT VOLUME ══════════════ -->
-  <Modal
-    open={showCreateVolumeModal}
-    title="Buat Volume Docker Baru"
-    size="md"
-    onclose={() => (showCreateVolumeModal = false)}
-  >
-    <form id="docker-create-vol-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitCreateVolume(); }}>
-      <div class="field">
-        <label class="field__label" for="vol-name">Nama Volume *</label>
-        <input
-          id="vol-name"
-          type="text"
-          class="input font-mono"
-          placeholder="misal: pg_data, redis_cache"
-          bind:value={newVolume.name}
-          required
-        />
-      </div>
-
-      <div class="field">
-        <label class="field__label" for="vol-driver">Driver</label>
-        <select id="vol-driver" class="input" bind:value={newVolume.driver}>
-          <option value="local">local (Penyimpanan host bawaan)</option>
-        </select>
-      </div>
-    </form>
-
-    {#snippet footer()}
-      <button type="button" class="btn btn--secondary" onclick={() => (showCreateVolumeModal = false)}>
-        Batal
-      </button>
-      <button type="submit" form="docker-create-vol-form" class="btn btn--primary" disabled={actionLoading}>
-        <i class="ri-check-line" aria-hidden="true"></i>
-        <span>Buat Volume</span>
-      </button>
-    {/snippet}
-  </Modal>
+  <CreateVolumeModal
+    bind:showCreateVolumeModal
+    bind:newVolume
+    {actionLoading}
+    onSubmitCreateVolume={submitCreateVolume}
+  />
 
   <!-- ══════════════ MODAL: REGISTRI PRIVAT ══════════════ -->
   <Modal
