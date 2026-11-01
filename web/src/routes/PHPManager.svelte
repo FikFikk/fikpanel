@@ -15,6 +15,7 @@
   import DisabledFunctionsTab from './phpmanager/DisabledFunctionsTab.svelte';
   import ExtensionsTab from './phpmanager/ExtensionsTab.svelte';
   import OpcacheTab from './phpmanager/OpcacheTab.svelte';
+  import LogsTab from './phpmanager/LogsTab.svelte';
   import '../styles/pages/phpmanager/shared.css';
   import '../styles/pages/phpmanager.css';
 
@@ -1012,43 +1013,20 @@
 
           <!-- ================= TAB 9: LOGS ================= -->
           {:else if activeTab === 'logs'}
-            <div class="tab-pane full-height-pane">
-              <div class="flex justify-between items-center mb-3">
-                <div class="flex gap-2">
-                  <button
-                    class="btn btn-sm {logType === 'fpm' ? 'btn-primary' : 'btn-ghost'}"
-                    onclick={() => { logType = 'fpm'; fetchLogs(activeVersion!, 'fpm'); }}
-                  >
-                    <i class="ri-error-warning-line"></i> Error Log (php-fpm.log)
-                  </button>
-                  <button
-                    class="btn btn-sm {logType === 'slow' ? 'btn-primary' : 'btn-ghost'}"
-                    onclick={() => { logType = 'slow'; fetchLogs(activeVersion!, 'slow'); }}
-                  >
-                    <i class="ri-timer-line"></i> Slow Log
-                  </button>
-                </div>
-                <div class="flex gap-2">
-                  <button class="btn btn-ghost btn-sm" onclick={() => fetchLogs(activeVersion!, logType)} disabled={loadingLogs}>
-                    <i class="ri-refresh-line {loadingLogs ? 'spin' : ''}"></i> Refresh
-                  </button>
-                  <button class="btn btn-danger btn-sm" onclick={clearLogs}>
-                    <i class="ri-delete-bin-line"></i> Kosongkan Log
-                  </button>
-                </div>
-              </div>
-
-              <div class="terminal-log-viewer flex-1">
-                {#if loadingLogs}
-                  <div class="editor-loading">
-                    <i class="ri-loader-4-line spin text-2xl"></i>
-                    <span>Mengambil data log terbaru...</span>
-                  </div>
-                {:else}
-                  <pre class="log-pre mono">{logContent}</pre>
-                {/if}
-              </div>
-            </div>
+            <LogsTab
+              {activeVersion}
+              {logType}
+              {logContent}
+              {loadingLogs}
+              onSelectLogType={(type) => {
+                logType = type;
+                if (activeVersion) fetchLogs(activeVersion, type);
+              }}
+              onRefreshLogs={() => {
+                if (activeVersion) fetchLogs(activeVersion, logType);
+              }}
+              onClearLogs={clearLogs}
+            />
 
           <!-- ================= TAB 10: PHPINFO ================= -->
           {:else if activeTab === 'phpinfo'}
