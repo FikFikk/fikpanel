@@ -1,0 +1,8 @@
+@layer pages {
+  .pg-waf-forensics-modal {
+    .font-bold {
+      font-weight: 700;
+    }
+  }
+}
+
