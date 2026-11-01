@@ -1,0 +1,96 @@
+/* Styling halaman SystemManager pada layer pages */
+@layer pages {
+  .pg-systemmanager {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+
+    .cleaner-body {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-width: 640px;
+    }
+
+    .stat-banner {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--accent);
+      font-family: var(--font-mono);
+    }
+
+    .stat-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .junk-items {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .junk-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.6rem 0.85rem;
+      background: var(--bg-raised);
+      border-radius: var(--radius-md);
+      font-size: 0.82rem;
+    }
+
+    .clean-opts {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--bg-inset);
+      border-radius: var(--radius-md);
+    }
+
+    .custom-chk {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .clean-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .cmd-cell {
+      max-width: 28rem;
+    }
+
+    .table-empty {
+      text-align: center;
+      padding: 2.5rem;
+      color: var(--text-subtle);
+    }
+
+    @media (max-width: 768px) {
+      .clean-opts {
+        grid-template-columns: 1fr;
+      }
+    }
+  }
+}
