@@ -10,6 +10,7 @@
   import FileTable from './files/FileTable.svelte';
   import FileGrid from './files/FileGrid.svelte';
   import StatusBar from './files/StatusBar.svelte';
+  import ContextMenu from './files/ContextMenu.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1779,213 +1780,29 @@
 
   <!-- ═════════ DROPDOWN OPERATE MENU (Popup Sesuai Screenshot aaPanel) ═════════ -->
   {#if activeMenuItem}
-    <div
-      class="operate-dropdown"
-      role="menu"
-      tabindex="-1"
-      style="top: {menuPos.top}px; left: {menuPos.left}px;"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
-    >
-      {#if !activeMenuItem.is_dir}
-        <!-- Opsi Khusus Berkas (File): Tanpa Open/New Window, diawali dengan Edit -->
-        <!-- Edit -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            openEditor(it);
-          }}
-        >
-          <i class="ri-edit-line op-icon icon-blue"></i>
-          <span>Edit</span>
-        </button>
-
-        <!-- Download -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            downloadFile(it);
-          }}
-        >
-          <i class="ri-download-line op-icon icon-blue"></i>
-          <span>Download</span>
-        </button>
-
-        <!-- External Share -->
-        <button
-          class="operate-item"
-          onclick={() => handleExternalShare(activeMenuItem!)}
-        >
-          <i class="ri-share-forward-line op-icon icon-green"></i>
-          <span>External Share</span>
-        </button>
-
-        <!-- Add to Favorites -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            customFavorites = [
-              ...customFavorites,
-              { name: it.name, path: it.path },
-            ];
-            onNotify(`"${it.name}" ditambahkan ke favorit`);
-          }}
-        >
-          <i class="ri-star-fill op-icon icon-yellow"></i>
-          <span>Add to Favorites</span>
-        </button>
-
-        <!-- Upload to Cloud Storage -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            closeAllMenus();
-            openCloudStorage("S3 Storage");
-          }}
-        >
-          <div class="op-label-row">
-            <i class="ri-upload-cloud-2-line op-icon"></i>
-            <span>Upload to Cloud Storage</span>
-          </div>
-          <i class="ri-arrow-right-s-line op-chevron"></i>
-        </button>
-
-        <!-- Permission -->
-        <button
-          class="operate-item"
-          onclick={() => openChmodModal(activeMenuItem!)}
-        >
-          <i class="ri-folder-lock-fill op-icon icon-amber"></i>
-          <span>Permission</span>
-        </button>
-      {:else}
-        <!-- Opsi Khusus Direktori (Folder): Ada Open dan Open in New Window -->
-        <!-- Open -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            handleItemClick(it);
-          }}
-        >
-          <i class="ri-folder-open-fill op-icon icon-amber"></i>
-          <span>Open</span>
-        </button>
-
-        <!-- Open in New Window / Tab -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            addTab(it.path);
-          }}
-        >
-          <i class="ri-external-link-line op-icon icon-blue"></i>
-          <span>Open in New Window</span>
-        </button>
-
-        <!-- Add to Favorites -->
-        <button
-          class="operate-item"
-          onclick={() => {
-            const it = activeMenuItem!;
-            closeAllMenus();
-            customFavorites = [
-              ...customFavorites,
-              { name: it.name, path: it.path },
-            ];
-            onNotify(`"${it.name}" ditambahkan ke favorit`);
-          }}
-        >
-          <i class="ri-star-fill op-icon icon-yellow"></i>
-          <span>Add to Favorites</span>
-        </button>
-
-        <!-- Permission -->
-        <button
-          class="operate-item"
-          onclick={() => openChmodModal(activeMenuItem!)}
-        >
-          <i class="ri-folder-lock-fill op-icon icon-amber"></i>
-          <span>Permission</span>
-        </button>
-      {/if}
-
-      <div class="operate-divider"></div>
-
-      <!-- Copy -->
-      <button
-        class="operate-item"
-        onclick={() => handleCopyItem(activeMenuItem!)}
-      >
-        <i class="ri-file-copy-line op-icon"></i>
-        <span>Copy</span>
-      </button>
-
-      <!-- Copy Path -->
-      <button
-        class="operate-item"
-        onclick={() => copyPathToClipboard(activeMenuItem!)}
-      >
-        <i class="ri-clipboard-line op-icon"></i>
-        <span>Copy Path</span>
-      </button>
-
-      <!-- Cut -->
-      <button
-        class="operate-item"
-        onclick={() => handleCutItem(activeMenuItem!)}
-      >
-        <i class="ri-scissors-line op-icon icon-cyan"></i>
-        <span>Cut</span>
-      </button>
-
-      <!-- Rename -->
-      <button
-        class="operate-item"
-        onclick={() => openRenameModal(activeMenuItem!)}
-      >
-        <i class="ri-edit-box-line op-icon icon-blue"></i>
-        <span>Rename</span>
-      </button>
-
-      <!-- Delete -->
-      <button
-        class="operate-item item-danger"
-        onclick={() => deleteSingleItem(activeMenuItem!)}
-      >
-        <i class="ri-delete-bin-line op-icon"></i>
-        <span>Delete</span>
-      </button>
-
-      <div class="operate-divider"></div>
-
-      <!-- Compress -->
-      <button
-        class="operate-item"
-        onclick={() => openCompress(activeMenuItem!)}
-      >
-        <i class="ri-file-zip-fill op-icon icon-cyan"></i>
-        <span>Compress</span>
-      </button>
-
-      <!-- Properties -->
-      <button
-        class="operate-item"
-        onclick={() => openProperties(activeMenuItem!)}
-      >
-        <i class="ri-information-line op-icon icon-blue"></i>
-        <span>Properties</span>
-      </button>
-    </div>
+    <ContextMenu
+      {activeMenuItem}
+      {menuPos}
+      onClose={closeAllMenus}
+      onOpenEditor={openEditor}
+      onDownloadFile={downloadFile}
+      onExternalShare={handleExternalShare}
+      onAddToFavorites={(it) => {
+        customFavorites = [...customFavorites, { name: it.name, path: it.path }];
+        onNotify(`"${it.name}" ditambahkan ke favorit`);
+      }}
+      onOpenCloudStorage={openCloudStorage}
+      onOpenChmodModal={openChmodModal}
+      onItemClick={handleItemClick}
+      onAddTab={addTab}
+      onCopyItem={handleCopyItem}
+      onCopyPath={copyPathToClipboard}
+      onCutItem={handleCutItem}
+      onOpenRenameModal={openRenameModal}
+      onDeleteSingleItem={deleteSingleItem}
+      onOpenCompress={openCompress}
+      onOpenProperties={openProperties}
+    />
   {/if}
 
   <!-- ═════════ MODAL: Remote Download ═════════ -->
