@@ -4,8 +4,9 @@
   import { copyText } from '../lib/utils/browser';
   import { confirmDialog, promptDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import DirTabs from './files/DirTabs.svelte';
   import type { FileItem, FileListData } from '../lib/types';
-  import '../styles/pages/files.css';
+  import '../styles/pages/files/shared.css';
 
   interface Props {
     onNotify: (msg: string) => void;
@@ -1032,32 +1033,13 @@
 
 <div class="pg-files files-view">
   <!-- ═════════ 1. Tab Bar Direktori (Multi-Tab aaPanel) ═════════ -->
-  <div class="tabs-bar">
-    <div class="tab-list">
-      {#each tabs as t (t.id)}
-        <div
-          class="tab-item {activeTabId === t.id ? 'active' : ''}"
-          role="button"
-          tabindex="0"
-          onclick={() => switchTab(t)}
-          onkeydown={(e) => e.key === 'Enter' && switchTab(t)}
-        >
-          <i class="ri-folder-fill tab-icon"></i>
-          <span class="tab-title">{t.name}</span>
-          {#if tabs.length > 1}
-            <button
-              class="tab-close"
-              onclick={(e) => closeTab(t.id, e)}
-              title="Tutup tab"
-            >&times;</button>
-          {/if}
-        </div>
-      {/each}
-      <button class="btn-add-tab" onclick={() => addTab()} title="Buka tab baru">
-        <i class="ri-add-line"></i>
-      </button>
-    </div>
-  </div>
+  <DirTabs
+    {tabs}
+    {activeTabId}
+    onSwitchTab={switchTab}
+    onCloseTab={closeTab}
+    onAddTab={() => addTab()}
+  />
 
   <!-- ═════════ 2. Breadcrumbs & Search Bar ═════════ -->
   <div class="nav-bar">
