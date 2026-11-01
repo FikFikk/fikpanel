@@ -1,0 +1,17 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PHP MANAGER CONFIG FILE TAB — Editor berkas php.ini (.pg-phpmanager-config-file-tab)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-phpmanager-config-file-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    flex: 1;
+    min-height: 0;
+
+    .editor-note {
+      margin: 0;
+    }
+  }
+}
