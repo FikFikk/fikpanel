@@ -1,0 +1,168 @@
+/* Styling halaman Monitor pada layer pages */
+@layer pages {
+  .pg-monitor {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+
+    .monitor-controls {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .switch-box {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-full);
+    }
+
+    .switch-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .switch-btn {
+      width: 36px;
+      height: 20px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      padding: 0;
+    }
+
+    .switch-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .switch-knob {
+      width: 14px;
+      height: 14px;
+      background: var(--bg-surface);
+      border-radius: 50%;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+
+    .switch-btn.active .switch-knob {
+      transform: translateX(16px);
+    }
+
+    .switch-text {
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .panel-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 0.25rem 0 0 0;
+    }
+
+    .filter-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .chart-legend-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .l-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .l-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .l-dot--info { background: var(--info); }
+    .l-dot--violet { background: var(--violet); }
+    .l-dot--accent { background: var(--accent); }
+    .l-dot--warning { background: var(--warning); }
+
+    .total-badge {
+      margin-left: auto;
+      font-size: 0.7rem;
+      color: var(--text-subtle);
+    }
+
+    .chart-box {
+      padding: 1.25rem;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .m-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .m-val {
+      font-size: 1.6rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+    }
+
+    .m-val--info { color: var(--info); }
+    .m-val--violet { color: var(--violet); }
+
+    .m-sub {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+  }
+}
