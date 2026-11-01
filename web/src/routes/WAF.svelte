@@ -15,6 +15,8 @@
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/waf.css';
 
   // State Tab Navigasi WAF
   type WAFTab = 'overview' | 'live_access' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
@@ -1037,7 +1039,7 @@
   });
 </script>
 
-<div class="waf-container">
+<div class="pg-waf waf-container">
   <!-- WAF Top Navigation Bar -->
   <header class="waf-header">
     <div class="waf-brand-title">
@@ -1069,40 +1071,46 @@
   </header>
 
   <!-- Sub-Tabs Navigation -->
-  <nav class="waf-tabs-nav">
+  <nav class="tabs waf-tabs-nav">
     <button
-      class="waf-tab-btn {activeTab === 'overview' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'overview' ? 'active' : ''}"
+      class:is-active={activeTab === 'overview'}
       onclick={() => { activeTab = 'overview'; loadOverview(); }}
     >
       <i class="ri-dashboard-2-line"></i> Overview
     </button>
     <button
-      class="waf-tab-btn {activeTab === 'live_access' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'live_access' ? 'active' : ''}"
+      class:is-active={activeTab === 'live_access'}
       onclick={() => { activeTab = 'live_access'; loadAccessLogs(); loadOverview(true); }}
     >
       <i class="ri-pulse-line"></i> Lalu Lintas & Akses Detail
       <span class="tab-count-pill">{accessLogs.length || overview?.recent_access_logs?.length || 0}</span>
     </button>
     <button
-      class="waf-tab-btn {activeTab === 'website' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'website' ? 'active' : ''}"
+      class:is-active={activeTab === 'website'}
       onclick={() => { activeTab = 'website'; loadSites(); }}
     >
       <i class="ri-global-line"></i> WebSite ({sites.length})
     </button>
     <button
-      class="waf-tab-btn {activeTab === 'attack_map' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'attack_map' ? 'active' : ''}"
+      class:is-active={activeTab === 'attack_map'}
       onclick={() => { activeTab = 'attack_map'; loadEvents(); }}
     >
       <i class="ri-radar-line"></i> Attack Map
     </button>
     <button
-      class="waf-tab-btn {activeTab === 'blacklist' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'blacklist' ? 'active' : ''}"
+      class:is-active={activeTab === 'blacklist'}
       onclick={() => { activeTab = 'blacklist'; loadRules(); }}
     >
       <i class="ri-shield-keyhole-line"></i> Black/White List
     </button>
     <button
-      class="waf-tab-btn {activeTab === 'cloudflare' ? 'active' : ''}"
+      class="tabs__tab waf-tab-btn {activeTab === 'cloudflare' ? 'active' : ''}"
+      class:is-active={activeTab === 'cloudflare'}
       onclick={() => { activeTab = 'cloudflare'; loadCloudflare(); }}
     >
       <i class="ri-cloud-line"></i> Cloudflare Hub
@@ -2781,357 +2789,307 @@
       {/if}
     </div>
   {/if}
-</div>
 
-<!-- Modal Hubungkan Cloudflare Token / Global API Key -->
-{#if showCFConnectModal}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) showCFConnectModal = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showCFConnectModal = false; }}
+  <!-- Modal Hubungkan Cloudflare Token / Global API Key -->
+  <Modal
+    open={showCFConnectModal}
+    title="Hubungkan Akun Cloudflare (API Token / Global API Key)"
+    subtitle="Mendukung Custom API Token maupun Global API Key + Email"
+    size="lg"
+    onclose={() => (showCFConnectModal = false)}
   >
-    <div class="modal-card modal-wide">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <i class="ri-cloud-line text-accent"></i>
-          <div>
-            <h3>Hubungkan Akun Cloudflare (API Token / Global API Key)</h3>
-            <span class="modal-sub">Mendukung Custom API Token maupun Global API Key + Email</span>
+    <div class="cf-token-guide-box mb-4">
+      <div class="font-semibold text-xs mb-1">
+        <i class="ri-shield-keyhole-line text-accent"></i> Panduan Izin API Token Cloudflare (Read vs Edit):
+      </div>
+      <ul class="cf-guide-list text-xs text-subtle">
+        <li>
+          <strong>Mengapa perlu izin <code>Edit</code>?</strong> Izin <code>Read</code> saja hanya dapat membaca daftar domain & DNS, tetapi <strong>tidak dapat</strong> mengubah DNS 1-klik, menambah subdomain, mengubah mode SSL, menyalakan <em>Under Attack Mode</em>, atau <em>Purge Cache</em>.
+        </li>
+        <li>
+          Saat membuat token di <strong>dash.cloudflare.com/profile/api-tokens</strong> (<code>Create Custom Token</code>), tambahkan 4 baris izin berikut:
+          <div class="mono text-2xs mt-1 p-2 bg-inset-box">
+            1. Zone → Zone → Read (Wajib agar daftar domain terdeteksi)<br/>
+            2. Zone → DNS → Edit (Untuk tambah/ubah/point record DNS & toggle Proxy)<br/>
+            3. Zone → Zone Settings → Edit (Untuk ubah Mode SSL, Under Attack, Always HTTPS, Brotli)<br/>
+            4. Zone → Cache Purge → Purge (Untuk bersihkan cache CDN)<br/>
+            *Pada bagian Zone Resources, pilih: Include → All zones
           </div>
-        </div>
-        <button class="btn-close" onclick={() => showCFConnectModal = false}>&times;</button>
-      </div>
-
-      <div class="modal-body">
-        <div class="cf-token-guide-box mb-4">
-          <div class="font-semibold text-xs mb-1">
-            <i class="ri-shield-keyhole-line text-accent"></i> Panduan Izin API Token Cloudflare (Read vs Edit):
-          </div>
-          <ul class="cf-guide-list text-xs text-subtle">
-            <li>
-              <strong>Mengapa perlu izin <code>Edit</code>?</strong> Izin <code>Read</code> saja hanya dapat membaca daftar domain & DNS, tetapi <strong>tidak dapat</strong> mengubah DNS 1-klik, menambah subdomain, mengubah mode SSL, menyalakan <em>Under Attack Mode</em>, atau <em>Purge Cache</em>.
-            </li>
-            <li>
-              Saat membuat token di <strong>dash.cloudflare.com/profile/api-tokens</strong> (<code>Create Custom Token</code>), tambahkan 4 baris izin berikut:
-              <div class="mono text-2xs mt-1 p-2 bg-inset-box">
-                1. Zone → Zone → Read (Wajib agar daftar domain terdeteksi)<br/>
-                2. Zone → DNS → Edit (Untuk tambah/ubah/point record DNS & toggle Proxy)<br/>
-                3. Zone → Zone Settings → Edit (Untuk ubah Mode SSL, Under Attack, Always HTTPS, Brotli)<br/>
-                4. Zone → Cache Purge → Purge (Untuk bersihkan cache CDN)<br/>
-                *Pada bagian Zone Resources, pilih: Include → All zones
-              </div>
-            </li>
-            <li>
-              <strong>Alternatif Paling Mudah:</strong> Anda juga dapat memasukkan <strong>Global API Key</strong> pada kolom Token di bawah disertai <strong>Email Akun Cloudflare</strong> Anda (otomatis memiliki akses penuh ke seluruh domain tanpa perlu mengatur permission satu per satu).
-            </li>
-          </ul>
-        </div>
-
-        <div class="form-group">
-          <label for="cf-token">Cloudflare API Token atau Global API Key (Wajib)</label>
-          <input
-            id="cf-token"
-            type="password"
-            bind:value={cfTokenInput}
-            placeholder="Tempel API Token (40+ karakter) atau Global API Key (37 karakter hex)..."
-            class="input-dark mono"
-          />
-        </div>
-
-        <div class="form-group mt-4">
-          <label for="cf-email">Email Akun Cloudflare (Wajib jika memakai Global API Key, Opsional untuk API Token)</label>
-          <input
-            id="cf-email"
-            type="email"
-            bind:value={cfEmailInput}
-            placeholder="user@example.com"
-            class="input-dark"
-          />
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick={() => showCFConnectModal = false}>Batal</button>
-        <button type="button" class="btn btn-primary" onclick={handleConnectCF} disabled={cfSubmitting}>
-          {cfSubmitting ? 'Memverifikasi & Menyinkronkan...' : 'Verifikasi & Hubungkan'}
-        </button>
-      </div>
+        </li>
+        <li>
+          <strong>Alternatif Paling Mudah:</strong> Anda juga dapat memasukkan <strong>Global API Key</strong> pada kolom Token di bawah disertai <strong>Email Akun Cloudflare</strong> Anda (otomatis memiliki akses penuh ke seluruh domain tanpa perlu mengatur permission satu per satu).
+        </li>
+      </ul>
     </div>
-  </div>
-{/if}
 
-<!-- Modal Manajemen DNS Records (Full CRUD + 1-Click Local Site Sync) -->
-{#if showDNSModal && selectedZone}
-  {@const allZoneRecs = selectedZone.dns_records || []}
-  {@const filteredZoneRecs = allZoneRecs.filter((r) => {
-    if (dnsFilterTab === 'points_here' && !r.points_to_server) return false;
-    if (dnsFilterTab === 'proxied' && !r.proxied) return false;
-    if (dnsSearchQuery.trim()) {
-      const q = dnsSearchQuery.trim().toLowerCase();
-      return r.name.toLowerCase().includes(q) || r.content.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
-    }
-    return true;
-  })}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) showDNSModal = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showDNSModal = false; }}
-  >
-    <div class="modal-card modal-wide">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <i class="ri-list-settings-line text-accent"></i>
-          <div>
-            <h3>Manajemen DNS Cloudflare: {selectedZone.name}</h3>
-            <span class="modal-sub">
-              IP Publik Server Ini: <strong class="mono text-accent">{serverIP}</strong> · Kelola record A, AAAA, CNAME, TXT, MX & Proxy Orange Cloud
-            </span>
-          </div>
+    <div class="form-group">
+      <label for="cf-token">Cloudflare API Token atau Global API Key (Wajib)</label>
+      <input
+        id="cf-token"
+        type="password"
+        bind:value={cfTokenInput}
+        placeholder="Tempel API Token (40+ karakter) atau Global API Key (37 karakter hex)..."
+        class="input-dark mono"
+      />
+    </div>
+
+    <div class="form-group mt-4">
+      <label for="cf-email">Email Akun Cloudflare (Wajib jika memakai Global API Key, Opsional untuk API Token)</label>
+      <input
+        id="cf-email"
+        type="email"
+        bind:value={cfEmailInput}
+        placeholder="user@example.com"
+        class="input-dark"
+      />
+    </div>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn-ghost" onclick={() => showCFConnectModal = false}>Batal</button>
+      <button type="button" class="btn btn-primary" onclick={handleConnectCF} disabled={cfSubmitting}>
+        {cfSubmitting ? 'Memverifikasi & Menyinkronkan...' : 'Verifikasi & Hubungkan'}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Manajemen DNS Records (Full CRUD + 1-Click Local Site Sync) -->
+  {#if showDNSModal && selectedZone}
+    {@const allZoneRecs = selectedZone.dns_records || []}
+    {@const filteredZoneRecs = allZoneRecs.filter((r) => {
+      if (dnsFilterTab === 'points_here' && !r.points_to_server) return false;
+      if (dnsFilterTab === 'proxied' && !r.proxied) return false;
+      if (dnsSearchQuery.trim()) {
+        const q = dnsSearchQuery.trim().toLowerCase();
+        return r.name.toLowerCase().includes(q) || r.content.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
+      }
+      return true;
+    })}
+    <Modal
+      open={showDNSModal && !!selectedZone}
+      title={`Manajemen DNS Cloudflare: ${selectedZone.name}`}
+      subtitle={`IP Publik Server Ini: ${serverIP} · Kelola record A, AAAA, CNAME, TXT, MX & Proxy Orange Cloud`}
+      size="xl"
+      onclose={() => (showDNSModal = false)}
+    >
+      <!-- Pintasan 1-Klik Arahkan Situs Lokal ke Server Ini -->
+      {#if selectedZone.local_sites && selectedZone.local_sites.length > 0}
+        <div class="cf-quick-sync-bar mb-3">
+          <span class="text-xs font-semibold"><i class="ri-magic-line text-accent"></i> Pintasan Situs FikPanel:</span>
+          {#each selectedZone.local_sites as ls}
+            <button
+              type="button"
+              class="btn btn-xs btn-secondary mono"
+              onclick={() => pointZoneHere(selectedZone!, true, ls)}
+              title="Arahkan {ls} ke {serverIP} (Proxied)"
+            >
+              <i class="ri-cloud-fill text-warning"></i> Point {ls} → {serverIP} (Proxied)
+            </button>
+            <button
+              type="button"
+              class="btn btn-xs btn-ghost mono"
+              onclick={() => pointZoneHere(selectedZone!, false, ls)}
+              title="Arahkan {ls} ke {serverIP} (DNS Only)"
+            >
+              <i class="ri-cloud-line"></i> {ls} (DNS Only)
+            </button>
+          {/each}
         </div>
-        <button class="btn-close" onclick={() => showDNSModal = false}>&times;</button>
-      </div>
+      {/if}
 
-      <div class="modal-body">
-        <!-- Pintasan 1-Klik Arahkan Situs Lokal ke Server Ini -->
-        {#if selectedZone.local_sites && selectedZone.local_sites.length > 0}
-          <div class="cf-quick-sync-bar mb-3">
-            <span class="text-xs font-semibold"><i class="ri-magic-line text-accent"></i> Pintasan Situs FikPanel:</span>
-            {#each selectedZone.local_sites as ls}
-              <button
-                type="button"
-                class="btn btn-xs btn-secondary mono"
-                onclick={() => pointZoneHere(selectedZone!, true, ls)}
-                title="Arahkan {ls} ke {serverIP} (Proxied)"
-              >
-                <i class="ri-cloud-fill text-warning"></i> Point {ls} → {serverIP} (Proxied)
-              </button>
-              <button
-                type="button"
-                class="btn btn-xs btn-ghost mono"
-                onclick={() => pointZoneHere(selectedZone!, false, ls)}
-                title="Arahkan {ls} ke {serverIP} (DNS Only)"
-              >
-                <i class="ri-cloud-line"></i> {ls} (DNS Only)
-              </button>
-            {/each}
-          </div>
-        {/if}
-
-        <!-- Form Tambah / Ubah Record DNS -->
-        <div class="cf-dns-form-card mb-4">
-          <div class="text-xs font-semibold mb-2">
-            <i class="ri-add-circle-line text-accent"></i>
-            {dnsEditId ? `Ubah Record DNS (${dnsName})` : 'Tambah Record DNS Baru'}
-          </div>
-          <div class="cf-dns-form-grid">
-            <select bind:value={dnsType} class="input-dark select-sm mono">
-              <option value="A">A</option>
-              <option value="AAAA">AAAA</option>
-              <option value="CNAME">CNAME</option>
-              <option value="TXT">TXT</option>
-              <option value="MX">MX</option>
-            </select>
-
-            <input
-              type="text"
-              bind:value={dnsName}
-              placeholder="Nama (mis. @ atau sub.{selectedZone.name})"
-              class="input-dark mono text-xs"
-            />
-
-            <div class="cf-content-input-group">
-              <input
-                type="text"
-                bind:value={dnsContent}
-                placeholder={dnsType === 'A' ? `IPv4 (mis. ${serverIP})` : 'Target / Content'}
-                class="input-dark mono text-xs"
-              />
-              {#if dnsType === 'A' && serverIP}
-                <button
-                  type="button"
-                  class="btn btn-xs btn-secondary nowrap"
-                  onclick={() => dnsContent = serverIP}
-                  title="Gunakan IP Publik Server FikPanel ini"
-                >
-                  Pakai IP Server
-                </button>
-              {/if}
-            </div>
-
-            <label class="custom-chk text-xs nowrap" title="Aktifkan Cloudflare CDN & WAF Proxy (Orange Cloud)">
-              <input type="checkbox" bind:checked={dnsProxied} disabled={dnsType === 'TXT' || dnsType === 'MX'} />
-              <span>Proxied ☁️</span>
-            </label>
-
-            <div class="cf-dns-form-btns">
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                onclick={saveCFDNSRecord}
-                disabled={savingDNS || selectedZone.read_only}
-              >
-                {savingDNS ? 'Menyimpan...' : dnsEditId ? 'Update' : '+ Simpan'}
-              </button>
-              {#if dnsEditId}
-                <button type="button" class="btn btn-ghost btn-sm" onclick={() => resetDNSForm()}>
-                  Batal
-                </button>
-              {/if}
-            </div>
-          </div>
+      <!-- Form Tambah / Ubah Record DNS -->
+      <div class="cf-dns-form-card mb-4">
+        <div class="text-xs font-semibold mb-2">
+          <i class="ri-add-circle-line text-accent"></i>
+          {dnsEditId ? `Ubah Record DNS (${dnsName})` : 'Tambah Record DNS Baru'}
         </div>
+        <div class="cf-dns-form-grid">
+          <select bind:value={dnsType} class="input-dark select-sm mono">
+            <option value="A">A</option>
+            <option value="AAAA">AAAA</option>
+            <option value="CNAME">CNAME</option>
+            <option value="TXT">TXT</option>
+            <option value="MX">MX</option>
+          </select>
 
-        <!-- Filter & Pencarian Cepat Record DNS di Modal -->
-        <div class="cf-dns-toolbar">
-          <div class="cf-filter-tabs">
-            <button
-              type="button"
-              class="cf-filter-btn {dnsFilterTab === 'all' ? 'active' : ''}"
-              onclick={() => (dnsFilterTab = 'all')}
-            >
-              Semua ({allZoneRecs.length})
-            </button>
-            <button
-              type="button"
-              class="cf-filter-btn {dnsFilterTab === 'points_here' ? 'active' : ''}"
-              onclick={() => (dnsFilterTab = 'points_here')}
-            >
-              Mengarah ke Server Ini ({allZoneRecs.filter((r) => r.points_to_server).length})
-            </button>
-            <button
-              type="button"
-              class="cf-filter-btn {dnsFilterTab === 'proxied' ? 'active' : ''}"
-              onclick={() => (dnsFilterTab = 'proxied')}
-            >
-              Proxied / Tunnel ({allZoneRecs.filter((r) => r.proxied).length})
-            </button>
-          </div>
           <input
             type="text"
-            bind:value={dnsSearchQuery}
-            placeholder="Cari subdomain atau IP..."
-            class="input-dark cf-dns-search-input mono text-xs"
+            bind:value={dnsName}
+            placeholder="Nama (mis. @ atau sub.{selectedZone.name})"
+            class="input-dark mono text-xs"
           />
-        </div>
 
-        <div class="table-responsive cf-dns-table-scroll">
-          <table class="waf-main-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Name (Subdomain)</th>
-                <th>Content / Target IP</th>
-                <th>Proxy Status</th>
-                <th>Status di Server Ini</th>
-                <th class="text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#if filteredZoneRecs.length === 0}
-                <tr>
-                  <td colspan="6" class="text-center p-4 text-muted">Tidak ada rekaman DNS yang sesuai dengan filter.</td>
-                </tr>
-              {:else}
-                {#each filteredZoneRecs as rec}
-                  <tr>
-                    <td><span class="badge-soft mono">{rec.type}</span></td>
-                    <td class="mono font-semibold text-xs">{rec.name}</td>
-                    <td class="mono text-xs text-subtle break-all max-w-xs">{rec.content}</td>
-                    <td>
-                      <button
-                        type="button"
-                        class="btn-proxy-toggle {rec.proxied ? 'proxied' : 'dns-only'}"
-                        disabled={selectedZone.read_only || (rec.type !== 'A' && rec.type !== 'AAAA' && rec.type !== 'CNAME')}
-                        onclick={() => toggleCFDNSProxy(selectedZone!, rec)}
-                        title="Klik untuk beralih antara Proxied (Orange Cloud) dan DNS Only (Grey Cloud)"
-                      >
-                        {#if rec.proxied}
-                          <span class="badge-orange-cloud"><i class="ri-cloud-fill"></i> Proxied (CDN)</span>
-                        {:else}
-                          <span class="badge-grey-cloud"><i class="ri-cloud-line"></i> DNS Only</span>
-                        {/if}
-                      </button>
-                    </td>
-                    <td>
-                      {#if rec.points_to_server}
-                        <div class="cf-server-match-cell">
-                          <span class="badge-points-here"><i class="ri-check-line"></i> Mengarah ke Server Ini</span>
-                          {#if rec.in_local_sites || (selectedZone.local_sites || []).includes(rec.name)}
-                            <span class="cf-site-tag registered"><i class="ri-check-line"></i> Terdaftar di Website</span>
-                          {:else}
-                            <span class="cf-site-tag unregistered">Belum di Website</span>
-                          {/if}
-                        </div>
-                      {:else if rec.proxied}
-                        <span class="cf-source-tag warn"><i class="ri-git-branch-line"></i> Cloudflare Tunnel / Proxy Lain</span>
-                      {:else}
-                        <span class="text-muted text-xs">IP Server Lain ({rec.content})</span>
-                      {/if}
-                    </td>
-                    <td class="text-right nowrap">
-                      <button
-                        type="button"
-                        class="btn-icon-xs text-accent"
-                        disabled={selectedZone.read_only}
-                        onclick={() => startEditDNSRecord(rec)}
-                        title="Edit Record DNS Ini"
-                      >
-                        <i class="ri-edit-line"></i>
-                      </button>
-                      <button
-                        type="button"
-                        class="btn-icon-xs text-danger"
-                        disabled={selectedZone.read_only}
-                        onclick={() => deleteCFDNSRecord(selectedZone!, rec)}
-                        title="Hapus Record DNS Ini"
-                      >
-                        <i class="ri-delete-bin-line"></i>
-                      </button>
-                    </td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          <div class="cf-content-input-group">
+            <input
+              type="text"
+              bind:value={dnsContent}
+              placeholder={dnsType === 'A' ? `IPv4 (mis. ${serverIP})` : 'Target / Content'}
+              class="input-dark mono text-xs"
+            />
+            {#if dnsType === 'A' && serverIP}
+              <button
+                type="button"
+                class="btn btn-xs btn-secondary nowrap"
+                onclick={() => dnsContent = serverIP}
+                title="Gunakan IP Publik Server FikPanel ini"
+              >
+                Pakai IP Server
+              </button>
+            {/if}
+          </div>
 
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick={() => showDNSModal = false}>Tutup</button>
-      </div>
-    </div>
-  </div>
-{/if}
+          <label class="custom-chk text-xs nowrap" title="Aktifkan Cloudflare CDN & WAF Proxy (Orange Cloud)">
+            <input type="checkbox" bind:checked={dnsProxied} disabled={dnsType === 'TXT' || dnsType === 'MX'} />
+            <span>Proxied ☁️</span>
+          </label>
 
-<!-- Modal Pengaturan Edge & Keamanan Cloudflare -->
-{#if showCFSettingsModal && selectedZone}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) showCFSettingsModal = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showCFSettingsModal = false; }}
-  >
-    <div class="modal-card modal-wide">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <i class="ri-shield-star-line text-accent"></i>
-          <div>
-            <h3>Pengaturan Edge & Keamanan Cloudflare: {selectedZone.name}</h3>
-            <span class="modal-sub">Konfigurasi SSL/TLS, DDoS Under Attack Mode, HTTPS Redirect, dan Optimasi Kecepatan</span>
+          <div class="cf-dns-form-btns">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              onclick={saveCFDNSRecord}
+              disabled={savingDNS || selectedZone.read_only}
+            >
+              {savingDNS ? 'Menyimpan...' : dnsEditId ? 'Update' : '+ Simpan'}
+            </button>
+            {#if dnsEditId}
+              <button type="button" class="btn btn-ghost btn-sm" onclick={() => resetDNSForm()}>
+                Batal
+              </button>
+            {/if}
           </div>
         </div>
-        <button class="btn-close" onclick={() => showCFSettingsModal = false}>&times;</button>
       </div>
 
-      <div class="modal-body stack-gap">
+      <!-- Filter & Pencarian Cepat Record DNS di Modal -->
+      <div class="cf-dns-toolbar">
+        <div class="cf-filter-tabs">
+          <button
+            type="button"
+            class="cf-filter-btn {dnsFilterTab === 'all' ? 'active' : ''}"
+            onclick={() => (dnsFilterTab = 'all')}
+          >
+            Semua ({allZoneRecs.length})
+          </button>
+          <button
+            type="button"
+            class="cf-filter-btn {dnsFilterTab === 'points_here' ? 'active' : ''}"
+            onclick={() => (dnsFilterTab = 'points_here')}
+          >
+            Mengarah ke Server Ini ({allZoneRecs.filter((r) => r.points_to_server).length})
+          </button>
+          <button
+            type="button"
+            class="cf-filter-btn {dnsFilterTab === 'proxied' ? 'active' : ''}"
+            onclick={() => (dnsFilterTab = 'proxied')}
+          >
+            Proxied / Tunnel ({allZoneRecs.filter((r) => r.proxied).length})
+          </button>
+        </div>
+        <input
+          type="text"
+          bind:value={dnsSearchQuery}
+          placeholder="Cari subdomain atau IP..."
+          class="input-dark cf-dns-search-input mono text-xs"
+        />
+      </div>
+
+      <div class="table-responsive cf-dns-table-scroll">
+        <table class="waf-main-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Name (Subdomain)</th>
+              <th>Content / Target IP</th>
+              <th>Proxy Status</th>
+              <th>Status di Server Ini</th>
+              <th class="text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#if filteredZoneRecs.length === 0}
+              <tr>
+                <td colspan="6" class="text-center p-4 text-muted">Tidak ada rekaman DNS yang sesuai dengan filter.</td>
+              </tr>
+            {:else}
+              {#each filteredZoneRecs as rec}
+                <tr>
+                  <td><span class="badge-soft mono">{rec.type}</span></td>
+                  <td class="mono font-semibold text-xs">{rec.name}</td>
+                  <td class="mono text-xs text-subtle break-all max-w-xs">{rec.content}</td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn-proxy-toggle {rec.proxied ? 'proxied' : 'dns-only'}"
+                      disabled={selectedZone.read_only || (rec.type !== 'A' && rec.type !== 'AAAA' && rec.type !== 'CNAME')}
+                      onclick={() => toggleCFDNSProxy(selectedZone!, rec)}
+                      title="Klik untuk beralih antara Proxied (Orange Cloud) dan DNS Only (Grey Cloud)"
+                    >
+                      {#if rec.proxied}
+                        <span class="badge-orange-cloud"><i class="ri-cloud-fill"></i> Proxied (CDN)</span>
+                      {:else}
+                        <span class="badge-grey-cloud"><i class="ri-cloud-line"></i> DNS Only</span>
+                      {/if}
+                    </button>
+                  </td>
+                  <td>
+                    {#if rec.points_to_server}
+                      <div class="cf-server-match-cell">
+                        <span class="badge-points-here"><i class="ri-check-line"></i> Mengarah ke Server Ini</span>
+                        {#if rec.in_local_sites || (selectedZone.local_sites || []).includes(rec.name)}
+                          <span class="cf-site-tag registered"><i class="ri-check-line"></i> Terdaftar di Website</span>
+                        {:else}
+                          <span class="cf-site-tag unregistered">Belum di Website</span>
+                        {/if}
+                      </div>
+                    {:else if rec.proxied}
+                      <span class="cf-source-tag warn"><i class="ri-git-branch-line"></i> Cloudflare Tunnel / Proxy Lain</span>
+                    {:else}
+                      <span class="text-muted text-xs">IP Server Lain ({rec.content})</span>
+                    {/if}
+                  </td>
+                  <td class="text-right nowrap">
+                    <button
+                      type="button"
+                      class="btn-icon-xs text-accent"
+                      disabled={selectedZone.read_only}
+                      onclick={() => startEditDNSRecord(rec)}
+                      title="Edit Record DNS Ini"
+                    >
+                      <i class="ri-edit-line"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-icon-xs text-danger"
+                      disabled={selectedZone.read_only}
+                      onclick={() => deleteCFDNSRecord(selectedZone!, rec)}
+                      title="Hapus Record DNS Ini"
+                    >
+                      <i class="ri-delete-bin-line"></i>
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            {/if}
+          </tbody>
+        </table>
+      </div>
+
+      {#snippet footer()}
+        <button type="button" class="btn btn-ghost" onclick={() => showDNSModal = false}>Tutup</button>
+      {/snippet}
+    </Modal>
+  {/if}
+
+  <!-- Modal Pengaturan Edge & Keamanan Cloudflare -->
+  {#if showCFSettingsModal && selectedZone}
+    <Modal
+      open={showCFSettingsModal && !!selectedZone}
+      title={`Pengaturan Edge & Keamanan Cloudflare: ${selectedZone.name}`}
+      subtitle="Konfigurasi SSL/TLS, DDoS Under Attack Mode, HTTPS Redirect, dan Optimasi Kecepatan"
+      size="xl"
+      onclose={() => (showCFSettingsModal = false)}
+    >
+      <div class="stack-gap">
         <div class="forensic-modal-grid">
           <!-- Kolom 1: SSL/TLS & HTTPS -->
           <div class="drawer-card">
@@ -3241,36 +3199,22 @@
         </div>
       </div>
 
-      <div class="modal-actions">
+      {#snippet footer()}
         <button type="button" class="btn btn-ghost" onclick={() => showCFSettingsModal = false}>Tutup</button>
-      </div>
-    </div>
-  </div>
-{/if}
+      {/snippet}
+    </Modal>
+  {/if}
 
-<!-- Modal Ubah Opsi Situs WAF -->
-{#if showSiteModal && editingSite}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) showSiteModal = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showSiteModal = false; }}
-  >
-    <div class="modal-card">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <i class="ri-settings-4-line text-accent"></i>
-          <div>
-            <h3>Modifikasi Proteksi WAF: {editingSite.site_name}</h3>
-            <span class="modal-sub">Konfigurasi mitigasi bot, CC flood, dan CDN</span>
-          </div>
-        </div>
-        <button class="btn-close" onclick={() => showSiteModal = false}>&times;</button>
-      </div>
-
-      <div class="modal-body stack-gap">
+  <!-- Modal Ubah Opsi Situs WAF -->
+  {#if showSiteModal && editingSite}
+    <Modal
+      open={showSiteModal && !!editingSite}
+      title={`Modifikasi Proteksi WAF: ${editingSite.site_name}`}
+      subtitle="Konfigurasi mitigasi bot, CC flood, dan CDN"
+      size="md"
+      onclose={() => (showSiteModal = false)}
+    >
+      <div class="stack-gap">
         <div class="form-check-group">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={editingSite.fake_spider} />
@@ -3312,125 +3256,107 @@
         </div>
       </div>
 
-      <div class="modal-actions">
+      {#snippet footer()}
         <button type="button" class="btn btn-ghost" onclick={() => showSiteModal = false}>Batal</button>
         <button type="button" class="btn btn-primary" onclick={saveSiteSettings}>Simpan Konfigurasi</button>
-      </div>
-    </div>
-  </div>
-{/if}
+      {/snippet}
+    </Modal>
+  {/if}
 
-<!-- Modal Forensik Paket HTTP & Akses Mendalam -->
-{#if selectedAccessLog}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) selectedAccessLog = null; }}
-    onkeydown={(e) => { if (e.key === 'Escape') selectedAccessLog = null; }}
-  >
-    <div class="modal-card modal-wide">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <i class="ri-radar-line {selectedAccessLog.is_threat ? 'text-danger' : 'text-accent'}"></i>
-          <div>
-            <h3>Inspeksi Forensik Paket HTTP #{selectedAccessLog.id}</h3>
-            <span class="modal-sub">
-              {formatDateTime(selectedAccessLog.timestamp)} · {selectedAccessLog.is_threat ? `Ancaman Terdeteksi: ${selectedAccessLog.attack_type}` : 'Lalu Lintas Pengunjung Normal'}
-            </span>
+  <!-- Modal Forensik Paket HTTP & Akses Mendalam -->
+  {#if selectedAccessLog}
+    <Modal
+      open={!!selectedAccessLog}
+      title={`Inspeksi Forensik Paket HTTP #${selectedAccessLog.id}`}
+      subtitle={`${formatDateTime(selectedAccessLog.timestamp)} · ${selectedAccessLog.is_threat ? `Ancaman Terdeteksi: ${selectedAccessLog.attack_type}` : 'Lalu Lintas Pengunjung Normal'}`}
+      size="xl"
+      onclose={() => (selectedAccessLog = null)}
+    >
+      <div class="forensic-modal-grid">
+        <!-- Kolom 1: Informasi Request & Target -->
+        <div class="drawer-card">
+          <div class="drawer-card-title"><i class="ri-links-line text-accent"></i> Detail Permintaan HTTP & Endpoint</div>
+          <div class="drawer-info-grid">
+            <div class="info-row">
+              <span class="info-lbl">Domain Vhost:</span>
+              <span class="info-val mono font-bold text-accent">{selectedAccessLog.site_name}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">Metode & Protokol:</span>
+              <span class="info-val mono">
+                <span class="method-mini {selectedAccessLog.method.toLowerCase()}">{selectedAccessLog.method}</span>
+                {selectedAccessLog.protocol}
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">Kode Status HTTP:</span>
+              <span class="info-val">
+                <span class="http-status-badge s{Math.floor(selectedAccessLog.status_code / 100)}xx">{selectedAccessLog.status_code}</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">Ukuran Payload Dikirim:</span>
+              <span class="info-val mono">{formatBytes(selectedAccessLog.bytes_sent)} ({selectedAccessLog.bytes_sent.toLocaleString()} bytes)</span>
+            </div>
+            <div class="info-col">
+              <span class="info-lbl">URL Path / Payload Lengkap:</span>
+              <div class="payload-box mono text-xs">{selectedAccessLog.url_path}</div>
+            </div>
+            {#if selectedAccessLog.referer}
+              <div class="info-col">
+                <span class="info-lbl">HTTP Referer:</span>
+                <div class="ua-box mono text-2xs">{selectedAccessLog.referer}</div>
+              </div>
+            {/if}
           </div>
         </div>
-        <button class="btn-close" onclick={() => selectedAccessLog = null}>&times;</button>
-      </div>
 
-      <div class="modal-body">
-        <div class="forensic-modal-grid">
-          <!-- Kolom 1: Informasi Request & Target -->
-          <div class="drawer-card">
-            <div class="drawer-card-title"><i class="ri-links-line text-accent"></i> Detail Permintaan HTTP & Endpoint</div>
-            <div class="drawer-info-grid">
-              <div class="info-row">
-                <span class="info-lbl">Domain Vhost:</span>
-                <span class="info-val mono font-bold text-accent">{selectedAccessLog.site_name}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Metode & Protokol:</span>
-                <span class="info-val mono">
-                  <span class="method-mini {selectedAccessLog.method.toLowerCase()}">{selectedAccessLog.method}</span>
-                  {selectedAccessLog.protocol}
-                </span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Kode Status HTTP:</span>
-                <span class="info-val">
-                  <span class="http-status-badge s{Math.floor(selectedAccessLog.status_code / 100)}xx">{selectedAccessLog.status_code}</span>
-                </span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Ukuran Payload Dikirim:</span>
-                <span class="info-val mono">{formatBytes(selectedAccessLog.bytes_sent)} ({selectedAccessLog.bytes_sent.toLocaleString()} bytes)</span>
-              </div>
-              <div class="info-col">
-                <span class="info-lbl">URL Path / Payload Lengkap:</span>
-                <div class="payload-box mono text-xs">{selectedAccessLog.url_path}</div>
-              </div>
-              {#if selectedAccessLog.referer}
-                <div class="info-col">
-                  <span class="info-lbl">HTTP Referer:</span>
-                  <div class="ua-box mono text-2xs">{selectedAccessLog.referer}</div>
-                </div>
-              {/if}
+        <!-- Kolom 2: Identitas Klien, Geolokasi & Perangkat -->
+        <div class="drawer-card">
+          <div class="drawer-card-title"><i class="ri-map-pin-user-line text-info"></i> Atribusi IP, Geolokasi & Perangkat</div>
+          <div class="drawer-info-grid">
+            <div class="info-row">
+              <span class="info-lbl">Alamat IP Klien:</span>
+              <span class="info-val mono font-bold">{selectedAccessLog.client_ip}</span>
             </div>
-          </div>
-
-          <!-- Kolom 2: Identitas Klien, Geolokasi & Perangkat -->
-          <div class="drawer-card">
-            <div class="drawer-card-title"><i class="ri-map-pin-user-line text-info"></i> Atribusi IP, Geolokasi & Perangkat</div>
-            <div class="drawer-info-grid">
-              <div class="info-row">
-                <span class="info-lbl">Alamat IP Klien:</span>
-                <span class="info-val mono font-bold">{selectedAccessLog.client_ip}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Negara & Kota:</span>
-                <span class="info-val">
-                  <span class="flag-code">{selectedAccessLog.country_code}</span>
-                  {selectedAccessLog.city ? `${selectedAccessLog.city}, ` : ''}{selectedAccessLog.region ? `${selectedAccessLog.region}, ` : ''}{selectedAccessLog.country}
-                </span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Koordinat GPS:</span>
-                <span class="info-val mono text-xs">{selectedAccessLog.latitude.toFixed(4)}, {selectedAccessLog.longitude.toFixed(4)}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">ISP / Jaringan ASN:</span>
-                <span class="info-val text-xs">{selectedAccessLog.isp || 'Autonomous System'}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-lbl">Perangkat & OS:</span>
-                <span class="info-val">{selectedAccessLog.device} · {selectedAccessLog.os} · {selectedAccessLog.browser}</span>
-              </div>
-              <div class="info-col">
-                <span class="info-lbl">Raw User-Agent Header:</span>
-                <div class="ua-box mono text-2xs">{selectedAccessLog.user_agent || '(Kosong / Raw Socket)'}</div>
-              </div>
-              <div class="info-col">
-                <span class="info-lbl">Keputusan Mesin WAF:</span>
-                <div class="rule-box text-xs">
-                  {#if selectedAccessLog.is_threat}
-                    <strong class="text-danger">{selectedAccessLog.attack_type}</strong> — {selectedAccessLog.rule_name || 'Signature Inspection Engine'} ({selectedAccessLog.action.toUpperCase()})
-                  {:else}
-                    <strong class="text-success">Normal HTTP Request</strong> — Tidak ditemukan pola SQLi, XSS, LFI, atau scanner berbahaya.
-                  {/if}
-                </div>
+            <div class="info-row">
+              <span class="info-lbl">Negara & Kota:</span>
+              <span class="info-val">
+                <span class="flag-code">{selectedAccessLog.country_code}</span>
+                {selectedAccessLog.city ? `${selectedAccessLog.city}, ` : ''}{selectedAccessLog.region ? `${selectedAccessLog.region}, ` : ''}{selectedAccessLog.country}
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">Koordinat GPS:</span>
+              <span class="info-val mono text-xs">{selectedAccessLog.latitude.toFixed(4)}, {selectedAccessLog.longitude.toFixed(4)}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">ISP / Jaringan ASN:</span>
+              <span class="info-val text-xs">{selectedAccessLog.isp || 'Autonomous System'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">Perangkat & OS:</span>
+              <span class="info-val">{selectedAccessLog.device} · {selectedAccessLog.os} · {selectedAccessLog.browser}</span>
+            </div>
+            <div class="info-col">
+              <span class="info-lbl">Raw User-Agent Header:</span>
+              <div class="ua-box mono text-2xs">{selectedAccessLog.user_agent || '(Kosong / Raw Socket)'}</div>
+            </div>
+            <div class="info-col">
+              <span class="info-lbl">Keputusan Mesin WAF:</span>
+              <div class="rule-box text-xs">
+                {#if selectedAccessLog.is_threat}
+                  <strong class="text-danger">{selectedAccessLog.attack_type}</strong> — {selectedAccessLog.rule_name || 'Signature Inspection Engine'} ({selectedAccessLog.action.toUpperCase()})
+                {:else}
+                  <strong class="text-success">Normal HTTP Request</strong> — Tidak ditemukan pola SQLi, XSS, LFI, atau scanner berbahaya.
+                {/if}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="modal-actions">
+      {#snippet footer()}
         <button
           type="button"
           class="btn btn-secondary btn-sm"
@@ -3468,2117 +3394,7 @@
           <i class="ri-shield-cross-line"></i> Blokir IP ke Blacklist
         </button>
         <button type="button" class="btn btn-ghost btn-sm" onclick={() => selectedAccessLog = null}>Tutup</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<style>
-  .waf-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  .waf-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    padding: 1.25rem 1.5rem;
-    border-radius: var(--radius-md);
-  }
-  .waf-brand-title {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  .waf-icon-glow {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
-    background: var(--tint-info);
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    box-shadow: 0 0 16px var(--tint-info);
-  }
-  .waf-title {
-    font-size: 1.35rem;
-    font-weight: 700;
-    margin: 0;
-    color: var(--text);
-  }
-  .waf-desc {
-    margin: 0.2rem 0 0;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-  .waf-top-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .badge-status-glow {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: var(--tint-accent);
-    border: 1px solid var(--ring-accent);
-    color: var(--accent-strong);
-    padding: 0.35rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.78rem;
-    font-weight: 600;
-  }
-  .dot-glow {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
-    animation: pulseGlow 2s infinite ease-in-out;
-  }
-  @keyframes pulseGlow {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.3); opacity: 0.6; }
-  }
-
-  /* Subtabs Nav */
-  .waf-tabs-nav {
-    display: flex;
-    gap: 0.5rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.25rem;
-  }
-  .waf-tab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    padding: 0.6rem 1rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .waf-tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    font-weight: 600;
-  }
-  .waf-tab-btn:hover:not(.active) {
-    color: var(--text);
-  }
-  .cf-online-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--warning);
-    box-shadow: 0 0 6px var(--warning);
-  }
-
-  /* Overview Cards Grid */
-  .overview-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
-  }
-  .stat-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.15rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .stat-card.danger {
-    border-color: var(--ring-danger);
-    background: var(--tint-danger);
-  }
-  .stat-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .stat-label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-  }
-  .stat-icon {
-    font-size: 1.2rem;
-  }
-  .stat-num {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .stat-unit {
-    font-size: 0.85rem;
-    font-weight: 400;
-    color: var(--text-subtle);
-  }
-  .stat-sub {
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .trend-badge.down {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    font-weight: 600;
-  }
-
-  /* Bento 2 Col */
-  .bento-two-col {
-    display: grid;
-    grid-template-columns: 2fr 1.2fr;
-    gap: 1.25rem;
-  }
-  @media (max-width: 1024px) {
-    .bento-two-col {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .bento-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.25rem;
-  }
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
-  .panel-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .panel-title-wrap h3 {
-    font-size: 0.95rem;
-    margin: 0;
-    color: var(--text);
-  }
-
-  /* Leaflet Map Containers */
-  .world-map-wrapper {
-    position: relative;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    background: var(--bg-inset);
-  }
-  .overview-leaflet-container {
-    width: 100%;
-    height: 300px;
-    background: var(--bg-inset);
-    border-radius: var(--radius-sm);
-  }
-  .panel-header-badges {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .attribution-main {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
-  .country-name {
-    font-weight: 500;
-    color: var(--text);
-  }
-  .attribution-isp {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-    margin-top: 2px;
-  }
-
-  /* Attack Studio Panel */
-  .attack-studio-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .studio-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 0;
-  }
-  .radar-live-indicator {
-    position: relative;
-    width: 36px;
-    height: 36px;
-    background: var(--tint-accent);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-  }
-  .live-dot {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    box-shadow: 0 0 6px var(--accent);
-  }
-  .studio-stats-pills {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-  .stat-pill {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-  }
-  .stat-pill-label {
-    color: var(--text-subtle);
-  }
-  .stat-pill-val {
-    font-weight: 700;
-    font-family: var(--font-mono);
-  }
-  .stat-pill-val.danger { color: var(--danger); }
-  .stat-pill-val.warning { color: var(--warning); }
-  .stat-pill-val.info { color: var(--info); }
-
-  /* Studio Toolbar */
-  .studio-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    background: var(--bg-inset);
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-  }
-  .search-input-wrap {
-    position: relative;
-    flex: 1;
-    min-width: 240px;
-    display: flex;
-    align-items: center;
-  }
-  .search-icon {
-    position: absolute;
-    left: 0.75rem;
-    color: var(--text-subtle);
-    pointer-events: none;
-  }
-  .search-input {
-    padding-left: 2.25rem;
-    padding-right: 2rem;
-    width: 100%;
-  }
-  .clear-search-btn {
-    position: absolute;
-    right: 0.75rem;
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    font-size: 1rem;
-  }
-  .select-sm {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-  .toolbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  /* Country Chips Bar */
-  .country-chips-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex-wrap: wrap;
-    padding: 0.25rem 0;
-  }
-  .chips-label {
-    font-size: 0.75rem;
-    color: var(--text-subtle);
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .country-chip {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 0.25rem 0.6rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    transition: all 0.15s ease;
-  }
-  .country-chip:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-  .country-chip.active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--accent);
-    font-weight: 600;
-  }
-  .chip-badge {
-    background: var(--bg-surface);
-    color: var(--danger);
-    font-weight: 700;
-    font-size: 0.65rem;
-    padding: 0.05rem 0.35rem;
-    border-radius: 9999px;
-  }
-
-  /* Map Viewport & Telemetry Drawer */
-  .map-studio-viewport {
-    position: relative;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  .attack-map-canvas {
-    width: 100%;
-    height: 520px;
-    background: var(--bg-inset);
-  }
-
-  /* Drawer Telemetri Melayang */
-  .telemetry-inspector-drawer {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    bottom: 1rem;
-    width: 380px;
-    max-width: calc(100% - 2rem);
-    background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 36px rgb(0 0 0 / 0.5);
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    animation: slideInRight 0.25s ease-out;
-  }
-  @keyframes slideInRight {
-    from { transform: translateX(20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  .drawer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .drawer-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .drawer-ip {
-    margin: 0;
-    font-size: 0.95rem;
-    color: var(--text);
-  }
-  .drawer-body {
-    padding: 1rem 1.25rem;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    flex: 1;
-  }
-  .drawer-card {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0.75rem 0.85rem;
-  }
-  .drawer-card-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .drawer-info-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-  }
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .info-col {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin-top: 0.25rem;
-  }
-  .info-lbl {
-    color: var(--text-subtle);
-  }
-  .info-val {
-    color: var(--text);
-    text-align: right;
-  }
-  .ua-box, .payload-box, .rule-box {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    padding: 0.4rem 0.55rem;
-    border-radius: 4px;
-    word-break: break-all;
-    color: var(--text-muted);
-  }
-  .payload-box {
-    color: var(--warning-strong);
-  }
-  .drawer-actions {
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg-raised);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  /* Leaflet Marker Beacons & Laser Arcs */
-  :global(.leaflet-server-icon), :global(.leaflet-threat-icon),
-  :global(.leaflet-server-full), :global(.leaflet-threat-full) {
-    background: transparent !important;
-    border: none !important;
-  }
-  :global(.server-beacon-dot), :global(.threat-beacon-dot) {
-    position: relative;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  :global(.server-beacon-dot .dot-core) {
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    box-shadow: 0 0 8px var(--accent);
-  }
-  :global(.threat-beacon-dot.blocked .dot-core) {
-    width: 8px;
-    height: 8px;
-    background: var(--danger);
-    border-radius: 50%;
-    box-shadow: 0 0 8px var(--danger);
-  }
-  :global(.threat-beacon-dot.warn .dot-core) {
-    width: 8px;
-    height: 8px;
-    background: var(--warning);
-    border-radius: 50%;
-    box-shadow: 0 0 8px var(--warning);
-  }
-
-  :global(.server-host-beacon) {
-    position: relative;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  :global(.server-core-icon) {
-    width: 22px;
-    height: 22px;
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    box-shadow: 0 0 12px var(--accent);
-    z-index: 10;
-  }
-  :global(.server-host-label) {
-    position: absolute;
-    top: 26px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-surface);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 700;
-    padding: 1px 4px;
-    border-radius: 3px;
-    white-space: nowrap;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
-  }
-
-  :global(.threat-marker-beacon) {
-    position: relative;
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  :global(.threat-dot-inner) {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    z-index: 5;
-  }
-  :global(.threat-danger .threat-dot-inner) {
-    background: var(--danger);
-    box-shadow: 0 0 10px var(--danger);
-  }
-  :global(.threat-warning .threat-dot-inner) {
-    background: var(--warning);
-    box-shadow: 0 0 10px var(--warning);
-  }
-
-  :global(.pulse-ring) {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    animation: pulseScale 2.2s infinite ease-out;
-  }
-  :global(.pulse-green) {
-    border: 2px solid var(--accent);
-  }
-  :global(.pulse-red) {
-    border: 2px solid var(--danger);
-  }
-  :global(.pulse-amber) {
-    border: 2px solid var(--warning);
-  }
-  @keyframes pulseScale {
-    0% { transform: scale(0.4); opacity: 1; }
-    100% { transform: scale(2.0); opacity: 0; }
-  }
-
-  :global(.laser-arc-danger) {
-    stroke: var(--danger) !important;
-    stroke-dasharray: 6, 5;
-    animation: dashLaser 2.5s linear infinite;
-  }
-  :global(.laser-arc-warn) {
-    stroke: var(--warning) !important;
-    stroke-dasharray: 6, 5;
-    animation: dashLaser 2.5s linear infinite;
-  }
-  @keyframes dashLaser {
-    from { stroke-dashoffset: 44; }
-    to { stroke-dashoffset: 0; }
-  }
-
-  :global(.dark-map-tooltip) {
-    background: var(--bg-surface) !important;
-    border: 1px solid var(--border-strong) !important;
-    color: var(--text) !important;
-    border-radius: var(--radius-sm) !important;
-    padding: 0.4rem 0.6rem !important;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5) !important;
-    font-size: 0.74rem !important;
-  }
-  :global(.dark-map-tooltip::before) {
-    border-top-color: var(--border-strong) !important;
-  }
-  :global(.map-tooltip-content) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  :global(.badge-tag-xs) {
-    background: var(--tint-danger);
-    color: var(--danger);
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-size: 0.65rem;
-    font-weight: 600;
-  }
-
-  /* Leaflet Controls & Tile Styling */
-  :global(.leaflet-container) {
-    background: var(--bg-inset) !important;
-    font-family: var(--font-sans) !important;
-  }
-  :global(.leaflet-control-zoom a) {
-    background: var(--bg-surface) !important;
-    color: var(--text) !important;
-    border-color: var(--border) !important;
-  }
-  :global(.leaflet-control-zoom a:hover) {
-    background: var(--bg-hover) !important;
-    color: var(--accent) !important;
-  }
-
-  /* Table additions */
-  .threat-row {
-    transition: background 0.15s ease;
-  }
-  .threat-row:hover {
-    background: var(--bg-hover);
-  }
-  .threat-row.row-selected {
-    background: var(--bg-active);
-  }
-  .geo-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .geo-city {
-    color: var(--text);
-  }
-  .device-cell {
-    display: flex;
-    flex-direction: column;
-  }
-  .method-tag {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-size: 0.68rem;
-    font-weight: 700;
-  }
-  .btn-icon-xs {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0.2rem 0.35rem;
-    border-radius: 4px;
-    transition: background 0.15s ease;
-  }
-  .btn-icon-xs:hover {
-    background: var(--bg-hover);
-  }
-  .table-action-cell {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.25rem;
-  }
-
-  /* Compact Table */
-  .waf-table-compact {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.78rem;
-  }
-  .waf-table-compact th {
-    text-align: left;
-    padding: 0.5rem 0.6rem;
-    color: var(--text-subtle);
-    border-bottom: 1px solid var(--border);
-  }
-  .waf-table-compact td {
-    padding: 0.55rem 0.6rem;
-    border-bottom: 1px solid var(--border-soft);
-  }
-  .badge-attack-count {
-    background: var(--tint-danger);
-    color: var(--danger);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-weight: 600;
-  }
-  .flag-code {
-    background: var(--bg-inset);
-    padding: 0.1rem 0.3rem;
-    border-radius: 3px;
-    font-size: 0.68rem;
-    color: var(--accent);
-  }
-
-  /* Bottom 3 Grid */
-  .bottom-three-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.25rem;
-  }
-  .rank-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-  }
-  .rank-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.45rem 0.6rem;
-    background: var(--bg-inset);
-    border-radius: var(--radius-sm);
-    font-size: 0.78rem;
-  }
-  .rank-num {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--bg-surface);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.68rem;
-    font-weight: bold;
-    color: var(--text-muted);
-  }
-  .rank-num.first {
-    background: var(--danger);
-    color: var(--text);
-  }
-
-  /* Main WAF Table */
-  .waf-main-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-  }
-  .waf-main-table th {
-    text-align: left;
-    padding: 0.75rem 0.85rem;
-    color: var(--text-subtle);
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-  }
-  .waf-main-table td {
-    padding: 0.75rem 0.85rem;
-    border-bottom: 1px solid var(--border-soft);
-    vertical-align: middle;
-  }
-  .badge-intercept-count {
-    color: var(--danger);
-    font-weight: 700;
-  }
-  .badge-tag {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-  }
-  .badge-pill {
-    padding: 0.2rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-  .badge-pill.active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-  .badge-pill.disabled {
-    background: var(--tint-danger);
-    color: var(--danger);
-  }
-  .badge-attack-tag {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border: 1px solid var(--tint-warning);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-  }
-  .badge-action {
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 700;
-  }
-  .badge-action.block {
-    background: var(--tint-danger);
-    color: var(--danger);
-  }
-  .badge-action.intercept {
-    background: var(--tint-info);
-    color: var(--accent);
-  }
-  .badge-action.challenge {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-  }
-
-  .btn-link {
-    background: transparent;
-    border: none;
-    color: var(--accent);
-    cursor: pointer;
-    font-size: 0.78rem;
-    padding: 0.2rem 0.4rem;
-  }
-  .btn-link:hover {
-    text-decoration: underline;
-  }
-
-  .info-footer-note {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 1.25rem;
-    padding: 0.75rem 1rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  /* Black/White list subtabs */
-  .rule-subtabs {
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.25rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.5rem;
-  }
-  .rule-subtab-btn {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 0.4rem 0.8rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.78rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .rule-subtab-btn.active {
-    background: var(--accent);
-    color: var(--text);
-    border-color: var(--accent);
-    font-weight: 600;
-  }
-
-  .add-rule-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 1rem;
-  }
-  .form-box-title {
-    font-size: 0.85rem;
-    margin: 0 0 0.85rem 0;
-    color: var(--text);
-  }
-  .form-row-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto;
-    gap: 0.85rem;
-    align-items: flex-end;
-  }
-  .pill-group {
-    display: flex;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px;
-  }
-  .pill-opt {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    padding: 0.35rem 0.6rem;
-    font-size: 0.75rem;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .pill-opt.active {
-    background: var(--accent);
-    color: var(--text);
-    font-weight: bold;
-  }
-  .input-dark {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 0.5rem 0.75rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.8rem;
-    width: 100%;
-  }
-
-  /* Cloudflare Hub Styles */
-  .cf-hub-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.15rem;
-  }
-  .cf-status-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem 1.4rem;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-  }
-  .cf-left {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    flex: 1;
-    min-width: 280px;
-  }
-  .cf-head-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    min-width: 0;
-  }
-  .cf-head-desc {
-    margin: 0;
-    font-size: 0.78rem;
-    color: var(--text-subtle);
-    line-height: 1.55;
-    max-width: 72ch;
-  }
-  .cf-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .cf-logo-icon {
-    width: 46px;
-    height: 46px;
-    flex-shrink: 0;
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border: 1px solid var(--ring-warning);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    box-shadow: 0 0 16px var(--tint-warning);
-  }
-  .cf-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-  .cf-title-row h3 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .badge-cf-connected {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    padding: 0.15rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-  }
-  .badge-cf-disconnected {
-    background: var(--tint-danger);
-    color: var(--danger);
-    padding: 0.15rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-  }
-  .badge-points-here {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .badge-points-other {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-subtle);
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .badge-orange-cloud {
-    color: var(--warning-strong);
-    font-size: 0.75rem;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .badge-grey-cloud {
-    color: var(--text-subtle);
-    font-size: 0.75rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .badge-ssl-mode {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    color: var(--info);
-  }
-
-  .cf-empty-promo {
-    text-align: center;
-    padding: 3rem 1.5rem;
-    background: var(--bg-inset);
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-sm);
-    margin-top: 1.5rem;
-  }
-  .promo-icon {
-    font-size: 3rem;
-    color: var(--warning-strong);
-    margin-bottom: 0.75rem;
-  }
-  .cf-empty-promo h4 {
-    margin: 0 0 0.5rem;
-    color: var(--text);
-  }
-  .cf-empty-promo p {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    max-width: 500px;
-    margin: 0 auto 1.25rem;
-  }
-
-  /* Live Pulse Toggle & Observatory Styles */
-  .btn-live-pulse {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-subtle);
-    padding: 0.35rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.76rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .btn-live-pulse.active {
-    background: var(--tint-accent);
-    border-color: var(--ring-accent);
-    color: var(--accent-strong);
-  }
-  .pulse-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--text-muted);
-  }
-  .pulse-dot.live {
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
-    animation: pulseGlow 1.5s infinite ease-in-out;
-  }
-
-  .tab-count-pill {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    padding: 0.08rem 0.45rem;
-    border-radius: 9999px;
-    font-size: 0.68rem;
-    font-weight: 700;
-  }
-
-  .status-telemetry-strip {
-    padding: 0.9rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-  }
-  .telemetry-strip-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-  .strip-title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .strip-badges {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-  }
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.55rem;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-subtle);
-  }
-  .status-pill .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
-  .status-pill.s2xx .dot { background: var(--accent); }
-  .status-pill.s3xx .dot { background: var(--info); }
-  .status-pill.s4xx .dot { background: var(--warning); }
-  .status-pill.s5xx .dot { background: var(--danger); }
-
-  .status-progress-bar {
-    height: 7px;
-    width: 100%;
-    background: var(--bg-inset);
-    border-radius: 9999px;
-    overflow: hidden;
-    display: flex;
-    gap: 2px;
-  }
-  .status-progress-bar .seg {
-    height: 100%;
-    transition: width 0.4s ease;
-  }
-  .seg-2xx { background: var(--accent); }
-  .seg-3xx { background: var(--info); }
-  .seg-4xx { background: var(--warning); }
-  .seg-5xx { background: var(--danger); }
-
-  .live-mini-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--danger);
-    box-shadow: 0 0 6px var(--danger);
-    margin-right: 4px;
-    vertical-align: middle;
-  }
-
-  .rank-item-rich {
-    align-items: flex-start;
-    padding: 0.55rem 0.65rem;
-  }
-  .rank-rich-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .rank-rich-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .rank-rich-meta {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-    color: var(--text-muted);
-  }
-  .rank-list-scroll {
-    max-height: 320px;
-    overflow-y: auto;
-    padding-right: 2px;
-  }
-  .rank-item-clickable {
-    width: 100%;
-    text-align: left;
-    background: var(--bg-inset);
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .rank-item-clickable:hover {
-    border-color: var(--ring-accent);
-    background: var(--tint-accent);
-  }
-  .rank-threat-row {
-    border-left: 2px solid var(--danger);
-  }
-
-  .method-mini {
-    display: inline-block;
-    padding: 0.08rem 0.35rem;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    margin-right: 0.25rem;
-    background: var(--tint-info);
-    color: var(--info);
-  }
-  .method-mini.post {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-  .method-mini.delete,
-  .method-mini.connect,
-  .method-mini.raw {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-  }
-
-  .status-mini,
-  .http-status-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.14rem 0.45rem;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 700;
-  }
-  .s2xx {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid var(--ring-accent);
-  }
-  .s3xx {
-    background: var(--tint-info);
-    color: var(--info);
-    border: 1px solid var(--ring-info);
-  }
-  .s4xx {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border: 1px solid var(--ring-warning);
-  }
-  .s5xx {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-    border: 1px solid var(--ring-danger);
-  }
-
-  .badge-normal-traffic {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid var(--ring-accent);
-    padding: 0.18rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-  .row-threat-highlight {
-    background: var(--tint-danger);
-  }
-  .forensic-modal-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-  @media (max-width: 900px) {
-    .forensic-modal-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  .nowrap {
-    white-space: nowrap;
-  }
-  .break-all {
-    word-break: break-all;
-  }
-  .mt-2 {
-    margin-top: 0.5rem;
-  }
-  .mt-05 {
-    margin-top: 0.15rem;
-  }
-
-  /* Komponen Modal Overlay & Card Global di WAF */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1200;
-    background: rgb(0 0 0 / 0.72);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1.25rem;
-  }
-  .modal-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    width: 100%;
-    max-width: 600px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 50px rgb(0 0 0 / 0.6);
-    overflow: hidden;
-  }
-  .modal-card.modal-wide {
-    max-width: 920px;
-  }
-  .modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-inset);
-  }
-  .modal-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .modal-title-wrap i {
-    font-size: 1.35rem;
-  }
-  .modal-title-wrap h3 {
-    margin: 0;
-    font-size: 0.98rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .modal-sub {
-    display: block;
-    font-size: 0.74rem;
-    color: var(--text-muted);
-    margin-top: 0.12rem;
-  }
-  .btn-close {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text-muted);
-    font-size: 1.35rem;
-    line-height: 1;
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .btn-close:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-    border-color: var(--border);
-  }
-  .modal-body {
-    padding: 1.15rem 1.25rem;
-    overflow-y: auto;
-    flex: 1;
-  }
-  .modal-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg-inset);
-  }
-
-  /* Komponen Cloudflare Hub & Diagnostik Izin Token (Collapsible) */
-  .cf-diagnostic-banner {
-    background: var(--bg-inset);
-    border: 1px solid var(--ring-warning);
-    border-left: 3px solid var(--warning-strong);
-    border-radius: 12px;
-    padding: 1rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.9rem;
-  }
-  .cf-diag-compact-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.25rem;
-    flex-wrap: wrap;
-  }
-  .cf-diag-left {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.85rem;
-    flex: 1;
-    min-width: 260px;
-  }
-  .cf-diag-icon-box {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    border-radius: 9px;
-    background: var(--tint-warning);
-    border: 1px solid var(--ring-warning);
-    color: var(--warning-strong);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-  }
-  .cf-diag-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 0.22rem;
-    min-width: 0;
-  }
-  .cf-diag-headline {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .cf-diag-headline strong {
-    font-size: 0.84rem;
-    color: var(--text);
-    font-weight: 700;
-  }
-  .cf-diag-pill {
-    font-size: 0.66rem;
-    font-weight: 600;
-    padding: 0.1rem 0.45rem;
-    border-radius: 9999px;
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border: 1px solid var(--ring-warning);
-  }
-  .cf-diag-subtext {
-    margin: 0;
-    font-size: 0.76rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-  }
-  .cf-diag-subtext code {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--warning-strong);
-    background: var(--bg-surface);
-    padding: 0.08rem 0.35rem;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-  }
-  .cf-diag-right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .cf-guide-toggle-btn.active {
-    border-color: var(--ring-accent);
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-  .cf-diag-expanded {
-    border-top: 1px solid var(--border);
-    padding-top: 0.95rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-  .cf-diag-note-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.65rem 0.85rem;
-  }
-  .cf-perm-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
-    gap: 0.8rem;
-  }
-  .cf-perm-box {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.85rem 0.95rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.38rem;
-  }
-  .cf-perm-box.highlight {
-    border-color: var(--ring-accent);
-    background: var(--tint-accent);
-  }
-  .cf-perm-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.4rem;
-  }
-  .cf-perm-step {
-    font-size: 0.66rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-subtle);
-  }
-  .cf-perm-badge {
-    font-size: 0.64rem;
-    font-weight: 600;
-    padding: 0.08rem 0.4rem;
-    border-radius: 4px;
-    background: var(--bg-inset);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-  }
-  .cf-perm-badge.req {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--ring-accent);
-  }
-  .cf-perm-title {
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .cf-perm-path {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.22rem;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-  }
-  .cf-perm-path code {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    background: var(--bg-inset);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 0.1rem 0.38rem;
-    border-radius: 4px;
-  }
-  .cf-perm-foot {
-    font-size: 0.69rem;
-    color: var(--text-subtle);
-    line-height: 1.4;
-  }
-  .cf-perm-foot code {
-    font-family: var(--font-mono);
-    color: var(--accent-strong);
-  }
-
-  .cf-toolbar-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  .cf-filter-tabs {
-    display: inline-flex;
-    align-items: center;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    padding: 0.22rem;
-    gap: 0.25rem;
-    flex-wrap: wrap;
-  }
-  .cf-filter-btn {
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.74rem;
-    font-weight: 600;
-    padding: 0.34rem 0.75rem;
-    border-radius: 7px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    transition: all 0.15s ease;
-  }
-  .cf-filter-btn:hover {
-    color: var(--text);
-  }
-  .cf-filter-btn.active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--ring-accent);
-  }
-
-  .cf-ip-badges {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .cf-ip-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.38rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.34rem 0.7rem;
-    border-radius: 8px;
-    font-size: 0.73rem;
-    color: var(--text-muted);
-  }
-  .cf-ip-pill strong {
-    color: var(--accent-strong);
-  }
-  .cf-ip-pill.subtle strong {
-    color: var(--text);
-  }
-
-  .cf-table-wrap {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow-x: auto;
-  }
-  .cf-zones-table {
-    width: 100%;
-  }
-  .cf-zones-table th {
-    padding: 0.75rem 0.9rem;
-    white-space: nowrap;
-  }
-  .cf-zones-table td {
-    vertical-align: top;
-    padding: 0.95rem 0.9rem;
-  }
-  .cf-col-zone {
-    min-width: 185px;
-    max-width: 240px;
-  }
-  .cf-col-domains {
-    min-width: 280px;
-  }
-  .cf-col-actions {
-    width: 220px;
-  }
-  .cf-zone-name-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 0.38rem;
-  }
-  .cf-ns-line {
-    font-size: 0.68rem;
-    color: var(--text-subtle);
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    line-height: 1.4;
-    word-break: break-all;
-  }
-  .cf-source-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.22rem;
-    font-size: 0.66rem;
-    font-weight: 600;
-    padding: 0.1rem 0.42rem;
-    border-radius: 4px;
-    white-space: nowrap;
-  }
-  .cf-source-tag.warn {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border: 1px solid var(--ring-warning);
-  }
-  .cf-source-tag.api {
-    background: var(--tint-info);
-    color: var(--info);
-    border: 1px solid var(--ring-info);
-  }
-
-  .cf-pointing-head {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.5rem;
-  }
-  .cf-collapse-link {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 0.18rem 0.52rem;
-    border-radius: 5px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-  }
-  .cf-collapse-link:hover {
-    border-color: var(--ring-info);
-    color: var(--info);
-    background: var(--tint-info);
-  }
-
-  .cf-matched-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .cf-matched-row {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.42rem;
-    font-size: 0.73rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: 0.26rem 0.6rem;
-    border-radius: 6px;
-    width: fit-content;
-  }
-  .cf-host-name {
-    color: var(--text);
-    font-weight: 600;
-  }
-  .cf-ip-arrow {
-    color: var(--text-muted);
-    font-size: 0.69rem;
-  }
-  .cf-site-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.15rem;
-    font-family: var(--font-sans);
-    font-size: 0.64rem;
-    font-weight: 600;
-    padding: 0.08rem 0.4rem;
-    border-radius: 4px;
-  }
-  .cf-site-tag.registered {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid var(--ring-accent);
-  }
-  .cf-site-tag.unregistered {
-    background: var(--tint-info);
-    color: var(--info);
-    border: 1px solid var(--ring-info);
-  }
-
-  .cf-dual-select-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.38rem;
-  }
-  .cf-mini-select-row {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .cf-mini-lbl {
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    width: 32px;
-  }
-  .select-cf {
-    min-width: 112px;
-    width: auto;
-    background: var(--bg-inset);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.26rem 0.48rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .select-cf.sec-uam {
-    background: var(--tint-danger);
-    border-color: var(--ring-danger);
-    color: var(--danger-strong);
-  }
-  .select-cf:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
-  }
-
-  .cf-edge-pills {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.28rem;
-  }
-  .cf-action-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(98px, auto));
-    gap: 0.42rem;
-    justify-content: end;
-  }
-  .cf-act-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.32rem;
-    background: var(--bg-inset);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    padding: 0.34rem 0.58rem;
-    font-size: 0.71rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-  }
-  .cf-act-btn:hover {
-    border-color: var(--border-strong);
-    background: var(--bg-elevated);
-  }
-  .cf-act-btn.primary-dns {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--ring-accent);
-  }
-  .cf-act-btn.primary-dns:hover {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-  .cf-dns-count {
-    font-family: var(--font-mono);
-    font-size: 0.64rem;
-    padding: 0.04rem 0.32rem;
-    border-radius: 4px;
-    background: var(--bg-surface);
-    color: var(--accent-strong);
-    border: 1px solid var(--ring-accent);
-  }
-  .cf-act-btn.danger-subtle:hover {
-    border-color: var(--ring-danger);
-    color: var(--danger-strong);
-    background: var(--tint-danger);
-  }
-
-  .badge-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.22rem;
-    background: var(--bg-inset);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 0.2rem 0.45rem;
-    font-size: 0.68rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .badge-toggle:hover:not(:disabled) {
-    border-color: var(--border-strong);
-    color: var(--text);
-  }
-  .badge-toggle.active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--ring-accent);
-  }
-  .badge-toggle.warn.active {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border-color: var(--ring-warning);
-  }
-  .badge-toggle:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .cf-token-guide-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 0.85rem;
-  }
-  .cf-guide-list {
-    margin: 0;
-    padding-left: 1.1rem;
-    font-size: 0.73rem;
-    color: var(--text-muted);
-    line-height: 1.55;
-  }
-  .cf-guide-list code {
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-  }
-
-  .bg-inset-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.65rem 0.85rem;
-  }
-  .cf-quick-sync-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    background: var(--tint-info);
-    border: 1px solid var(--ring-info);
-    border-radius: 8px;
-    padding: 0.55rem 0.75rem;
-    margin-bottom: 0.75rem;
-  }
-  .cf-dns-form-card {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 0.85rem;
-    margin-bottom: 0.75rem;
-  }
-  .cf-dns-form-grid {
-    display: grid;
-    grid-template-columns: 100px 1.2fr 1.4fr 105px auto;
-    gap: 0.55rem;
-    align-items: center;
-  }
-  @media (max-width: 900px) {
-    .cf-dns-form-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-  .cf-content-input-group {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .cf-dns-form-btns {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-  .cf-dns-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.65rem;
-  }
-  .cf-dns-search-input {
-    max-width: 240px;
-    padding: 0.35rem 0.65rem;
-  }
-  .cf-dns-table-scroll {
-    max-height: 360px;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .cf-server-match-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-  .btn-proxy-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: var(--bg-inset);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.68rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .btn-proxy-toggle.proxied {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-    border-color: var(--ring-warning);
-  }
-  .btn-proxy-toggle:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-</style>
+      {/snippet}
+    </Modal>
+  {/if}
+</div>
