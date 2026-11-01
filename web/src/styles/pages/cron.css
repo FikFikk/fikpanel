@@ -86,7 +86,7 @@
       flex-wrap: wrap;
       margin-bottom: var(--sp-3);
       padding-bottom: var(--sp-3);
-      border-bottom: 1px solid var(--border-soft);
+      border-bottom: 1px solid var(--border-subtle);
     }
 
     .modal-sub {
@@ -132,7 +132,7 @@
 
     /* Kartu pembuat jadwal visual (Schedule Builder) */
     .schedule-builder-card {
-      background: var(--bg-surface-soft);
+      background: var(--bg-raised);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       overflow: hidden;
@@ -239,7 +239,7 @@
       gap: var(--sp-3);
       padding: var(--sp-2) var(--sp-3);
       background: var(--bg-inset);
-      border: 1px solid var(--border-soft);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-sm);
     }
 
@@ -280,7 +280,7 @@
       gap: var(--sp-2);
       padding: var(--sp-3);
       background: var(--bg-inset);
-      border: 1px solid var(--border-soft);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-sm);
     }
 
@@ -313,7 +313,7 @@
 
     .cron-field-input:disabled {
       background: var(--bg-inset);
-      border-color: var(--border-soft);
+      border-color: var(--border-subtle);
       color: var(--text);
       opacity: 0.9;
     }
@@ -485,3 +485,4 @@
     }
   }
 }
+

@@ -119,7 +119,7 @@
 
     .btn-renew-ssl:hover:not(:disabled) {
       background: var(--bg-hover);
-      border-color: var(--border-hover);
+      border-color: var(--border-strong);
     }
 
     .btn-renew-ssl:disabled {

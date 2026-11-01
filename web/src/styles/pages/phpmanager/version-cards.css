@@ -27,7 +27,7 @@
 
     .v-card.not-installed {
       opacity: 0.65;
-      background: var(--bg-surface-soft);
+      background: var(--bg-raised);
     }
 
     .v-head {

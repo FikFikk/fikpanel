@@ -25,124 +25,250 @@
    Panduan lengkap UI/UX: .agents/rules/ui-ux-standards.md
    ════════════════════════════════════════════════════════════════════════════ */
 
-:root {
-  color-scheme: dark;
+@layer tokens {
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: dark;
 
-  /* ── Permukaan (dari paling gelap ke paling terang) ─────────────────────── */
-  --bg-app: #090a0f;        /* latar halaman */
-  --bg-inset: #0b0d14;      /* area cekung: input, code block, log viewer */
-  --bg-surface: #0e1119;    /* kartu, sidebar, topbar, tabel */
-  --bg-raised: #131722;     /* elemen di atas kartu: modal, dropdown, toolbar */
-  --bg-hover: #181d2a;      /* hover baris / item interaktif */
-  --bg-active: #1e2433;     /* item terpilih / pressed */
-  --bg-overlay: rgb(3 6 12 / 0.72); /* backdrop modal */
+    /* ── Permukaan (dari paling gelap ke paling terang) ─────────────────────── */
+    --bg-app: #090a0f;        /* latar halaman */
+    --bg-inset: #0b0d14;      /* area cekung: input, code block, log viewer */
+    --bg-surface: #0e1119;    /* kartu, sidebar, topbar, tabel */
+    --bg-raised: #131722;     /* elemen di atas kartu: modal, dropdown, toolbar */
+    --bg-hover: #181d2a;      /* hover baris / item interaktif */
+    --bg-active: #1e2433;     /* item terpilih / pressed */
+    --bg-overlay: rgb(3 6 12 / 0.72); /* backdrop modal */
+    --bg-scrim: rgb(3 6 12 / 0.65);   /* scrim drawer mobile & palette */
 
-  /* ── Garis ──────────────────────────────────────────────────────────────── */
-  --border-subtle: #161b26; /* pemisah halus di dalam kartu */
-  --border: #1f2738;        /* border default kartu & input */
-  --border-strong: #2c3850; /* hover / fokus non-aksen */
+    /* ── Garis ──────────────────────────────────────────────────────────────── */
+    --border-subtle: #161b26; /* pemisah halus di dalam kartu */
+    --border: #1f2738;        /* border default kartu & input */
+    --border-strong: #2c3850; /* hover / fokus non-aksen */
 
-  /* ── Teks (kontras ≥ 4.5:1 terhadap --bg-surface kecuali --text-disabled) ─ */
-  --text: #f1f5f9;          /* judul & isi utama */
-  --text-secondary: #cbd5e1;/* label, isi sekunder */
-  --text-muted: #94a3b8;    /* deskripsi, metadata */
-  --text-subtle: #64748b;   /* hint, placeholder, timestamp */
-  --text-disabled: #475569; /* hanya untuk elemen nonaktif */
-  --text-on-accent: #04130d;/* teks di atas tombol aksen */
+    /* ── Teks (kontras ≥ 4.5:1 terhadap --bg-surface kecuali --text-disabled) ─ */
+    --text: #f1f5f9;          /* judul & isi utama */
+    --text-secondary: #cbd5e1;/* label, isi sekunder */
+    --text-muted: #94a3b8;    /* deskripsi, metadata */
+    --text-subtle: #64748b;   /* hint, placeholder, timestamp */
+    --text-disabled: #475569; /* hanya untuk elemen nonaktif */
+    --text-on-accent: #04130d;/* teks di atas tombol aksen */
 
-  /* ── Warna semantik (pakai sesuai MAKNA, bukan selera) ──────────────────── */
-  --accent: #10b981;        /* aksi utama, status aktif/sehat, brand */
-  --accent-strong: #34d399; /* teks/ikon aksen di atas latar gelap */
-  --accent-hover: #059669;
-  --success: #10b981;       /* alias status sukses / berhasil */
-  --success-strong: #34d399;
-  --info: #38bdf8;          /* informasi netral, tautan, proses berjalan */
-  --warning: #f59e0b;       /* perlu perhatian, belum berbahaya */
-  --warning-strong: #fbbf24;
-  --danger: #f43f5e;        /* destruktif, error, gagal */
-  --danger-strong: #fb7185;
-  --violet: #818cf8;        /* AI / fitur khusus */
+    /* ── Warna semantik (pakai sesuai MAKNA, bukan selera) ──────────────────── */
+    --accent: #10b981;        /* aksi utama, status aktif/sehat, brand */
+    --accent-strong: #34d399; /* teks/ikon aksen di atas latar gelap */
+    --accent-hover: #059669;
+    --success: #10b981;       /* alias status sukses / berhasil */
+    --success-strong: #34d399;
+    --info: #38bdf8;          /* informasi netral, tautan, proses berjalan */
+    --warning: #f59e0b;       /* perlu perhatian, belum berbahaya */
+    --warning-strong: #fbbf24;
+    --danger: #f43f5e;        /* destruktif, error, gagal */
+    --danger-strong: #fb7185;
+    --violet: #818cf8;        /* AI / fitur khusus */
 
-  /* ── Warna brand teknologi (HANYA untuk ikon/logo runtime, bukan status) ── */
-  --brand-php: #8892bf;
-  --brand-node: #68a063;
-  --brand-go: #00add8;
-  --brand-python: #facc15;
-  --brand-html: #f97316;
-  --brand-nginx: #009639;
+    /* ── Warna brand teknologi (HANYA untuk ikon/logo runtime, bukan status) ── */
+    --brand-php: #8892bf;
+    --brand-node: #68a063;
+    --brand-go: #00add8;
+    --brand-python: #facc15;
+    --brand-html: #f97316;
+    --brand-nginx: #009639;
 
-  /* ── Tint transparan siap pakai (latar badge, alert, highlight) ─────────── */
-  --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
-  --tint-info: color-mix(in srgb, var(--info) 12%, transparent);
-  --tint-warning: color-mix(in srgb, var(--warning) 12%, transparent);
-  --tint-danger: color-mix(in srgb, var(--danger) 12%, transparent);
-  --tint-violet: color-mix(in srgb, var(--violet) 12%, transparent);
-  --ring-accent: color-mix(in srgb, var(--accent) 35%, transparent);
-  --ring-danger: color-mix(in srgb, var(--danger) 35%, transparent);
+    /* ── Palet grafik / seri chart ──────────────────────────────────────────── */
+    --chart-1: #10b981;
+    --chart-2: #38bdf8;
+    --chart-3: #818cf8;
+    --chart-4: #f59e0b;
+    --chart-5: #f43f5e;
+    --chart-6: #06b6d4;
 
-  /* ── Tipografi ──────────────────────────────────────────────────────────── */
-  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Fira Code', ui-monospace, 'Cascadia Code', Consolas, monospace;
-  --text-2xs: 0.68rem;      /* tag, badge kecil */
-  --text-xs: 0.74rem;       /* metadata, label tabel */
-  --text-sm: 0.82rem;       /* teks UI default (tombol, input, sel tabel) */
-  --text-md: 0.9rem;        /* paragraf */
-  --text-lg: 1rem;          /* judul kartu / modal */
-  --text-xl: 1.25rem;       /* judul halaman */
-  --text-2xl: 1.6rem;       /* angka statistik besar */
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
+    /* ── Tint transparan siap pakai (latar badge, alert, highlight) ─────────── */
+    --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
+    --tint-info: color-mix(in srgb, var(--info) 12%, transparent);
+    --tint-warning: color-mix(in srgb, var(--warning) 12%, transparent);
+    --tint-danger: color-mix(in srgb, var(--danger) 12%, transparent);
+    --tint-violet: color-mix(in srgb, var(--violet) 12%, transparent);
+    --ring-accent: color-mix(in srgb, var(--accent) 35%, transparent);
+    --ring-info: color-mix(in srgb, var(--info) 35%, transparent);
+    --ring-warning: color-mix(in srgb, var(--warning) 35%, transparent);
+    --ring-danger: color-mix(in srgb, var(--danger) 35%, transparent);
 
-  /* ── Spasi (kelipatan 4px) ──────────────────────────────────────────────── */
-  --space-1: 0.25rem;  /* 4  */
-  --space-2: 0.5rem;   /* 8  */
-  --space-3: 0.75rem;  /* 12 */
-  --space-4: 1rem;     /* 16 */
-  --space-5: 1.25rem;  /* 20 */
-  --space-6: 1.5rem;   /* 24 */
-  --space-8: 2rem;     /* 32 */
-  --space-10: 2.5rem;  /* 40 */
+    /* ── Tipografi ──────────────────────────────────────────────────────────── */
+    --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'Fira Code', ui-monospace, 'Cascadia Code', Consolas, monospace;
+    --text-2xs: 0.68rem;      /* tag, badge kecil */
+    --text-xs: 0.74rem;       /* metadata, label tabel */
+    --text-sm: 0.82rem;       /* teks UI default (tombol, input, sel tabel) */
+    --text-md: 0.9rem;        /* paragraf */
+    --text-lg: 1rem;          /* judul kartu / modal */
+    --text-xl: 1.25rem;       /* judul halaman */
+    --text-2xl: 1.6rem;       /* angka statistik besar */
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+    --leading-tight: 1.25;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.65;
 
-  /* ── Radius ─────────────────────────────────────────────────────────────── */
-  --radius-sm: 6px;    /* badge, chip, tombol kecil */
-  --radius-md: 8px;    /* tombol, input */
-  --radius-lg: 10px;   /* kartu dalam */
-  --radius-xl: 14px;   /* kartu utama, modal */
-  --radius-full: 999px;
+    /* ── Spasi (kelipatan 4px) ──────────────────────────────────────────────── */
+    --space-1: 0.25rem;  /* 4  */
+    --space-2: 0.5rem;   /* 8  */
+    --space-3: 0.75rem;  /* 12 */
+    --space-4: 1rem;     /* 16 */
+    --space-5: 1.25rem;  /* 20 */
+    --space-6: 1.5rem;   /* 24 */
+    --space-7: 1.75rem;  /* 28 */
+    --space-8: 2rem;     /* 32 */
+    --space-9: 2.25rem;  /* 36 */
+    --space-10: 2.5rem;  /* 40 */
 
-  /* ── Ukuran kontrol (target sentuh min 32px desktop, 40px mobile) ───────── */
-  --control-sm: 28px;
-  --control-md: 34px;
-  --control-lg: 40px;
+    /* ── Radius ─────────────────────────────────────────────────────────────── */
+    --radius-xs: 4px;    /* elemen mikro */
+    --radius-sm: 6px;    /* badge, chip, tombol kecil */
+    --radius-md: 8px;    /* tombol, input */
+    --radius-lg: 10px;   /* kartu dalam */
+    --radius-xl: 14px;   /* kartu utama, modal */
+    --radius-2xl: 18px;  /* panel besar */
+    --radius-full: 999px;
 
-  /* ── Bayangan ───────────────────────────────────────────────────────────── */
-  --shadow-sm: 0 2px 8px rgb(0 0 0 / 0.35);
-  --shadow-md: 0 10px 28px -8px rgb(0 0 0 / 0.6);
-  --shadow-lg: 0 30px 80px -20px rgb(0 0 0 / 0.7);
-  --shadow-accent: 0 6px 18px -6px color-mix(in srgb, var(--accent) 60%, transparent);
+    /* ── Ukuran kontrol (target sentuh min 32px desktop, 40px mobile) ───────── */
+    --control-sm: 28px;
+    --control-md: 34px;
+    --control-lg: 40px;
 
-  /* ── Lapisan (z-index) ──────────────────────────────────────────────────── */
-  --z-sticky: 40;      /* topbar */
-  --z-sidebar: 50;
-  --z-dropdown: 100;
-  --z-modal: 1000;
-  --z-confirm: 1100;   /* dialog konfirmasi di atas modal */
-  --z-toast: 1200;
+    /* ── Bayangan ───────────────────────────────────────────────────────────── */
+    --shadow-sm: 0 2px 8px rgb(0 0 0 / 0.35);
+    --shadow-md: 0 10px 28px -8px rgb(0 0 0 / 0.6);
+    --shadow-lg: 0 30px 80px -20px rgb(0 0 0 / 0.7);
+    --shadow-modal: 0 24px 64px -12px rgb(0 0 0 / 0.75);
+    --shadow-accent: 0 6px 18px -6px color-mix(in srgb, var(--accent) 60%, transparent);
 
-  /* ── Gerak ──────────────────────────────────────────────────────────────── */
-  --duration-fast: 120ms;   /* hover, warna */
-  --duration-base: 180ms;   /* buka/tutup, slide */
-  --duration-slow: 280ms;   /* modal, animasi masuk */
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    /* ── Lapisan (z-index) ──────────────────────────────────────────────────── */
+    --z-sticky: 40;      /* topbar */
+    --z-sidebar: 50;
+    --z-dropdown: 100;
+    --z-modal: 1000;
+    --z-palette: 1050;   /* command palette di atas modal */
+    --z-confirm: 1100;   /* dialog konfirmasi di atas modal */
+    --z-toast: 1200;
 
-  /* ── Tata letak ─────────────────────────────────────────────────────────── */
-  --sidebar-width: 220px;
-  --sidebar-collapsed: 60px;
-  --topbar-height: 54px;
-  --content-max: 1400px;
+    /* ── Gerak ──────────────────────────────────────────────────────────────── */
+    --duration-fast: 120ms;   /* hover, warna */
+    --duration-base: 180ms;   /* buka/tutup, slide */
+    --duration-slow: 280ms;   /* modal, animasi masuk */
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.2);
+
+    /* ── Tata letak & dokumentasi breakpoint (@media tetap literal) ─────────── */
+    --sidebar-width: 220px;
+    --sidebar-collapsed: 60px;
+    --topbar-height: 54px;
+    --content-max: 1400px;
+    --bp-tablet: 1024px;
+    --bp-mobile: 768px;
+  }
+
+  /* ── Tema terang (eksplisit data-theme="light", kontras WCAG AA ≥ 4.5:1) ─── */
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --bg-app: #f8fafc;
+    --bg-inset: #f1f5f9;
+    --bg-surface: #ffffff;
+    --bg-raised: #ffffff;
+    --bg-hover: #f1f5f9;
+    --bg-active: #e2e8f0;
+    --bg-overlay: rgb(15 23 42 / 0.45);
+    --bg-scrim: rgb(15 23 42 / 0.4);
+
+    --border-subtle: #f1f5f9;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+
+    --text: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #475569;
+    --text-subtle: #64748b;
+    --text-disabled: #94a3b8;
+    --text-on-accent: #ffffff;
+
+    --accent: #059669;
+    --accent-strong: #047857;
+    --accent-hover: #047857;
+    --success: #059669;
+    --success-strong: #047857;
+    --info: #0284c7;
+    --warning: #d97706;
+    --warning-strong: #b45309;
+    --danger: #e11d48;
+    --danger-strong: #be123c;
+    --violet: #4f46e5;
+
+    --chart-1: #059669;
+    --chart-2: #0284c7;
+    --chart-3: #4f46e5;
+    --chart-4: #d97706;
+    --chart-5: #e11d48;
+    --chart-6: #0891b2;
+
+    --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.04);
+    --shadow-md: 0 8px 24px -6px rgb(15 23 42 / 0.12), 0 2px 6px -1px rgb(15 23 42 / 0.06);
+    --shadow-lg: 0 24px 60px -15px rgb(15 23 42 / 0.18), 0 4px 12px -2px rgb(15 23 42 / 0.08);
+    --shadow-modal: 0 24px 64px -12px rgb(15 23 42 / 0.22);
+    --shadow-accent: 0 6px 18px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  /* ── Tema otomatis mengikuti sistem bila data-theme belum disetel / auto ─── */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]),
+    :root[data-theme="auto"] {
+      color-scheme: light;
+
+      --bg-app: #f8fafc;
+      --bg-inset: #f1f5f9;
+      --bg-surface: #ffffff;
+      --bg-raised: #ffffff;
+      --bg-hover: #f1f5f9;
+      --bg-active: #e2e8f0;
+      --bg-overlay: rgb(15 23 42 / 0.45);
+      --bg-scrim: rgb(15 23 42 / 0.4);
+
+      --border-subtle: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+
+      --text: #0f172a;
+      --text-secondary: #334155;
+      --text-muted: #475569;
+      --text-subtle: #64748b;
+      --text-disabled: #94a3b8;
+      --text-on-accent: #ffffff;
+
+      --accent: #059669;
+      --accent-strong: #047857;
+      --accent-hover: #047857;
+      --success: #059669;
+      --success-strong: #047857;
+      --info: #0284c7;
+      --warning: #d97706;
+      --warning-strong: #b45309;
+      --danger: #e11d48;
+      --danger-strong: #be123c;
+      --violet: #4f46e5;
+
+      --chart-1: #059669;
+      --chart-2: #0284c7;
+      --chart-3: #4f46e5;
+      --chart-4: #d97706;
+      --chart-5: #e11d48;
+      --chart-6: #0891b2;
+
+      --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.04);
+      --shadow-md: 0 8px 24px -6px rgb(15 23 42 / 0.12), 0 2px 6px -1px rgb(15 23 42 / 0.06);
+      --shadow-lg: 0 24px 60px -15px rgb(15 23 42 / 0.18), 0 4px 12px -2px rgb(15 23 42 / 0.08);
+      --shadow-modal: 0 24px 64px -12px rgb(15 23 42 / 0.22);
+      --shadow-accent: 0 6px 18px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+  }
 }

@@ -82,7 +82,7 @@
     /* Banner peringatan jika PM2 belum terpasang */
     .warning-banner {
       background: var(--tint-danger);
-      border: 1px solid var(--border-danger);
+      border: 1px solid var(--ring-danger);
       border-radius: var(--radius-lg);
       padding: 1.25rem;
       display: flex;
@@ -269,3 +269,4 @@
     }
   }
 }
+
