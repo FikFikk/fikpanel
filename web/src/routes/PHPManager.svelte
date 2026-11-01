@@ -5,6 +5,8 @@
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import VersionCards from './phpmanager/VersionCards.svelte';
+  import '../styles/pages/phpmanager/shared.css';
   import '../styles/pages/phpmanager.css';
 
   // State daftar versi PHP
@@ -751,124 +753,12 @@
   </header>
 
   <!-- Grid Kartu Versi PHP Server (Screenshot aaPanel Style) -->
-  <div class="versions-grid">
-    {#each versions as v (v.version)}
-      <div class="v-card {v.installed ? 'installed' : 'not-installed'}">
-        <div class="v-head">
-          <div class="flex items-center gap-2">
-            <span class="v-tag">PHP {v.version}</span>
-            {#if v.running}
-              <span class="badge badge--success"><i class="ri-checkbox-circle-fill"></i> RUNNING</span>
-            {:else if v.installed}
-              <span class="badge badge--danger"><i class="ri-stop-circle-line"></i> STOPPED</span>
-            {:else}
-              <span class="badge badge--neutral">BELUM TERPASANG</span>
-            {/if}
-          </div>
-          {#if v.installed}
-            <span class="fpm-badge">FPM Service</span>
-          {/if}
-        </div>
-
-        <div class="v-meta">
-          {#if v.installed}
-            <div class="meta-row">
-              <span class="meta-lbl">Socket:</span>
-              <span class="mono meta-val truncate" title={v.fpm_socket}>{v.fpm_socket || '-'}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-lbl">Memory Limit:</span>
-              <span class="meta-val font-semibold">{v.settings?.['memory_limit'] || '256M'}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-lbl">Upload Max:</span>
-              <span class="meta-val">{v.settings?.['upload_max_filesize'] || '64M'}</span>
-            </div>
-
-            <!-- Bagian Situs Terhubung (HestiaCP / aaPanel Style) -->
-            <div class="connected-section">
-              <div class="connected-header">
-                <span class="connected-label">
-                  <i class="ri-global-line"></i> Situs Terhubung
-                </span>
-                {#if (v.sites_count || 0) > 0}
-                  <button
-                    type="button"
-                    class="site-count-badge"
-                    onclick={() => openManageModal(v.version, 'sites')}
-                    title="Buka daftar situs terhubung"
-                  >
-                    {v.sites_count} Situs
-                  </button>
-                {:else}
-                  <span class="site-count-zero">0 Situs</span>
-                {/if}
-              </div>
-
-              {#if v.sites && v.sites.length > 0}
-                <div class="site-chips-list">
-                  {#each v.sites.slice(0, 3) as site (site.id)}
-                    <a
-                      href="#/sites"
-                      class="site-chip"
-                      title="Situs: {site.domain} | Pengguna: {site.user} | Path: {site.root_path}"
-                    >
-                      <span class="site-user-badge"><i class="ri-user-line"></i> {site.user}</span>
-                      <span class="site-domain-text">{site.domain}</span>
-                    </a>
-                  {/each}
-                  {#if v.sites.length > 3}
-                    <button
-                      type="button"
-                      class="site-chip site-chip-more"
-                      onclick={() => openManageModal(v.version, 'sites')}
-                      title="Lihat semua {v.sites.length} situs yang terhubung"
-                    >
-                      +{v.sites.length - 3} lainnya…
-                    </button>
-                  {/if}
-                </div>
-              {:else}
-                <p class="site-empty-hint">Belum ada situs yang terhubung</p>
-              {/if}
-            </div>
-          {:else}
-            <p class="text-subtle text-xs">
-              Tersedia di repositori sistem operasi. Dapat dipasang dalam 1-klik melalui antrean APT.
-            </p>
-          {/if}
-        </div>
-
-        <div class="v-actions">
-          {#if v.installed}
-            <button
-              class="btn btn-primary btn-sm flex-1"
-              onclick={() => openManageModal(v.version, 'config')}
-              title="Kelola konfigurasi dan layanan PHP {v.version}"
-            >
-              <i class="ri-settings-4-line" aria-hidden="true"></i> Kelola (Manage)
-            </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              onclick={() => openManageModal(v.version, 'raw_ini')}
-              title="Buka Editor php.ini langsung"
-            >
-              <i class="ri-file-code-line" aria-hidden="true"></i> php.ini
-            </button>
-          {:else}
-            <button
-              class="btn btn-primary btn-sm w-full"
-              onclick={() => installPHP(v)}
-              disabled={installingVer === v.version}
-            >
-              <i class="ri-download-2-line {installingVer === v.version ? 'spin' : ''}" aria-hidden="true"></i>
-              {installingVer === v.version ? 'Memasang...' : `Pasang PHP ${v.version}`}
-            </button>
-          {/if}
-        </div>
-      </div>
-    {/each}
-  </div>
+  <VersionCards
+    {versions}
+    {installingVer}
+    onOpenManageModal={openManageModal}
+    onInstallPHP={installPHP}
+  />
 
 <!-- ===================================================================== -->
 <!-- Modal Komprehensif PHP-X.XManage (Gabungan Gambar 1, 2, 3, 4, 5 aaPanel) -->
