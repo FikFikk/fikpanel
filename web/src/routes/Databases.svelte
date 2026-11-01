@@ -10,6 +10,7 @@
   import UninstalledCard from './databases/UninstalledCard.svelte';
   import ActionBar from './databases/ActionBar.svelte';
   import DbTable from './databases/DbTable.svelte';
+  import QuickInstallModal from './databases/QuickInstallModal.svelte';
   import '../styles/pages/databases/shared.css';
   import '../styles/pages/databases.css';
 
@@ -937,72 +938,17 @@
   {/if}
 
   <!-- Modal Quick Install (ala aaPanel) -->
-  <Modal
+  <QuickInstallModal
     open={showInstallModal}
-    size="md"
-    onclose={() => { if (!installing) showInstallModal = false; }}
-  >
-    {#snippet header()}
-      <div class="modal-title-with-icon">
-        <i class="{getEngineIcon(activeEngine)} engine-install-icon" aria-hidden="true"></i>
-        <div>
-          <h3 class="modal__title">Instalasi {currentEngine.display_name}</h3>
-          <p class="modal__subtitle">Pasang paket engine database ke server</p>
-        </div>
-      </div>
-    {/snippet}
-
-    <div class="form-group">
-      <label for="install-ver" class="form-label">Pilih Versi</label>
-      <select id="install-ver" class="form-select" bind:value={installVersion} disabled={installing}>
-        {#if currentEngine.versions && currentEngine.versions.length > 0}
-          {#each currentEngine.versions as v}
-            <option value={v.version}>{v.label}</option>
-          {/each}
-        {:else}
-          {#each currentEngine.supported_versions as ver}
-            <option value={ver}>{ver}</option>
-          {/each}
-        {/if}
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="install-mode" class="form-label">Metode Instalasi</label>
-      <select id="install-mode" class="form-select" bind:value={installMode} disabled={installing}>
-        <option value="native">Native Package (APT / Systemd Linux)</option>
-        <option value="docker">Docker Container (Terisolasi & Mandiri)</option>
-      </select>
-    </div>
-
-    <div class="plugin-desc-box">
-      <p class="plugin-desc-title">Petunjuk Instalasi:</p>
-      <ul class="plugin-desc-list">
-        <li>Jika paket ini telah ada, berkas biner lama akan diperbarui secara aman.</li>
-        <li>Port default ({currentEngine.port}) akan dikonfigurasi pada localhost (127.0.0.1).</li>
-        <li>Proses instalasi membutuhkan waktu 1-3 menit, silakan tunggu hingga selesai.</li>
-      </ul>
-    </div>
-
-    {#snippet footer()}
-      <button
-        class="btn btn-outline"
-        disabled={installing}
-        onclick={() => (showInstallModal = false)}
-      >
-        Batal
-      </button>
-      <button class="btn btn-primary" disabled={installing} onclick={submitInstall}>
-        {#if installing}
-          <i class="ri-loader-4-line spinner" aria-hidden="true"></i>
-          <span>Memulai...</span>
-        {:else}
-          <i class="ri-play-fill" aria-hidden="true"></i>
-          <span>Mulai Instalasi (Install Now)</span>
-        {/if}
-      </button>
-    {/snippet}
-  </Modal>
+    {installing}
+    {activeEngine}
+    {currentEngine}
+    bind:installVersion
+    bind:installMode
+    {getEngineIcon}
+    onClose={() => (showInstallModal = false)}
+    onSubmit={submitInstall}
+  />
 
   <!-- Modal Quick Install phpMyAdmin Resmi (ala aaPanel App Store) -->
   <Modal
