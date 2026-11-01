@@ -33,6 +33,7 @@
   import ComposeModal from './docker/ComposeModal.svelte';
   import CreateNetworkModal from './docker/CreateNetworkModal.svelte';
   import CreateVolumeModal from './docker/CreateVolumeModal.svelte';
+  import AddRegistryModal from './docker/AddRegistryModal.svelte';
   import '../styles/pages/docker/shared.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
@@ -1291,71 +1292,12 @@
   />
 
   <!-- ══════════════ MODAL: REGISTRI PRIVAT ══════════════ -->
-  <Modal
-    open={showAddRegistryModal}
-    title="Tambah Kredensial Registri Privat"
-    size="md"
-    onclose={() => (showAddRegistryModal = false)}
-  >
-    <form id="docker-add-reg-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitAddRegistry(); }}>
-      <div class="field">
-        <label class="field__label" for="reg-name">Nama Registri *</label>
-        <input
-          id="reg-name"
-          type="text"
-          class="input"
-          placeholder="misal: Harbor Internal, Gitlab Registry"
-          bind:value={newRegistry.name}
-          required
-        />
-      </div>
-
-      <div class="field">
-        <label class="field__label" for="reg-url">URL Registri *</label>
-        <input
-          id="reg-url"
-          type="text"
-          class="input font-mono"
-          placeholder="misal: registry.mycompany.com atau ghcr.io"
-          bind:value={newRegistry.url}
-          required
-        />
-      </div>
-
-      <div class="form-row">
-        <div class="field flex-1">
-          <label class="field__label" for="reg-user">Username</label>
-          <input
-            id="reg-user"
-            type="text"
-            class="input"
-            placeholder="Username atau Token"
-            bind:value={newRegistry.username}
-          />
-        </div>
-        <div class="field flex-1">
-          <label class="field__label" for="reg-pass">Password / Token Akses</label>
-          <input
-            id="reg-pass"
-            type="password"
-            class="input font-mono"
-            placeholder="••••••••"
-            bind:value={newRegistry.password}
-          />
-        </div>
-      </div>
-    </form>
-
-    {#snippet footer()}
-      <button type="button" class="btn btn--secondary" onclick={() => (showAddRegistryModal = false)}>
-        Batal
-      </button>
-      <button type="submit" form="docker-add-reg-form" class="btn btn--primary" disabled={actionLoading}>
-        <i class="ri-check-line" aria-hidden="true"></i>
-        <span>Simpan Registri</span>
-      </button>
-    {/snippet}
-  </Modal>
+  <AddRegistryModal
+    bind:showAddRegistryModal
+    bind:newRegistry
+    {actionLoading}
+    onSubmitAddRegistry={submitAddRegistry}
+  />
 
   <!-- ══════════════ MODAL: DEPLOY ONE-CLICK TEMPLATE ══════════════ -->
   <Modal
