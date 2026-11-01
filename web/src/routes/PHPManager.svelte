@@ -16,6 +16,7 @@
   import ExtensionsTab from './phpmanager/ExtensionsTab.svelte';
   import OpcacheTab from './phpmanager/OpcacheTab.svelte';
   import LogsTab from './phpmanager/LogsTab.svelte';
+  import PhpInfoTab from './phpmanager/PhpInfoTab.svelte';
   import '../styles/pages/phpmanager/shared.css';
   import '../styles/pages/phpmanager.css';
 
@@ -1030,28 +1031,14 @@
 
           <!-- ================= TAB 10: PHPINFO ================= -->
           {:else if activeTab === 'phpinfo'}
-            <div class="tab-pane full-height-pane">
-              <div class="flex justify-between items-center mb-3">
-                <div>
-                  <h4 class="section-title">Diagnostik phpinfo() — PHP {activeVersion}</h4>
-                  <p class="section-desc">Ringkasan konfigurasi internal, library dependensi, dan environment runtime.</p>
-                </div>
-                <button class="btn btn-ghost btn-sm" onclick={() => fetchPhpInfo(activeVersion!)} disabled={loadingPhpInfo}>
-                  <i class="ri-refresh-line {loadingPhpInfo ? 'spin' : ''}"></i> Refresh Info
-                </button>
-              </div>
-
-              <div class="terminal-log-viewer flex-1">
-                {#if loadingPhpInfo}
-                  <div class="editor-loading">
-                    <i class="ri-loader-4-line spin text-2xl"></i>
-                    <span>Mengeksekusi php -i...</span>
-                  </div>
-                {:else}
-                  <pre class="log-pre mono">{phpInfoContent}</pre>
-                {/if}
-              </div>
-            </div>
+            <PhpInfoTab
+              {activeVersion}
+              {phpInfoContent}
+              {loadingPhpInfo}
+              onRefreshPhpInfo={() => {
+                if (activeVersion) fetchPhpInfo(activeVersion);
+              }}
+            />
           {/if}
         </main>
       </div>

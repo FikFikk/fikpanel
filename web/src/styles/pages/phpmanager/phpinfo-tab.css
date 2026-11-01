@@ -1,0 +1,31 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PHP MANAGER PHPINFO TAB — Diagnostik phpinfo (.pg-phpmanager-phpinfo-tab)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-phpmanager-phpinfo-tab {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+
+    .terminal-log-viewer {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      overflow: auto;
+      max-height: 480px;
+      position: relative;
+    }
+
+    .log-pre {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  }
+}
