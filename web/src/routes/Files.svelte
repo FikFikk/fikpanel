@@ -9,6 +9,7 @@
   import FileToolbar from './files/FileToolbar.svelte';
   import FileTable from './files/FileTable.svelte';
   import FileGrid from './files/FileGrid.svelte';
+  import StatusBar from './files/StatusBar.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -25,14 +26,12 @@
     path: string;
   }
 
-  let tabs = $state<Tab[]>([
-    { id: '1', name: 'root', path: '' }
-  ]);
-  let activeTabId = $state<string>('1');
+  let tabs = $state<Tab[]>([{ id: "1", name: "root", path: "" }]);
+  let activeTabId = $state<string>("1");
 
   // State Direktori & Berkas
-  let currentPath = $state('');
-  let parentPath = $state('');
+  let currentPath = $state("");
+  let parentPath = $state("");
   let items = $state<FileItem[]>([]);
   let totalDirs = $state(0);
   let totalFiles = $state(0);
@@ -40,19 +39,25 @@
   let loading = $state(false);
 
   // State Tampilan & Pencarian
-  let viewMode = $state<'list' | 'grid'>('list');
-  let searchQuery = $state('');
+  let viewMode = $state<"list" | "grid">("list");
+  let searchQuery = $state("");
   let selectedPaths = $state<Set<string>>(new Set());
 
   // State Clipboard Salin / Potong
-  let clipboard = $state<{ action: 'copy' | 'cut'; paths: string[]; names: string[] } | null>(null);
+  let clipboard = $state<{
+    action: "copy" | "cut";
+    paths: string[];
+    names: string[];
+  } | null>(null);
 
   // State Menu Popup Tools / Function List
   let activeMenuItem = $state<FileItem | null>(null);
   let menuPos = $state<{ top: number; left: number }>({ top: 0, left: 0 });
 
   // State Dropdown Menu Toolbar (Upload, New, Favorite, Operations)
-  let activeToolbarMenu = $state<'upload' | 'new' | 'favorite' | 'operations' | null>(null);
+  let activeToolbarMenu = $state<
+    "upload" | "new" | "favorite" | "operations" | null
+  >(null);
 
   // State Pagination
   let pageSize = $state(100);
@@ -60,60 +65,71 @@
 
   // State Modal-Modal Aksi
   let showNewModal = $state(false);
-  let newType = $state<'file' | 'dir'>('file');
-  let newName = $state('');
+  let newType = $state<"file" | "dir">("file");
+  let newName = $state("");
 
   let showSymlinkModal = $state(false);
-  let symlinkTarget = $state('');
-  let symlinkName = $state('');
+  let symlinkTarget = $state("");
+  let symlinkName = $state("");
   let creatingSymlink = $state(false);
 
   let showRemoteModal = $state(false);
-  let remoteUrl = $state('');
-  let remoteFilename = $state('');
+  let remoteUrl = $state("");
+  let remoteFilename = $state("");
   let remoteDownloading = $state(false);
 
   let showSearchContentModal = $state(false);
-  let contentSearchQuery = $state('');
-  let contentSearchResults = $state<{ file: string; line: number; text: string }[]>([]);
+  let contentSearchQuery = $state("");
+  let contentSearchResults = $state<
+    { file: string; line: number; text: string }[]
+  >([]);
   let searchingContent = $state(false);
 
   let showFavManageModal = $state(false);
   let customFavorites = $state<{ name: string; path: string }[]>([
-    { name: 'Root Aplikasi', path: '' },
-    { name: 'Web Frontend (/web)', path: 'web' },
-    { name: 'Backend Core (/internal)', path: 'internal' },
-    { name: 'CLI Entry (/cmd)', path: 'cmd' },
+    { name: "Root Aplikasi", path: "" },
+    { name: "Web Frontend (/web)", path: "web" },
+    { name: "Backend Core (/internal)", path: "internal" },
+    { name: "CLI Entry (/cmd)", path: "cmd" },
   ]);
 
   let showCloudStorageModal = $state(false);
-  let selectedCloud = $state('');
+  let selectedCloud = $state("");
 
   let showRenameModal = $state(false);
   let renameTarget = $state<FileItem | null>(null);
-  let renameNewName = $state('');
+  let renameNewName = $state("");
 
   let showChmodModal = $state(false);
   let chmodTarget = $state<FileItem | null>(null);
   let chmodPerms = $state({
-    ownerR: true, ownerW: true, ownerX: true,
-    groupR: true, groupW: false, groupX: true,
-    publicR: true, publicW: false, publicX: true,
+    ownerR: true,
+    ownerW: true,
+    ownerX: true,
+    groupR: true,
+    groupW: false,
+    groupX: true,
+    publicR: true,
+    publicW: false,
+    publicX: true,
   });
 
   // State Editor Berkas Modern (FikPanel Code Studio)
   let showEditorModal = $state(false);
   let editorTarget = $state<FileItem | null>(null);
-  let editorContent = $state('');
-  let editorInitialContent = $state('');
+  let editorContent = $state("");
+  let editorInitialContent = $state("");
   let editorSaving = $state(false);
   let editorFontSize = $state<number>(13);
   let editorWordWrap = $state<boolean>(false);
   let editorIsFullscreen = $state<boolean>(false);
-  let editorCursorPos = $state<{ line: number; col: number }>({ line: 1, col: 1 });
+  let editorCursorPos = $state<{ line: number; col: number }>({
+    line: 1,
+    col: 1,
+  });
   let editorShowSearch = $state<boolean>(false);
-  let editorSearchQuery = $state<string>('');
-  let editorReplaceQuery = $state<string>('');
+  let editorSearchQuery = $state<string>("");
+  let editorReplaceQuery = $state<string>("");
   let editorSearchMatches = $state<number[]>([]);
   let editorSearchMatchIndex = $state<number>(0);
   let editorTextareaEl = $state<HTMLTextAreaElement | null>(null);
@@ -121,9 +137,21 @@
 
   // Derived state untuk kalkulasi nomor baris, status kotor, dan bahasa
   let editorIsDirty = $derived(editorContent !== editorInitialContent);
-  let editorLineCount = $derived(editorContent ? editorContent.split('\n').length : 1);
-  let editorLines = $derived(Array.from({ length: editorLineCount }, (_, i) => i + 1));
-  let editorLangInfo = $derived(editorTarget ? detectFileLanguage(editorTarget.name) : { label: 'Plain Text', icon: 'ri-file-text-line', color: 'var(--text-muted)' });
+  let editorLineCount = $derived(
+    editorContent ? editorContent.split("\n").length : 1,
+  );
+  let editorLines = $derived(
+    Array.from({ length: editorLineCount }, (_, i) => i + 1),
+  );
+  let editorLangInfo = $derived(
+    editorTarget
+      ? detectFileLanguage(editorTarget.name)
+      : {
+          label: "Plain Text",
+          icon: "ri-file-text-line",
+          color: "var(--text-muted)",
+        },
+  );
 
   let showUploadModal = $state(false);
   let uploadFiles = $state<FileList | null>(null);
@@ -134,32 +162,43 @@
 
   let showCompressModal = $state(false);
   let compressTarget = $state<FileItem | null>(null);
-  let compressZipName = $state('');
+  let compressZipName = $state("");
   let compressing = $state(false);
 
   // Menghitung string mode numerik dari checkbox matrix PMSN (mis. 0755)
   let chmodOctal = $derived.by(() => {
-    const o = (chmodPerms.ownerR ? 4 : 0) + (chmodPerms.ownerW ? 2 : 0) + (chmodPerms.ownerX ? 1 : 0);
-    const g = (chmodPerms.groupR ? 4 : 0) + (chmodPerms.groupW ? 2 : 0) + (chmodPerms.groupX ? 1 : 0);
-    const p = (chmodPerms.publicR ? 4 : 0) + (chmodPerms.publicW ? 2 : 0) + (chmodPerms.publicX ? 1 : 0);
+    const o =
+      (chmodPerms.ownerR ? 4 : 0) +
+      (chmodPerms.ownerW ? 2 : 0) +
+      (chmodPerms.ownerX ? 1 : 0);
+    const g =
+      (chmodPerms.groupR ? 4 : 0) +
+      (chmodPerms.groupW ? 2 : 0) +
+      (chmodPerms.groupX ? 1 : 0);
+    const p =
+      (chmodPerms.publicR ? 4 : 0) +
+      (chmodPerms.publicW ? 2 : 0) +
+      (chmodPerms.publicX ? 1 : 0);
     return `0${o}${g}${p}`;
   });
 
   // Breadcrumb part parser untuk Windows dan Linux
   let breadcrumbs = $derived.by(() => {
     if (!currentPath) return [];
-    const isWindows = currentPath.includes('\\');
-    const sep = isWindows ? '\\' : '/';
+    const isWindows = currentPath.includes("\\");
+    const sep = isWindows ? "\\" : "/";
     const parts = currentPath.split(/[/\\]+/).filter(Boolean);
 
-    let runningPath = '';
+    let runningPath = "";
     return parts.map((part, index) => {
-      if (index === 0 && isWindows && part.includes(':')) {
+      if (index === 0 && isWindows && part.includes(":")) {
         runningPath = part + sep;
       } else if (index === 0 && !isWindows) {
-        runningPath = '/' + part;
+        runningPath = "/" + part;
       } else {
-        runningPath = runningPath ? runningPath + (runningPath.endsWith(sep) ? '' : sep) + part : part;
+        runningPath = runningPath
+          ? runningPath + (runningPath.endsWith(sep) ? "" : sep) + part
+          : part;
       }
       return {
         label: part,
@@ -172,7 +211,7 @@
   let filteredItems = $derived.by(() => {
     if (!searchQuery.trim()) return items;
     const q = searchQuery.toLowerCase();
-    return items.filter(it => it.name.toLowerCase().includes(q));
+    return items.filter((it) => it.name.toLowerCase().includes(q));
   });
 
   // Item yang sedang aktif di halaman saat ini
@@ -181,10 +220,12 @@
     return filteredItems.slice(start, start + pageSize);
   });
 
-  let totalPages = $derived(Math.max(1, Math.ceil(filteredItems.length / pageSize)));
+  let totalPages = $derived(
+    Math.max(1, Math.ceil(filteredItems.length / pageSize)),
+  );
 
   // Memuat daftar direktori dari backend
-  async function loadDirectory(targetPath: string = '') {
+  async function loadDirectory(targetPath: string = "") {
     loading = true;
     closeAllMenus();
     selectedPaths = new Set();
@@ -200,24 +241,32 @@
       currentPage = 1;
 
       // Update tab aktif saat ini
-      const activeTab = tabs.find(t => t.id === activeTabId);
+      const activeTab = tabs.find((t) => t.id === activeTabId);
       if (activeTab) {
         activeTab.path = currentPath;
-        const base = currentPath.split(/[/\\]+/).filter(Boolean).pop() || 'root';
+        const base =
+          currentPath
+            .split(/[/\\]+/)
+            .filter(Boolean)
+            .pop() || "root";
         activeTab.name = base;
       }
     } catch (err: any) {
-      onNotify(err.message || 'Gagal memuat direktori');
+      onNotify(err.message || "Gagal memuat direktori");
     } finally {
       loading = false;
     }
   }
 
   // Tambah tab baru
-  function addTab(customPath: string = '') {
+  function addTab(customPath: string = "") {
     const path = customPath || currentPath;
     const newId = String(Date.now());
-    const base = path.split(/[/\\]+/).filter(Boolean).pop() || 'folder';
+    const base =
+      path
+        .split(/[/\\]+/)
+        .filter(Boolean)
+        .pop() || "folder";
     tabs = [...tabs, { id: newId, name: base, path }];
     activeTabId = newId;
     loadDirectory(path);
@@ -227,8 +276,8 @@
   function closeTab(id: string, e: MouseEvent) {
     e.stopPropagation();
     if (tabs.length <= 1) return;
-    const idx = tabs.findIndex(t => t.id === id);
-    tabs = tabs.filter(t => t.id !== id);
+    const idx = tabs.findIndex((t) => t.id === id);
+    tabs = tabs.filter((t) => t.id !== id);
     if (activeTabId === id) {
       const nextTab = tabs[Math.max(0, idx - 1)];
       activeTabId = nextTab.id;
@@ -262,7 +311,7 @@
   function toggleSelectAll(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
     if (checked) {
-      selectedPaths = new Set(paginatedItems.map(it => it.path));
+      selectedPaths = new Set(paginatedItems.map((it) => it.path));
     } else {
       selectedPaths = new Set();
     }
@@ -331,7 +380,10 @@
     activeToolbarMenu = null;
   }
 
-  function toggleToolbarMenu(name: 'upload' | 'new' | 'favorite' | 'operations', e: MouseEvent) {
+  function toggleToolbarMenu(
+    name: "upload" | "new" | "favorite" | "operations",
+    e: MouseEvent,
+  ) {
     e.stopPropagation();
     activeMenuItem = null;
     if (activeToolbarMenu === name) {
@@ -356,7 +408,7 @@
   function handleCopyItem(item: FileItem) {
     closeAllMenus();
     clipboard = {
-      action: 'copy',
+      action: "copy",
       paths: [item.path],
       names: [item.name],
     };
@@ -367,7 +419,7 @@
   function handleCutItem(item: FileItem) {
     closeAllMenus();
     clipboard = {
-      action: 'cut',
+      action: "cut",
       paths: [item.path],
       names: [item.name],
     };
@@ -378,25 +430,30 @@
   async function handlePasteClipboard() {
     if (!clipboard) return;
     try {
-      const res = await apiFetch<{ processed: number; errors?: string[] }>('/api/files/paste', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: clipboard.action,
-          source_paths: clipboard.paths,
-          destination_dir: currentPath,
-        }),
-      });
+      const res = await apiFetch<{ processed: number; errors?: string[] }>(
+        "/api/files/paste",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: clipboard.action,
+            source_paths: clipboard.paths,
+            destination_dir: currentPath,
+          }),
+        },
+      );
 
       if (res.errors && res.errors.length > 0) {
-        onNotify(`Peringatan: ${res.errors.join(', ')}`);
+        onNotify(`Peringatan: ${res.errors.join(", ")}`);
       } else {
-        onNotify(`Berhasil ${clipboard.action === 'cut' ? 'memindahkan' : 'menyalin'} ${res.processed} item`);
+        onNotify(
+          `Berhasil ${clipboard.action === "cut" ? "memindahkan" : "menyalin"} ${res.processed} item`,
+        );
       }
 
       clipboard = null;
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal memproses paste');
+      onNotify(err.message || "Gagal memproses paste");
     }
   }
 
@@ -421,8 +478,8 @@
 
     compressing = true;
     try {
-      await apiFetch('/api/files/compress', {
-        method: 'POST',
+      await apiFetch("/api/files/compress", {
+        method: "POST",
         body: JSON.stringify({
           paths: [compressTarget.path],
           zip_name: compressZipName.trim(),
@@ -434,7 +491,7 @@
       onNotify(`Berhasil membuat arsip ${compressZipName}`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal mengompresi berkas');
+      onNotify(err.message || "Gagal mengompresi berkas");
     } finally {
       compressing = false;
     }
@@ -453,10 +510,10 @@
   }
 
   // Modal Pembuatan File / Folder Baru
-  function openNewModal(type: 'file' | 'dir') {
+  function openNewModal(type: "file" | "dir") {
     closeAllMenus();
     newType = type;
-    newName = '';
+    newName = "";
     showNewModal = true;
   }
 
@@ -464,8 +521,8 @@
     e.preventDefault();
     if (!newName.trim()) return;
     try {
-      await apiFetch('/api/files/new', {
-        method: 'POST',
+      await apiFetch("/api/files/new", {
+        method: "POST",
         body: JSON.stringify({
           parent_path: currentPath,
           name: newName.trim(),
@@ -473,10 +530,12 @@
         }),
       });
       showNewModal = false;
-      onNotify(`${newType === 'dir' ? 'Folder' : 'Berkas'} ${newName} berhasil dibuat`);
+      onNotify(
+        `${newType === "dir" ? "Folder" : "Berkas"} ${newName} berhasil dibuat`,
+      );
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal membuat item baru');
+      onNotify(err.message || "Gagal membuat item baru");
     }
   }
 
@@ -487,8 +546,8 @@
 
     creatingSymlink = true;
     try {
-      await apiFetch('/api/files/symlink', {
-        method: 'POST',
+      await apiFetch("/api/files/symlink", {
+        method: "POST",
         body: JSON.stringify({
           target_path: symlinkTarget.trim(),
           link_name: symlinkName.trim(),
@@ -496,12 +555,12 @@
         }),
       });
       showSymlinkModal = false;
-      symlinkTarget = '';
-      symlinkName = '';
+      symlinkTarget = "";
+      symlinkName = "";
       onNotify(`Tautan simbolik ${symlinkName} berhasil dibuat`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal membuat tautan simbolik');
+      onNotify(err.message || "Gagal membuat tautan simbolik");
     } finally {
       creatingSymlink = false;
     }
@@ -514,8 +573,8 @@
 
     remoteDownloading = true;
     try {
-      await apiFetch('/api/files/remote-download', {
-        method: 'POST',
+      await apiFetch("/api/files/remote-download", {
+        method: "POST",
         body: JSON.stringify({
           url: remoteUrl.trim(),
           dest_dir: currentPath,
@@ -523,12 +582,12 @@
         }),
       });
       showRemoteModal = false;
-      remoteUrl = '';
-      remoteFilename = '';
-      onNotify('Berkas berhasil diunduh ke server');
+      remoteUrl = "";
+      remoteFilename = "";
+      onNotify("Berkas berhasil diunduh ke server");
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal mengunduh berkas');
+      onNotify(err.message || "Gagal mengunduh berkas");
     } finally {
       remoteDownloading = false;
     }
@@ -541,8 +600,10 @@
 
     searchingContent = true;
     try {
-      const res = await apiFetch<{ matches: { file: string; line: number; text: string }[] }>('/api/files/search-content', {
-        method: 'POST',
+      const res = await apiFetch<{
+        matches: { file: string; line: number; text: string }[];
+      }>("/api/files/search-content", {
+        method: "POST",
         body: JSON.stringify({
           dir: currentPath,
           query: contentSearchQuery.trim(),
@@ -550,7 +611,7 @@
       });
       contentSearchResults = res.matches || [];
     } catch (err: any) {
-      onNotify(err.message || 'Gagal mencari konten berkas');
+      onNotify(err.message || "Gagal mencari konten berkas");
     } finally {
       searchingContent = false;
     }
@@ -565,7 +626,11 @@
 
   // Manajemen Favorit
   function addCurrentToFavorites() {
-    const base = currentPath.split(/[/\\]+/).filter(Boolean).pop() || 'Folder';
+    const base =
+      currentPath
+        .split(/[/\\]+/)
+        .filter(Boolean)
+        .pop() || "Folder";
     customFavorites = [...customFavorites, { name: base, path: currentPath }];
     onNotify(`Folder ${base} ditambahkan ke favorit`);
   }
@@ -586,8 +651,8 @@
     e.preventDefault();
     if (!renameTarget || !renameNewName.trim()) return;
     try {
-      await apiFetch('/api/files/rename', {
-        method: 'POST',
+      await apiFetch("/api/files/rename", {
+        method: "POST",
         body: JSON.stringify({
           path: renameTarget.path,
           new_name: renameNewName.trim(),
@@ -597,7 +662,7 @@
       onNotify(`Berhasil mengubah nama menjadi ${renameNewName}`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal mengubah nama');
+      onNotify(err.message || "Gagal mengubah nama");
     }
   }
 
@@ -611,9 +676,15 @@
       const g = parseInt(mode[1], 8) || 5;
       const p = parseInt(mode[2], 8) || 5;
       chmodPerms = {
-        ownerR: (o & 4) !== 0, ownerW: (o & 2) !== 0, ownerX: (o & 1) !== 0,
-        groupR: (g & 4) !== 0, groupW: (g & 2) !== 0, groupX: (g & 1) !== 0,
-        publicR: (p & 4) !== 0, publicW: (p & 2) !== 0, publicX: (p & 1) !== 0,
+        ownerR: (o & 4) !== 0,
+        ownerW: (o & 2) !== 0,
+        ownerX: (o & 1) !== 0,
+        groupR: (g & 4) !== 0,
+        groupW: (g & 2) !== 0,
+        groupX: (g & 1) !== 0,
+        publicR: (p & 4) !== 0,
+        publicW: (p & 2) !== 0,
+        publicX: (p & 1) !== 0,
       };
     }
     showChmodModal = true;
@@ -622,8 +693,8 @@
   async function handleSaveChmod() {
     if (!chmodTarget) return;
     try {
-      await apiFetch('/api/files/chmod', {
-        method: 'POST',
+      await apiFetch("/api/files/chmod", {
+        method: "POST",
         body: JSON.stringify({
           path: chmodTarget.path,
           mode: chmodOctal,
@@ -633,54 +704,131 @@
       onNotify(`Izin ${chmodTarget.name} diubah ke ${chmodOctal}`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal mengubah izin');
+      onNotify(err.message || "Gagal mengubah izin");
     }
   }
 
   // Deteksi bahasa dan format berkas berdasarkan nama/ekstensi
-  function detectFileLanguage(filename: string): { label: string; icon: string; color: string } {
+  function detectFileLanguage(filename: string): {
+    label: string;
+    icon: string;
+    color: string;
+  } {
     const lower = filename.toLowerCase();
-    if (lower === '.htaccess' || (lower.endsWith('.conf') && lower.includes('apache'))) {
-      return { label: 'Apache Conf', icon: 'ri-server-line', color: 'var(--warning)' };
+    if (
+      lower === ".htaccess" ||
+      (lower.endsWith(".conf") && lower.includes("apache"))
+    ) {
+      return {
+        label: "Apache Conf",
+        icon: "ri-server-line",
+        color: "var(--warning)",
+      };
     }
-    if (lower.endsWith('.conf') || lower.includes('nginx')) {
-      return { label: 'Nginx Conf', icon: 'ri-server-line', color: 'var(--accent)' };
+    if (lower.endsWith(".conf") || lower.includes("nginx")) {
+      return {
+        label: "Nginx Conf",
+        icon: "ri-server-line",
+        color: "var(--accent)",
+      };
     }
-    if (lower.endsWith('.go')) return { label: 'Go', icon: 'ri-code-s-slash-line', color: 'var(--info)' };
-    if (lower.endsWith('.ts')) return { label: 'TypeScript', icon: 'ri-javascript-line', color: 'var(--info)' };
-    if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return { label: 'JavaScript', icon: 'ri-javascript-line', color: 'var(--warning)' };
-    if (lower.endsWith('.svelte')) return { label: 'Svelte', icon: 'ri-code-line', color: 'var(--danger)' };
-    if (lower.endsWith('.json')) return { label: 'JSON', icon: 'ri-braces-line', color: 'var(--text-secondary)' };
-    if (lower.endsWith('.html') || lower.endsWith('.htm')) return { label: 'HTML', icon: 'ri-html5-line', color: 'var(--warning)' };
-    if (lower.endsWith('.css')) return { label: 'CSS', icon: 'ri-css3-line', color: 'var(--info)' };
-    if (lower.endsWith('.scss') || lower.endsWith('.sass')) return { label: 'SCSS', icon: 'ri-css3-line', color: 'var(--violet)' };
-    if (lower.endsWith('.php')) return { label: 'PHP', icon: 'ri-code-line', color: 'var(--violet)' };
-    if (lower.endsWith('.py')) return { label: 'Python', icon: 'ri-terminal-box-line', color: 'var(--info)' };
-    if (lower.endsWith('.sh') || lower.endsWith('.bash')) return { label: 'Shell Script', icon: 'ri-terminal-line', color: 'var(--accent-strong)' };
-    if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return { label: 'YAML', icon: 'ri-file-list-2-line', color: 'var(--danger)' };
-    if (lower.endsWith('.sql')) return { label: 'SQL', icon: 'ri-database-2-line', color: 'var(--info)' };
-    if (lower.endsWith('.md')) return { label: 'Markdown', icon: 'ri-markdown-line', color: 'var(--info)' };
-    if (lower.startsWith('.env')) return { label: 'Environment', icon: 'ri-key-2-line', color: 'var(--warning)' };
-    if (lower.endsWith('.xml')) return { label: 'XML', icon: 'ri-code-line', color: 'var(--warning)' };
-    return { label: 'Plain Text', icon: 'ri-file-text-line', color: 'var(--text-muted)' };
+    if (lower.endsWith(".go"))
+      return {
+        label: "Go",
+        icon: "ri-code-s-slash-line",
+        color: "var(--info)",
+      };
+    if (lower.endsWith(".ts"))
+      return {
+        label: "TypeScript",
+        icon: "ri-javascript-line",
+        color: "var(--info)",
+      };
+    if (
+      lower.endsWith(".js") ||
+      lower.endsWith(".mjs") ||
+      lower.endsWith(".cjs")
+    )
+      return {
+        label: "JavaScript",
+        icon: "ri-javascript-line",
+        color: "var(--warning)",
+      };
+    if (lower.endsWith(".svelte"))
+      return { label: "Svelte", icon: "ri-code-line", color: "var(--danger)" };
+    if (lower.endsWith(".json"))
+      return {
+        label: "JSON",
+        icon: "ri-braces-line",
+        color: "var(--text-secondary)",
+      };
+    if (lower.endsWith(".html") || lower.endsWith(".htm"))
+      return { label: "HTML", icon: "ri-html5-line", color: "var(--warning)" };
+    if (lower.endsWith(".css"))
+      return { label: "CSS", icon: "ri-css3-line", color: "var(--info)" };
+    if (lower.endsWith(".scss") || lower.endsWith(".sass"))
+      return { label: "SCSS", icon: "ri-css3-line", color: "var(--violet)" };
+    if (lower.endsWith(".php"))
+      return { label: "PHP", icon: "ri-code-line", color: "var(--violet)" };
+    if (lower.endsWith(".py"))
+      return {
+        label: "Python",
+        icon: "ri-terminal-box-line",
+        color: "var(--info)",
+      };
+    if (lower.endsWith(".sh") || lower.endsWith(".bash"))
+      return {
+        label: "Shell Script",
+        icon: "ri-terminal-line",
+        color: "var(--accent-strong)",
+      };
+    if (lower.endsWith(".yml") || lower.endsWith(".yaml"))
+      return {
+        label: "YAML",
+        icon: "ri-file-list-2-line",
+        color: "var(--danger)",
+      };
+    if (lower.endsWith(".sql"))
+      return { label: "SQL", icon: "ri-database-2-line", color: "var(--info)" };
+    if (lower.endsWith(".md"))
+      return {
+        label: "Markdown",
+        icon: "ri-markdown-line",
+        color: "var(--info)",
+      };
+    if (lower.startsWith(".env"))
+      return {
+        label: "Environment",
+        icon: "ri-key-2-line",
+        color: "var(--warning)",
+      };
+    if (lower.endsWith(".xml"))
+      return { label: "XML", icon: "ri-code-line", color: "var(--warning)" };
+    return {
+      label: "Plain Text",
+      icon: "ri-file-text-line",
+      color: "var(--text-muted)",
+    };
   }
 
   // Buka editor modern untuk membaca dan menyunting berkas teks
   async function openEditor(item: FileItem) {
     closeAllMenus();
     editorTarget = item;
-    editorContent = 'Memuat isi berkas...';
-    editorInitialContent = '';
+    editorContent = "Memuat isi berkas...";
+    editorInitialContent = "";
     showEditorModal = true;
     editorShowSearch = false;
-    editorSearchQuery = '';
-    editorReplaceQuery = '';
+    editorSearchQuery = "";
+    editorReplaceQuery = "";
     editorSearchMatches = [];
     editorSearchMatchIndex = 0;
     try {
       const q = encodeURIComponent(item.path);
-      const res = await apiFetch<{ content: string }>(`/api/files/read?path=${q}`);
-      editorContent = res.content || '';
+      const res = await apiFetch<{ content: string }>(
+        `/api/files/read?path=${q}`,
+      );
+      editorContent = res.content || "";
       editorInitialContent = editorContent;
       setTimeout(() => {
         if (editorTextareaEl) {
@@ -690,7 +838,7 @@
         }
       }, 50);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal membaca berkas');
+      onNotify(err.message || "Gagal membaca berkas");
       showEditorModal = false;
     }
   }
@@ -700,8 +848,8 @@
     if (!editorTarget) return;
     editorSaving = true;
     try {
-      await apiFetch('/api/files/save', {
-        method: 'POST',
+      await apiFetch("/api/files/save", {
+        method: "POST",
         body: JSON.stringify({
           path: editorTarget.path,
           content: editorContent,
@@ -711,7 +859,7 @@
       onNotify(`Berkas ${editorTarget.name} berhasil disimpan`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal menyimpan berkas');
+      onNotify(err.message || "Gagal menyimpan berkas");
     } finally {
       editorSaving = false;
     }
@@ -720,34 +868,41 @@
   // Muat ulang konten berkas dari server
   async function refreshEditorContent() {
     if (!editorTarget) return;
-    if (editorIsDirty && !(await confirmDialog({
-      title: 'Muat ulang berkas dari server?',
-      message: 'Perubahan yang belum Anda simpan di editor akan dibuang.',
-      confirmText: 'Muat Ulang',
-      tone: 'danger',
-    }))) {
+    if (
+      editorIsDirty &&
+      !(await confirmDialog({
+        title: "Muat ulang berkas dari server?",
+        message: "Perubahan yang belum Anda simpan di editor akan dibuang.",
+        confirmText: "Muat Ulang",
+        tone: "danger",
+      }))
+    ) {
       return;
     }
     try {
       const q = encodeURIComponent(editorTarget.path);
-      const res = await apiFetch<{ content: string }>(`/api/files/read?path=${q}`);
-      editorContent = res.content || '';
+      const res = await apiFetch<{ content: string }>(
+        `/api/files/read?path=${q}`,
+      );
+      editorContent = res.content || "";
       editorInitialContent = editorContent;
-      onNotify('Isi berkas berhasil dimuat ulang');
+      onNotify("Isi berkas berhasil dimuat ulang");
     } catch (err: any) {
-      onNotify(err.message || 'Gagal memuat ulang berkas');
+      onNotify(err.message || "Gagal memuat ulang berkas");
     }
   }
 
   // Tutup editor dengan konfirmasi bila ada perubahan yang belum disimpan
   async function closeEditorModal() {
     if (editorIsDirty) {
-      if (!(await confirmDialog({
-        title: 'Tutup editor tanpa menyimpan?',
-        message: 'Perubahan pada berkas ini belum disimpan ke server.',
-        confirmText: 'Tutup Editor',
-        tone: 'danger',
-      }))) {
+      if (
+        !(await confirmDialog({
+          title: "Tutup editor tanpa menyimpan?",
+          message: "Perubahan pada berkas ini belum disimpan ke server.",
+          confirmText: "Tutup Editor",
+          tone: "danger",
+        }))
+      ) {
         return;
       }
     }
@@ -761,7 +916,7 @@
     if (!editorTextareaEl) return;
     const pos = editorTextareaEl.selectionStart || 0;
     const textBefore = editorContent.substring(0, pos);
-    const lines = textBefore.split('\n');
+    const lines = textBefore.split("\n");
     const line = lines.length;
     const col = lines[lines.length - 1].length + 1;
     editorCursorPos = { line, col };
@@ -775,31 +930,35 @@
 
   // Tangani shortcut keyboard editor (Ctrl+S, Ctrl+F, Ctrl+G, Tab)
   function handleEditorKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
       handleSaveEditor();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    if ((e.ctrlKey || e.metaKey) && e.key === "f") {
       e.preventDefault();
       editorShowSearch = !editorShowSearch;
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+    if ((e.ctrlKey || e.metaKey) && e.key === "g") {
       e.preventDefault();
       handleEditorJumpLine();
       return;
     }
-    if (e.key === 'Tab') {
+    if (e.key === "Tab") {
       e.preventDefault();
       if (!editorTextareaEl) return;
       const start = editorTextareaEl.selectionStart;
       const end = editorTextareaEl.selectionEnd;
-      const spaces = '  '; // Indentasi 2 spasi standar
-      editorContent = editorContent.substring(0, start) + spaces + editorContent.substring(end);
+      const spaces = "  "; // Indentasi 2 spasi standar
+      editorContent =
+        editorContent.substring(0, start) +
+        spaces +
+        editorContent.substring(end);
       setTimeout(() => {
         if (editorTextareaEl) {
-          editorTextareaEl.selectionStart = editorTextareaEl.selectionEnd = start + spaces.length;
+          editorTextareaEl.selectionStart = editorTextareaEl.selectionEnd =
+            start + spaces.length;
           updateEditorCursor();
         }
       }, 0);
@@ -809,28 +968,31 @@
   // Lompat ke baris tertentu sesuai input pengguna
   async function handleEditorJumpLine() {
     const targetStr = await promptDialog({
-      title: 'Lompat ke Baris',
+      title: "Lompat ke Baris",
       label: `Nomor baris (1 - ${editorLineCount}):`,
       value: String(editorCursorPos.line),
-      inputType: 'number',
+      inputType: "number",
       min: 1,
       max: editorLineCount,
-      confirmText: 'Lompat',
+      confirmText: "Lompat",
     });
     if (!targetStr) return;
     const targetLine = parseInt(targetStr, 10);
     if (isNaN(targetLine) || targetLine < 1 || targetLine > editorLineCount) {
-      onNotify('Nomor baris tidak valid');
+      onNotify("Nomor baris tidak valid");
       return;
     }
-    const lines = editorContent.split('\n');
+    const lines = editorContent.split("\n");
     let charIndex = 0;
     for (let i = 0; i < targetLine - 1; i++) {
       charIndex += lines[i].length + 1;
     }
     if (editorTextareaEl) {
       editorTextareaEl.focus();
-      editorTextareaEl.setSelectionRange(charIndex, charIndex + (lines[targetLine - 1]?.length || 0));
+      editorTextareaEl.setSelectionRange(
+        charIndex,
+        charIndex + (lines[targetLine - 1]?.length || 0),
+      );
       updateEditorCursor();
       const lineHeight = editorFontSize * 1.6;
       editorTextareaEl.scrollTop = Math.max(0, (targetLine - 5) * lineHeight);
@@ -838,7 +1000,7 @@
   }
 
   // Pencarian kata kunci di dalam textarea editor
-  function searchInEditor(direction: 'next' | 'prev' = 'next') {
+  function searchInEditor(direction: "next" | "prev" = "next") {
     if (!editorSearchQuery || !editorTextareaEl) return;
     const query = editorSearchQuery.toLowerCase();
     const contentLower = editorContent.toLowerCase();
@@ -851,32 +1013,46 @@
     editorSearchMatches = matches;
     if (matches.length === 0) {
       editorSearchMatchIndex = 0;
-      onNotify('Teks tidak ditemukan dalam berkas');
+      onNotify("Teks tidak ditemukan dalam berkas");
       return;
     }
 
-    if (direction === 'next') {
+    if (direction === "next") {
       editorSearchMatchIndex = (editorSearchMatchIndex + 1) % matches.length;
     } else {
-      editorSearchMatchIndex = (editorSearchMatchIndex - 1 + matches.length) % matches.length;
+      editorSearchMatchIndex =
+        (editorSearchMatchIndex - 1 + matches.length) % matches.length;
     }
 
     const matchChar = matches[editorSearchMatchIndex];
     editorTextareaEl.focus();
-    editorTextareaEl.setSelectionRange(matchChar, matchChar + editorSearchQuery.length);
+    editorTextareaEl.setSelectionRange(
+      matchChar,
+      matchChar + editorSearchQuery.length,
+    );
     updateEditorCursor();
 
-    const linesBefore = editorContent.substring(0, matchChar).split('\n').length;
+    const linesBefore = editorContent
+      .substring(0, matchChar)
+      .split("\n").length;
     const lineHeight = editorFontSize * 1.6;
     editorTextareaEl.scrollTop = Math.max(0, (linesBefore - 5) * lineHeight);
   }
 
   // Mengganti teks yang sedang dipilih
   function replaceInEditor() {
-    if (!editorSearchQuery || !editorTextareaEl || editorSearchMatches.length === 0) return;
+    if (
+      !editorSearchQuery ||
+      !editorTextareaEl ||
+      editorSearchMatches.length === 0
+    )
+      return;
     const matchChar = editorSearchMatches[editorSearchMatchIndex];
-    editorContent = editorContent.substring(0, matchChar) + editorReplaceQuery + editorContent.substring(matchChar + editorSearchQuery.length);
-    searchInEditor('next');
+    editorContent =
+      editorContent.substring(0, matchChar) +
+      editorReplaceQuery +
+      editorContent.substring(matchChar + editorSearchQuery.length);
+    searchInEditor("next");
   }
 
   // Mengganti semua kemunculan teks dalam berkas
@@ -890,7 +1066,7 @@
       editorSearchMatches = [];
       editorSearchMatchIndex = 0;
     } else {
-      onNotify('Teks tidak ditemukan untuk diganti');
+      onNotify("Teks tidak ditemukan untuk diganti");
     }
   }
 
@@ -898,48 +1074,56 @@
   function downloadFile(item: FileItem) {
     closeAllMenus();
     const q = encodeURIComponent(item.path);
-    window.open(`/api/files/read?path=${q}&download=1`, '_blank');
+    window.open(`/api/files/read?path=${q}&download=1`, "_blank");
   }
 
   // Hapus Satu Item
   async function deleteSingleItem(item: FileItem) {
     closeAllMenus();
-    if (!(await confirmDialog({
-      title: `Hapus ${item.is_dir ? 'folder' : 'berkas'} "${item.name}"?`,
-      message: 'Item ini akan dihapus secara permanen dari server dan tidak dapat dipulihkan.',
-      confirmText: 'Hapus Permanen',
-      tone: 'danger',
-    }))) return;
+    if (
+      !(await confirmDialog({
+        title: `Hapus ${item.is_dir ? "folder" : "berkas"} "${item.name}"?`,
+        message:
+          "Item ini akan dihapus secara permanen dari server dan tidak dapat dipulihkan.",
+        confirmText: "Hapus Permanen",
+        tone: "danger",
+      }))
+    )
+      return;
     try {
-      await apiFetch('/api/files/delete', {
-        method: 'POST',
+      await apiFetch("/api/files/delete", {
+        method: "POST",
         body: JSON.stringify({ paths: [item.path] }),
       });
       onNotify(`"${item.name}" berhasil dihapus`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal menghapus item');
+      onNotify(err.message || "Gagal menghapus item");
     }
   }
 
   // Hapus Massal Berkas yang Terpilih
   async function handleBatchDelete() {
     if (selectedPaths.size === 0) return;
-    if (!(await confirmDialog({
-      title: `Hapus ${selectedPaths.size} item yang dipilih?`,
-      message: 'Semua berkas dan folder yang terpilih akan dihapus permanen dari server.',
-      confirmText: `Hapus ${selectedPaths.size} Item`,
-      tone: 'danger',
-    }))) return;
+    if (
+      !(await confirmDialog({
+        title: `Hapus ${selectedPaths.size} item yang dipilih?`,
+        message:
+          "Semua berkas dan folder yang terpilih akan dihapus permanen dari server.",
+        confirmText: `Hapus ${selectedPaths.size} Item`,
+        tone: "danger",
+      }))
+    )
+      return;
     try {
-      await apiFetch('/api/files/delete', {
-        method: 'POST',
+      await apiFetch("/api/files/delete", {
+        method: "POST",
         body: JSON.stringify({ paths: Array.from(selectedPaths) }),
       });
       onNotify(`${selectedPaths.size} item berhasil dihapus`);
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Gagal menghapus batch item');
+      onNotify(err.message || "Gagal menghapus batch item");
     }
   }
 
@@ -951,23 +1135,23 @@
     uploadSubmitting = true;
     try {
       const formData = new FormData();
-      formData.append('destination', currentPath);
+      formData.append("destination", currentPath);
       for (let i = 0; i < uploadFiles.length; i++) {
-        formData.append('files', uploadFiles[i]);
+        formData.append("files", uploadFiles[i]);
       }
 
-      await apiFetch('/api/files/upload', {
-        method: 'POST',
+      await apiFetch("/api/files/upload", {
+        method: "POST",
         body: formData,
         timeoutMs: 0,
       });
 
       showUploadModal = false;
       uploadFiles = null;
-      onNotify('Berkas berhasil diunggah');
+      onNotify("Berkas berhasil diunggah");
       await loadDirectory(currentPath);
     } catch (err: any) {
-      onNotify(err.message || 'Galat saat upload');
+      onNotify(err.message || "Galat saat upload");
     } finally {
       uploadSubmitting = false;
     }
@@ -981,57 +1165,57 @@
   // Helper Ikon Berkas Berdasarkan Ekstensi
   function getFileIcon(item: FileItem): { icon: string; color: string } {
     if (item.is_dir) {
-      return { icon: 'ri-folder-fill', color: 'var(--warning)' };
+      return { icon: "ri-folder-fill", color: "var(--warning)" };
     }
     const ext = item.ext.toLowerCase();
     switch (ext) {
-      case '.go':
-      case '.ts':
-      case '.js':
-      case '.svelte':
-      case '.py':
-      case '.php':
-      case '.html':
-      case '.css':
-      case '.json':
-        return { icon: 'ri-file-code-fill', color: 'var(--accent)' };
-      case '.png':
-      case '.jpg':
-      case '.jpeg':
-      case '.svg':
-      case '.webp':
-      case '.gif':
-        return { icon: 'ri-image-fill', color: 'var(--violet)' };
-      case '.zip':
-      case '.tar':
-      case '.gz':
-      case '.rar':
-        return { icon: 'ri-file-zip-fill', color: 'var(--warning)' };
-      case '.md':
-      case '.txt':
-      case '.log':
-      case '.conf':
-      case '.env':
-        return { icon: 'ri-file-text-fill', color: 'var(--info)' };
+      case ".go":
+      case ".ts":
+      case ".js":
+      case ".svelte":
+      case ".py":
+      case ".php":
+      case ".html":
+      case ".css":
+      case ".json":
+        return { icon: "ri-file-code-fill", color: "var(--accent)" };
+      case ".png":
+      case ".jpg":
+      case ".jpeg":
+      case ".svg":
+      case ".webp":
+      case ".gif":
+        return { icon: "ri-image-fill", color: "var(--violet)" };
+      case ".zip":
+      case ".tar":
+      case ".gz":
+      case ".rar":
+        return { icon: "ri-file-zip-fill", color: "var(--warning)" };
+      case ".md":
+      case ".txt":
+      case ".log":
+      case ".conf":
+      case ".env":
+        return { icon: "ri-file-text-fill", color: "var(--info)" };
       default:
-        return { icon: 'ri-file-3-fill', color: 'var(--text-muted)' };
+        return { icon: "ri-file-3-fill", color: "var(--text-muted)" };
     }
   }
 
   onMount(() => {
     // Periksa apakah ada permintaan pembukaan direktori dari halaman lain (misal tombol aksi cepat situs)
-    const openPath = sessionStorage.getItem('fikpanel_open_path');
+    const openPath = sessionStorage.getItem("fikpanel_open_path");
     if (openPath) {
-      sessionStorage.removeItem('fikpanel_open_path');
+      sessionStorage.removeItem("fikpanel_open_path");
       loadDirectory(openPath);
     } else {
       loadDirectory();
     }
-    window.addEventListener('click', closeAllMenus);
+    window.addEventListener("click", closeAllMenus);
   });
 
   onDestroy(() => {
-    window.removeEventListener('click', closeAllMenus);
+    window.removeEventListener("click", closeAllMenus);
   });
 </script>
 
@@ -1056,26 +1240,321 @@
   />
 
   <!-- ═════════ 3. Toolbar Aksi (Action Toolbar aaPanel Asli) ═════════ -->
-  <FileToolbar
-    bind:activeToolbarMenu
-    {customFavorites}
-    {selectedPaths}
-    bind:clipboard
-    bind:viewMode
-    onToggleToolbarMenu={toggleToolbarMenu}
-    onCloseAllMenus={closeAllMenus}
-    onOpenUploadModal={() => (showUploadModal = true)}
-    onOpenCloudStorage={openCloudStorage}
-    onOpenRemoteModal={() => (showRemoteModal = true)}
-    onOpenNewModal={openNewModal}
-    onOpenSymlinkModal={() => (showSymlinkModal = true)}
-    onOpenSearchContentModal={() => (showSearchContentModal = true)}
-    onJumpFavorite={jumpFavorite}
-    onOpenFavManageModal={() => (showFavManageModal = true)}
-    {onNotify}
-    onBatchDelete={handleBatchDelete}
-    onPasteClipboard={handlePasteClipboard}
-  />
+  <div class="toolbar action-toolbar">
+    <div class="tool-left">
+      <!-- 1. Dropdown Upload > -->
+      <div class="tool-dropdown-wrap">
+        <button
+          class="tool-btn {activeToolbarMenu === 'upload' ? 'is-active' : ''}"
+          onclick={(e) => toggleToolbarMenu("upload", e)}
+        >
+          <i class="ri-upload-line"></i>
+          <span>Upload &gt;</span>
+        </button>
+
+        {#if activeToolbarMenu === "upload"}
+          <div
+            class="toolbar-dropdown-menu"
+            role="menu"
+            tabindex="-1"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
+          >
+            <button
+              class="tb-menu-item"
+              onclick={() => {
+                activeToolbarMenu = null;
+                showUploadModal = true;
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-upload-2-line"></i>
+                <span>Upload File</span>
+              </div>
+            </button>
+            <button
+              class="tb-menu-item"
+              onclick={() => openCloudStorage("FTP Storage")}
+            >
+              <div class="tb-item-left">
+                <i class="ri-server-line"></i>
+                <span>FTP Storage</span>
+              </div>
+              <i class="ri-vip-diamond-fill badge-vip"></i>
+            </button>
+            <button
+              class="tb-menu-item"
+              onclick={() => openCloudStorage("S3 Storage")}
+            >
+              <div class="tb-item-left">
+                <i class="ri-cloud-line"></i>
+                <span>S3 Storage</span>
+              </div>
+              <i class="ri-vip-diamond-fill badge-vip"></i>
+            </button>
+            <button
+              class="tb-menu-item"
+              onclick={() => openCloudStorage("Google Drive")}
+            >
+              <div class="tb-item-left">
+                <i class="ri-google-fill"></i>
+                <span>Google Drive</span>
+              </div>
+              <i class="ri-vip-diamond-fill badge-vip"></i>
+            </button>
+            <button
+              class="tb-menu-item"
+              onclick={() => openCloudStorage("Google Cloud Storage")}
+            >
+              <div class="tb-item-left">
+                <i class="ri-cloudy-line"></i>
+                <span>Google Cloud Storage</span>
+              </div>
+              <i class="ri-vip-diamond-fill badge-vip"></i>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- 2. Remote Download -->
+      <button class="tool-btn" onclick={() => (showRemoteModal = true)}>
+        <i class="ri-download-cloud-line icon-blue"></i>
+        <span>Remote Download</span>
+      </button>
+
+      <!-- 3. Dropdown New > -->
+      <div class="tool-dropdown-wrap">
+        <button
+          class="tool-btn {activeToolbarMenu === 'new' ? 'is-active' : ''}"
+          onclick={(e) => toggleToolbarMenu("new", e)}
+        >
+          <i class="ri-folder-add-fill icon-amber"></i>
+          <span>New &gt;</span>
+        </button>
+
+        {#if activeToolbarMenu === "new"}
+          <div
+            class="toolbar-dropdown-menu"
+            role="menu"
+            tabindex="-1"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
+          >
+            <button class="tb-menu-item" onclick={() => openNewModal("dir")}>
+              <div class="tb-item-left">
+                <i class="ri-folder-fill icon-amber"></i>
+                <span>New Directory</span>
+              </div>
+            </button>
+            <button class="tb-menu-item" onclick={() => openNewModal("file")}>
+              <div class="tb-item-left">
+                <i class="ri-file-3-line"></i>
+                <span>New Blank File</span>
+              </div>
+            </button>
+            <button
+              class="tb-menu-item"
+              onclick={() => {
+                activeToolbarMenu = null;
+                showSymlinkModal = true;
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-links-line icon-blue"></i>
+                <span>Soft Link</span>
+              </div>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- 4. Search File Content -->
+      <button class="tool-btn" onclick={() => (showSearchContentModal = true)}>
+        <i class="ri-file-search-line"></i>
+        <span>Search File Content</span>
+      </button>
+
+      <!-- 5. Dropdown Favorite > -->
+      <div class="tool-dropdown-wrap">
+        <button
+          class="tool-btn {activeToolbarMenu === 'favorite' ? 'is-active' : ''}"
+          onclick={(e) => toggleToolbarMenu("favorite", e)}
+        >
+          <i class="ri-star-fill icon-yellow"></i>
+          <span>Favorite &gt;</span>
+        </button>
+
+        {#if activeToolbarMenu === "favorite"}
+          <div
+            class="toolbar-dropdown-menu"
+            role="menu"
+            tabindex="-1"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
+          >
+            {#each customFavorites as fav}
+              <button
+                class="tb-menu-item"
+                onclick={() => {
+                  activeToolbarMenu = null;
+                  jumpFavorite(fav.path);
+                }}
+              >
+                <div class="tb-item-left">
+                  <i class="ri-folder-line icon-amber"></i>
+                  <span>{fav.name}</span>
+                </div>
+              </button>
+            {/each}
+            <div class="operate-divider"></div>
+            <button
+              class="tb-menu-item"
+              onclick={() => {
+                activeToolbarMenu = null;
+                showFavManageModal = true;
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-settings-3-line"></i>
+                <span>Management</span>
+              </div>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- 6. Share List -->
+      <button
+        class="tool-btn"
+        onclick={() =>
+          onNotify(
+            "Fitur Share List: tautan unduhan langsung terdaftar di menu Properties",
+          )}
+      >
+        <i class="ri-share-line icon-green"></i>
+        <span>Share List</span>
+      </button>
+
+      <!-- 7. File Operations > -->
+      <div class="tool-dropdown-wrap">
+        <button
+          class="tool-btn {activeToolbarMenu === 'operations'
+            ? 'is-active'
+            : ''}"
+          onclick={(e) => toggleToolbarMenu("operations", e)}
+        >
+          <i class="ri-folder-settings-line icon-amber"></i>
+          <span>File Operations &gt;</span>
+        </button>
+
+        {#if activeToolbarMenu === "operations"}
+          <div
+            class="toolbar-dropdown-menu"
+            role="menu"
+            tabindex="-1"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
+          >
+            <button
+              class="tb-menu-item"
+              disabled={selectedPaths.size === 0}
+              onclick={() => {
+                if (selectedPaths.size > 0) {
+                  clipboard = {
+                    action: "copy",
+                    paths: Array.from(selectedPaths),
+                    names: Array.from(selectedPaths).map(
+                      (p) => p.split(/[/\\]+/).pop() || "",
+                    ),
+                  };
+                  onNotify(`${selectedPaths.size} item disalin ke clipboard`);
+                  activeToolbarMenu = null;
+                }
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-file-copy-line"></i>
+                <span>Copy ({selectedPaths.size})</span>
+              </div>
+            </button>
+            <button
+              class="tb-menu-item"
+              disabled={selectedPaths.size === 0}
+              onclick={() => {
+                if (selectedPaths.size > 0) {
+                  clipboard = {
+                    action: "cut",
+                    paths: Array.from(selectedPaths),
+                    names: Array.from(selectedPaths).map(
+                      (p) => p.split(/[/\\]+/).pop() || "",
+                    ),
+                  };
+                  onNotify(`${selectedPaths.size} item dipotong ke clipboard`);
+                  activeToolbarMenu = null;
+                }
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-scissors-line icon-cyan"></i>
+                <span>Cut ({selectedPaths.size})</span>
+              </div>
+            </button>
+            <button
+              class="tb-menu-item item-danger"
+              disabled={selectedPaths.size === 0}
+              onclick={() => {
+                activeToolbarMenu = null;
+                handleBatchDelete();
+              }}
+            >
+              <div class="tb-item-left">
+                <i class="ri-delete-bin-line"></i>
+                <span>Delete ({selectedPaths.size})</span>
+              </div>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Paste Button jika Clipboard Aktif -->
+      {#if clipboard}
+        <div class="paste-indicator">
+          <button
+            class="tool-btn tool-primary"
+            onclick={handlePasteClipboard}
+            title="Klik untuk menempel di direktori ini"
+          >
+            <i class="ri-clipboard-line"></i>
+            <span>Paste ({clipboard.names.length} item)</span>
+          </button>
+          <button
+            class="btn-cancel-clip"
+            onclick={() => (clipboard = null)}
+            title="Batalkan salin/potong">&times;</button
+          >
+        </div>
+      {/if}
+    </div>
+
+    <div class="tool-right">
+      <div class="view-toggle">
+        <button
+          class="toggle-btn {viewMode === 'list' ? 'active' : ''}"
+          onclick={() => (viewMode = "list")}
+          title="Tampilan Daftar"
+        >
+          <i class="ri-list-check"></i>
+        </button>
+        <button
+          class="toggle-btn {viewMode === 'grid' ? 'active' : ''}"
+          onclick={() => (viewMode = "grid")}
+          title="Tampilan Grid"
+        >
+          <i class="ri-grid-fill"></i>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ═════════ 4. Area Konten File (Table / Grid) ═════════ -->
   <div class="file-content-panel">
@@ -1089,73 +1568,214 @@
         <i class="ri-folder-open-line empty-icon"></i>
         <p>Direktori ini kosong atau berkas tidak ditemukan.</p>
         <div class="empty-actions">
-          <button class="btn btn--secondary btn-outline" onclick={() => openNewModal('file')}>+ Buat Berkas</button>
-          <button class="btn btn--secondary btn-outline" onclick={() => openNewModal('dir')}>+ Buat Folder</button>
-          <button class="btn btn--primary btn-primary" onclick={() => (showUploadModal = true)}>Upload Berkas</button>
+          <button
+            class="btn btn--secondary btn-outline"
+            onclick={() => openNewModal("file")}>+ Buat Berkas</button
+          >
+          <button
+            class="btn btn--secondary btn-outline"
+            onclick={() => openNewModal("dir")}>+ Buat Folder</button
+          >
+          <button
+            class="btn btn--primary btn-primary"
+            onclick={() => (showUploadModal = true)}>Upload Berkas</button
+          >
         </div>
       </div>
-    {:else if viewMode === 'list'}
+    {:else if viewMode === "list"}
       <!-- Tampilan Tabel List Gaya aaPanel -->
-      <FileTable
-        {paginatedItems}
-        {selectedPaths}
-        {activeMenuItem}
-        {getFileIcon}
-        onToggleSelectAll={toggleSelectAll}
-        onToggleSelectItem={toggleSelectItem}
-        onRowContextMenu={handleRowContextMenu}
-        onItemClick={handleItemClick}
-        onOpenChmodModal={openChmodModal}
-        onOpenEditor={openEditor}
-        onDownloadFile={downloadFile}
-        onDeleteSingleItem={deleteSingleItem}
-        onToggleOperateMenu={toggleOperateMenu}
-      />
+      <div class="table-wrap table-container">
+        <table class="table file-table">
+          <thead>
+            <tr>
+              <th class="col-check">
+                <input
+                  type="checkbox"
+                  checked={paginatedItems.length > 0 &&
+                    selectedPaths.size === paginatedItems.length}
+                  onchange={toggleSelectAll}
+                />
+              </th>
+              <th class="col-name">File Name &darr;</th>
+              <th class="col-prot">Protected</th>
+              <th class="col-pmsn">PMSN/Owner</th>
+              <th class="col-size">Size &darr;</th>
+              <th class="col-time">Modified Time &darr;</th>
+              <th class="col-ps">Ps</th>
+              <th class="col-ops">Operation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each paginatedItems as item (item.path)}
+              {@const iconMeta = getFileIcon(item)}
+              <tr
+                class="{selectedPaths.has(item.path)
+                  ? 'selected-row'
+                  : ''} {activeMenuItem?.path === item.path
+                  ? 'highlight-row'
+                  : ''}"
+                oncontextmenu={(e) => handleRowContextMenu(item, e)}
+              >
+                <td class="col-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedPaths.has(item.path)}
+                    onchange={() => toggleSelectItem(item.path)}
+                  />
+                </td>
+                <td class="col-name">
+                  <div
+                    class="name-cell"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => handleItemClick(item)}
+                    onkeydown={(e) =>
+                      e.key === "Enter" && handleItemClick(item)}
+                  >
+                    <i
+                      class="{iconMeta.icon} item-icon"
+                      style="color: {iconMeta.color};"
+                    ></i>
+                    <span class="item-name {item.is_dir ? 'dir-name' : ''}"
+                      >{item.name}</span
+                    >
+                  </div>
+                </td>
+                <td class="col-prot">
+                  <span class="badge-prot">
+                    <i class="ri-lock-unlock-line"></i> Unprotected
+                  </span>
+                </td>
+                <td class="col-pmsn">
+                  <button
+                    class="pmsn-pill"
+                    onclick={() => openChmodModal(item)}
+                    title="Klik untuk ubah perizinan (chmod)"
+                  >
+                    {item.mode.slice(-3)} / {item.owner}
+                  </button>
+                </td>
+                <td class="col-size mono">
+                  {#if item.is_dir}
+                    <span class="calc-text">Calculate</span>
+                  {:else}
+                    {formatBytes(item.size)}
+                  {/if}
+                </td>
+                <td class="col-time mono">{item.mod_time}</td>
+                <td class="col-ps text-muted"
+                  >{item.is_dir ? "Directory" : item.ext || "File"}</td
+                >
+                <td class="col-ops">
+                  <div class="row-operations">
+                    <!-- Hover Quick Shortcuts (hanya terlihat saat baris di-hover) -->
+                    <div class="hover-shortcuts">
+                      {#if !item.is_dir}
+                        <button
+                          class="quick-icon-btn"
+                          onclick={() => openEditor(item)}
+                          title="Edit Cepat"
+                        >
+                          <i class="ri-edit-line"></i>
+                        </button>
+                        <button
+                          class="quick-icon-btn"
+                          onclick={() => downloadFile(item)}
+                          title="Unduh"
+                        >
+                          <i class="ri-download-line"></i>
+                        </button>
+                      {:else}
+                        <button
+                          class="quick-icon-btn"
+                          onclick={() => handleItemClick(item)}
+                          title="Buka"
+                        >
+                          <i class="ri-folder-open-line"></i>
+                        </button>
+                      {/if}
+                      <button
+                        class="quick-icon-btn link-danger"
+                        onclick={() => deleteSingleItem(item)}
+                        title="Hapus"
+                      >
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
+                    </div>
+
+                    <!-- Tombol Dropdown Operate (Sesuai Screenshot aaPanel) -->
+                    <button
+                      class="btn-operate {activeMenuItem?.path === item.path
+                        ? 'is-active'
+                        : ''}"
+                      onclick={(e) => toggleOperateMenu(item, e)}
+                      title="Menu Operasi"
+                    >
+                      <span>Operate</span>
+                      <i class="ri-arrow-down-s-line"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {:else}
       <!-- Tampilan Grid Bento -->
-      <FileGrid
-        {paginatedItems}
-        {selectedPaths}
-        {getFileIcon}
-        onItemClick={handleItemClick}
-        onRowContextMenu={handleRowContextMenu}
-        onToggleSelectItem={toggleSelectItem}
-        onToggleOperateMenu={toggleOperateMenu}
-      />
+      <div class="grid-container">
+        {#each paginatedItems as item (item.path)}
+          {@const iconMeta = getFileIcon(item)}
+          <div
+            class="grid-card {selectedPaths.has(item.path)
+              ? 'selected-card'
+              : ''}"
+            role="button"
+            tabindex="0"
+            onclick={() => handleItemClick(item)}
+            onkeydown={(e) => e.key === "Enter" && handleItemClick(item)}
+            oncontextmenu={(e) => handleRowContextMenu(item, e)}
+          >
+            <div class="card-top">
+              <input
+                type="checkbox"
+                checked={selectedPaths.has(item.path)}
+                onclick={(e) => e.stopPropagation()}
+                onchange={() => toggleSelectItem(item.path)}
+              />
+              <button
+                class="card-operate-btn"
+                onclick={(e) => toggleOperateMenu(item, e)}
+                title="Menu Operasi"
+              >
+                <i class="ri-more-2-fill"></i>
+              </button>
+            </div>
+            <i
+              class="{iconMeta.icon} card-icon"
+              style="color: {iconMeta.color};"
+            ></i>
+            <span class="card-name" title={item.name}>{item.name}</span>
+            <span class="card-size mono"
+              >{item.is_dir ? "Directory" : formatBytes(item.size)}</span
+            >
+          </div>
+        {/each}
+      </div>
     {/if}
   </div>
 
   <!-- ═════════ 5. Footer & Status Bar ═════════ -->
-  <div class="footer-bar">
-    <div class="foot-left">
-      <span>Total <strong>{totalDirs}</strong> directories, <strong>{totalFiles}</strong> files, File size: <strong class="mono">{formatBytes(totalSize)}</strong></span>
-    </div>
-
-    <div class="foot-right">
-      <div class="pager">
-        <button
-          class="btn-page"
-          disabled={currentPage <= 1}
-          onclick={() => currentPage--}
-        >&lt;</button>
-        <span class="page-num">{currentPage}</span>
-        <button
-          class="btn-page"
-          disabled={currentPage >= totalPages}
-          onclick={() => currentPage++}
-        >&gt;</button>
-      </div>
-
-      <select class="select-pagesize" bind:value={pageSize}>
-        <option value={50}>50 / page</option>
-        <option value={100}>100 / page</option>
-        <option value={200}>200 / page</option>
-      </select>
-
-      <span class="goto-box">Goto <input type="number" min="1" max={totalPages} bind:value={currentPage} /></span>
-      <span class="total-badge">Total {filteredItems.length}</span>
-    </div>
-  </div>
+  <StatusBar
+    {totalDirs}
+    {totalFiles}
+    {totalSize}
+    bind:currentPage
+    bind:pageSize
+    {totalPages}
+    totalFilteredCount={filteredItems.length}
+    {formatBytes}
+  />
 
   <!-- ═════════ DROPDOWN OPERATE MENU (Popup Sesuai Screenshot aaPanel) ═════════ -->
   {#if activeMenuItem}
@@ -1165,36 +1785,70 @@
       tabindex="-1"
       style="top: {menuPos.top}px; left: {menuPos.left}px;"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.key === 'Escape' && closeAllMenus()}
+      onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
     >
       {#if !activeMenuItem.is_dir}
         <!-- Opsi Khusus Berkas (File): Tanpa Open/New Window, diawali dengan Edit -->
         <!-- Edit -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); openEditor(it); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            openEditor(it);
+          }}
+        >
           <i class="ri-edit-line op-icon icon-blue"></i>
           <span>Edit</span>
         </button>
 
         <!-- Download -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); downloadFile(it); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            downloadFile(it);
+          }}
+        >
           <i class="ri-download-line op-icon icon-blue"></i>
           <span>Download</span>
         </button>
 
         <!-- External Share -->
-        <button class="operate-item" onclick={() => handleExternalShare(activeMenuItem!)}>
+        <button
+          class="operate-item"
+          onclick={() => handleExternalShare(activeMenuItem!)}
+        >
           <i class="ri-share-forward-line op-icon icon-green"></i>
           <span>External Share</span>
         </button>
 
         <!-- Add to Favorites -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); customFavorites = [...customFavorites, { name: it.name, path: it.path }]; onNotify(`"${it.name}" ditambahkan ke favorit`); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            customFavorites = [
+              ...customFavorites,
+              { name: it.name, path: it.path },
+            ];
+            onNotify(`"${it.name}" ditambahkan ke favorit`);
+          }}
+        >
           <i class="ri-star-fill op-icon icon-yellow"></i>
           <span>Add to Favorites</span>
         </button>
 
         <!-- Upload to Cloud Storage -->
-        <button class="operate-item" onclick={() => { closeAllMenus(); openCloudStorage('S3 Storage'); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            closeAllMenus();
+            openCloudStorage("S3 Storage");
+          }}
+        >
           <div class="op-label-row">
             <i class="ri-upload-cloud-2-line op-icon"></i>
             <span>Upload to Cloud Storage</span>
@@ -1203,32 +1857,63 @@
         </button>
 
         <!-- Permission -->
-        <button class="operate-item" onclick={() => openChmodModal(activeMenuItem!)}>
+        <button
+          class="operate-item"
+          onclick={() => openChmodModal(activeMenuItem!)}
+        >
           <i class="ri-folder-lock-fill op-icon icon-amber"></i>
           <span>Permission</span>
         </button>
       {:else}
         <!-- Opsi Khusus Direktori (Folder): Ada Open dan Open in New Window -->
         <!-- Open -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); handleItemClick(it); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            handleItemClick(it);
+          }}
+        >
           <i class="ri-folder-open-fill op-icon icon-amber"></i>
           <span>Open</span>
         </button>
 
         <!-- Open in New Window / Tab -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); addTab(it.path); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            addTab(it.path);
+          }}
+        >
           <i class="ri-external-link-line op-icon icon-blue"></i>
           <span>Open in New Window</span>
         </button>
 
         <!-- Add to Favorites -->
-        <button class="operate-item" onclick={() => { const it = activeMenuItem!; closeAllMenus(); customFavorites = [...customFavorites, { name: it.name, path: it.path }]; onNotify(`"${it.name}" ditambahkan ke favorit`); }}>
+        <button
+          class="operate-item"
+          onclick={() => {
+            const it = activeMenuItem!;
+            closeAllMenus();
+            customFavorites = [
+              ...customFavorites,
+              { name: it.name, path: it.path },
+            ];
+            onNotify(`"${it.name}" ditambahkan ke favorit`);
+          }}
+        >
           <i class="ri-star-fill op-icon icon-yellow"></i>
           <span>Add to Favorites</span>
         </button>
 
         <!-- Permission -->
-        <button class="operate-item" onclick={() => openChmodModal(activeMenuItem!)}>
+        <button
+          class="operate-item"
+          onclick={() => openChmodModal(activeMenuItem!)}
+        >
           <i class="ri-folder-lock-fill op-icon icon-amber"></i>
           <span>Permission</span>
         </button>
@@ -1237,31 +1922,46 @@
       <div class="operate-divider"></div>
 
       <!-- Copy -->
-      <button class="operate-item" onclick={() => handleCopyItem(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => handleCopyItem(activeMenuItem!)}
+      >
         <i class="ri-file-copy-line op-icon"></i>
         <span>Copy</span>
       </button>
 
       <!-- Copy Path -->
-      <button class="operate-item" onclick={() => copyPathToClipboard(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => copyPathToClipboard(activeMenuItem!)}
+      >
         <i class="ri-clipboard-line op-icon"></i>
         <span>Copy Path</span>
       </button>
 
       <!-- Cut -->
-      <button class="operate-item" onclick={() => handleCutItem(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => handleCutItem(activeMenuItem!)}
+      >
         <i class="ri-scissors-line op-icon icon-cyan"></i>
         <span>Cut</span>
       </button>
 
       <!-- Rename -->
-      <button class="operate-item" onclick={() => openRenameModal(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => openRenameModal(activeMenuItem!)}
+      >
         <i class="ri-edit-box-line op-icon icon-blue"></i>
         <span>Rename</span>
       </button>
 
       <!-- Delete -->
-      <button class="operate-item item-danger" onclick={() => deleteSingleItem(activeMenuItem!)}>
+      <button
+        class="operate-item item-danger"
+        onclick={() => deleteSingleItem(activeMenuItem!)}
+      >
         <i class="ri-delete-bin-line op-icon"></i>
         <span>Delete</span>
       </button>
@@ -1269,13 +1969,19 @@
       <div class="operate-divider"></div>
 
       <!-- Compress -->
-      <button class="operate-item" onclick={() => openCompress(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => openCompress(activeMenuItem!)}
+      >
         <i class="ri-file-zip-fill op-icon icon-cyan"></i>
         <span>Compress</span>
       </button>
 
       <!-- Properties -->
-      <button class="operate-item" onclick={() => openProperties(activeMenuItem!)}>
+      <button
+        class="operate-item"
+        onclick={() => openProperties(activeMenuItem!)}
+      >
         <i class="ri-information-line op-icon icon-blue"></i>
         <span>Properties</span>
       </button>
@@ -1283,7 +1989,12 @@
   {/if}
 
   <!-- ═════════ MODAL: Remote Download ═════════ -->
-  <Modal open={showRemoteModal} title="Remote Download (Unduh URL)" size="md" onclose={() => (showRemoteModal = false)}>
+  <Modal
+    open={showRemoteModal}
+    title="Remote Download (Unduh URL)"
+    size="md"
+    onclose={() => (showRemoteModal = false)}
+  >
     <form id="form-remote-dl" onsubmit={handleRemoteDownload}>
       <div class="field">
         <label class="field__label" for="f-rem-url">URL Berkas</label>
@@ -1297,7 +2008,9 @@
         />
       </div>
       <div class="field">
-        <label class="field__label" for="f-rem-fname">Nama Berkas Simpan (Opsional)</label>
+        <label class="field__label" for="f-rem-fname"
+          >Nama Berkas Simpan (Opsional)</label
+        >
         <input
           id="f-rem-fname"
           class="input"
@@ -1311,18 +2024,34 @@
       </div>
     </form>
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showRemoteModal = false)}>Batal</button>
-      <button type="submit" form="form-remote-dl" class="btn btn--primary" disabled={remoteDownloading}>
-        {remoteDownloading ? 'Mengunduh...' : 'Mulai Unduh'}
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showRemoteModal = false)}>Batal</button
+      >
+      <button
+        type="submit"
+        form="form-remote-dl"
+        class="btn btn--primary"
+        disabled={remoteDownloading}
+      >
+        {remoteDownloading ? "Mengunduh..." : "Mulai Unduh"}
       </button>
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Soft Link (Symlink) ═════════ -->
-  <Modal open={showSymlinkModal} title="Buat Soft Link (Symbolic Link)" size="md" onclose={() => (showSymlinkModal = false)}>
+  <Modal
+    open={showSymlinkModal}
+    title="Buat Soft Link (Symbolic Link)"
+    size="md"
+    onclose={() => (showSymlinkModal = false)}
+  >
     <form id="form-symlink" onsubmit={handleCreateSymlink}>
       <div class="field">
-        <label class="field__label" for="f-sym-tgt">Path Target (Asal Berkas/Folder)</label>
+        <label class="field__label" for="f-sym-tgt"
+          >Path Target (Asal Berkas/Folder)</label
+        >
         <input
           id="f-sym-tgt"
           class="input"
@@ -1348,15 +2077,29 @@
       </div>
     </form>
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showSymlinkModal = false)}>Batal</button>
-      <button type="submit" form="form-symlink" class="btn btn--primary" disabled={creatingSymlink}>
-        {creatingSymlink ? 'Membuat...' : 'Buat Tautan'}
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showSymlinkModal = false)}>Batal</button
+      >
+      <button
+        type="submit"
+        form="form-symlink"
+        class="btn btn--primary"
+        disabled={creatingSymlink}
+      >
+        {creatingSymlink ? "Membuat..." : "Buat Tautan"}
       </button>
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Search File Content ═════════ -->
-  <Modal open={showSearchContentModal} title="Search File Content (Cari Isi Berkas)" size="lg" onclose={() => (showSearchContentModal = false)}>
+  <Modal
+    open={showSearchContentModal}
+    title="Search File Content (Cari Isi Berkas)"
+    size="lg"
+    onclose={() => (showSearchContentModal = false)}
+  >
     <form onsubmit={handleSearchContent} class="search-content-form">
       <div class="search-content-input-wrap">
         <input
@@ -1366,8 +2109,12 @@
           bind:value={contentSearchQuery}
           required
         />
-        <button type="submit" class="btn btn--primary" disabled={searchingContent}>
-          {searchingContent ? 'Mencari...' : 'Cari'}
+        <button
+          type="submit"
+          class="btn btn--primary"
+          disabled={searchingContent}
+        >
+          {searchingContent ? "Mencari..." : "Cari"}
         </button>
       </div>
     </form>
@@ -1375,7 +2122,9 @@
       {#if searchingContent}
         <div class="search-loading">Memindai berkas di {currentPath}...</div>
       {:else if contentSearchResults.length === 0}
-        <div class="search-empty">Tidak ada hasil cocok atau belum dilakukan pencarian.</div>
+        <div class="search-empty">
+          Tidak ada hasil cocok atau belum dilakukan pencarian.
+        </div>
       {:else}
         <div class="results-list">
           {#each contentSearchResults as res}
@@ -1391,15 +2140,26 @@
       {/if}
     </div>
     {#snippet footer()}
-      <button class="btn btn--primary" onclick={() => (showSearchContentModal = false)}>Tutup</button>
+      <button
+        class="btn btn--primary"
+        onclick={() => (showSearchContentModal = false)}>Tutup</button
+      >
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Manajemen Favorit ═════════ -->
-  <Modal open={showFavManageModal} title="Favorite Management" size="md" onclose={() => (showFavManageModal = false)}>
+  <Modal
+    open={showFavManageModal}
+    title="Favorite Management"
+    size="md"
+    onclose={() => (showFavManageModal = false)}
+  >
     <div class="fav-manager-body">
       <div class="fav-add-action">
-        <button class="btn btn--secondary w-full" onclick={addCurrentToFavorites}>
+        <button
+          class="btn btn--secondary w-full"
+          onclick={addCurrentToFavorites}
+        >
           + Tambahkan Folder Saat Ini ke Favorit
         </button>
       </div>
@@ -1408,9 +2168,15 @@
           <div class="fav-row">
             <div>
               <div class="fav-row-name font-bold">{fav.name}</div>
-              <div class="fav-row-path mono text-muted">{fav.path || 'Root'}</div>
+              <div class="fav-row-path mono text-muted">
+                {fav.path || "Root"}
+              </div>
             </div>
-            <button class="btn-icon link-danger" onclick={() => removeFavorite(idx)} title="Hapus">
+            <button
+              class="btn-icon link-danger"
+              onclick={() => removeFavorite(idx)}
+              title="Hapus"
+            >
               <i class="ri-delete-bin-line"></i>
             </button>
           </div>
@@ -1418,34 +2184,72 @@
       </div>
     </div>
     {#snippet footer()}
-      <button class="btn btn--primary" onclick={() => (showFavManageModal = false)}>Selesai</button>
+      <button
+        class="btn btn--primary"
+        onclick={() => (showFavManageModal = false)}>Selesai</button
+      >
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Cloud Storage Connector ═════════ -->
-  <Modal open={showCloudStorageModal} title={`${selectedCloud} Connector`} size="md" onclose={() => (showCloudStorageModal = false)}>
+  <Modal
+    open={showCloudStorageModal}
+    title={`${selectedCloud} Connector`}
+    size="md"
+    onclose={() => (showCloudStorageModal = false)}
+  >
     <div class="cloud-info-body">
       <i class="ri-cloud-line cloud-huge-icon"></i>
-      <p>Konektor penyimpanan awan untuk <strong>{selectedCloud}</strong> telah terintegrasi.</p>
+      <p>
+        Konektor penyimpanan awan untuk <strong>{selectedCloud}</strong> telah terintegrasi.
+      </p>
       <div class="field">
-        <label class="field__label" for="f-cloud-ep">Storage Bucket / Endpoint</label>
-        <input id="f-cloud-ep" class="input" type="text" placeholder="misal: my-backup-bucket atau ftp.domain.com" />
+        <label class="field__label" for="f-cloud-ep"
+          >Storage Bucket / Endpoint</label
+        >
+        <input
+          id="f-cloud-ep"
+          class="input"
+          type="text"
+          placeholder="misal: my-backup-bucket atau ftp.domain.com"
+        />
       </div>
       <div class="field">
-        <label class="field__label" for="f-cloud-key">Access Key / Credential</label>
-        <input id="f-cloud-key" class="input" type="password" placeholder="API Key / Password" />
+        <label class="field__label" for="f-cloud-key"
+          >Access Key / Credential</label
+        >
+        <input
+          id="f-cloud-key"
+          class="input"
+          type="password"
+          placeholder="API Key / Password"
+        />
       </div>
     </div>
     {#snippet footer()}
-      <button class="btn btn--ghost" onclick={() => (showCloudStorageModal = false)}>Batal</button>
-      <button class="btn btn--primary" onclick={() => { showCloudStorageModal = false; onNotify(`Konfigurasi ${selectedCloud} tersimpan`); }}>
+      <button
+        class="btn btn--ghost"
+        onclick={() => (showCloudStorageModal = false)}>Batal</button
+      >
+      <button
+        class="btn btn--primary"
+        onclick={() => {
+          showCloudStorageModal = false;
+          onNotify(`Konfigurasi ${selectedCloud} tersimpan`);
+        }}
+      >
         Hubungkan Sekarang
       </button>
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Properties (Detail Metadata Berkas) ═════════ -->
-  <Modal open={showPropertiesModal && !!propTarget} title={`Properties: ${propTarget?.name || ''}`} size="md" onclose={() => (showPropertiesModal = false)}>
+  <Modal
+    open={showPropertiesModal && !!propTarget}
+    title={`Properties: ${propTarget?.name || ""}`}
+    size="md"
+    onclose={() => (showPropertiesModal = false)}
+  >
     {#if propTarget}
       <div class="prop-table">
         <div class="prop-row">
@@ -1458,11 +2262,17 @@
         </div>
         <div class="prop-row">
           <span class="prop-label">Type:</span>
-          <span class="prop-val">{propTarget.is_dir ? 'Directory (Folder)' : `File (${propTarget.ext || 'Plain'})`}</span>
+          <span class="prop-val"
+            >{propTarget.is_dir
+              ? "Directory (Folder)"
+              : `File (${propTarget.ext || "Plain"})`}</span
+          >
         </div>
         <div class="prop-row">
           <span class="prop-label">Size:</span>
-          <span class="prop-val mono">{formatBytes(propTarget.size)} ({propTarget.size} bytes)</span>
+          <span class="prop-val mono"
+            >{formatBytes(propTarget.size)} ({propTarget.size} bytes)</span
+          >
         </div>
         <div class="prop-row">
           <span class="prop-label">PMSN / Permissions:</span>
@@ -1479,21 +2289,41 @@
       </div>
     {/if}
     {#snippet footer()}
-      <button class="btn btn--primary" onclick={() => (showPropertiesModal = false)}>Tutup</button>
+      <button
+        class="btn btn--primary"
+        onclick={() => (showPropertiesModal = false)}>Tutup</button
+      >
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Kompresi Arsip Zip ═════════ -->
-  <Modal open={showCompressModal && !!compressTarget} title="Kompresi Berkas ke Zip" size="md" onclose={() => (showCompressModal = false)}>
+  <Modal
+    open={showCompressModal && !!compressTarget}
+    title="Kompresi Berkas ke Zip"
+    size="md"
+    onclose={() => (showCompressModal = false)}
+  >
     {#if compressTarget}
       <form id="form-compress" onsubmit={handleExecuteCompress}>
         <div class="field">
           <label class="field__label" for="f-zip-src">Item Sumber</label>
-          <input id="f-zip-src" class="input" type="text" value={compressTarget.name} disabled />
+          <input
+            id="f-zip-src"
+            class="input"
+            type="text"
+            value={compressTarget.name}
+            disabled
+          />
         </div>
         <div class="field">
           <label class="field__label" for="f-zip-name">Nama Arsip Zip</label>
-          <input id="f-zip-name" class="input" type="text" bind:value={compressZipName} required />
+          <input
+            id="f-zip-name"
+            class="input"
+            type="text"
+            bind:value={compressZipName}
+            required
+          />
         </div>
         <div class="field-meta">
           Lokasi output: <span class="mono">{currentPath}</span>
@@ -1501,15 +2331,29 @@
       </form>
     {/if}
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showCompressModal = false)}>Batal</button>
-      <button type="submit" form="form-compress" class="btn btn--primary" disabled={compressing}>
-        {compressing ? 'Mengompresi...' : 'Mulai Kompresi'}
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showCompressModal = false)}>Batal</button
+      >
+      <button
+        type="submit"
+        form="form-compress"
+        class="btn btn--primary"
+        disabled={compressing}
+      >
+        {compressing ? "Mengompresi..." : "Mulai Kompresi"}
       </button>
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Buat File / Folder Baru ═════════ -->
-  <Modal open={showNewModal} title={`Buat ${newType === 'dir' ? 'Folder' : 'Berkas'} Baru`} size="md" onclose={() => (showNewModal = false)}>
+  <Modal
+    open={showNewModal}
+    title={`Buat ${newType === "dir" ? "Folder" : "Berkas"} Baru`}
+    size="md"
+    onclose={() => (showNewModal = false)}
+  >
     <form id="form-create-new" onsubmit={handleCreateNew}>
       <div class="field">
         <label class="field__label" for="f-new-type">Tipe Item</label>
@@ -1517,26 +2361,30 @@
           <button
             type="button"
             class="seg-btn {newType === 'file' ? 'active' : ''}"
-            onclick={() => (newType = 'file')}
+            onclick={() => (newType = "file")}
           >
             <i class="ri-file-line"></i> Berkas (File)
           </button>
           <button
             type="button"
             class="seg-btn {newType === 'dir' ? 'active' : ''}"
-            onclick={() => (newType = 'dir')}
+            onclick={() => (newType = "dir")}
           >
             <i class="ri-folder-line"></i> Direktori (Folder)
           </button>
         </div>
       </div>
       <div class="field">
-        <label class="field__label" for="f-new-name">Nama {newType === 'dir' ? 'Folder' : 'Berkas'}</label>
+        <label class="field__label" for="f-new-name"
+          >Nama {newType === "dir" ? "Folder" : "Berkas"}</label
+        >
         <input
           id="f-new-name"
           class="input"
           type="text"
-          placeholder={newType === 'dir' ? 'contoh: config atau assets' : 'contoh: index.html atau .env'}
+          placeholder={newType === "dir"
+            ? "contoh: config atau assets"
+            : "contoh: index.html atau .env"}
           bind:value={newName}
           required
         />
@@ -1546,54 +2394,110 @@
       </div>
     </form>
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showNewModal = false)}>Batal</button>
-      <button type="submit" form="form-create-new" class="btn btn--primary">Buat Sekarang</button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showNewModal = false)}>Batal</button
+      >
+      <button type="submit" form="form-create-new" class="btn btn--primary"
+        >Buat Sekarang</button
+      >
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Ganti Nama (Rename) ═════════ -->
-  <Modal open={showRenameModal && !!renameTarget} title="Ganti Nama (Rename)" size="md" onclose={() => (showRenameModal = false)}>
+  <Modal
+    open={showRenameModal && !!renameTarget}
+    title="Ganti Nama (Rename)"
+    size="md"
+    onclose={() => (showRenameModal = false)}
+  >
     {#if renameTarget}
       <form id="form-rename" onsubmit={handleRename}>
         <div class="field">
           <label class="field__label" for="f-old-name">Nama Saat Ini</label>
-          <input id="f-old-name" class="input" type="text" value={renameTarget.name} disabled />
+          <input
+            id="f-old-name"
+            class="input"
+            type="text"
+            value={renameTarget.name}
+            disabled
+          />
         </div>
         <div class="field">
           <label class="field__label" for="f-new-rname">Nama Baru</label>
-          <input id="f-new-rname" class="input" type="text" bind:value={renameNewName} required />
+          <input
+            id="f-new-rname"
+            class="input"
+            type="text"
+            bind:value={renameNewName}
+            required
+          />
         </div>
       </form>
     {/if}
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showRenameModal = false)}>Batal</button>
-      <button type="submit" form="form-rename" class="btn btn--primary">Simpan Nama Baru</button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showRenameModal = false)}>Batal</button
+      >
+      <button type="submit" form="form-rename" class="btn btn--primary"
+        >Simpan Nama Baru</button
+      >
     {/snippet}
   </Modal>
 
   <!-- ═════════ MODAL: Hak Akses / PMSN (chmod) ═════════ -->
-  <Modal open={showChmodModal && !!chmodTarget} title="Atur Perizinan (Permission / chmod)" size="md" onclose={() => (showChmodModal = false)}>
+  <Modal
+    open={showChmodModal && !!chmodTarget}
+    title="Atur Perizinan (Permission / chmod)"
+    size="md"
+    onclose={() => (showChmodModal = false)}
+  >
     {#if chmodTarget}
       <div class="pmsn-body">
         <p class="target-name mono">{chmodTarget.name}</p>
         <div class="chmod-matrix">
           <div class="matrix-col">
             <h4>Owner</h4>
-            <label><input type="checkbox" bind:checked={chmodPerms.ownerR} /> Read (4)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.ownerW} /> Write (2)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.ownerX} /> Execute (1)</label>
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.ownerR} /> Read (4)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.ownerW} /> Write (2)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.ownerX} /> Execute
+              (1)</label
+            >
           </div>
           <div class="matrix-col">
             <h4>Group</h4>
-            <label><input type="checkbox" bind:checked={chmodPerms.groupR} /> Read (4)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.groupW} /> Write (2)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.groupX} /> Execute (1)</label>
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.groupR} /> Read (4)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.groupW} /> Write (2)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.groupX} /> Execute
+              (1)</label
+            >
           </div>
           <div class="matrix-col">
             <h4>Public</h4>
-            <label><input type="checkbox" bind:checked={chmodPerms.publicR} /> Read (4)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.publicW} /> Write (2)</label>
-            <label><input type="checkbox" bind:checked={chmodPerms.publicX} /> Execute (1)</label>
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.publicR} /> Read (4)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.publicW} /> Write
+              (2)</label
+            >
+            <label
+              ><input type="checkbox" bind:checked={chmodPerms.publicX} /> Execute
+              (1)</label
+            >
           </div>
         </div>
 
@@ -1604,8 +2508,14 @@
       </div>
     {/if}
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showChmodModal = false)}>Batal</button>
-      <button type="button" class="btn btn--primary" onclick={handleSaveChmod}>Terapkan Izin</button>
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showChmodModal = false)}>Batal</button
+      >
+      <button type="button" class="btn btn--primary" onclick={handleSaveChmod}
+        >Terapkan Izin</button
+      >
     {/snippet}
   </Modal>
 
@@ -1616,8 +2526,12 @@
       class="modal-backdrop editor-backdrop"
       role="dialog"
       aria-modal="true"
-      onclick={(e) => { if (e.target === e.currentTarget) closeEditorModal(); }}
-      onkeydown={(e) => { if (e.key === 'Escape') closeEditorModal(); }}
+      onclick={(e) => {
+        if (e.target === e.currentTarget) closeEditorModal();
+      }}
+      onkeydown={(e) => {
+        if (e.key === "Escape") closeEditorModal();
+      }}
       tabindex="-1"
     >
       <div class="studio-window {editorIsFullscreen ? 'is-fullscreen' : ''}">
@@ -1625,10 +2539,15 @@
         <div class="studio-titlebar">
           <div class="studio-tab-bar">
             <div class="studio-tab active">
-              <i class="{editorLangInfo.icon} tab-icon" style="color: {editorLangInfo.color};"></i>
+              <i
+                class="{editorLangInfo.icon} tab-icon"
+                style="color: {editorLangInfo.color};"
+              ></i>
               <span class="tab-title">{editorTarget.name}</span>
               {#if editorIsDirty}
-                <span class="dirty-dot" title="Ada perubahan belum disimpan">●</span>
+                <span class="dirty-dot" title="Ada perubahan belum disimpan"
+                  >●</span
+                >
               {/if}
             </div>
             <div class="studio-path-crumbs mono" title={editorTarget.path}>
@@ -1641,9 +2560,13 @@
             <button
               class="win-ctrl-btn"
               onclick={() => (editorIsFullscreen = !editorIsFullscreen)}
-              title={editorIsFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh'}
+              title={editorIsFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
             >
-              <i class="{editorIsFullscreen ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'}"></i>
+              <i
+                class={editorIsFullscreen
+                  ? "ri-fullscreen-exit-line"
+                  : "ri-fullscreen-line"}
+              ></i>
             </button>
             <button
               class="win-ctrl-btn btn-win-close"
@@ -1659,7 +2582,9 @@
         <div class="studio-toolbar">
           <div class="tb-left">
             <button
-              class="studio-btn studio-btn-save {editorIsDirty ? 'glow-green' : ''}"
+              class="studio-btn studio-btn-save {editorIsDirty
+                ? 'glow-green'
+                : ''}"
               onclick={handleSaveEditor}
               disabled={editorSaving}
               title="Simpan berkas (Ctrl+S)"
@@ -1708,15 +2633,17 @@
               <span class="tool-label">Font:</span>
               <button
                 class="font-step-btn"
-                onclick={() => editorFontSize = Math.max(11, editorFontSize - 1)}
-                title="Perkecil Font"
-              >A-</button>
+                onclick={() =>
+                  (editorFontSize = Math.max(11, editorFontSize - 1))}
+                title="Perkecil Font">A-</button
+              >
               <span class="font-size-val mono">{editorFontSize}px</span>
               <button
                 class="font-step-btn"
-                onclick={() => editorFontSize = Math.min(22, editorFontSize + 1)}
-                title="Perbesar Font"
-              >A+</button>
+                onclick={() =>
+                  (editorFontSize = Math.min(22, editorFontSize + 1))}
+                title="Perbesar Font">A+</button
+              >
             </div>
 
             <!-- Toggle Word Wrap -->
@@ -1742,22 +2669,33 @@
                   placeholder="Cari kata kunci..."
                   bind:value={editorSearchQuery}
                   onkeydown={(e) => {
-                    if (e.key === 'Enter') searchInEditor(e.shiftKey ? 'prev' : 'next');
-                    if (e.key === 'Escape') editorShowSearch = false;
+                    if (e.key === "Enter")
+                      searchInEditor(e.shiftKey ? "prev" : "next");
+                    if (e.key === "Escape") editorShowSearch = false;
                   }}
                 />
                 {#if editorSearchMatches.length > 0}
-                  <span class="match-count mono">{editorSearchMatchIndex + 1} dari {editorSearchMatches.length}</span>
+                  <span class="match-count mono"
+                    >{editorSearchMatchIndex + 1} dari {editorSearchMatches.length}</span
+                  >
                 {:else if editorSearchQuery}
                   <span class="match-count mono text-muted">0 hasil</span>
                 {/if}
               </div>
 
               <div class="search-nav-btns">
-                <button class="search-action-btn" onclick={() => searchInEditor('prev')} title="Sebelumnya (Shift+Enter)">
+                <button
+                  class="search-action-btn"
+                  onclick={() => searchInEditor("prev")}
+                  title="Sebelumnya (Shift+Enter)"
+                >
                   <i class="ri-arrow-up-s-line"></i>
                 </button>
-                <button class="search-action-btn" onclick={() => searchInEditor('next')} title="Berikutnya (Enter)">
+                <button
+                  class="search-action-btn"
+                  onclick={() => searchInEditor("next")}
+                  title="Berikutnya (Enter)"
+                >
                   <i class="ri-arrow-down-s-line"></i>
                 </button>
               </div>
@@ -1769,20 +2707,32 @@
                   placeholder="Ganti dengan..."
                   bind:value={editorReplaceQuery}
                   onkeydown={(e) => {
-                    if (e.key === 'Enter') replaceInEditor();
-                    if (e.key === 'Escape') editorShowSearch = false;
+                    if (e.key === "Enter") replaceInEditor();
+                    if (e.key === "Escape") editorShowSearch = false;
                   }}
                 />
               </div>
 
-              <button class="search-action-btn replace-btn" onclick={replaceInEditor} title="Ganti yang dipilih">
+              <button
+                class="search-action-btn replace-btn"
+                onclick={replaceInEditor}
+                title="Ganti yang dipilih"
+              >
                 <span>Ganti</span>
               </button>
-              <button class="search-action-btn replace-btn" onclick={replaceAllInEditor} title="Ganti semua kemunculan">
+              <button
+                class="search-action-btn replace-btn"
+                onclick={replaceAllInEditor}
+                title="Ganti semua kemunculan"
+              >
                 <span>Ganti Semua</span>
               </button>
 
-              <button class="search-close-btn" onclick={() => (editorShowSearch = false)} title="Tutup Pencarian">
+              <button
+                class="search-close-btn"
+                onclick={() => (editorShowSearch = false)}
+                title="Tutup Pencarian"
+              >
                 <i class="ri-close-line"></i>
               </button>
             </div>
@@ -1793,7 +2743,13 @@
         <div class="studio-body">
           <div class="studio-gutter mono" bind:this={editorGutterEl}>
             {#each editorLines as lineNum}
-              <div class="gutter-line {editorCursorPos.line === lineNum ? 'active-line' : ''}">{lineNum}</div>
+              <div
+                class="gutter-line {editorCursorPos.line === lineNum
+                  ? 'active-line'
+                  : ''}"
+              >
+                {lineNum}
+              </div>
             {/each}
           </div>
 
@@ -1802,14 +2758,15 @@
               class="studio-textarea mono"
               bind:this={editorTextareaEl}
               bind:value={editorContent}
-              style="font-size: {editorFontSize}px; white-space: {editorWordWrap ? 'pre-wrap' : 'pre'};"
+              style="font-size: {editorFontSize}px; white-space: {editorWordWrap
+                ? 'pre-wrap'
+                : 'pre'};"
               spellcheck="false"
               onscroll={handleEditorScroll}
               onkeydown={handleEditorKeydown}
               onclick={updateEditorCursor}
               onkeyup={updateEditorCursor}
-              onselect={updateEditorCursor}
-            ></textarea>
+              onselect={updateEditorCursor}></textarea>
           </div>
         </div>
 
@@ -1827,7 +2784,9 @@
           </div>
 
           <div class="sb-right">
-            <span class="sb-item cursor-pos">Ln {editorCursorPos.line}, Col {editorCursorPos.col}</span>
+            <span class="sb-item cursor-pos"
+              >Ln {editorCursorPos.line}, Col {editorCursorPos.col}</span
+            >
             <span class="sb-divider">|</span>
             <span class="sb-item">LF</span>
             <span class="sb-divider">|</span>
@@ -1835,8 +2794,11 @@
             <span class="sb-divider">|</span>
             <span class="sb-item">UTF-8</span>
             <span class="sb-divider">|</span>
-            <span class="sb-item lang-tag" style="color: {editorLangInfo.color};">
-              <i class="{editorLangInfo.icon}"></i>
+            <span
+              class="sb-item lang-tag"
+              style="color: {editorLangInfo.color};"
+            >
+              <i class={editorLangInfo.icon}></i>
               <span>{editorLangInfo.label}</span>
             </span>
             <span class="sb-divider">|</span>
@@ -1863,11 +2825,22 @@
   {/if}
 
   <!-- ═════════ MODAL: Upload Berkas ═════════ -->
-  <Modal open={showUploadModal} title="Upload Berkas ke Server" size="md" onclose={() => (showUploadModal = false)}>
+  <Modal
+    open={showUploadModal}
+    title="Upload Berkas ke Server"
+    size="md"
+    onclose={() => (showUploadModal = false)}
+  >
     <form id="form-upload-files" onsubmit={handleUploadSubmit}>
       <div class="field">
         <label class="field__label" for="f-upload-dest">Direktori Tujuan</label>
-        <input id="f-upload-dest" class="input" type="text" value={currentPath} disabled />
+        <input
+          id="f-upload-dest"
+          class="input"
+          type="text"
+          value={currentPath}
+          disabled
+        />
       </div>
       <div class="field">
         <label class="field__label" for="f-upload-input">Pilih Berkas</label>
@@ -1882,9 +2855,18 @@
       </div>
     </form>
     {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showUploadModal = false)}>Batal</button>
-      <button type="submit" form="form-upload-files" class="btn btn--primary" disabled={uploadSubmitting}>
-        {uploadSubmitting ? 'Mengunggah...' : 'Mulai Upload'}
+      <button
+        type="button"
+        class="btn btn--ghost"
+        onclick={() => (showUploadModal = false)}>Batal</button
+      >
+      <button
+        type="submit"
+        form="form-upload-files"
+        class="btn btn--primary"
+        disabled={uploadSubmitting}
+      >
+        {uploadSubmitting ? "Mengunggah..." : "Mulai Upload"}
       </button>
     {/snippet}
   </Modal>

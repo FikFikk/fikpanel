@@ -1,0 +1,96 @@
+@layer pages {
+  .pg-files-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+    gap: 0.5rem;
+
+    .foot-left {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+
+      strong {
+        color: var(--text);
+      }
+    }
+
+    .foot-right {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .btn-page {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+
+      &:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+    }
+
+    .page-num {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      font-weight: 600;
+      padding: 0.15rem 0.55rem;
+      border-radius: 4px;
+    }
+
+    .select-pagesize {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.72rem;
+    }
+
+    .goto-box {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+
+      input {
+        width: 44px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        padding: 0.1rem 0.3rem;
+        font-size: 0.72rem;
+        text-align: center;
+      }
+    }
+
+    .total-badge {
+      background: var(--bg-active);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+    }
+  }
+}
+
