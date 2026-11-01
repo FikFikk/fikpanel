@@ -1,16 +1,21 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   ENTRY STYLESHEET — urutan impor PENTING (token → reset → primitif → utilitas).
+   ENTRY STYLESHEET — urutan layer & impor PENTING (vendor → tokens → base → layout → components → utilities → pages).
    Font & ikon di-host sendiri (bukan CDN) agar lolos Content-Security-Policy
    'self' dan tidak membocorkan IP admin panel ke pihak ketiga.
    ════════════════════════════════════════════════════════════════════════════ */
 
-@import '@fontsource-variable/plus-jakarta-sans/index.css';
-@import '@fontsource/fira-code/400.css';
-@import '@fontsource/fira-code/500.css';
-@import '@fontsource/fira-code/600.css';
-@import 'remixicon/fonts/remixicon.css';
+@layer vendor, tokens, base, layout, components, utilities, pages;
 
-@import './tokens.css';
-@import './base.css';
-@import './components.css';
-@import './utilities.css';
+@import '@fontsource-variable/plus-jakarta-sans/index.css' layer(vendor);
+@import '@fontsource/fira-code/400.css' layer(vendor);
+@import '@fontsource/fira-code/500.css' layer(vendor);
+@import '@fontsource/fira-code/600.css' layer(vendor);
+@import 'remixicon/fonts/remixicon.css' layer(vendor);
+@import 'leaflet/dist/leaflet.css' layer(vendor);
+@import 'uplot/dist/uPlot.min.css' layer(vendor);
+
+@import './tokens.css' layer(tokens);
+@import './base.css' layer(base);
+@import './layout.css' layer(layout);
+@import './components.css' layer(components);
+@import './utilities.css' layer(utilities);

@@ -8,6 +8,7 @@
   import Login from './lib/layout/Login.svelte';
   import Sidebar from './lib/layout/Sidebar.svelte';
   import Topbar from './lib/layout/Topbar.svelte';
+  import CommandPalette from './lib/layout/CommandPalette.svelte';
   import ToastHost from './lib/components/ui/ToastHost.svelte';
   import ConfirmHost from './lib/components/ui/ConfirmHost.svelte';
   import Home from './routes/Home.svelte';
@@ -20,13 +21,13 @@
     docker: () => import('./routes/Docker.svelte'),
     k8s: () => import('./routes/Kubernetes.svelte'),
     cron: () => import('./routes/Cron.svelte'),
-  backup: () => import('./routes/Backup.svelte'),
-  node: () => import('./routes/NodeManager.svelte'),
-  appstore: () => import('./routes/AppStore.svelte'),
-  dns: () => import('./routes/DNSManager.svelte'),
-  php: () => import('./routes/PHPManager.svelte'),
-  system: () => import('./routes/SystemManager.svelte'),
-  services: () => import('./routes/Services.svelte'),
+    backup: () => import('./routes/Backup.svelte'),
+    node: () => import('./routes/NodeManager.svelte'),
+    appstore: () => import('./routes/AppStore.svelte'),
+    dns: () => import('./routes/DNSManager.svelte'),
+    php: () => import('./routes/PHPManager.svelte'),
+    system: () => import('./routes/SystemManager.svelte'),
+    services: () => import('./routes/Services.svelte'),
     terminal: () => import('./routes/Terminal.svelte'),
     monitor: () => import('./routes/Monitor.svelte'),
     files: () => import('./routes/Files.svelte'),
@@ -51,9 +52,10 @@
   let authenticated = $state(false);
   let currentUser = $state('');
 
-  // State navigasi
+  // State navigasi & command palette
   let currentRoute = $state(routeFromHash(window.location.hash));
   let menuOpen = $state(false);
+  let paletteOpen = $state(false);
   let routeAttempt = $state(0);
 
   // State data global
@@ -130,6 +132,7 @@
     eventSource?.close();
     eventSource = null;
     authenticated = false;
+    paletteOpen = false;
     overview = null;
     services = [];
     history = [];
@@ -181,7 +184,14 @@
   }
 
   function onWindowKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && menuOpen) menuOpen = false;
+    if (authenticated && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      paletteOpen = !paletteOpen;
+      return;
+    }
+    if (e.key === 'Escape' && menuOpen) {
+      menuOpen = false;
+    }
   }
 
   onMount(() => {
@@ -207,7 +217,7 @@
 <svelte:window onkeydown={onWindowKey} />
 
 {#if checking}
-  <div class="boot" role="status" aria-live="polite">
+  <div class="app-shell__boot" role="status" aria-live="polite">
     <span class="spinner" aria-hidden="true"></span>
     <span class="sr-only">Memeriksa sesi…</span>
   </div>
@@ -215,33 +225,36 @@
   <Login onSuccess={(u) => { enterPanel(u); notify(`Selamat datang, ${u}`, 'success'); }} />
 {:else}
   <a href="#main-content" class="skip-link">Lewati ke konten</a>
-  <div class="shell">
+  <div class="app-shell">
     <Sidebar
       current={currentRoute}
       open={menuOpen}
       version={overview?.system?.version}
       onNavigate={() => (menuOpen = false)}
       onLogout={handleLogout}
+      onOpenPalette={() => (paletteOpen = true)}
     />
     {#if menuOpen}
-      <div class="shell__scrim" role="presentation" onclick={() => (menuOpen = false)}></div>
+      <div class="app-shell__scrim" role="presentation" onclick={() => (menuOpen = false)}></div>
     {/if}
 
-    <div class="shell__main">
+    <div class="app-shell__main">
       <Topbar
         {overview}
         user={currentUser}
         {menuOpen}
         onToggleMenu={() => (menuOpen = !menuOpen)}
+        onOpenPalette={() => (paletteOpen = true)}
+        onLogout={handleLogout}
       />
 
-      <main class="shell__content" id="main-content" tabindex="-1">
+      <main class="app-shell__content" id="main-content" tabindex="-1">
         {#key `${currentRoute}:${routeAttempt}`}
           {#await loadRoute(currentRoute)}
-            <div class="route-loading" role="status">
-              <div class="skeleton" style="height: 28px; width: 220px"></div>
-              <div class="skeleton" style="height: 140px"></div>
-              <div class="skeleton" style="height: 320px"></div>
+            <div class="app-shell__loading" role="status">
+              <div class="skeleton app-shell__sk-title"></div>
+              <div class="skeleton app-shell__sk-card"></div>
+              <div class="skeleton app-shell__sk-panel"></div>
               <span class="sr-only">Memuat halaman…</span>
             </div>
           {:then Page}
@@ -259,56 +272,15 @@
         {/key}
       </main>
     </div>
+
+    <CommandPalette
+      open={paletteOpen}
+      current={currentRoute}
+      onClose={() => (paletteOpen = false)}
+      onSelect={() => (menuOpen = false)}
+    />
   </div>
 {/if}
 
 <ToastHost />
 <ConfirmHost />
-
-<style>
-  .boot {
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    color: var(--accent);
-    font-size: 1.5rem;
-  }
-  .shell {
-    min-height: 100vh;
-  }
-  .shell__main {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    margin-left: var(--sidebar-width);
-  }
-  .shell__content {
-    flex: 1;
-    width: 100%;
-    max-width: var(--content-max);
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-6);
-  }
-  .shell__content:focus {
-    outline: none;
-  }
-  .shell__scrim {
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--z-sidebar) - 1);
-    background: var(--bg-overlay);
-    animation: fp-fade var(--duration-base) ease-out;
-  }
-  .route-loading {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  @media (max-width: 1024px) and (min-width: 769px) {
-    .shell__main { margin-left: var(--sidebar-collapsed); }
-  }
-  @media (max-width: 768px) {
-    .shell__main { margin-left: 0; }
-    .shell__content { padding: var(--space-4) var(--space-3); }
-  }
-</style>

@@ -71,7 +71,7 @@
 
       <div class="field">
         <label class="field__label" for="login-pass">Kata sandi</label>
-        <div class="pw">
+        <div class="login__pw">
           <input
             class="input"
             id="login-pass"
@@ -84,7 +84,7 @@
           />
           <button
             type="button"
-            class="btn btn--ghost btn--icon btn--sm pw__toggle"
+            class="btn btn--ghost btn--icon btn--sm login__pw-toggle"
             onclick={() => (showPassword = !showPassword)}
             aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
             aria-pressed={showPassword}
@@ -93,7 +93,7 @@
           </button>
         </div>
         {#if capsLock}
-          <span class="field__hint caps" id="login-caps"><i class="ri-arrow-up-line" aria-hidden="true"></i> Caps Lock aktif</span>
+          <span class="field__hint login__caps" id="login-caps"><i class="ri-arrow-up-line" aria-hidden="true"></i> Caps Lock aktif</span>
         {/if}
       </div>
 
@@ -107,77 +107,3 @@
     </form>
   </section>
 </main>
-
-<style>
-  .login {
-    position: relative;
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    padding: var(--space-6);
-    overflow: hidden;
-  }
-  .login__glow {
-    position: absolute;
-    width: 520px;
-    height: 520px;
-    border-radius: 50%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 65%);
-    filter: blur(20px);
-    pointer-events: none;
-  }
-  .login__card {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    width: min(380px, 100%);
-    padding: var(--space-8);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
-    animation: fp-pop var(--duration-slow) var(--ease-spring);
-  }
-  .login__brand {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    text-align: center;
-  }
-  .login__brand h1 {
-    font-size: var(--text-xl);
-    margin-top: var(--space-1);
-  }
-  .login__brand p {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-  }
-  .pw {
-    position: relative;
-  }
-  .pw .input {
-    padding-right: calc(var(--control-sm) + var(--space-3));
-  }
-  .pw__toggle {
-    position: absolute;
-    top: 50%;
-    right: var(--space-1);
-    transform: translateY(-50%);
-  }
-  .caps {
-    color: var(--warning-strong);
-  }
-  .login__hint {
-    text-align: center;
-    font-size: var(--text-xs);
-    color: var(--text-subtle);
-  }
-  .login__hint code {
-    padding: 0 var(--space-1);
-    border-radius: 4px;
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-</style>

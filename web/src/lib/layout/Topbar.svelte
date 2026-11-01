@@ -3,15 +3,18 @@
   import type { OverviewData } from '../types';
   import { copyText } from '../utils/browser';
   import { notify } from '../stores/toast.svelte';
+  import { cycleTheme, themeState } from '../stores/theme.svelte';
 
   interface Props {
     overview: OverviewData | null;
     user?: string;
     menuOpen: boolean;
     onToggleMenu: () => void;
+    onOpenPalette?: () => void;
+    onLogout?: () => void;
   }
 
-  let { overview, user = 'root', menuOpen, onToggleMenu }: Props = $props();
+  let { overview, user = 'root', menuOpen, onToggleMenu, onOpenPalette, onLogout }: Props = $props();
 
   // Preferensi sembunyikan IP disimpan agar aman saat screenshot/berbagi layar
   let maskIP = $state(localStorage.getItem('fp:mask-ip') === '1');
@@ -63,18 +66,57 @@
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
+  // Status dropdown menu pengguna
+  let userMenuOpen = $state(false);
+  let userWrapEl = $state<HTMLDivElement | null>(null);
+
+  let themeIcon = $derived(
+    themeState.mode === 'light'
+      ? 'ri-sun-line'
+      : themeState.mode === 'auto'
+        ? 'ri-contrast-2-line'
+        : 'ri-moon-line'
+  );
+
+  let themeLabel = $derived(
+    themeState.mode === 'light'
+      ? 'Tema: Terang (klik untuk Otomatis)'
+      : themeState.mode === 'auto'
+        ? 'Tema: Otomatis (klik untuk Gelap)'
+        : 'Tema: Gelap (klik untuk Terang)'
+  );
+
   onMount(() => {
     const timer = setInterval(() => {
       clientNow = new Date();
     }, 1000);
-    return () => clearInterval(timer);
+
+    const onDocClick = (e: MouseEvent) => {
+      if (userMenuOpen && userWrapEl && !userWrapEl.contains(e.target as Node)) {
+        userMenuOpen = false;
+      }
+    };
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && userMenuOpen) {
+        userMenuOpen = false;
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onDocKey);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onDocKey);
+    };
   });
 </script>
 
 <header class="topbar">
   <!-- Sisi Kiri: Menu Mobile, IP Host, & OS -->
-  <div class="row">
+  <div class="topbar__left">
     <button
+      type="button"
       class="btn btn--ghost btn--icon topbar__menu"
       onclick={onToggleMenu}
       aria-label={menuOpen ? 'Tutup menu' : 'Buka menu'}
@@ -84,14 +126,15 @@
       <i class={menuOpen ? 'ri-close-line' : 'ri-menu-line'} aria-hidden="true"></i>
     </button>
 
-    <div class="ip">
-      <button class="ip__value" onclick={copyIP} title="Salin alamat IP server">
+    <div class="topbar__ip">
+      <button type="button" class="topbar__ip-value" onclick={copyIP} title="Salin alamat IP server">
         <span class="dot dot--success" aria-hidden="true"></span>
         <span class="mono tabular">{maskIP ? '•••.•••.•••.•••' : ip}</span>
         <i class="ri-file-copy-line" aria-hidden="true"></i>
       </button>
       <button
-        class="ip__mask"
+        type="button"
+        class="topbar__ip-mask"
         onclick={() => (maskIP = !maskIP)}
         aria-label={maskIP ? 'Tampilkan IP' : 'Sembunyikan IP'}
         aria-pressed={maskIP}
@@ -107,182 +150,89 @@
     </span>
   </div>
 
-  <!-- Sisi Kanan: Live Global Clock Pill & Info Akun Admin -->
-  <div class="row right-row">
+  <!-- Sisi Kanan: Command Palette, Live Global Clock Pill, Tema, & Menu Akun Admin -->
+  <div class="topbar__right">
+    {#if onOpenPalette}
+      <button
+        type="button"
+        class="topbar__palette-btn"
+        onclick={onOpenPalette}
+        aria-label="Buka pencarian cepat (Ctrl+K)"
+        title="Pencarian cepat (Ctrl+K)"
+      >
+        <i class="ri-search-line" aria-hidden="true"></i>
+        <span class="topbar__palette-label">Cari…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+    {/if}
+
     <!-- Live Global Server & Client Clock -->
-    <div class="time-pill" title="Jam Server host (UTC) dan jam lokal Anda yang selalu tersinkronisasi">
-      <div class="time-item">
-        <i class="ri-server-line time-icon"></i>
-        <span class="time-label">Server:</span>
-        <span class="mono tabular time-val">{formatDate(serverNow)}, {formatTime(serverNow)}</span>
-        <span class="tz-badge">{serverTzName}</span>
+    <div class="topbar__time-pill" title="Jam Server host (UTC) dan jam lokal Anda yang selalu tersinkronisasi">
+      <div class="topbar__time-item">
+        <i class="ri-server-line topbar__time-icon" aria-hidden="true"></i>
+        <span class="topbar__time-label">Server:</span>
+        <span class="mono tabular topbar__time-val">{formatDate(serverNow)}, {formatTime(serverNow)}</span>
+        <span class="topbar__tz-badge">{serverTzName}</span>
       </div>
 
-      <span class="time-sep">|</span>
+      <span class="topbar__time-sep">|</span>
 
-      <div class="time-item client-time">
-        <i class="ri-user-location-line time-icon"></i>
-        <span class="time-label">Anda:</span>
-        <span class="mono tabular time-val">{formatTime(clientNow)}</span>
-        <span class="tz-badge tz-badge--highlight">{getClientTimezoneLabel()}</span>
+      <div class="topbar__time-item topbar__client-time">
+        <i class="ri-user-location-line topbar__time-icon" aria-hidden="true"></i>
+        <span class="topbar__time-label">Anda:</span>
+        <span class="mono tabular topbar__time-val">{formatTime(clientNow)}</span>
+        <span class="topbar__tz-badge topbar__tz-badge--highlight">{getClientTimezoneLabel()}</span>
       </div>
     </div>
 
-    <!-- User Profile Badge -->
-    <span class="topbar__user" title="Akun panel aktif">
-      <i class="ri-user-3-line" aria-hidden="true"></i>
-      <span>{user}</span>
-    </span>
+    <!-- Toggle Tema (Dark / Light / Auto) -->
+    <button
+      type="button"
+      class="btn btn--ghost btn--icon btn--sm topbar__theme-btn"
+      onclick={cycleTheme}
+      aria-label={themeLabel}
+      title={themeLabel}
+    >
+      <i class={themeIcon} aria-hidden="true"></i>
+    </button>
+
+    <!-- User Profile Menu -->
+    <div class="topbar__user-wrap" bind:this={userWrapEl}>
+      <button
+        type="button"
+        class="topbar__user"
+        onclick={() => (userMenuOpen = !userMenuOpen)}
+        aria-expanded={userMenuOpen}
+        aria-haspopup="menu"
+        title="Menu akun panel aktif"
+      >
+        <i class="ri-user-3-line" aria-hidden="true"></i>
+        <span>{user}</span>
+        <i class="ri-arrow-down-s-line topbar__user-caret" aria-hidden="true"></i>
+      </button>
+
+      {#if userMenuOpen}
+        <div class="topbar__user-menu" role="menu" aria-label="Menu akun pengguna">
+          <div class="topbar__user-info">
+            <span class="topbar__user-role">Masuk sebagai</span>
+            <strong class="mono">{user}</strong>
+          </div>
+          {#if onLogout}
+            <button
+              type="button"
+              role="menuitem"
+              class="topbar__user-logout"
+              onclick={() => {
+                userMenuOpen = false;
+                onLogout();
+              }}
+            >
+              <i class="ri-logout-box-r-line" aria-hidden="true"></i>
+              <span>Keluar</span>
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
 </header>
-
-<style>
-  .topbar {
-    position: sticky;
-    top: 0;
-    z-index: var(--z-sticky);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    height: var(--topbar-height);
-    padding: 0 var(--space-6);
-    background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .right-row {
-    gap: var(--space-3);
-  }
-  .topbar__menu {
-    display: none;
-  }
-  .ip {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control-sm);
-    padding: 2px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-raised);
-  }
-  .ip__value,
-  .ip__mask {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: 100%;
-    padding: 0 var(--space-2);
-    border-radius: 4px;
-    font-size: var(--text-xs);
-    color: var(--text);
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .ip__value i,
-  .ip__mask {
-    color: var(--text-subtle);
-  }
-  .ip__value:hover,
-  .ip__mask:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-
-  /* ═══ Live Clock Pill Global ═══ */
-  .time-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0.2rem 0.65rem;
-    font-size: var(--text-xs);
-    color: var(--text);
-  }
-  .time-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .time-icon {
-    color: var(--accent-strong);
-    font-size: 0.85rem;
-  }
-  .time-label {
-    color: var(--text-muted);
-    font-size: 0.68rem;
-    font-weight: var(--weight-medium);
-  }
-  .time-val {
-    color: var(--text);
-    font-weight: var(--weight-semibold);
-    font-size: 0.72rem;
-  }
-  .tabular {
-    font-variant-numeric: tabular-nums;
-  }
-  .time-sep {
-    color: var(--border-strong);
-    user-select: none;
-    font-size: 0.75rem;
-  }
-  .tz-badge {
-    font-size: 0.62rem;
-    padding: 0.05rem 0.35rem;
-    border-radius: 4px;
-    background: var(--bg-hover);
-    color: var(--text-subtle);
-    font-weight: var(--weight-semibold);
-  }
-  .tz-badge--highlight {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  }
-
-  /* ═══ User Pill ═══ */
-  .topbar__user {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0.25rem 0.65rem;
-    height: var(--control-sm);
-    border-radius: var(--radius-sm);
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    font-weight: var(--weight-semibold);
-  }
-  .topbar__user i {
-    color: var(--accent);
-  }
-
-  /* ═══ Responsif ═══ */
-  @media (max-width: 1024px) {
-    .client-time,
-    .time-sep {
-      display: none;
-    }
-  }
-  @media (max-width: 820px) {
-    .time-pill,
-    .topbar__os {
-      display: none;
-    }
-  }
-  @media (max-width: 768px) {
-    .topbar {
-      padding: 0 var(--space-3);
-    }
-    .topbar__menu {
-      display: inline-flex;
-    }
-  }
-</style>
