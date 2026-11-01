@@ -1,0 +1,10 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY ADD PORT MODAL — formulir tambah aturan port (.pg-security-add-port-modal)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-add-port-modal {
+    display: flex;
+    flex-direction: column;
+  }
+}
