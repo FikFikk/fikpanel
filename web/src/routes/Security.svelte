@@ -20,7 +20,8 @@
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
-  import '../styles/pages/security.css';
+  import SecurityTabs from './security/SecurityTabs.svelte';
+  import '../styles/pages/security/shared.css';
 
   // Tab navigasi aktif
   let activeTab = $state<'overview' | 'firewall' | 'ssh' | 'server_security' | 'bruteforce' | 'anti_intrusion' | 'scan_detection'>('overview');
@@ -690,57 +691,7 @@
 
 <div class="pg-security sec-page">
   <!-- Tab Navigasi Atas (7 Modul Keamanan Tingkat Enterprise) -->
-  <nav class="tabs" aria-label="Tab Navigasi Keamanan">
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'overview'}
-      onclick={() => (activeTab = 'overview')}
-    >
-      Overview
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'firewall'}
-      onclick={() => (activeTab = 'firewall')}
-    >
-      Firewall
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'ssh'}
-      onclick={() => (activeTab = 'ssh')}
-    >
-      SSH
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'server_security'}
-      onclick={() => (activeTab = 'server_security')}
-    >
-      Server security
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'bruteforce'}
-      onclick={() => (activeTab = 'bruteforce')}
-    >
-      Brute force protection
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'anti_intrusion'}
-      onclick={() => (activeTab = 'anti_intrusion')}
-    >
-      Anti Intrusion & Hardening
-    </button>
-    <button
-      class="tabs__tab"
-      class:is-active={activeTab === 'scan_detection'}
-      onclick={() => (activeTab = 'scan_detection')}
-    >
-      Scan Detection
-    </button>
-  </nav>
+  <SecurityTabs {activeTab} onSelect={(t) => (activeTab = t)} />
 
   <!-- TAB 1: OVERVIEW -->
   {#if activeTab === 'overview'}

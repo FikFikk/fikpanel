@@ -1,0 +1,12 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY TABS — navigasi 7 modul keamanan (.pg-security-tabs)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+}
+
