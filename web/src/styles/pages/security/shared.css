@@ -67,46 +67,6 @@
       color: var(--text-muted);
       margin-top: 2px;
     }
-
-    /* Hasil pemindaian kerentanan */
-    .scan-empty-icon {
-      font-size: 2.5rem;
-      color: var(--accent);
-    }
-    .findings-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-    }
-    .finding-card {
-      padding: var(--space-4);
-    }
-    .finding-head {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      margin-bottom: var(--space-2);
-    }
-    .finding-title {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-    }
-    .finding-detail {
-      font-size: var(--text-xs);
-      color: var(--text-secondary);
-      margin-bottom: var(--space-2);
-    }
-    .finding-fix {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      font-size: var(--text-2xs);
-      color: var(--text-muted);
-      background: var(--bg-inset);
-      padding: var(--space-2) var(--space-3);
-      border-radius: var(--radius-sm);
-    }
   }
 }
 

@@ -27,6 +27,7 @@
   import ServerSecurityTab from './security/ServerSecurityTab.svelte';
   import BruteForceTab from './security/BruteForceTab.svelte';
   import AntiIntrusionTab from './security/AntiIntrusionTab.svelte';
+  import ScanDetectionTab from './security/ScanDetectionTab.svelte';
   import '../styles/pages/security/shared.css';
 
   // Tab navigasi aktif
@@ -816,65 +817,14 @@
 
   <!-- TAB 7: SCAN DETECTION -->
   {#if activeTab === 'scan_detection'}
-    <div class="tab-pane">
-      <header class="pane-header">
-        <div>
-          <h2 class="pane-title">Scan Detection & Vulnerability Analysis</h2>
-          <p class="pane-subtitle">Hasil pemindaian heuristik mendalam terhadap berkas web, izin berkas kritis, dan konfigurasi server.</p>
-        </div>
-        <button class="btn btn--primary" disabled={isScanning} onclick={runSecurityScan}>
-          <i class="ri-radar-line"></i> {isScanning ? 'Memindai...' : 'Jalankan Pemindaian Baru'}
-        </button>
-      </header>
-
-      <!-- Kategori Filter Hasil -->
-      <div class="segmented mb-4">
-        <button class:active={scanCategoryFilter === 'all'} onclick={() => (scanCategoryFilter = 'all')}>
-          Semua Temuan
-        </button>
-        <button class:active={scanCategoryFilter === 'risk'} onclick={() => (scanCategoryFilter = 'risk')}>
-          Security Risks
-        </button>
-        <button class:active={scanCategoryFilter === 'malware'} onclick={() => (scanCategoryFilter = 'malware')}>
-          Malware / Webshell
-        </button>
-        <button class:active={scanCategoryFilter === 'vuln'} onclick={() => (scanCategoryFilter = 'vuln')}>
-          Vulnerabilities
-        </button>
-        <button class:active={scanCategoryFilter === 'baseline'} onclick={() => (scanCategoryFilter = 'baseline')}>
-          Baseline Checks
-        </button>
-      </div>
-
-      {#if !scanReport || filteredScanFindings.length === 0}
-        <div class="card p-8 text-center text-muted">
-          <i class="ri-shield-check-line scan-empty-icon"></i>
-          <p class="mt-2 font-bold text-white">Tidak ada temuan pada kategori ini.</p>
-          <p class="text-xs text-subtle mt-1">Sistem berjalan dengan konfigurasi yang memenuhi standar keamanan.</p>
-        </div>
-      {:else}
-        <div class="findings-list">
-          {#each filteredScanFindings as finding}
-            <div class="card finding-card">
-              <div class="finding-head">
-                <span class="badge {finding.severity === 'critical' ? 'badge--danger' : finding.severity === 'warning' ? 'badge--warning' : 'badge--success'}">
-                  {finding.severity.toUpperCase()}
-                </span>
-                <span class="finding-title">{finding.title}</span>
-                <span class="badge badge--pill mono text-subtle ml-auto">{finding.category}</span>
-              </div>
-              <p class="finding-detail">{finding.detail}</p>
-              {#if finding.fix_hint && finding.fix_hint !== '-'}
-                <div class="finding-fix">
-                  <i class="ri-lightbulb-line text-warning"></i>
-                  <span>Solusi: <strong class="mono">{finding.fix_hint}</strong></span>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <ScanDetectionTab
+      {isScanning}
+      {scanReport}
+      {scanCategoryFilter}
+      {filteredScanFindings}
+      onRunScan={runSecurityScan}
+      onSelectCategory={(cat) => (scanCategoryFilter = cat)}
+    />
   {/if}
 
   <!-- MODAL: ADD PORT RULE -->
