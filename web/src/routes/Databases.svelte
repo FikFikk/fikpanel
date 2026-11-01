@@ -16,6 +16,7 @@
   import EngineManagerModal from './databases/EngineManagerModal.svelte';
   import WebGuiModal from './databases/WebGuiModal.svelte';
   import QuotaModal from './databases/QuotaModal.svelte';
+  import RootPasswordModal from './databases/RootPasswordModal.svelte';
   import '../styles/pages/databases/shared.css';
   import '../styles/pages/databases.css';
 
@@ -1043,58 +1044,18 @@
   />
 
   <!-- Modal Password Root -->
-  <Modal
+  <RootPasswordModal
     open={showRootPassModal}
-    title="Password Root / Administrator"
-    size="md"
-    onclose={() => (showRootPassModal = false)}
-  >
-    <p class="modal__subtitle">
-      Kredensial root administrator digunakan untuk menghubungkan panel dengan layanan engine {currentEngine.display_name}.
-    </p>
-
-    <div class="form-group">
-      <label for="root-pass" class="form-label">Password Root Saat Ini</label>
-      <div class="input-with-button">
-        <input
-          id="root-pass"
-          type={showRootPass ? 'text' : 'password'}
-          class="form-input"
-          bind:value={rootPassword}
-        />
-        <button
-          type="button"
-          class="btn btn-outline"
-          aria-label={showRootPass ? 'Sembunyikan password' : 'Lihat password'}
-          onclick={() => (showRootPass = !showRootPass)}
-        >
-          <i class={showRootPass ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-        </button>
-        <button
-          type="button"
-          class="btn btn-outline"
-          onclick={() => copyText(rootPassword, 'Password root')}
-        >
-          Salin
-        </button>
-      </div>
-    </div>
-
-    {#snippet footer()}
-      <button class="btn btn-outline" onclick={() => (showRootPassModal = false)}>
-        Tutup
-      </button>
-      <button
-        class="btn btn-primary"
-        onclick={() => {
-          notify('Password root berhasil diperbarui', 'success');
-          showRootPassModal = false;
-        }}
-      >
-        Simpan Perubahan
-      </button>
-    {/snippet}
-  </Modal>
+    {currentEngine}
+    bind:rootPassword
+    bind:showRootPass
+    onCopyText={copyText}
+    onClose={() => (showRootPassModal = false)}
+    onSave={() => {
+      notify('Password root berhasil diperbarui', 'success');
+      showRootPassModal = false;
+    }}
+  />
 
   <!-- Drawer / Modal Messages Box & Real-Time Log Execution (ala aaPanel) -->
   <Modal
