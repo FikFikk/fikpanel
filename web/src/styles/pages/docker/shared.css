@@ -238,55 +238,6 @@
       width: 200px;
     }
 
-    /* Settings Suite */
-    .settings-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      padding: 0;
-    }
-
-    .setting-row {
-      display: flex;
-      align-items: flex-start;
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .setting-label {
-      width: 220px;
-      flex-shrink: 0;
-      font-size: var(--text-sm);
-      color: var(--text-secondary);
-      padding-top: var(--space-1);
-    }
-
-    .setting-ctrl {
-      flex: 1;
-    }
-
-    .status-indicator-group {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    .mirror-box {
-      display: flex;
-      flex-direction: column;
-      max-width: 500px;
-    }
-
-    .setting-hint {
-      font-size: var(--text-2xs);
-      color: var(--text-muted);
-      margin-top: var(--space-1);
-    }
-
-    .border-top-danger {
-      background: color-mix(in srgb, var(--danger) 5%, transparent);
-    }
-
     /* Form dan konten dalam modal */
     .docker-modal-form {
       display: flex;
@@ -332,17 +283,6 @@
       word-break: break-all;
       border-radius: var(--radius-md);
       border: 1px solid var(--border);
-    }
-
-    .json-editor-textarea {
-      width: 100%;
-      background: var(--bg-inset);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: var(--space-4);
-      resize: vertical;
-      outline: none;
     }
 
     /* Utilitas lokal halaman Docker */
