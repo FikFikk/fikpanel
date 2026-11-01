@@ -7,6 +7,7 @@
   import DirTabs from './files/DirTabs.svelte';
   import PathBar from './files/PathBar.svelte';
   import FileToolbar from './files/FileToolbar.svelte';
+  import FileTable from './files/FileTable.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1094,112 +1095,21 @@
       </div>
     {:else if viewMode === 'list'}
       <!-- Tampilan Tabel List Gaya aaPanel -->
-      <div class="table-wrap table-container">
-        <table class="table file-table">
-          <thead>
-            <tr>
-              <th class="col-check">
-                <input
-                  type="checkbox"
-                  checked={paginatedItems.length > 0 && selectedPaths.size === paginatedItems.length}
-                  onchange={toggleSelectAll}
-                />
-              </th>
-              <th class="col-name">File Name &darr;</th>
-              <th class="col-prot">Protected</th>
-              <th class="col-pmsn">PMSN/Owner</th>
-              <th class="col-size">Size &darr;</th>
-              <th class="col-time">Modified Time &darr;</th>
-              <th class="col-ps">Ps</th>
-              <th class="col-ops">Operation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each paginatedItems as item (item.path)}
-              {@const iconMeta = getFileIcon(item)}
-              <tr
-                class="{selectedPaths.has(item.path) ? 'selected-row' : ''} {activeMenuItem?.path === item.path ? 'highlight-row' : ''}"
-                oncontextmenu={(e) => handleRowContextMenu(item, e)}
-              >
-                <td class="col-check">
-                  <input
-                    type="checkbox"
-                    checked={selectedPaths.has(item.path)}
-                    onchange={() => toggleSelectItem(item.path)}
-                  />
-                </td>
-                <td class="col-name">
-                  <div
-                    class="name-cell"
-                    role="button"
-                    tabindex="0"
-                    onclick={() => handleItemClick(item)}
-                    onkeydown={(e) => e.key === 'Enter' && handleItemClick(item)}
-                  >
-                    <i class="{iconMeta.icon} item-icon" style="color: {iconMeta.color};"></i>
-                    <span class="item-name {item.is_dir ? 'dir-name' : ''}">{item.name}</span>
-                  </div>
-                </td>
-                <td class="col-prot">
-                  <span class="badge-prot">
-                    <i class="ri-lock-unlock-line"></i> Unprotected
-                  </span>
-                </td>
-                <td class="col-pmsn">
-                  <button
-                    class="pmsn-pill"
-                    onclick={() => openChmodModal(item)}
-                    title="Klik untuk ubah perizinan (chmod)"
-                  >
-                    {item.mode.slice(-3)} / {item.owner}
-                  </button>
-                </td>
-                <td class="col-size mono">
-                  {#if item.is_dir}
-                    <span class="calc-text">Calculate</span>
-                  {:else}
-                    {formatBytes(item.size)}
-                  {/if}
-                </td>
-                <td class="col-time mono">{item.mod_time}</td>
-                <td class="col-ps text-muted">{item.is_dir ? 'Directory' : item.ext || 'File'}</td>
-                <td class="col-ops">
-                  <div class="row-operations">
-                    <!-- Hover Quick Shortcuts (hanya terlihat saat baris di-hover) -->
-                    <div class="hover-shortcuts">
-                      {#if !item.is_dir}
-                        <button class="quick-icon-btn" onclick={() => openEditor(item)} title="Edit Cepat">
-                          <i class="ri-edit-line"></i>
-                        </button>
-                        <button class="quick-icon-btn" onclick={() => downloadFile(item)} title="Unduh">
-                          <i class="ri-download-line"></i>
-                        </button>
-                      {:else}
-                        <button class="quick-icon-btn" onclick={() => handleItemClick(item)} title="Buka">
-                          <i class="ri-folder-open-line"></i>
-                        </button>
-                      {/if}
-                      <button class="quick-icon-btn link-danger" onclick={() => deleteSingleItem(item)} title="Hapus">
-                        <i class="ri-delete-bin-line"></i>
-                      </button>
-                    </div>
-
-                    <!-- Tombol Dropdown Operate (Sesuai Screenshot aaPanel) -->
-                    <button
-                      class="btn-operate {activeMenuItem?.path === item.path ? 'is-active' : ''}"
-                      onclick={(e) => toggleOperateMenu(item, e)}
-                      title="Menu Operasi"
-                    >
-                      <span>Operate</span>
-                      <i class="ri-arrow-down-s-line"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <FileTable
+        {paginatedItems}
+        {selectedPaths}
+        {activeMenuItem}
+        {getFileIcon}
+        onToggleSelectAll={toggleSelectAll}
+        onToggleSelectItem={toggleSelectItem}
+        onRowContextMenu={handleRowContextMenu}
+        onItemClick={handleItemClick}
+        onOpenChmodModal={openChmodModal}
+        onOpenEditor={openEditor}
+        onDownloadFile={downloadFile}
+        onDeleteSingleItem={deleteSingleItem}
+        onToggleOperateMenu={toggleOperateMenu}
+      />
     {:else}
       <!-- Tampilan Grid Bento -->
       <div class="grid-container">
