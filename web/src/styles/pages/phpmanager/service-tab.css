@@ -1,0 +1,53 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   PHP MANAGER SERVICE TAB — Status dan kontrol layanan PHP-FPM (.pg-phpmanager-service-tab)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-phpmanager-service-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+
+    .status-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .php-stat-box {
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .stat-lbl {
+      font-size: 0.72rem;
+      color: var(--text-subtle);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .stat-val {
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+
+    .actions-group-card {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 1.25rem;
+    }
+
+    .group-title {
+      margin: 0 0 0.9rem 0;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+  }
+}
