@@ -71,7 +71,7 @@
 </script>
 
 <div
-  class="modal-backdrop editor-backdrop pg-files-code-editor"
+  class="editor-backdrop pg-files-code-editor"
   role="dialog"
   aria-modal="true"
   onclick={(e) => {

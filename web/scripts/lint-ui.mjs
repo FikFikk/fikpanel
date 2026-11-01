@@ -1,12 +1,16 @@
 // Linter standar UI/UX & keamanan frontend fikpanel.
 // Dijalankan via `npm run lint:ui` dan otomatis sebelum `npm run build`.
 // Aturan sesuai .agents/rules/ui-ux-standards.md:
-//   UI001  warna mentah (#hex / rgb() / hsl()) di <style> atau atribut style → pakai var(--token)
-//   SEC001 {@html …} dilarang (risiko XSS)
-//   SEC002 target="_blank" wajib rel="noopener noreferrer"
-//   SEC003 fetch() langsung dilarang → pakai apiFetch (CSRF, timeout, sesi)
-//   SEC004 eval / new Function / innerHTML / outerHTML / document.write dilarang
-//   UX001  window.confirm/alert/prompt dilarang → pakai confirmDialog / notify
+//   UI001   warna mentah (#hex / rgb() / hsl()) dilarang → pakai var(--token)
+//   UI002   blok <style> di .svelte dilarang keras → gunakan file CSS terpisah
+//   UI003   file di styles/pages/** wajib dibungkus @layer pages
+//   UI004   style="..." hanya boleh custom property (--x:) atau ekspresi kurung kurawal
+//   UI005   kelas modal usang (modal-backdrop, modal-head, dll.) dilarang di markup
+//   SEC001  {@html …} dilarang (risiko XSS)
+//   SEC002  target="_blank" wajib rel="noopener noreferrer"
+//   SEC003  fetch() langsung dilarang → pakai apiFetch (CSRF, timeout, sesi)
+//   SEC004  eval / new Function / innerHTML / outerHTML / document.write dilarang
+//   UX001   window.confirm/alert/prompt dilarang → pakai confirmDialog / notify
 //   A11Y001 tombol ikon tanpa teks wajib aria-label atau title
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,20 +42,27 @@ function report(rule, file, text, idx, msg) {
 }
 
 const RAW_COLOR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/g;
+const LEGACY_MODAL_CLASSES = new Set([
+  'modal-backdrop',
+  'modal-card',
+  'modal-head',
+  'modal-header',
+  'modal-body',
+  'modal-foot',
+  'modal-footer',
+]);
 
 for (const file of files) {
   const text = fs.readFileSync(file, 'utf8');
   const isSvelte = file.endsWith('.svelte');
   const isCss = file.endsWith('.css');
 
-  // UI001 — warna mentah di CSS
+  // UI001 — warna mentah di CSS & style atribut (diperketat tanpa pengecualian di luar tokens.css)
   const cssBlocks = [];
   if (isCss) cssBlocks.push({ start: 0, css: text });
   if (isSvelte) {
-    for (const m of text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
-      cssBlocks.push({ start: m.index + m[0].indexOf(m[1]), css: m[1] });
-    }
-    for (const m of text.matchAll(/\sstyle="([^"]*)"/g)) {
+    const templateOnly = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, (m) => ' '.repeat(m.length));
+    for (const m of templateOnly.matchAll(/\sstyle="([^"]*)"/g)) {
       cssBlocks.push({ start: m.index, css: m[1] });
     }
   }
@@ -59,10 +70,49 @@ for (const file of files) {
     // Abaikan komentar CSS agar dokumentasi boleh menyebut contoh nilai
     const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (c) => ' '.repeat(c.length));
     for (const m of stripped.matchAll(RAW_COLOR)) {
-      // rgb(0 0 0 / x) untuk bayangan & overlay hitam diizinkan
-      const tail = stripped.slice(m.index, m.index + 24);
-      if (/^rgba?\(\s*0[\s,]+0[\s,]+0\b/.test(tail)) continue;
       report('UI001', file, text, start + m.index, `warna mentah "${m[0]}" → gunakan var(--token) dari styles/tokens.css`);
+    }
+  }
+
+  // UI002 — blok <style> dilarang di .svelte
+  if (isSvelte) {
+    for (const m of text.matchAll(/<style\b[^>]*>/g)) {
+      report('UI002', file, text, m.index, '<style> di komponen .svelte dilarang — gunakan file styles terpisah');
+    }
+  }
+
+  // UI003 — file di styles/pages/** wajib dibungkus @layer pages
+  if (isCss && file.includes(path.join('styles', 'pages'))) {
+    const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+    if (!stripped.startsWith('@layer pages')) {
+      report('UI003', file, text, 0, 'file styles/pages/** wajib dibungkus @layer pages { ... }');
+    }
+  }
+
+  if (isSvelte) {
+    // Template HTML tanpa tag <script>
+    const templateHtml = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, (m) => ' '.repeat(m.length));
+
+    // UI004 — style="..." hanya boleh custom property (--x:) atau ekspresi kurung kurawal murni
+    for (const m of templateHtml.matchAll(/\sstyle="([^"]*)"/g)) {
+      const val = m[1].trim();
+      const parts = val.split(';').map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (!part.startsWith('--') && !/^[\w-]+:\s*\{/.test(part) && !/^\{.*\}$/.test(part)) {
+          report('UI004', file, text, m.index, `style="..." hanya boleh custom property (--x:) atau ekspresi {} murni: "${part}"`);
+        }
+      }
+    }
+
+    // UI005 — kelas modal usang dilarang di markup .svelte
+    for (const m of templateHtml.matchAll(/class="([^"]*)"/g)) {
+      const val = m[1];
+      const classes = val.split(/\s+/).map((c) => c.trim()).filter(Boolean);
+      for (const cls of classes) {
+        if (LEGACY_MODAL_CLASSES.has(cls)) {
+          report('UI005', file, text, m.index, `kelas modal usang "${cls}" dilarang → gunakan kelas BEM .modal__* atau komponen Modal.svelte`);
+        }
+      }
     }
   }
 
