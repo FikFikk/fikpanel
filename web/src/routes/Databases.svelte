@@ -6,6 +6,8 @@
   import type { DatabaseEngineInfo, DatabaseItem, SystemTask } from '../lib/types';
   import Modal from '../lib/components/ui/Modal.svelte';
   import Backup from './Backup.svelte';
+  import EngineTabs from './databases/EngineTabs.svelte';
+  import '../styles/pages/databases/shared.css';
   import '../styles/pages/databases.css';
 
   // State Tampilan Utama (Database atau Cadangan S3) & Engine Aktif
@@ -875,95 +877,18 @@
 
 <div class="pg-databases databases-view">
   <!-- Header & Bar Navigasi Engine (MySQL, PostgreSQL, MongoDB, Redis) -->
-  <header class="engine-tabs-header">
-    <div class="engine-tabs" role="tablist">
-      <button
-        class="engine-tab"
-        class:active={mainView === 'database' && activeEngine === 'mysql'}
-        role="tab"
-        aria-selected={mainView === 'database' && activeEngine === 'mysql'}
-        onclick={() => switchEngine('mysql')}
-      >
-        <i class="ri-database-2-line tab-icon" aria-hidden="true"></i>
-        <span>MySQL / MariaDB</span>
-        {#if engines.find((e) => e.name === 'mysql')?.installed}
-          <span class="engine-dot active" title="Layanan aktif"></span>
-        {/if}
-      </button>
-
-      <button
-        class="engine-tab"
-        class:active={mainView === 'database' && activeEngine === 'postgresql'}
-        role="tab"
-        aria-selected={mainView === 'database' && activeEngine === 'postgresql'}
-        onclick={() => switchEngine('postgresql')}
-      >
-        <i class="ri-server-line tab-icon" aria-hidden="true"></i>
-        <span>PostgreSQL</span>
-        {#if engines.find((e) => e.name === 'postgresql')?.installed}
-          <span class="engine-dot active" title="Layanan aktif"></span>
-        {/if}
-      </button>
-
-      <button
-        class="engine-tab"
-        class:active={mainView === 'database' && activeEngine === 'mongodb'}
-        role="tab"
-        aria-selected={mainView === 'database' && activeEngine === 'mongodb'}
-        onclick={() => switchEngine('mongodb')}
-      >
-        <i class="ri-leaf-line tab-icon" aria-hidden="true"></i>
-        <span>MongoDB</span>
-        {#if engines.find((e) => e.name === 'mongodb')?.installed}
-          <span class="engine-dot active" title="Layanan aktif"></span>
-        {:else}
-          <span class="engine-dot uninstalled" title="Belum terpasang"></span>
-        {/if}
-      </button>
-
-      <button
-        class="engine-tab"
-        class:active={mainView === 'database' && activeEngine === 'redis'}
-        role="tab"
-        aria-selected={mainView === 'database' && activeEngine === 'redis'}
-        onclick={() => switchEngine('redis')}
-      >
-        <i class="ri-flashlight-line tab-icon" aria-hidden="true"></i>
-        <span>Redis</span>
-        {#if engines.find((e) => e.name === 'redis')?.installed}
-          <span class="engine-dot active" title="Layanan aktif"></span>
-        {/if}
-      </button>
-
-      <button
-        class="engine-tab"
-        class:active={mainView === 'backup'}
-        role="tab"
-        aria-selected={mainView === 'backup'}
-        onclick={() => { mainView = 'backup'; }}
-      >
-        <i class="ri-inbox-archive-line tab-icon" aria-hidden="true"></i>
-        <span>Cadangan & S3 Cloud</span>
-      </button>
-    </div>
-
-    <div class="header-tools">
-      <button
-        class="btn-task-queue"
-        onclick={() => {
-          showTasksDrawer = true;
-          fetchTasks();
-        }}
-        title="Buka Antrean Tugas & Log Instalasi"
-      >
-        <i class="ri-terminal-window-line" aria-hidden="true"></i>
-        <span>Antrean Tugas</span>
-        {#if tasks.some((t) => t.status === 'running')}
-          <span class="badge-running-count">1</span>
-        {/if}
-      </button>
-    </div>
-  </header>
+  <EngineTabs
+    {mainView}
+    {activeEngine}
+    {engines}
+    {tasks}
+    onSwitchEngine={switchEngine}
+    onSelectBackup={() => { mainView = 'backup'; }}
+    onOpenTasks={() => {
+      showTasksDrawer = true;
+      fetchTasks();
+    }}
+  />
 
   <!-- Tampilan Tab Cadangan & S3 Cloud Terintegrasi -->
   {#if mainView === 'backup'}
