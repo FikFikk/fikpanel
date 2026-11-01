@@ -118,7 +118,7 @@
     cursor: pointer;
   }
 
-  /* Switch (toggle on/off) */
+  /* Switch (toggle on/off — mendukung label+input+.switch__track/.track maupun button.switch) */
   .switch {
     position: relative;
     display: inline-flex;
@@ -127,44 +127,63 @@
     cursor: pointer;
     font-size: var(--text-sm);
     color: var(--text-secondary);
+    user-select: none;
   }
   .switch input {
     position: absolute;
     opacity: 0;
     width: 1px;
     height: 1px;
+    pointer-events: none;
   }
-  .switch__track {
+  .switch__track,
+  .switch .track,
+  button.switch {
     position: relative;
     flex-shrink: 0;
-    width: 34px;
+    width: 36px;
     height: 20px;
     border-radius: var(--radius-full);
     background: var(--bg-active);
-    transition: background var(--duration-fast) ease;
+    border: 1px solid var(--border-strong);
+    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
   }
-  .switch__track::after {
+  .switch__track::after,
+  .switch .track::after,
+  button.switch > span {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
+    top: 2px;
+    left: 2px;
     width: 14px;
     height: 14px;
     border-radius: 50%;
     background: var(--text-muted);
     transition: transform var(--duration-base) var(--ease-out), background var(--duration-base) ease;
   }
-  .switch input:checked + .switch__track {
+  .switch input:checked + .switch__track,
+  .switch input:checked + .track,
+  button.switch.on,
+  button.switch[aria-pressed='true'] {
     background: color-mix(in srgb, var(--accent) 40%, transparent);
+    border-color: var(--accent);
   }
-  .switch input:checked + .switch__track::after {
-    transform: translateX(14px);
+  .switch input:checked + .switch__track::after,
+  .switch input:checked + .track::after,
+  button.switch.on > span,
+  button.switch[aria-pressed='true'] > span {
+    transform: translateX(16px);
     background: var(--accent-strong);
   }
-  .switch input:focus-visible + .switch__track {
+  .switch input:focus-visible + .switch__track,
+  .switch input:focus-visible + .track,
+  button.switch:focus-visible {
     box-shadow: 0 0 0 3px var(--ring-accent);
   }
-  .switch input:disabled + .switch__track {
+  .switch input:disabled + .switch__track,
+  .switch input:disabled + .track,
+  button.switch:disabled {
     opacity: 0.5;
   }
 }
+
