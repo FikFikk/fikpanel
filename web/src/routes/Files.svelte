@@ -8,6 +8,7 @@
   import PathBar from './files/PathBar.svelte';
   import FileToolbar from './files/FileToolbar.svelte';
   import FileTable from './files/FileTable.svelte';
+  import FileGrid from './files/FileGrid.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1112,38 +1113,15 @@
       />
     {:else}
       <!-- Tampilan Grid Bento -->
-      <div class="grid-container">
-        {#each paginatedItems as item (item.path)}
-          {@const iconMeta = getFileIcon(item)}
-          <div
-            class="grid-card {selectedPaths.has(item.path) ? 'selected-card' : ''}"
-            role="button"
-            tabindex="0"
-            onclick={() => handleItemClick(item)}
-            onkeydown={(e) => e.key === 'Enter' && handleItemClick(item)}
-            oncontextmenu={(e) => handleRowContextMenu(item, e)}
-          >
-            <div class="card-top">
-              <input
-                type="checkbox"
-                checked={selectedPaths.has(item.path)}
-                onclick={(e) => e.stopPropagation()}
-                onchange={() => toggleSelectItem(item.path)}
-              />
-              <button
-                class="card-operate-btn"
-                onclick={(e) => toggleOperateMenu(item, e)}
-                title="Menu Operasi"
-              >
-                <i class="ri-more-2-fill"></i>
-              </button>
-            </div>
-            <i class="{iconMeta.icon} card-icon" style="color: {iconMeta.color};"></i>
-            <span class="card-name" title={item.name}>{item.name}</span>
-            <span class="card-size mono">{item.is_dir ? 'Directory' : formatBytes(item.size)}</span>
-          </div>
-        {/each}
-      </div>
+      <FileGrid
+        {paginatedItems}
+        {selectedPaths}
+        {getFileIcon}
+        onItemClick={handleItemClick}
+        onRowContextMenu={handleRowContextMenu}
+        onToggleSelectItem={toggleSelectItem}
+        onToggleOperateMenu={toggleOperateMenu}
+      />
     {/if}
   </div>
 
