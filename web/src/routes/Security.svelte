@@ -19,6 +19,8 @@
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/security.css';
 
   // Tab navigasi aktif
   let activeTab = $state<'overview' | 'firewall' | 'ssh' | 'server_security' | 'bruteforce' | 'anti_intrusion' | 'scan_detection'>('overview');
@@ -344,8 +346,8 @@
     const ok = await confirmDialog({
       title: `${action.toUpperCase()} Firewall`,
       message: `Apakah Anda yakin ingin me-${action} firewall UFW server?`,
-      confirmLabel: action,
-      variant: fwStatus.enabled ? 'danger' : 'primary',
+      confirmText: action,
+      tone: fwStatus.enabled ? 'danger' : 'default',
     });
     if (!ok) return;
 
@@ -383,8 +385,8 @@
     const ok = await confirmDialog({
       title: 'Bersihkan Log Situs',
       message: 'Kosongkan seluruh berkas log akses dan error webserver (/var/log/nginx)?',
-      confirmLabel: 'Bersihkan',
-      variant: 'primary',
+      confirmText: 'Bersihkan',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -430,8 +432,8 @@
     const ok = await confirmDialog({
       title: 'Hapus Aturan Firewall',
       message: `Hapus aturan port ${rule.port}/${rule.protocol} (${rule.strategy})?`,
-      confirmLabel: 'Hapus',
-      variant: 'danger',
+      confirmText: 'Hapus',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -468,8 +470,8 @@
     const ok = await confirmDialog({
       title: 'Restart Layanan SSH',
       message: 'Apakah Anda yakin ingin memulai ulang daemon SSH? Sesi aktif tidak akan terputus.',
-      confirmLabel: 'Restart',
-      variant: 'primary',
+      confirmText: 'Restart',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -488,8 +490,8 @@
     const ok = await confirmDialog({
       title: `${action} Pengguna ${acc.username}`,
       message: `Apakah Anda yakin ingin me-${action.toLowerCase()} akun ${acc.username}?`,
-      confirmLabel: action,
-      variant: acc.locked ? 'primary' : 'danger',
+      confirmText: action,
+      tone: acc.locked ? 'default' : 'danger',
     });
     if (!ok) return;
 
@@ -686,60 +688,58 @@
   });
 </script>
 
-<div class="sec-page">
-  <!-- Top Navigation Tabs (10 Modul Keamanan Tingkat Enterprise) -->
-  <nav class="sec-nav-bar" aria-label="Tab Navigasi Keamanan">
-    <div class="sec-tabs">
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'overview'}
-        onclick={() => (activeTab = 'overview')}
-      >
-        Overview
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'firewall'}
-        onclick={() => (activeTab = 'firewall')}
-      >
-        Firewall
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'ssh'}
-        onclick={() => (activeTab = 'ssh')}
-      >
-        SSH
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'server_security'}
-        onclick={() => (activeTab = 'server_security')}
-      >
-        Server security
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'bruteforce'}
-        onclick={() => (activeTab = 'bruteforce')}
-      >
-        Brute force protection
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'anti_intrusion'}
-        onclick={() => (activeTab = 'anti_intrusion')}
-      >
-        Anti Intrusion & Hardening
-      </button>
-      <button
-        class="sec-tab-btn"
-        class:active={activeTab === 'scan_detection'}
-        onclick={() => (activeTab = 'scan_detection')}
-      >
-        Scan Detection
-      </button>
-    </div>
+<div class="pg-security sec-page">
+  <!-- Tab Navigasi Atas (7 Modul Keamanan Tingkat Enterprise) -->
+  <nav class="tabs" aria-label="Tab Navigasi Keamanan">
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'overview'}
+      onclick={() => (activeTab = 'overview')}
+    >
+      Overview
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'firewall'}
+      onclick={() => (activeTab = 'firewall')}
+    >
+      Firewall
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'ssh'}
+      onclick={() => (activeTab = 'ssh')}
+    >
+      SSH
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'server_security'}
+      onclick={() => (activeTab = 'server_security')}
+    >
+      Server security
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'bruteforce'}
+      onclick={() => (activeTab = 'bruteforce')}
+    >
+      Brute force protection
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'anti_intrusion'}
+      onclick={() => (activeTab = 'anti_intrusion')}
+    >
+      Anti Intrusion & Hardening
+    </button>
+    <button
+      class="tabs__tab"
+      class:is-active={activeTab === 'scan_detection'}
+      onclick={() => (activeTab = 'scan_detection')}
+    >
+      Scan Detection
+    </button>
   </nav>
 
   <!-- TAB 1: OVERVIEW -->
@@ -1084,7 +1084,7 @@
             <h2 class="aws-main-title">sg-0645a2456451e6a9f - launch-wizard-fikpanel</h2>
           </div>
           <div class="aws-header-actions">
-            <div class="dropdown-wrap" style="position: relative;">
+            <div class="dropdown-wrap">
               <button class="btn btn--secondary btn--sm aws-actions-btn" onclick={() => (showActionsDropdown = !showActionsDropdown)}>
                 Actions <i class="ri-arrow-down-s-line"></i>
               </button>
@@ -1173,24 +1173,24 @@
         </div>
 
         <!-- AWS EC2 Sub-Navigation Tabs Bar -->
-        <div class="aws-tabs-bar">
+        <div class="tabs tabs--underline mb-4">
           <button
-            class="aws-subtab-btn"
-            class:active={fwSubTab === 'inbound'}
+            class="tabs__tab"
+            class:is-active={fwSubTab === 'inbound'}
             onclick={() => (fwSubTab = 'inbound')}
           >
             Inbound rules
           </button>
           <button
-            class="aws-subtab-btn"
-            class:active={fwSubTab === 'outbound'}
+            class="tabs__tab"
+            class:is-active={fwSubTab === 'outbound'}
             onclick={() => (fwSubTab = 'outbound')}
           >
             Outbound rules
           </button>
           <button
-            class="aws-subtab-btn"
-            class:active={fwSubTab === 'settings'}
+            class="tabs__tab"
+            class:is-active={fwSubTab === 'settings'}
             onclick={() => (fwSubTab = 'settings')}
           >
             Firewall Settings & Logs
@@ -1226,7 +1226,7 @@
               <table class="table aws-table">
                 <thead>
                   <tr>
-                    <th style="width: 32px;"><input type="checkbox" aria-label="Select all" /></th>
+                    <th class="col-check"><input type="checkbox" aria-label="Select all" /></th>
                     <th>Name</th>
                     <th>Security group rule ID</th>
                     <th>IP version</th>
@@ -1251,7 +1251,7 @@
                       <tr>
                         <td><input type="checkbox" aria-label="Select row" /></td>
                         <td class="text-subtle">-</td>
-                        <td class="mono font-semibold text-accent" style="font-size: 0.8rem;">
+                        <td class="mono font-semibold text-accent text-xs">
                           {r.rule_id || `sgr-${r.port}00000000`}
                         </td>
                         <td>IPv4</td>
@@ -1263,7 +1263,7 @@
                         <td class="mono uppercase font-semibold">{r.protocol}</td>
                         <td class="mono font-bold text-white">{r.port}</td>
                         <td class="mono text-muted">{r.source_ip || '0.0.0.0/0'}</td>
-                        <td class="text-subtle text-truncate" style="max-width: 200px;" title={r.remarks}>
+                        <td class="text-subtle text-truncate col-remarks" title={r.remarks}>
                           {r.remarks || '-'}
                         </td>
                         <td>
@@ -1310,7 +1310,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="mono font-semibold text-accent" style="font-size: 0.8rem;">sgr-0938bfe43810c9e71</td>
+                    <td class="mono font-semibold text-accent text-xs">sgr-0938bfe43810c9e71</td>
                     <td>IPv4</td>
                     <td><span class="badge badge--pill badge--ghost">All traffic</span></td>
                     <td class="mono uppercase">All</td>
@@ -1391,14 +1391,14 @@
               <table class="aws-edit-table">
                 <thead>
                   <tr>
-                    <th style="min-width: 170px;">Security group rule ID</th>
-                    <th style="min-width: 180px;">Type <span class="aws-info-link">Info</span></th>
-                    <th style="min-width: 100px;">Protocol <span class="aws-info-link">Info</span></th>
-                    <th style="min-width: 110px;">Port range <span class="aws-info-link">Info</span></th>
-                    <th style="min-width: 130px;">Source type <span class="aws-info-link">Info</span></th>
-                    <th style="min-width: 170px;">Source <span class="aws-info-link">Info</span></th>
-                    <th style="min-width: 200px;">Description - optional <span class="aws-info-link">Info</span></th>
-                    <th style="width: 90px;"></th>
+                    <th class="col-w-170">Security group rule ID</th>
+                    <th class="col-w-180">Type <span class="aws-info-link">Info</span></th>
+                    <th class="col-w-100">Protocol <span class="aws-info-link">Info</span></th>
+                    <th class="col-w-110">Port range <span class="aws-info-link">Info</span></th>
+                    <th class="col-w-130">Source type <span class="aws-info-link">Info</span></th>
+                    <th class="col-w-170">Source <span class="aws-info-link">Info</span></th>
+                    <th class="col-w-200">Description - optional <span class="aws-info-link">Info</span></th>
+                    <th class="col-act-90"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1585,19 +1585,19 @@
             <div class="timeline-row">
               <span class="timeline-label">Today</span>
               <div class="timeline-bar-bg">
-                <div class="timeline-bar-fill" style="width: 75%;"></div>
+                <div class="timeline-bar-fill timeline-bar-fill--75"></div>
               </div>
             </div>
             <div class="timeline-row">
               <span class="timeline-label">Yesterday</span>
               <div class="timeline-bar-bg">
-                <div class="timeline-bar-fill" style="width: 45%;"></div>
+                <div class="timeline-bar-fill timeline-bar-fill--45"></div>
               </div>
             </div>
             <div class="timeline-row">
               <span class="timeline-label">7 Days</span>
               <div class="timeline-bar-bg">
-                <div class="timeline-bar-fill" style="width: 90%;"></div>
+                <div class="timeline-bar-fill timeline-bar-fill--90"></div>
               </div>
             </div>
           </div>
@@ -1605,24 +1605,24 @@
       </div>
 
       <!-- Sub-tabs Navigasi SSH -->
-      <div class="sub-nav-tabs">
+      <div class="tabs mb-4">
         <button
-          class="sub-tab-btn"
-          class:active={sshSubTab === 'basic'}
+          class="tabs__tab"
+          class:is-active={sshSubTab === 'basic'}
           onclick={() => (sshSubTab = 'basic')}
         >
           Basic setup
         </button>
         <button
-          class="sub-tab-btn"
-          class:active={sshSubTab === 'accounts'}
+          class="tabs__tab"
+          class:is-active={sshSubTab === 'accounts'}
           onclick={() => (sshSubTab = 'accounts')}
         >
           System Accounts
         </button>
         <button
-          class="sub-tab-btn"
-          class:active={sshSubTab === 'logs'}
+          class="tabs__tab"
+          class:is-active={sshSubTab === 'logs'}
           onclick={() => (sshSubTab = 'logs')}
         >
           SSH login logs
@@ -1662,7 +1662,7 @@
               <p class="setting-desc">Port used by the SSH protocol. The default value is 22</p>
             </div>
             <div class="port-input-wrap">
-              <input type="number" class="input input--sm mono" style="width: 110px;" bind:value={sshPortInput} />
+              <input type="number" class="input input--sm mono input-port-w" bind:value={sshPortInput} />
               <button class="btn btn--primary btn--sm" onclick={handleSaveSSHConfig}>Save</button>
             </div>
           </div>
@@ -1878,31 +1878,31 @@
       </div>
 
       <!-- Sub-tabs Brute Force -->
-      <div class="sub-nav-tabs">
+      <div class="tabs mb-4">
         <button
-          class="sub-tab-btn"
-          class:active={bruteSubTab === 'config'}
+          class="tabs__tab"
+          class:is-active={bruteSubTab === 'config'}
           onclick={() => (bruteSubTab = 'config')}
         >
           Configuration
         </button>
         <button
-          class="sub-tab-btn"
-          class:active={bruteSubTab === 'whitelist'}
+          class="tabs__tab"
+          class:is-active={bruteSubTab === 'whitelist'}
           onclick={() => (bruteSubTab = 'whitelist')}
         >
           WhiteList
         </button>
         <button
-          class="sub-tab-btn"
-          class:active={bruteSubTab === 'blacklist'}
+          class="tabs__tab"
+          class:is-active={bruteSubTab === 'blacklist'}
           onclick={() => (bruteSubTab = 'blacklist')}
         >
           BlackList
         </button>
         <button
-          class="sub-tab-btn"
-          class:active={bruteSubTab === 'history'}
+          class="tabs__tab"
+          class:is-active={bruteSubTab === 'history'}
           onclick={() => (bruteSubTab = 'history')}
         >
           History Reports
@@ -1953,8 +1953,7 @@
             <div class="flex items-center gap-2 mt-2">
               <input
                 type="number"
-                class="input input--sm mono"
-                style="width: 120px;"
+                class="input input--sm mono input-retention-w"
                 bind:value={bruteCfg.retention_minutes}
               />
               <button class="btn btn--primary btn--sm" onclick={handleSaveBruteConfig}>Save Configuration</button>
@@ -2232,7 +2231,7 @@
 
       {#if !scanReport || filteredScanFindings.length === 0}
         <div class="card p-8 text-center text-muted">
-          <i class="ri-shield-check-line" style="font-size: 2.5rem; color: var(--accent);"></i>
+          <i class="ri-shield-check-line scan-empty-icon"></i>
           <p class="mt-2 font-bold text-white">Tidak ada temuan pada kategori ini.</p>
           <p class="text-xs text-subtle mt-1">Sistem berjalan dengan konfigurasi yang memenuhi standar keamanan.</p>
         </div>
@@ -2260,1129 +2259,153 @@
       {/if}
     </div>
   {/if}
+
+  <!-- MODAL: ADD PORT RULE -->
+  <Modal
+    open={showAddPortModal}
+    title="Tambah Aturan Port Firewall"
+    size="sm"
+    onclose={() => (showAddPortModal = false)}
+  >
+    <div class="field mb-3">
+      <label class="field__label" for="rule-port">Nomor Port / Range Port</label>
+      <input
+        id="rule-port"
+        type="text"
+        class="input input--mono"
+        placeholder="Contoh: 8080 atau 3000-4000"
+        bind:value={newPort}
+      />
+    </div>
+
+    <div class="field mb-3">
+      <label class="field__label" for="rule-proto">Protokol</label>
+      <select id="rule-proto" class="input" bind:value={newProto}>
+        <option value="tcp">TCP</option>
+        <option value="udp">UDP</option>
+        <option value="any">TCP/UDP (ANY)</option>
+      </select>
+    </div>
+
+    <div class="field mb-3">
+      <label class="field__label" for="rule-strategy">Strategi Aksi</label>
+      <select id="rule-strategy" class="input" bind:value={newStrategy}>
+        <option value="Allow">ALLOW (Izinkan)</option>
+        <option value="Deny">DENY (Tolak / Blokir)</option>
+      </select>
+    </div>
+
+    <div class="field mb-3">
+      <label class="field__label" for="rule-direction">Arah Paket (Direction)</label>
+      <select id="rule-direction" class="input" bind:value={newDirection}>
+        <option value="Inbound">Inbound (Masuk)</option>
+        <option value="Outbound">Outbound (Keluar)</option>
+      </select>
+    </div>
+
+    <div class="field mb-3">
+      <label class="field__label" for="rule-source">Sumber IP</label>
+      <input
+        id="rule-source"
+        type="text"
+        class="input input--mono"
+        placeholder="All atau misal 192.168.1.0/24"
+        bind:value={newSourceIP}
+      />
+    </div>
+
+    <div class="field mb-3">
+      <label class="field__label" for="rule-remarks">Keterangan / Catatan</label>
+      <input
+        id="rule-remarks"
+        type="text"
+        class="input"
+        placeholder="Contoh: Port API Backend Go"
+        bind:value={newRemarks}
+      />
+    </div>
+
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showAddPortModal = false)}>Batal</button>
+      <button class="btn btn--primary" onclick={handleAddPortRule}>Terapkan Aturan</button>
+    {/snippet}
+  </Modal>
+
+  <!-- MODAL: ADD WHITELIST IP -->
+  <Modal
+    open={showAddWhitelistModal}
+    title="Tambah IP ke Whitelist"
+    size="sm"
+    onclose={() => (showAddWhitelistModal = false)}
+  >
+    <div class="field mb-3">
+      <label class="field__label" for="white-ip">Alamat IP / Subnet</label>
+      <input
+        id="white-ip"
+        type="text"
+        class="input input--mono"
+        placeholder="Contoh: 202.59.205.41"
+        bind:value={newWhiteIP}
+      />
+    </div>
+    <div class="field mb-3">
+      <label class="field__label" for="white-remarks">Catatan Keterangan</label>
+      <input
+        id="white-remarks"
+        type="text"
+        class="input"
+        placeholder="Contoh: Kantor Utama Fikri"
+        bind:value={newWhiteRemarks}
+      />
+    </div>
+
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showAddWhitelistModal = false)}>Batal</button>
+      <button class="btn btn--primary" onclick={handleAddWhitelist}>Simpan Whitelist</button>
+    {/snippet}
+  </Modal>
+
+  <!-- MODAL: ADD BLACKLIST IP -->
+  <Modal
+    open={showAddBlacklistModal}
+    title="Blokir Alamat IP (Blacklist)"
+    size="sm"
+    onclose={() => (showAddBlacklistModal = false)}
+  >
+    <div class="field mb-3">
+      <label class="field__label" for="black-ip">Alamat IP</label>
+      <input
+        id="black-ip"
+        type="text"
+        class="input input--mono"
+        placeholder="Contoh: 185.220.101.44"
+        bind:value={newBlackIP}
+      />
+    </div>
+    <div class="field mb-3">
+      <label class="field__label" for="black-reason">Alasan Pemblokiran</label>
+      <input
+        id="black-reason"
+        type="text"
+        class="input"
+        placeholder="Contoh: Serangan brute force berulang"
+        bind:value={newBlackReason}
+      />
+    </div>
+    <div class="field mb-3">
+      <label class="field__label" for="black-dur">Durasi Blokir (Menit)</label>
+      <input
+        id="black-dur"
+        type="number"
+        class="input input--mono"
+        bind:value={newBlackDuration}
+      />
+    </div>
+
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showAddBlacklistModal = false)}>Batal</button>
+      <button class="btn btn--danger" onclick={handleAddBlacklist}>Blokir IP</button>
+    {/snippet}
+  </Modal>
 </div>
 
-<!-- MODAL: ADD PORT RULE -->
-{#if showAddPortModal}
-  <div class="modal-backdrop" onclick={() => (showAddPortModal = false)}>
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-      <div class="modal-header">
-        <h3 class="modal-title">Tambah Aturan Port Firewall</h3>
-        <button class="btn btn--ghost btn--icon" onclick={() => (showAddPortModal = false)} aria-label="Tutup Modal">
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="field mb-3">
-          <label class="field__label" for="rule-port">Nomor Port / Range Port</label>
-          <input
-            id="rule-port"
-            type="text"
-            class="input input--mono"
-            placeholder="Contoh: 8080 atau 3000-4000"
-            bind:value={newPort}
-          />
-        </div>
-
-        <div class="field mb-3">
-          <label class="field__label" for="rule-proto">Protokol</label>
-          <select id="rule-proto" class="input" bind:value={newProto}>
-            <option value="tcp">TCP</option>
-            <option value="udp">UDP</option>
-            <option value="any">TCP/UDP (ANY)</option>
-          </select>
-        </div>
-
-        <div class="field mb-3">
-          <label class="field__label" for="rule-strategy">Strategi Aksi</label>
-          <select id="rule-strategy" class="input" bind:value={newStrategy}>
-            <option value="Allow">ALLOW (Izinkan)</option>
-            <option value="Deny">DENY (Tolak / Blokir)</option>
-          </select>
-        </div>
-
-        <div class="field mb-3">
-          <label class="field__label" for="rule-direction">Arah Paket (Direction)</label>
-          <select id="rule-direction" class="input" bind:value={newDirection}>
-            <option value="Inbound">Inbound (Masuk)</option>
-            <option value="Outbound">Outbound (Keluar)</option>
-          </select>
-        </div>
-
-        <div class="field mb-3">
-          <label class="field__label" for="rule-source">Sumber IP</label>
-          <input
-            id="rule-source"
-            type="text"
-            class="input input--mono"
-            placeholder="All atau misal 192.168.1.0/24"
-            bind:value={newSourceIP}
-          />
-        </div>
-
-        <div class="field mb-3">
-          <label class="field__label" for="rule-remarks">Keterangan / Catatan</label>
-          <input
-            id="rule-remarks"
-            type="text"
-            class="input"
-            placeholder="Contoh: Port API Backend Go"
-            bind:value={newRemarks}
-          />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn--secondary" onclick={() => (showAddPortModal = false)}>Batal</button>
-        <button class="btn btn--primary" onclick={handleAddPortRule}>Terapkan Aturan</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- MODAL: ADD WHITELIST IP -->
-{#if showAddWhitelistModal}
-  <div class="modal-backdrop" onclick={() => (showAddWhitelistModal = false)}>
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-      <div class="modal-header">
-        <h3 class="modal-title">Tambah IP ke Whitelist</h3>
-        <button class="btn btn--ghost btn--icon" onclick={() => (showAddWhitelistModal = false)} aria-label="Tutup Modal">
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="field mb-3">
-          <label class="field__label" for="white-ip">Alamat IP / Subnet</label>
-          <input
-            id="white-ip"
-            type="text"
-            class="input input--mono"
-            placeholder="Contoh: 202.59.205.41"
-            bind:value={newWhiteIP}
-          />
-        </div>
-        <div class="field mb-3">
-          <label class="field__label" for="white-remarks">Catatan Keterangan</label>
-          <input
-            id="white-remarks"
-            type="text"
-            class="input"
-            placeholder="Contoh: Kantor Utama Fikri"
-            bind:value={newWhiteRemarks}
-          />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn--secondary" onclick={() => (showAddWhitelistModal = false)}>Batal</button>
-        <button class="btn btn--primary" onclick={handleAddWhitelist}>Simpan Whitelist</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- MODAL: ADD BLACKLIST IP -->
-{#if showAddBlacklistModal}
-  <div class="modal-backdrop" onclick={() => (showAddBlacklistModal = false)}>
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-      <div class="modal-header">
-        <h3 class="modal-title">Blokir Alamat IP (Blacklist)</h3>
-        <button class="btn btn--ghost btn--icon" onclick={() => (showAddBlacklistModal = false)} aria-label="Tutup Modal">
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="field mb-3">
-          <label class="field__label" for="black-ip">Alamat IP</label>
-          <input
-            id="black-ip"
-            type="text"
-            class="input input--mono"
-            placeholder="Contoh: 185.220.101.44"
-            bind:value={newBlackIP}
-          />
-        </div>
-        <div class="field mb-3">
-          <label class="field__label" for="black-reason">Alasan Pemblokiran</label>
-          <input
-            id="black-reason"
-            type="text"
-            class="input"
-            placeholder="Contoh: Serangan brute force berulang"
-            bind:value={newBlackReason}
-          />
-        </div>
-        <div class="field mb-3">
-          <label class="field__label" for="black-dur">Durasi Blokir (Menit)</label>
-          <input
-            id="black-dur"
-            type="number"
-            class="input input--mono"
-            bind:value={newBlackDuration}
-          />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn--secondary" onclick={() => (showAddBlacklistModal = false)}>Batal</button>
-        <button class="btn btn--danger" onclick={handleAddBlacklist}>Blokir IP</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<style>
-  .sec-page {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  /* Bilah Tab Navigasi Atas */
-  .sec-nav-bar {
-    border-bottom: 1px solid var(--border);
-    padding-bottom: var(--space-1);
-    overflow-x: auto;
-  }
-  .sec-tabs {
-    display: flex;
-    gap: var(--space-1);
-    min-width: max-content;
-  }
-  .sec-tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
-  }
-  .sec-tab-btn:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-  }
-  .sec-tab-btn.active {
-    color: var(--accent-strong);
-    background: var(--tint-accent);
-    font-weight: var(--weight-bold);
-  }
-
-  /* Header Halaman / Pane */
-  .pane-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-  }
-  .pane-title {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .pane-subtitle {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-top: var(--space-1);
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  /* Grid Atas Overview */
-  .overview-top-grid {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-  }
-  @media (max-width: 960px) {
-    .overview-top-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .scan-posture-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: var(--space-6);
-  }
-  .radar-visual {
-    margin-bottom: var(--space-4);
-  }
-  .radar-circle {
-    width: 88px;
-    height: 88px;
-    border-radius: var(--radius-full);
-    border: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--tint-accent);
-  }
-  .radar-circle.spinning {
-    animation: fp-spin 2s linear infinite;
-  }
-  .radar-icon {
-    font-size: 2.2rem;
-    color: var(--accent-strong);
-  }
-  .posture-title {
-    font-size: var(--text-lg);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin-bottom: var(--space-1);
-  }
-  .posture-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-bottom: var(--space-4);
-    line-height: var(--leading-normal);
-  }
-  .scan-score-badge {
-    margin-bottom: var(--space-2);
-  }
-  .score-number {
-    font-size: var(--text-2xl);
-    font-weight: var(--weight-bold);
-    color: var(--accent-strong);
-    font-family: var(--font-mono);
-  }
-  .score-total {
-    font-size: var(--text-sm);
-    color: var(--text-subtle);
-  }
-
-  /* Daftar Proteksi 6 Modul */
-  .protection-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .prot-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-2) var(--space-1);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .prot-row:last-child {
-    border-bottom: none;
-  }
-  .prot-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .prot-name {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .prot-sub {
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .prot-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Ringkasan 4 Kartu Pemindaian */
-  .scan-summary-section {
-    margin-bottom: var(--space-6);
-  }
-  .sec-subhead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
-  }
-  .sec-subtitle {
-    font-size: var(--text-md);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .scan-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
-  }
-  .stat-category-title {
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    color: var(--text-secondary);
-  }
-  .stat-status-text {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-bottom: var(--space-3);
-  }
-  .link-btn {
-    background: transparent;
-    border: none;
-    color: var(--accent-strong);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    padding: 0;
-  }
-  .link-btn:hover {
-    text-decoration: underline;
-  }
-
-  /* Rekomendasi Tindakan */
-  .recommendations-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .rec-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-  }
-  .rec-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: 2px;
-  }
-  .rec-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .rec-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-  .rec-hint {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-    font-family: var(--font-mono);
-    margin-top: 2px;
-  }
-
-  /* Firewall Elements */
-  .fw-top-card {
-    padding: var(--space-3) var(--space-4);
-    margin-bottom: var(--space-3);
-  }
-  .fw-controls-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-4);
-  }
-  .fw-toggle-group, .fw-logs-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .fw-control-label {
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    color: var(--text-secondary);
-  }
-  .fw-divider {
-    width: 1px;
-    height: 20px;
-    background: var(--border);
-  }
-  .logs-path {
-    font-size: var(--text-xs);
-    color: var(--accent-strong);
-  }
-
-  .fw-metric-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-bottom: var(--space-3);
-  }
-  .metric-sep {
-    color: var(--border-strong);
-  }
-
-  .fw-action-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
-  }
-  .action-left, .action-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  /* ── AWS EC2 Security Groups UI Styling ──────────────────────────────────── */
-  .aws-header-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-3);
-  }
-  .aws-main-title {
-    font-size: var(--text-lg);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .aws-actions-btn {
-    border-radius: var(--radius-full);
-    padding: var(--space-1) var(--space-3);
-  }
-  .aws-dropdown-menu {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    margin-top: var(--space-1);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    z-index: 50;
-    min-width: 200px;
-    padding: var(--space-1);
-  }
-  .dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    text-align: left;
-  }
-  .dropdown-item:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-  }
-
-  /* Details Card */
-  .aws-details-card {
-    padding: var(--space-4) var(--space-5);
-    margin-bottom: var(--space-4);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-  }
-  .aws-card-title {
-    font-size: var(--text-md);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin-bottom: var(--space-3);
-  }
-  .aws-details-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-4);
-  }
-  .aws-detail-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .aws-label {
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-semibold);
-    color: var(--text-subtle);
-    text-transform: capitalize;
-  }
-  .aws-val-text {
-    font-size: var(--text-xs);
-    color: var(--text);
-  }
-  .aws-value-copy {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .copy-icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--accent-strong);
-    cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0;
-  }
-  .copy-icon-btn:hover {
-    color: var(--text);
-  }
-
-  /* AWS Sub-Navigation Tabs */
-  .aws-tabs-bar {
-    display: flex;
-    gap: var(--space-4);
-    border-bottom: 2px solid var(--border-subtle);
-    margin-bottom: var(--space-4);
-  }
-  .aws-subtab-btn {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    padding: var(--space-2) var(--space-1);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all var(--duration-fast) ease;
-  }
-  .aws-subtab-btn:hover {
-    color: var(--text);
-  }
-  .aws-subtab-btn.active {
-    color: var(--accent-strong);
-    border-bottom-color: var(--accent-strong);
-    font-weight: var(--weight-bold);
-  }
-
-  /* Table Container */
-  .aws-table-container {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-  .aws-table-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-  .aws-table-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .aws-table-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .aws-search-input {
-    min-width: 240px;
-    border-radius: var(--radius-full);
-  }
-  .aws-edit-rules-btn {
-    border-radius: var(--radius-full);
-    font-weight: var(--weight-semibold);
-    padding: 6px 18px;
-  }
-  .aws-table th {
-    white-space: nowrap;
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-semibold);
-  }
-  .aws-table td {
-    font-size: var(--text-xs);
-  }
-
-  /* Edit View Multi-Row Builder */
-  .aws-edit-view {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  .aws-edit-header {
-    margin-bottom: var(--space-1);
-  }
-  .aws-edit-title {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .aws-info-link {
-    font-size: var(--text-xs);
-    color: var(--accent-strong);
-    cursor: pointer;
-    font-weight: normal;
-  }
-  .aws-info-link:hover {
-    text-decoration: underline;
-  }
-  .aws-edit-sub {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .aws-edit-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    padding: var(--space-4);
-    border-radius: var(--radius-lg);
-  }
-  .aws-card-top-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
-  }
-  .aws-card-heading {
-    font-size: var(--text-md);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .aws-edit-table-wrap {
-    overflow-x: auto;
-    margin-bottom: var(--space-4);
-  }
-  .aws-edit-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--text-xs);
-  }
-  .aws-edit-table th {
-    text-align: left;
-    padding: var(--space-2) var(--space-3);
-    color: var(--text-secondary);
-    font-weight: var(--weight-semibold);
-    border-bottom: 1px solid var(--border);
-    font-size: var(--text-2xs);
-  }
-  .aws-edit-row td {
-    padding: var(--space-2) var(--space-3);
-    vertical-align: middle;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .aws-input-select {
-    cursor: pointer;
-  }
-  .aws-input-disabled {
-    opacity: 0.55;
-    background: var(--bg-subtle) !important;
-    cursor: not-allowed;
-  }
-  .aws-source-input-wrap {
-    display: flex;
-    align-items: center;
-  }
-  .source-chip-box {
-    display: flex;
-    align-items: center;
-  }
-  .source-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid var(--accent-subtle);
-    border-radius: var(--radius-sm);
-    padding: 3px 8px;
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-  }
-  .chip-remove {
-    background: transparent;
-    border: none;
-    color: var(--accent-strong);
-    cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    padding: 0;
-  }
-  .chip-remove:hover {
-    color: var(--danger-strong);
-  }
-  .aws-btn-delete {
-    border: 1px solid var(--accent-strong);
-    color: var(--accent-strong);
-    border-radius: var(--radius-full);
-    background: transparent;
-    font-weight: var(--weight-semibold);
-    padding: 4px 14px;
-    cursor: pointer;
-    transition: all var(--duration-fast) ease;
-  }
-  .aws-btn-delete:hover {
-    background: var(--tint-accent);
-  }
-  .aws-add-rule-row {
-    padding-top: var(--space-2);
-  }
-  .aws-btn-add-rule {
-    border: 1px solid var(--accent-strong);
-    color: var(--accent-strong);
-    border-radius: var(--radius-full);
-    background: transparent;
-    font-weight: var(--weight-semibold);
-    padding: 6px 18px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    transition: all var(--duration-fast) ease;
-  }
-  .aws-btn-add-rule:hover {
-    background: var(--tint-accent);
-  }
-  .aws-warning-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    border-left: 4px solid var(--warning);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    font-size: var(--text-xs);
-    color: var(--text);
-  }
-  .warning-icon {
-    color: var(--warning);
-    font-size: 1.1rem;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-  .aws-edit-footer-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-3);
-    margin-top: var(--space-2);
-  }
-  .aws-save-rules-btn {
-    border-radius: var(--radius-full);
-    padding: 6px 22px;
-    font-weight: var(--weight-bold);
-  }
-
-  /* SSH Elements */
-  .ssh-top-grid {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: var(--space-4);
-    margin-bottom: var(--space-4);
-  }
-  @media (max-width: 860px) {
-    .ssh-top-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  .ssh-stat-boxes {
-    display: flex;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .stat-box {
-    flex: 1;
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    text-align: center;
-  }
-  .success-box {
-    background: var(--tint-accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  }
-  .fail-box {
-    background: var(--tint-danger);
-    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
-  }
-  .stat-big-num {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    font-family: var(--font-mono);
-    display: block;
-  }
-  .success-box .stat-big-num { color: var(--accent-strong); }
-  .fail-box .stat-big-num { color: var(--danger-strong); }
-  .stat-box-label {
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-  }
-
-  .ssh-timeline-wrap {
-    padding: var(--space-3) var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .timeline-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-size: var(--text-xs);
-  }
-  .timeline-label {
-    width: 70px;
-    color: var(--text-muted);
-  }
-  .timeline-bar-bg {
-    flex: 1;
-    height: 6px;
-    background: var(--bg-inset);
-    border-radius: var(--radius-full);
-    overflow: hidden;
-  }
-  .timeline-bar-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: var(--radius-full);
-  }
-
-  .sub-nav-tabs {
-    display: flex;
-    gap: var(--space-2);
-    border-bottom: 1px solid var(--border);
-    padding-bottom: var(--space-1);
-    margin-bottom: var(--space-4);
-  }
-  .sub-tab-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-  }
-  .sub-tab-btn.active {
-    color: var(--accent-strong);
-    background: var(--tint-accent);
-  }
-
-  .section-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin-bottom: var(--space-3);
-  }
-  .setting-item-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .setting-item-row:last-child {
-    border-bottom: none;
-  }
-  .setting-name {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-  }
-  .setting-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .port-input-wrap {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-  }
-
-  /* Server Security Grid */
-  .login-info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
-    margin-bottom: var(--space-4);
-  }
-  @media (max-width: 720px) {
-    .login-info-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  .safety-score-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-4);
-    margin-bottom: var(--space-4);
-  }
-  .score-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .safety-label {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .score-display {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    font-family: var(--font-mono);
-  }
-
-  .checklist-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--space-3);
-  }
-  .checklist-card {
-    padding: var(--space-4);
-  }
-  .card-danger {
-    border-color: color-mix(in srgb, var(--danger) 40%, transparent);
-    background: color-mix(in srgb, var(--tint-danger) 25%, var(--bg-surface));
-  }
-  .checklist-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-2);
-  }
-  .checklist-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .check-icon {
-    font-size: 1.1rem;
-  }
-  .check-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .check-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    line-height: var(--leading-normal);
-  }
-
-  /* Modal Form */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    z-index: var(--z-modal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-  }
-  .modal-content {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    width: 100%;
-    max-width: 460px;
-    overflow: hidden;
-    box-shadow: var(--shadow-lg);
-  }
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .modal-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .modal-body {
-    padding: var(--space-4);
-  }
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  /* Scan Detection Findings */
-  .findings-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .finding-card {
-    padding: var(--space-4);
-  }
-  .finding-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-  }
-  .finding-title {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-  }
-  .finding-detail {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-2);
-  }
-  .finding-fix {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-    background: var(--bg-inset);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-  }
-
-  /* Utilitas */
-  .mono { font-family: var(--font-mono); }
-  .text-accent { color: var(--accent-strong); }
-  .text-danger { color: var(--danger-strong); }
-  .text-warning { color: var(--warning-strong); }
-  .text-muted { color: var(--text-muted); }
-  .text-subtle { color: var(--text-subtle); }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .font-bold { font-weight: var(--weight-bold); }
-  .flex { display: flex; }
-  .flex-1 { flex: 1; }
-  .justify-between { justify-content: space-between; }
-  .items-center { align-items: center; }
-  .gap-2 { gap: var(--space-2); }
-  .gap-3 { gap: var(--space-3); }
-  .mt-1 { margin-top: var(--space-1); }
-  .mt-2 { margin-top: var(--space-2); }
-  .mt-3 { margin-top: var(--space-3); }
-  .mt-4 { margin-top: var(--space-4); }
-  .mt-6 { margin-top: var(--space-6); }
-  .mb-2 { margin-bottom: var(--space-2); }
-  .mb-3 { margin-bottom: var(--space-3); }
-  .mb-4 { margin-bottom: var(--space-4); }
-  .mb-6 { margin-bottom: var(--space-6); }
-  .mr-1 { margin-right: var(--space-1); }
-  .p-4 { padding: var(--space-4); }
-  .p-8 { padding: var(--space-8); }
-  @keyframes fp-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-</style>
