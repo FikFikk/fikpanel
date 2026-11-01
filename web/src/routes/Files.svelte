@@ -5,6 +5,7 @@
   import { confirmDialog, promptDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
   import DirTabs from './files/DirTabs.svelte';
+  import PathBar from './files/PathBar.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1042,57 +1043,14 @@
   />
 
   <!-- ═════════ 2. Breadcrumbs & Search Bar ═════════ -->
-  <div class="nav-bar">
-    <div class="nav-left">
-      <!-- Tombol Kembali ke Induk -->
-      <button
-        class="btn-icon"
-        onclick={handleGoParent}
-        disabled={!parentPath}
-        title="Kembali ke folder induk"
-      >
-        <i class="ri-arrow-left-line"></i>
-      </button>
-
-      <!-- Jalur Breadcrumbs -->
-      <div class="breadcrumb-trail">
-        <i class="ri-folder-3-fill path-icon"></i>
-        <button class="crumb-btn" onclick={() => loadDirectory('')}>root</button>
-        {#each breadcrumbs as crumb}
-          <span class="crumb-sep">&gt;</span>
-          <button class="crumb-btn" onclick={() => loadDirectory(crumb.fullPath)}>
-            {crumb.label}
-          </button>
-        {/each}
-      </div>
-
-      <!-- Tombol Refresh -->
-      <button class="btn-icon" onclick={() => loadDirectory(currentPath)} title="Refresh">
-        <i class="ri-refresh-line"></i>
-      </button>
-    </div>
-
-    <!-- Pencarian Berkas Instan -->
-    <div class="nav-right">
-      <div class="search-box">
-        <i class="ri-search-line search-icon"></i>
-        <input
-          type="text"
-          placeholder="Cari berkas..."
-          bind:value={searchQuery}
-        />
-        {#if searchQuery}
-          <button
-            class="btn-clear-search"
-            onclick={() => (searchQuery = '')}
-            title="Reset pencarian"
-          >
-            <i class="ri-close-line"></i>
-          </button>
-        {/if}
-      </div>
-    </div>
-  </div>
+  <PathBar
+    {currentPath}
+    {parentPath}
+    {breadcrumbs}
+    bind:searchQuery
+    onGoParent={handleGoParent}
+    onLoadDirectory={loadDirectory}
+  />
 
   <!-- ═════════ 3. Toolbar Aksi (Action Toolbar aaPanel Asli) ═════════ -->
   <div class="toolbar action-toolbar">

@@ -1,0 +1,107 @@
+@layer pages {
+  .pg-files-path-bar {
+    &.nav-bar,
+    .nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.4rem 0.6rem;
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .breadcrumb-trail {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.25rem 0.6rem;
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+      font-size: 0.8rem;
+    }
+
+    .path-icon {
+      color: var(--warning);
+      font-size: 0.95rem;
+    }
+
+    .crumb-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.1rem 0.25rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+
+    .crumb-btn:hover {
+      color: var(--accent);
+      background: var(--bg-active);
+    }
+
+    .crumb-sep {
+      color: var(--text-disabled);
+      font-size: 0.75rem;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 0.5rem;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .search-box:focus-within {
+      border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+    }
+
+    .search-box input {
+      background: transparent;
+      border: none;
+      padding: 0.35rem 0.5rem;
+      color: var(--text);
+      font-size: 0.78rem;
+      outline: none;
+      width: 200px;
+    }
+
+    .btn-clear-search {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.1rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .btn-clear-search:hover {
+      color: var(--text);
+    }
+  }
+}
+
