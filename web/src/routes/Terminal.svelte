@@ -4,6 +4,8 @@
   import { toast } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import type { TerminalServer, TerminalCommand, TerminalTab, TerminalHistoryItem, TerminalCompletionItem } from '../lib/types';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/terminal.css';
 
   // State auto-complete Tab & Tab 2x
   let completionMatches = $state<TerminalCompletionItem[]>([]);
@@ -922,8 +924,8 @@
   }
 </script>
 
-<div class="terminal-page">
-  <!-- Container Utama Terminal & Split Panel -->
+<div class="pg-terminal terminal-page">
+  <!-- Kontainer Utama Terminal & Split Panel -->
   <div
     class="terminal-layout"
     class:fullscreen={isFullscreen}
@@ -942,15 +944,22 @@
                 activeTabId = tab.id;
                 focusInput();
               }}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  activeTabId = tab.id;
+                  focusInput();
+                }
+              }}
               role="tab"
               tabindex="0"
               aria-selected={tab.id === activeTabId}
             >
               <span
-                class="status-dot"
-                class:online={tab.connected}
-                class:offline={!tab.connected}
-                class:running={tab.executing}
+                class="dot"
+                class:dot--success={tab.connected && !tab.executing}
+                class:dot--danger={!tab.connected}
+                class:dot--warning={tab.executing}
               ></span>
               <span class="tab-label" title={`${tab.name} (${tab.host})`}>
                 {tab.name}
@@ -1033,6 +1042,8 @@
       </div>
 
       <!-- Area Tampilan Konsol Terminal -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="terminal-viewport"
         bind:this={terminalScrollEl}
@@ -1046,8 +1057,8 @@
             <span class="text-accent">fikpanel v0.2.0</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
           </p>
           <p class="welcome-meta">
-            Host: <span class="text-white">{activeTab?.host}</span> &middot;
-            User: <span class="text-white">{activeTab?.username}</span> &middot;
+            Host: <span class="text-fg">{activeTab?.host}</span> &middot;
+            User: <span class="text-fg">{activeTab?.username}</span> &middot;
             Tipe: <span class="text-accent">{activeTab?.serverId === 0 ? 'Local Node' : 'Remote SSH Node'}</span>
           </p>
           <p class="welcome-hint">
@@ -1083,6 +1094,7 @@
             {:else}
               <span class="prompt-user">{activeTab.username}@{activeTab.host}</span>:<span class="prompt-path">{activeTab.cwd || '~'}</span><span class="prompt-hash">#</span>
             {/if}
+            <!-- svelte-ignore a11y_autofocus -->
             <input
               type={interactivePrompt?.step === 'password' ? 'password' : 'text'}
               bind:this={inputPromptEl}
@@ -1112,21 +1124,21 @@
       <i class={sidebarOpen ? 'ri-arrow-right-s-line' : 'ri-arrow-left-s-line'}></i>
     </button>
 
-    <!-- Kolom Kanan: Server List & Commands (Sesuai Screenshot 1 & 4) -->
+    <!-- Kolom Kanan: Server List & Commands -->
     {#if sidebarOpen}
       <aside class="terminal-sidebar">
         <!-- Tab Navigasi Sidebar (Server List & Commands) -->
-        <div class="sidebar-tabs">
+        <div class="tabs tabs--underline sidebar-tabs-nav">
           <button
-            class="sidebar-tab-btn"
-            class:active={activeSidebarTab === 'servers'}
+            class="tabs__tab"
+            class:is-active={activeSidebarTab === 'servers'}
             onclick={() => (activeSidebarTab = 'servers')}
           >
             Server List
           </button>
           <button
-            class="sidebar-tab-btn"
-            class:active={activeSidebarTab === 'commands'}
+            class="tabs__tab"
+            class:is-active={activeSidebarTab === 'commands'}
             onclick={() => (activeSidebarTab = 'commands')}
           >
             Commands
@@ -1146,15 +1158,15 @@
             <!-- Tabel Daftar Server -->
             <div class="table-container">
               {#if loadingServers}
-                <div class="sidebar-loading">
+                <div class="state state--loading">
                   <span class="spinner"></span>
                   <span>Memuat daftar server...</span>
                 </div>
               {:else if servers.length === 0}
-                <div class="empty-state">
-                  <i class="ri-inbox-2-line empty-icon"></i>
-                  <span class="empty-title">No Data</span>
-                  <span class="empty-desc">Belum ada remote server tersimpan.</span>
+                <div class="state state--empty">
+                  <i class="ri-inbox-2-line state__icon"></i>
+                  <span class="state__title">No Data</span>
+                  <span class="state__desc">Belum ada remote server tersimpan.</span>
                 </div>
               {:else}
                 <table class="sidebar-table">
@@ -1223,7 +1235,7 @@
         <!-- Konten Sidebar: COMMANDS -->
         {#if activeSidebarTab === 'commands'}
           <div class="sidebar-content">
-            <!-- Header Aksi: Add command & Search Input (Sesuai Gambar 4) -->
+            <!-- Header Aksi: Add command & Search Input -->
             <div class="sidebar-actions-bar">
               <button class="btn btn--primary btn--sm" onclick={openAddCommandModal}>
                 <i class="ri-add-line"></i> Add command
@@ -1242,15 +1254,15 @@
             <!-- Tabel Daftar Command Shortcut -->
             <div class="table-container">
               {#if loadingCommands}
-                <div class="sidebar-loading">
+                <div class="state state--loading">
                   <span class="spinner"></span>
                   <span>Memuat pintasan...</span>
                 </div>
               {:else if filteredCommands.length === 0}
-                <div class="empty-state">
-                  <i class="ri-inbox-2-line empty-icon"></i>
-                  <span class="empty-title">No Data</span>
-                  <span class="empty-desc">Tidak ada perintah yang cocok.</span>
+                <div class="state state--empty">
+                  <i class="ri-inbox-2-line state__icon"></i>
+                  <span class="state__title">No Data</span>
+                  <span class="state__desc">Tidak ada perintah yang cocok.</span>
                 </div>
               {:else}
                 <table class="sidebar-table">
@@ -1314,1034 +1326,237 @@
       </aside>
     {/if}
   </div>
-</div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- MODAL: ADD / EDIT SERVER (Persis Gambar 2) -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-{#if showServerModal}
-  <div class="modal-backdrop" onclick={() => (showServerModal = false)} role="presentation">
-    <div class="modal-panel" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-header">
-        <h3 class="modal-title">{editingServerId ? 'Edit server' : 'Add server'}</h3>
-        <button
-          class="modal-close-btn"
-          onclick={() => (showServerModal = false)}
-          aria-label="Tutup modal"
-        >
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <!-- Baris 1: Server IP & Port -->
-        <div class="form-row">
-          <label class="form-label" for="srv-ip">Server IP</label>
-          <div class="ip-port-group">
-            <input
-              id="srv-ip"
-              type="text"
-              class="input mono"
-              bind:value={serverFormHost}
-              placeholder="Please enter server IP"
-              required
-            />
-            <input
-              type="number"
-              class="input mono port-input"
-              bind:value={serverFormPort}
-              placeholder="22"
-              min="1"
-              max="65535"
-            />
-          </div>
-        </div>
-
-        <!-- Baris 2: SSH account -->
-        <div class="form-row">
-          <label class="form-label" for="srv-user">SSH account</label>
+  <!-- MODAL: ADD / EDIT SERVER -->
+  <Modal
+    open={showServerModal}
+    title={editingServerId ? 'Edit server' : 'Add server'}
+    size="md"
+    onclose={() => (showServerModal = false)}
+  >
+    <div class="modal-form-stack">
+      <!-- Baris 1: Server IP & Port -->
+      <div class="form-row">
+        <label class="form-label" for="srv-ip">Server IP</label>
+        <div class="ip-port-group">
           <input
-            id="srv-user"
+            id="srv-ip"
             type="text"
             class="input mono"
-            bind:value={serverFormUser}
-            placeholder="root"
+            bind:value={serverFormHost}
+            placeholder="Please enter server IP"
+            required
           />
-        </div>
-
-        <!-- Baris 3: Verification (Pill switcher: Password / Private key) -->
-        <div class="form-row">
-          <span class="form-label">Verification</span>
-          <div class="verification-switcher">
-            <button
-              type="button"
-              class="switch-pill"
-              class:active={serverFormAuthType === 'password'}
-              onclick={() => (serverFormAuthType = 'password')}
-            >
-              Password
-            </button>
-            <button
-              type="button"
-              class="switch-pill"
-              class:active={serverFormAuthType === 'key'}
-              onclick={() => (serverFormAuthType = 'key')}
-            >
-              Private key
-            </button>
-          </div>
-        </div>
-
-        <!-- Baris 4: Password atau Private Key -->
-        {#if serverFormAuthType === 'password'}
-          <div class="form-row">
-            <label class="form-label" for="srv-pass">Password</label>
-            <div class="password-input-wrap">
-              <input
-                id="srv-pass"
-                type={showPasswordPlain ? 'text' : 'password'}
-                class="input mono"
-                bind:value={serverFormPassword}
-                placeholder={editingServerId ? '(Biarkan kosong jika tidak diubah)' : 'Please enter SSH password'}
-              />
-              <button
-                type="button"
-                class="eye-btn"
-                onclick={() => (showPasswordPlain = !showPasswordPlain)}
-                aria-label="Lihat password"
-              >
-                <i class={showPasswordPlain ? 'ri-eye-off-line' : 'ri-eye-line'}></i>
-              </button>
-            </div>
-          </div>
-        {:else}
-          <div class="form-row">
-            <label class="form-label" for="srv-key">Private key</label>
-            <textarea
-              id="srv-key"
-              rows="4"
-              class="input mono key-textarea"
-              bind:value={serverFormPrivateKey}
-              placeholder="Paste OpenSSH private key (-----BEGIN OPENSSH PRIVATE KEY-----)..."
-            ></textarea>
-          </div>
-          <div class="form-row">
-            <label class="form-label" for="srv-passphrase">Passphrase</label>
-            <input
-              id="srv-passphrase"
-              type="password"
-              class="input mono"
-              bind:value={serverFormPassphrase}
-              placeholder="Passphrase kunci privat (opsional jika ada)"
-            />
-          </div>
-        {/if}
-
-        <!-- Baris 5: Remarks -->
-        <div class="form-row">
-          <label class="form-label" for="srv-remarks">Remarks</label>
           <input
-            id="srv-remarks"
-            type="text"
-            class="input"
-            bind:value={serverFormRemarks}
-            placeholder="Please enter remarks, can be blank"
+            type="number"
+            class="input mono port-input"
+            bind:value={serverFormPort}
+            placeholder="22"
+            min="1"
+            max="65535"
           />
         </div>
+      </div>
 
-        <!-- Tombol Test Connection -->
-        <div class="test-conn-area">
+      <!-- Baris 2: SSH account -->
+      <div class="form-row">
+        <label class="form-label" for="srv-user">SSH account</label>
+        <input
+          id="srv-user"
+          type="text"
+          class="input mono"
+          bind:value={serverFormUser}
+          placeholder="root"
+        />
+      </div>
+
+      <!-- Baris 3: Verification (Pill switcher: Password / Private key) -->
+      <div class="form-row">
+        <span class="form-label">Verification</span>
+        <div class="tabs tabs--pill">
           <button
             type="button"
-            class="btn btn--secondary btn--sm"
-            onclick={testServerConnection}
-            disabled={testingConnection}
+            class="tabs__tab"
+            class:is-active={serverFormAuthType === 'password'}
+            onclick={() => (serverFormAuthType = 'password')}
           >
-            {#if testingConnection}
-              <span class="spinner spinner--sm"></span>
-              <span>Testing connection...</span>
-            {:else}
-              <span>Test connection</span>
-            {/if}
+            Password
           </button>
+          <button
+            type="button"
+            class="tabs__tab"
+            class:is-active={serverFormAuthType === 'key'}
+            onclick={() => (serverFormAuthType = 'key')}
+          >
+            Private key
+          </button>
+        </div>
+      </div>
 
-          {#if testConnResult}
-            <div
-              class="test-badge"
-              class:test-badge--success={testConnResult.ok}
-              class:test-badge--error={!testConnResult.ok}
+      <!-- Baris 4: Password atau Private Key -->
+      {#if serverFormAuthType === 'password'}
+        <div class="form-row">
+          <label class="form-label" for="srv-pass">Password</label>
+          <div class="password-input-wrap">
+            <input
+              id="srv-pass"
+              type={showPasswordPlain ? 'text' : 'password'}
+              class="input mono"
+              bind:value={serverFormPassword}
+              placeholder={editingServerId ? '(Biarkan kosong jika tidak diubah)' : 'Please enter SSH password'}
+            />
+            <button
+              type="button"
+              class="eye-btn"
+              onclick={() => (showPasswordPlain = !showPasswordPlain)}
+              aria-label="Lihat password"
             >
-              <i class={testConnResult.ok ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'}></i>
-              <span>{testConnResult.message}</span>
-            </div>
-          {/if}
+              <i class={showPasswordPlain ? 'ri-eye-off-line' : 'ri-eye-line'}></i>
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div class="modal-footer">
-        <button
-          type="button"
-          class="btn btn--secondary"
-          onclick={() => (showServerModal = false)}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn btn--primary"
-          onclick={saveServer}
-          disabled={savingServer}
-        >
-          {#if savingServer}
-            <span class="spinner spinner--sm"></span>
-            <span>Menyimpan...</span>
-          {:else}
-            <span>Confirm</span>
-          {/if}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- MODAL: ADD / EDIT COMMAND (Persis Gambar 3) -->
-<!-- ═══════════════════════════════════════════════════════════════════════════ -->
-{#if showCommandModal}
-  <div class="modal-backdrop" onclick={() => (showCommandModal = false)} role="presentation">
-    <div class="modal-panel modal-panel--md" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-header">
-        <h3 class="modal-title">{editingCommandId ? 'Edit command' : 'Add command'}</h3>
-        <button
-          class="modal-close-btn"
-          onclick={() => (showCommandModal = false)}
-          aria-label="Tutup modal"
-        >
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-
-      <div class="modal-body">
+      {:else}
         <div class="form-row">
-          <label class="form-label" for="cmd-name">Name</label>
-          <input
-            id="cmd-name"
-            type="text"
-            class="input"
-            bind:value={commandFormName}
-            placeholder="Please enter command name"
-            required
-          />
-        </div>
-
-        <div class="form-row">
-          <label class="form-label" for="cmd-content">Content</label>
+          <label class="form-label" for="srv-key">Private key</label>
           <textarea
-            id="cmd-content"
-            rows="6"
-            class="input mono content-textarea"
-            bind:value={commandFormContent}
-            placeholder="Please enter command content"
-            required
+            id="srv-key"
+            rows="4"
+            class="input mono key-textarea"
+            bind:value={serverFormPrivateKey}
+            placeholder="Paste OpenSSH private key (-----BEGIN OPENSSH PRIVATE KEY-----)..."
           ></textarea>
         </div>
+        <div class="form-row">
+          <label class="form-label" for="srv-passphrase">Passphrase</label>
+          <input
+            id="srv-passphrase"
+            type="password"
+            class="input mono"
+            bind:value={serverFormPassphrase}
+            placeholder="Passphrase kunci privat (opsional jika ada)"
+          />
+        </div>
+      {/if}
+
+      <!-- Baris 5: Remarks -->
+      <div class="form-row">
+        <label class="form-label" for="srv-remarks">Remarks</label>
+        <input
+          id="srv-remarks"
+          type="text"
+          class="input"
+          bind:value={serverFormRemarks}
+          placeholder="Please enter remarks, can be blank"
+        />
       </div>
 
-      <div class="modal-footer">
+      <!-- Tombol Test Connection -->
+      <div class="test-conn-area">
         <button
           type="button"
-          class="btn btn--secondary"
-          onclick={() => (showCommandModal = false)}
+          class="btn btn--secondary btn--sm"
+          onclick={testServerConnection}
+          disabled={testingConnection}
         >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn btn--primary"
-          onclick={saveCommand}
-          disabled={savingCommand}
-        >
-          {#if savingCommand}
+          {#if testingConnection}
             <span class="spinner spinner--sm"></span>
-            <span>Menyimpan...</span>
+            <span>Testing connection...</span>
           {:else}
-            <span>Confirm</span>
+            <span>Test connection</span>
           {/if}
         </button>
+
+        {#if testConnResult}
+          <div
+            class="badge"
+            class:badge--success={testConnResult.ok}
+            class:badge--danger={!testConnResult.ok}
+          >
+            <i class={testConnResult.ok ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill'}></i>
+            <span>{testConnResult.message}</span>
+          </div>
+        {/if}
       </div>
     </div>
-  </div>
-{/if}
 
-<style>
-  /* ── Layout Kontainer Utama ────────────────────────────────────────────── */
-  .terminal-page {
-    display: flex;
-    flex-direction: column;
-    height: calc(100vh - 120px);
-    min-height: 580px;
-  }
+    {#snippet footer()}
+      <button
+        type="button"
+        class="btn btn--secondary"
+        onclick={() => (showServerModal = false)}
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary"
+        onclick={saveServer}
+        disabled={savingServer}
+      >
+        {#if savingServer}
+          <span class="spinner spinner--sm"></span>
+          <span>Menyimpan...</span>
+        {:else}
+          <span>Confirm</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
 
-  .terminal-layout {
-    display: flex;
-    flex: 1;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    position: relative;
-    box-shadow: var(--shadow-md);
-  }
+  <!-- MODAL: ADD / EDIT COMMAND -->
+  <Modal
+    open={showCommandModal}
+    title={editingCommandId ? 'Edit command' : 'Add command'}
+    size="md"
+    onclose={() => (showCommandModal = false)}
+  >
+    <div class="modal-form-stack">
+      <div class="form-row">
+        <label class="form-label" for="cmd-name">Name</label>
+        <input
+          id="cmd-name"
+          type="text"
+          class="input"
+          bind:value={commandFormName}
+          placeholder="Please enter command name"
+          required
+        />
+      </div>
 
-  .terminal-layout.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: var(--z-modal);
-    border-radius: 0;
-    border: none;
-    height: 100vh;
-  }
+      <div class="form-row">
+        <label class="form-label" for="cmd-content">Content</label>
+        <textarea
+          id="cmd-content"
+          rows="6"
+          class="input mono content-textarea"
+          bind:value={commandFormContent}
+          placeholder="Please enter command content"
+          required
+        ></textarea>
+      </div>
+    </div>
 
-  /* ── Area Terminal Utama ───────────────────────────────────────────────── */
-  .terminal-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    background: var(--bg-inset);
-  }
-
-  /* ── Tab Bar Gaya aaPanel ──────────────────────────────────────────────── */
-  .terminal-tab-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 var(--space-2);
-    height: 38px;
-    user-select: none;
-  }
-
-  .tabs-scroll {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    flex: 1;
-    min-width: 0;
-  }
-  .tabs-scroll::-webkit-scrollbar {
-    display: none;
-  }
-
-  .term-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--bg-raised);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-bottom: none;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    padding: 0.35rem 0.75rem;
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    cursor: pointer;
-    white-space: nowrap;
-    max-width: 180px;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .term-tab:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .term-tab.active {
-    background: var(--bg-inset);
-    color: var(--text);
-    border-color: var(--border-strong);
-    border-top: 2px solid var(--accent);
-  }
-
-  .tab-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tab-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    border-radius: 3px;
-    margin-left: 2px;
-  }
-  .tab-close-btn:hover {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-  }
-
-  /* Status Indicator Dot */
-  .status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .status-dot.online {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--tint-accent);
-  }
-  .status-dot.offline {
-    background: var(--danger);
-  }
-  .status-dot.running {
-    background: var(--warning);
-    animation: fp-pulse 1.2s infinite ease-in-out;
-  }
-
-  /* Tombol + Tambah Tab */
-  .add-tab-wrapper {
-    position: relative;
-    display: inline-block;
-  }
-  .add-tab-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--accent);
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
-  }
-  .add-tab-btn:hover {
-    background: var(--tint-accent);
-    border-color: var(--accent);
-  }
-
-  /* Popover Menu Tambah Tab */
-  .add-tab-menu {
-    position: absolute;
-    top: 32px;
-    left: 0;
-    z-index: var(--z-dropdown);
-    min-width: 240px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    padding: var(--space-1) 0;
-  }
-  .menu-header {
-    font-size: var(--text-2xs);
-    text-transform: uppercase;
-    color: var(--text-subtle);
-    padding: var(--space-1) var(--space-3);
-    letter-spacing: 0.05em;
-  }
-  .menu-divider {
-    height: 1px;
-    background: var(--border-subtle);
-    margin: var(--space-1) 0;
-  }
-  .menu-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    width: 100%;
-    padding: var(--space-2) var(--space-3);
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    text-align: left;
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .menu-item:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .menu-item--primary {
-    color: var(--accent);
-    font-weight: var(--weight-semibold);
-  }
-  .menu-icon {
-    font-size: 1rem;
-  }
-  .menu-item-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .srv-title {
-    font-weight: var(--weight-medium);
-  }
-  .srv-sub {
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-  }
-
-  /* Tombol Aksi Kanan */
-  .tab-bar-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding-left: var(--space-2);
-  }
-  .action-icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: 0.95rem;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .action-icon-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-
-  /* ── Layar Terminal Konsol ─────────────────────────────────────────────── */
-  .terminal-viewport {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-4) var(--space-5);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    background: var(--bg-inset);
-    cursor: text;
-  }
-
-  .terminal-welcome {
-    margin-bottom: var(--space-4);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px dashed var(--border-subtle);
-  }
-  .welcome-line {
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-  }
-  .welcome-meta {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .welcome-hint {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-    margin-top: var(--space-1);
-  }
-
-  .term-entry {
-    margin-bottom: var(--space-3);
-  }
-  .prompt-line {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 2px;
-  }
-  .prompt-user {
-    color: var(--accent);
-    font-weight: var(--weight-semibold);
-  }
-  .prompt-path {
-    color: var(--violet);
-    font-weight: var(--weight-semibold);
-  }
-  .prompt-hash {
-    color: var(--text-muted);
-    margin-right: var(--space-2);
-  }
-  .prompt-cmd {
-    color: var(--text);
-    font-weight: var(--weight-medium);
-  }
-  .prompt-time {
-    color: var(--text-subtle);
-    font-size: var(--text-2xs);
-    margin-left: auto;
-  }
-
-  .term-output {
-    margin: var(--space-1) 0 var(--space-2);
-    padding-left: var(--space-2);
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-  }
-  .term-output--error {
-    color: var(--danger-strong);
-  }
-
-  .input-line {
-    display: flex;
-    align-items: center;
-    margin-top: var(--space-2);
-    padding: var(--space-1) 0;
-  }
-  .input-line input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    margin-left: 2px;
-    caret-color: var(--accent);
-  }
-
-  /* ── Tombol Pembagi Collapse/Expand Sidebar ────────────────────────────── */
-  .sidebar-toggle-btn {
-    width: 14px;
-    background: var(--bg-surface);
-    border: none;
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.95rem;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-    padding: 0;
-    z-index: 5;
-  }
-  .sidebar-toggle-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .sidebar-toggle-btn.collapsed {
-    border-right: none;
-  }
-
-  /* ── Sidebar Kanan (Server List & Commands) ────────────────────────────── */
-  .terminal-sidebar {
-    width: 330px;
-    background: var(--bg-surface);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-  }
-
-  .sidebar-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-app);
-  }
-  .sidebar-tab-btn {
-    flex: 1;
-    padding: var(--space-2) var(--space-2);
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    text-align: center;
-    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease, background var(--duration-fast) ease;
-  }
-  .sidebar-tab-btn:hover {
-    color: var(--text);
-  }
-  .sidebar-tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: var(--bg-surface);
-  }
-
-  .sidebar-content {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  /* Header Aksi: Add Button & Search */
-  .sidebar-actions-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-surface);
-  }
-
-  .search-input-wrap {
-    position: relative;
-    flex: 1;
-  }
-  .search-input {
-    width: 100%;
-    height: 28px;
-    padding: 0 var(--space-6) 0 var(--space-2);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: var(--text-xs);
-  }
-  .search-input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .search-icon {
-    position: absolute;
-    right: 7px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-subtle);
-    font-size: 0.85rem;
-    pointer-events: none;
-  }
-
-  /* Tabel Sidebar */
-  .table-container {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .sidebar-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--text-xs);
-  }
-  .sidebar-table th {
-    padding: var(--space-2) var(--space-3);
-    background: var(--bg-raised);
-    color: var(--text-subtle);
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-2xs);
-    border-bottom: 1px solid var(--border);
-  }
-  .th-left {
-    text-align: left;
-  }
-  .th-right {
-    text-align: right;
-  }
-
-  .sidebar-table td {
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-  }
-  .sidebar-table tbody tr:hover {
-    background: var(--bg-hover);
-  }
-
-  .td-server-info,
-  .td-cmd-info {
-    max-width: 170px;
-  }
-
-  .srv-name-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-wrap: wrap;
-  }
-  .srv-ip {
-    color: var(--text);
-    font-weight: var(--weight-medium);
-  }
-  .srv-user {
-    font-size: var(--text-2xs);
-    display: block;
-    margin-top: 2px;
-  }
-
-  .cmd-name {
-    color: var(--text);
-    font-weight: var(--weight-semibold);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cmd-preview {
-    color: var(--text-muted);
-    font-size: var(--text-2xs);
-    margin-top: 2px;
-  }
-
-  .td-actions {
-    text-align: right;
-    white-space: nowrap;
-  }
-  .action-links {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-
-  .link-act {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: var(--text-2xs);
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 3px;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .link-act:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-  }
-  .link-act--connect {
-    color: var(--accent);
-    font-weight: var(--weight-semibold);
-  }
-  .link-act--run {
-    color: var(--accent);
-    font-weight: var(--weight-semibold);
-  }
-  .link-act--paste {
-    color: var(--info);
-  }
-  .link-act--danger:hover {
-    color: var(--danger);
-  }
-
-  .sidebar-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: var(--space-6) var(--space-4);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-  }
-
-  /* ── Modal Dialogs ─────────────────────────────────────────────────────── */
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--bg-overlay);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: var(--z-modal);
-    padding: var(--space-4);
-  }
-
-  .modal-panel {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    width: 100%;
-    max-width: 520px;
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-    animation: modal-appear var(--duration-base) ease-out;
-  }
-  .modal-panel--md {
-    max-width: 540px;
-  }
-
-  @keyframes modal-appear {
-    from {
-      opacity: 0;
-      transform: scale(0.96) translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border);
-  }
-  .modal-title {
-    font-size: var(--text-lg);
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-    margin: 0;
-  }
-  .modal-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.25rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    padding: 2px;
-  }
-  .modal-close-btn:hover {
-    color: var(--text);
-  }
-
-  .modal-body {
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .form-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-  }
-  .form-label {
-    width: 110px;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .ip-port-group {
-    display: flex;
-    gap: var(--space-2);
-    flex: 1;
-  }
-  .port-input {
-    width: 80px;
-    flex-shrink: 0;
-  }
-
-  /* Segmented Pill Switcher (Password / Private Key) */
-  .verification-switcher {
-    display: inline-flex;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 2px;
-  }
-  .switch-pill {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    padding: 0.35rem 0.85rem;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .switch-pill.active {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    font-weight: var(--weight-semibold);
-  }
-
-  .password-input-wrap {
-    position: relative;
-    flex: 1;
-  }
-  .eye-btn {
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 0.95rem;
-  }
-  .eye-btn:hover {
-    color: var(--text);
-  }
-
-  .key-textarea,
-  .content-textarea {
-    resize: vertical;
-    font-size: var(--text-xs);
-    line-height: var(--leading-normal);
-  }
-
-  .test-conn-area {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-top: var(--space-1);
-    padding-left: 110px;
-    flex-wrap: wrap;
-  }
-
-  .test-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: var(--text-2xs);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-  }
-  .test-badge--success {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border: 1px solid var(--tint-accent);
-  }
-  .test-badge--error {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-    border: 1px solid var(--tint-danger);
-  }
-
-  .modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border);
-  }
-
-  /* Utility font & colors */
-  .mono {
-    font-family: var(--font-mono);
-  }
-  .text-white {
-    color: var(--text);
-  }
-  .text-accent {
-    color: var(--accent);
-  }
-  .max-w-100 {
-    max-width: 100px;
-  }
-</style>
+    {#snippet footer()}
+      <button
+        type="button"
+        class="btn btn--secondary"
+        onclick={() => (showCommandModal = false)}
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary"
+        onclick={saveCommand}
+        disabled={savingCommand}
+      >
+        {#if savingCommand}
+          <span class="spinner spinner--sm"></span>
+          <span>Menyimpan...</span>
+        {:else}
+          <span>Confirm</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+</div>
