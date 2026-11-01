@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { MetricPoint } from '../types';
+  import { readToken } from '../utils/browser';
+  import '../../styles/pages/components/chart.css';
 
   interface Props {
     history: MetricPoint[];
@@ -12,8 +14,6 @@
   let { history = [], height = 220, currentCPU = 0, currentRAM = 0 }: Props = $props();
 
   const MAX_POINTS = 60;
-  const COLOR_CPU = '#0ea5e9'; // Sky 500 - tegas & kontras tinggi
-  const COLOR_RAM = '#6366f1'; // Indigo 500
 
   // Formatter waktu di-cache sekali agar tidak alokasi ulang saat mouse bergerak
   const timeFormatter = new Intl.DateTimeFormat('id-ID', {
@@ -113,28 +113,40 @@
     return `${val.toFixed(1)}G`;
   }
 
+  // Ambil warna dari design token aktif agar mendukung mode dark & light
+  function getChartPalette() {
+    return {
+      cpu: readToken('--chart-2', 'dodgerblue'),
+      ram: readToken('--chart-3', 'mediumpurple'),
+      grid: readToken('--text-muted', 'slategray'),
+    };
+  }
+
   function buildGradients(h: number) {
     if (!ctx) return;
+    const { cpu, ram } = getChartPalette();
     cpuGrad = ctx.createLinearGradient(0, 0, 0, h);
-    cpuGrad.addColorStop(0, 'rgba(14, 165, 233, 0.16)');
-    cpuGrad.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+    cpuGrad.addColorStop(0, cpu);
+    cpuGrad.addColorStop(1, 'transparent');
 
     ramGrad = ctx.createLinearGradient(0, 0, 0, h);
-    ramGrad.addColorStop(0, 'rgba(99, 102, 241, 0.14)');
-    ramGrad.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+    ramGrad.addColorStop(0, ram);
+    ramGrad.addColorStop(1, 'transparent');
   }
 
   function drawChart(pts: MetricPoint[], w: number, h: number) {
     if (!ctx || !canvasEl) return;
 
+    const { cpu, ram, grid } = getChartPalette();
     ctx.clearRect(0, 0, w, h);
 
     // 1. Garis Grid Horizontal & Sub-Grid Presisi
     ctx.lineWidth = 1;
+    ctx.strokeStyle = grid;
     for (let i = 0; i <= 4; i++) {
       // Snap ke 0.5px agar garis 1px terlihat tajam di layar standar
       const y = Math.floor((h / 4) * i) + 0.5;
-      ctx.strokeStyle = i === 4 ? 'rgba(148, 163, 184, 0.14)' : 'rgba(148, 163, 184, 0.06)';
+      ctx.globalAlpha = i === 4 ? 0.14 : 0.06;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
@@ -143,7 +155,7 @@
 
     // Garis Grid Vertikal (Interval 15 titik / 15 detik)
     const step = w / (MAX_POINTS - 1);
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.04)';
+    ctx.globalAlpha = 0.04;
     for (let i = 15; i < MAX_POINTS; i += 15) {
       const x = Math.floor(i * step) + 0.5;
       ctx.beginPath();
@@ -151,16 +163,18 @@
       ctx.lineTo(x, h);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
 
     if (pts.length < 2) return;
 
-    if (!cpuGrad || !ramGrad) buildGradients(h);
+    buildGradients(h);
 
     // 2. Helper Penggambar Kurva
     function renderTrace(
       getValue: (p: MetricPoint) => number,
       strokeColor: string,
-      fillGrad: CanvasGradient | null
+      fillGrad: CanvasGradient | null,
+      fillAlpha: number
     ) {
       if (!ctx) return;
       const lastX = (pts.length - 1) * step;
@@ -184,19 +198,23 @@
         ctx.lineTo(lastX, h);
         ctx.lineTo(0, h);
         ctx.closePath();
+        ctx.save();
+        ctx.globalAlpha = fillAlpha;
         ctx.fillStyle = fillGrad;
         ctx.fill();
+        ctx.restore();
       }
     }
 
     // Gambar layer RAM terlebih dahulu, lalu CPU di atasnya
     renderTrace(
       (p) => (p.ram_total > 0 ? (p.ram_used / p.ram_total) * 100 : 0),
-      COLOR_RAM,
-      ramGrad
+      ram,
+      ramGrad,
+      0.14
     );
 
-    renderTrace((p) => p.cpu || 0, COLOR_CPU, cpuGrad);
+    renderTrace((p) => p.cpu || 0, cpu, cpuGrad, 0.16);
   }
 
   function handlePointerMove(e: PointerEvent) {
@@ -256,7 +274,7 @@
   });
 </script>
 
-<div class="telemetry-panel">
+<div class="cmp-chart telemetry-panel">
   <!-- Header Strip Ringkas -->
   <div class="telemetry-bar">
     <div class="telemetry-status">
@@ -304,7 +322,7 @@
   <!-- Area Kanvas & Overlay Kompositor GPU -->
   <div
     class="viewport"
-    style="height: {height}px;"
+    style="--chart-h: {height}px;"
     bind:this={containerEl}
     onpointermove={handlePointerMove}
     onpointerleave={handlePointerLeave}
@@ -326,22 +344,22 @@
     {#if activeHover}
       <div
         class="crosshair-line"
-        style="transform: translate3d({activeHover.x}px, 0, 0);"
+        style="--cx: {activeHover.x}px;"
       ></div>
 
       <div
         class="hover-node node-cpu"
-        style="transform: translate3d({activeHover.x}px, {activeHover.cpuY}px, 0);"
+        style="--nx: {activeHover.x}px; --ny: {activeHover.cpuY}px;"
       ></div>
 
       <div
         class="hover-node node-ram"
-        style="transform: translate3d({activeHover.x}px, {activeHover.ramY}px, 0);"
+        style="--nx: {activeHover.x}px; --ny: {activeHover.ramY}px;"
       ></div>
 
       <div
         class="hud-tooltip"
-        style="transform: translate3d({activeHover.tooltipX}px, {activeHover.tooltipY}px, 0) translate(-50%, -100%);"
+        style="--tx: {activeHover.tooltipX}px; --ty: {activeHover.tooltipY}px;"
       >
         <div class="hud-header">
           <span>TIME</span>
@@ -370,242 +388,3 @@
     <span>NOW</span>
   </div>
 </div>
-
-<style>
-  .telemetry-panel {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
-    font-variant-numeric: tabular-nums;
-    user-select: none;
-  }
-
-  /* Header Bar */
-  .telemetry-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding: 0.45rem 0.75rem;
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .telemetry-status {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.7rem;
-    color: var(--text-subtle);
-  }
-
-  .status-label {
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .status-window {
-    padding: 0.1rem 0.35rem;
-    background: var(--bg-active);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--text-subtle);
-    font-size: 0.64rem;
-  }
-
-  /* Readout Cells */
-  .metric-readouts {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .metric-cell {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.2rem 0.55rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 0.72rem;
-  }
-
-  .metric-accent {
-    width: 3px;
-    height: 12px;
-    border-radius: 1px;
-  }
-
-  .accent-cpu {
-    background: var(--info);
-  }
-
-  .accent-ram {
-    background: var(--violet);
-  }
-
-  .metric-name {
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .metric-val {
-    font-weight: 700;
-    color: var(--text);
-    min-width: 42px;
-    text-align: right;
-  }
-
-  .val-warn {
-    color: var(--warning);
-  }
-
-  .val-crit {
-    color: var(--danger-strong);
-  }
-
-  .metric-sub {
-    color: var(--text-subtle);
-    font-size: 0.65rem;
-    padding-left: 0.4rem;
-    border-left: 1px solid var(--border);
-  }
-
-  /* Chart Viewport */
-  .viewport {
-    position: relative;
-    width: 100%;
-    overflow: hidden;
-    cursor: crosshair;
-    background: var(--bg-surface);
-  }
-
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-
-  /* Static Y-Axis Overlay */
-  .y-axis {
-    position: absolute;
-    top: 0;
-    left: 6px;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 4px 0;
-    pointer-events: none;
-    z-index: 2;
-    font-size: 0.62rem;
-    color: color-mix(in srgb, var(--text-muted) 40%, transparent);
-  }
-
-  /* GPU-Accelerated Crosshair & Nodes */
-  .crosshair-line {
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 1px;
-    background: color-mix(in srgb, var(--text) 25%, transparent);
-    pointer-events: none;
-    will-change: transform;
-    z-index: 3;
-  }
-
-  .hover-node {
-    position: absolute;
-    top: -4px;
-    left: -4px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1.5px solid var(--border-subtle);
-    pointer-events: none;
-    will-change: transform;
-    z-index: 4;
-  }
-
-  .node-cpu {
-    background: var(--info);
-  }
-
-  .node-ram {
-    background: var(--violet);
-  }
-
-  /* HUD Tooltip */
-  .hud-tooltip {
-    position: absolute;
-    top: 0;
-    left: 0;
-    min-width: 124px;
-    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    padding: 0.35rem 0.5rem;
-    pointer-events: none;
-    will-change: transform;
-    z-index: 10;
-    font-size: 0.68rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  }
-
-  .hud-header {
-    display: flex;
-    justify-content: space-between;
-    color: var(--text-subtle);
-    font-size: 0.62rem;
-    padding-bottom: 0.2rem;
-    margin-bottom: 0.2rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .hud-time {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
-
-  .hud-row {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.15rem;
-  }
-
-  .hud-mark {
-    width: 2px;
-    height: 9px;
-    border-radius: 1px;
-  }
-
-  .hud-key {
-    color: var(--text-muted);
-  }
-
-  .hud-num {
-    margin-left: auto;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  /* Footer X-Axis */
-  .x-axis {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.25rem 0.65rem;
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border);
-    font-size: 0.62rem;
-    color: var(--text-disabled);
-  }
-</style>
