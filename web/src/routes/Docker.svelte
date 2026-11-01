@@ -31,6 +31,7 @@
   import PullImageModal from './docker/PullImageModal.svelte';
   import ContainerLogsModal from './docker/ContainerLogsModal.svelte';
   import ComposeModal from './docker/ComposeModal.svelte';
+  import CreateNetworkModal from './docker/CreateNetworkModal.svelte';
   import '../styles/pages/docker/shared.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
@@ -1273,69 +1274,12 @@
   />
 
   <!-- ══════════════ MODAL: BUAT JARINGAN ══════════════ -->
-  <Modal
-    open={showCreateNetworkModal}
-    title="Buat Jaringan Virtual Baru"
-    size="md"
-    onclose={() => (showCreateNetworkModal = false)}
-  >
-    <form id="docker-create-net-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitCreateNetwork(); }}>
-      <div class="field">
-        <label class="field__label" for="net-name">Nama Network *</label>
-        <input
-          id="net-name"
-          type="text"
-          class="input font-mono"
-          placeholder="misal: backend-net"
-          bind:value={newNetwork.name}
-          required
-        />
-      </div>
-
-      <div class="field">
-        <label class="field__label" for="net-driver">Driver</label>
-        <select id="net-driver" class="input" bind:value={newNetwork.driver}>
-          <option value="bridge">bridge (Default isolasi lokal)</option>
-          <option value="host">host (Gunakan network host langsung)</option>
-          <option value="overlay">overlay (Multi-host swarm)</option>
-          <option value="macvlan">macvlan</option>
-        </select>
-      </div>
-
-      <div class="form-row">
-        <div class="field flex-1">
-          <label class="field__label" for="net-subnet">Subnet CIDR</label>
-          <input
-            id="net-subnet"
-            type="text"
-            class="input font-mono"
-            placeholder="172.28.0.0/16"
-            bind:value={newNetwork.subnet}
-          />
-        </div>
-        <div class="field flex-1">
-          <label class="field__label" for="net-gw">Gateway IP</label>
-          <input
-            id="net-gw"
-            type="text"
-            class="input font-mono"
-            placeholder="172.28.0.1"
-            bind:value={newNetwork.gateway}
-          />
-        </div>
-      </div>
-    </form>
-
-    {#snippet footer()}
-      <button type="button" class="btn btn--secondary" onclick={() => (showCreateNetworkModal = false)}>
-        Batal
-      </button>
-      <button type="submit" form="docker-create-net-form" class="btn btn--primary" disabled={actionLoading}>
-        <i class="ri-check-line" aria-hidden="true"></i>
-        <span>Buat Jaringan</span>
-      </button>
-    {/snippet}
-  </Modal>
+  <CreateNetworkModal
+    bind:showCreateNetworkModal
+    bind:newNetwork
+    {actionLoading}
+    onSubmitCreateNetwork={submitCreateNetwork}
+  />
 
   <!-- ══════════════ MODAL: BUAT VOLUME ══════════════ -->
   <Modal

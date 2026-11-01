@@ -1,0 +1,8 @@
+@layer pages {
+  .pg-docker-create-network-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}
+
