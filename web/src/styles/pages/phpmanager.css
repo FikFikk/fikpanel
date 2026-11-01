@@ -81,18 +81,6 @@
 
 
 
-    /* Kotak preset RAM & chips fungsi dinonaktifkan */
-    .preset-box {
-      background: var(--bg-inset);
-      border: 1px dashed var(--border);
-      border-radius: var(--radius-lg);
-      padding: 0.8rem 1rem;
-    }
-    .preset-title {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--text);
-    }
     .chips-container {
       background: var(--bg-inset);
       border: 1px solid var(--border);
