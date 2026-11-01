@@ -13,6 +13,7 @@
   import ContextMenu from './files/ContextMenu.svelte';
   import CodeEditor from './files/CodeEditor.svelte';
   import RemoteDownloadModal from './files/RemoteDownloadModal.svelte';
+  import SymlinkModal from './files/SymlinkModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1819,57 +1820,15 @@
   />
 
   <!-- ═════════ MODAL: Soft Link (Symlink) ═════════ -->
-  <Modal
+  <SymlinkModal
     open={showSymlinkModal}
-    title="Buat Soft Link (Symbolic Link)"
-    size="md"
-    onclose={() => (showSymlinkModal = false)}
-  >
-    <form id="form-symlink" onsubmit={handleCreateSymlink}>
-      <div class="field">
-        <label class="field__label" for="f-sym-tgt"
-          >Path Target (Asal Berkas/Folder)</label
-        >
-        <input
-          id="f-sym-tgt"
-          class="input"
-          type="text"
-          placeholder="/var/log/nginx atau C:\data\app"
-          bind:value={symlinkTarget}
-          required
-        />
-      </div>
-      <div class="field">
-        <label class="field__label" for="f-sym-name">Nama Tautan Link</label>
-        <input
-          id="f-sym-name"
-          class="input"
-          type="text"
-          placeholder="contoh: nginx_logs_link"
-          bind:value={symlinkName}
-          required
-        />
-      </div>
-      <div class="field-meta">
-        Lokasi pembuatan: <span class="mono">{currentPath}</span>
-      </div>
-    </form>
-    {#snippet footer()}
-      <button
-        type="button"
-        class="btn btn--ghost"
-        onclick={() => (showSymlinkModal = false)}>Batal</button
-      >
-      <button
-        type="submit"
-        form="form-symlink"
-        class="btn btn--primary"
-        disabled={creatingSymlink}
-      >
-        {creatingSymlink ? "Membuat..." : "Buat Tautan"}
-      </button>
-    {/snippet}
-  </Modal>
+    bind:symlinkTarget
+    bind:symlinkName
+    {currentPath}
+    {creatingSymlink}
+    onClose={() => (showSymlinkModal = false)}
+    onSubmit={handleCreateSymlink}
+  />
 
   <!-- ═════════ MODAL: Search File Content ═════════ -->
   <Modal
