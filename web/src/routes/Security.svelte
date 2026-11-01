@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
-  import { copyText } from '../lib/utils/browser';
   import type {
     PortRule,
     FirewallExtendedStatus,
@@ -19,7 +18,6 @@
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
-  import Modal from '../lib/components/ui/Modal.svelte';
   import SecurityTabs from './security/SecurityTabs.svelte';
   import OverviewTab from './security/OverviewTab.svelte';
   import FirewallTab from './security/FirewallTab.svelte';
@@ -30,6 +28,7 @@
   import ScanDetectionTab from './security/ScanDetectionTab.svelte';
   import AddPortModal from './security/AddPortModal.svelte';
   import AddWhitelistModal from './security/AddWhitelistModal.svelte';
+  import AddBlacklistModal from './security/AddBlacklistModal.svelte';
   import '../styles/pages/security/shared.css';
 
   // Tab navigasi aktif
@@ -852,46 +851,13 @@
   />
 
   <!-- MODAL: ADD BLACKLIST IP -->
-  <Modal
+  <AddBlacklistModal
     open={showAddBlacklistModal}
-    title="Blokir Alamat IP (Blacklist)"
-    size="sm"
-    onclose={() => (showAddBlacklistModal = false)}
-  >
-    <div class="field mb-3">
-      <label class="field__label" for="black-ip">Alamat IP</label>
-      <input
-        id="black-ip"
-        type="text"
-        class="input input--mono"
-        placeholder="Contoh: 185.220.101.44"
-        bind:value={newBlackIP}
-      />
-    </div>
-    <div class="field mb-3">
-      <label class="field__label" for="black-reason">Alasan Pemblokiran</label>
-      <input
-        id="black-reason"
-        type="text"
-        class="input"
-        placeholder="Contoh: Serangan brute force berulang"
-        bind:value={newBlackReason}
-      />
-    </div>
-    <div class="field mb-3">
-      <label class="field__label" for="black-dur">Durasi Blokir (Menit)</label>
-      <input
-        id="black-dur"
-        type="number"
-        class="input input--mono"
-        bind:value={newBlackDuration}
-      />
-    </div>
-
-    {#snippet footer()}
-      <button class="btn btn--secondary" onclick={() => (showAddBlacklistModal = false)}>Batal</button>
-      <button class="btn btn--danger" onclick={handleAddBlacklist}>Blokir IP</button>
-    {/snippet}
-  </Modal>
+    bind:newBlackIP
+    bind:newBlackReason
+    bind:newBlackDuration
+    onClose={() => (showAddBlacklistModal = false)}
+    onSubmit={handleAddBlacklist}
+  />
 </div>
 

@@ -1,0 +1,11 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY ADD BLACKLIST MODAL — formulir blokir IP blacklist (.pg-security-add-blacklist-modal)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-add-blacklist-modal {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
