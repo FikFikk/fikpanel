@@ -17,6 +17,7 @@
   import SearchContentModal from './files/SearchContentModal.svelte';
   import FavoritesModal from './files/FavoritesModal.svelte';
   import CloudStorageModal from './files/CloudStorageModal.svelte';
+  import PropertiesModal from './files/PropertiesModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1865,57 +1866,12 @@
   />
 
   <!-- ═════════ MODAL: Properties (Detail Metadata Berkas) ═════════ -->
-  <Modal
+  <PropertiesModal
     open={showPropertiesModal && !!propTarget}
-    title={`Properties: ${propTarget?.name || ""}`}
-    size="md"
-    onclose={() => (showPropertiesModal = false)}
-  >
-    {#if propTarget}
-      <div class="prop-table">
-        <div class="prop-row">
-          <span class="prop-label">Name:</span>
-          <span class="prop-val font-bold">{propTarget.name}</span>
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">Full Path:</span>
-          <span class="prop-val mono select-all">{propTarget.path}</span>
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">Type:</span>
-          <span class="prop-val"
-            >{propTarget.is_dir
-              ? "Directory (Folder)"
-              : `File (${propTarget.ext || "Plain"})`}</span
-          >
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">Size:</span>
-          <span class="prop-val mono"
-            >{formatBytes(propTarget.size)} ({propTarget.size} bytes)</span
-          >
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">PMSN / Permissions:</span>
-          <span class="prop-val mono badge-green">{propTarget.mode}</span>
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">Owner:</span>
-          <span class="prop-val mono">{propTarget.owner}</span>
-        </div>
-        <div class="prop-row">
-          <span class="prop-label">Modified Time:</span>
-          <span class="prop-val mono">{propTarget.mod_time}</span>
-        </div>
-      </div>
-    {/if}
-    {#snippet footer()}
-      <button
-        class="btn btn--primary"
-        onclick={() => (showPropertiesModal = false)}>Tutup</button
-      >
-    {/snippet}
-  </Modal>
+    {propTarget}
+    {formatBytes}
+    onClose={() => (showPropertiesModal = false)}
+  />
 
   <!-- ═════════ MODAL: Kompresi Arsip Zip ═════════ -->
   <Modal

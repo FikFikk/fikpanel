@@ -111,38 +111,6 @@
       word-break: break-all;
     }
 
-    /* Tabel Properties */
-    .prop-table {
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.75rem;
-      font-size: 0.78rem;
-    }
-    .prop-row {
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
-      border-bottom: 1px solid var(--border-subtle);
-      padding-bottom: 0.4rem;
-    }
-    .prop-label {
-      color: var(--text-subtle);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-    }
-    .prop-val {
-      color: var(--text);
-      word-break: break-all;
-    }
-    .badge-green {
-      color: var(--accent);
-      font-weight: 700;
-    }
-
     /* Matriks PMSN (chmod) */
     .pmsn-body {
       display: flex;
