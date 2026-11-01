@@ -19,15 +19,6 @@
   import PhpInfoTab from './phpmanager/PhpInfoTab.svelte';
   import InstallPanel from './phpmanager/InstallPanel.svelte';
   import '../styles/pages/phpmanager/shared.css';
-  import VersionCards from './phpmanager/VersionCards.svelte';
-  import ServiceTab from './phpmanager/ServiceTab.svelte';
-  import SitesTab from './phpmanager/SitesTab.svelte';
-  import ConfigTab from './phpmanager/ConfigTab.svelte';
-  import ConfigFileTab from './phpmanager/ConfigFileTab.svelte';
-  import FpmProfileTab from './phpmanager/FpmProfileTab.svelte';
-  import FpmConfigTab from './phpmanager/FpmConfigTab.svelte';
-  import DisabledFunctionsTab from './phpmanager/DisabledFunctionsTab.svelte';
-  import '../styles/pages/phpmanager/shared.css';
   import '../styles/pages/phpmanager.css';
 
   // State daftar versi PHP
