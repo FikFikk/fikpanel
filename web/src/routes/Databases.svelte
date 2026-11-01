@@ -7,6 +7,7 @@
   import Modal from '../lib/components/ui/Modal.svelte';
   import Backup from './Backup.svelte';
   import EngineTabs from './databases/EngineTabs.svelte';
+  import UninstalledCard from './databases/UninstalledCard.svelte';
   import '../styles/pages/databases/shared.css';
   import '../styles/pages/databases.css';
 
@@ -896,35 +897,11 @@
       <Backup />
     </div>
   {:else if !loadingEngines && !currentEngine.installed}
-    <div class="uninstalled-card">
-      <div class="uninstalled-card__body">
-        <div class="alert-icon-box">
-          <i class="ri-error-warning-fill" aria-hidden="true"></i>
-        </div>
-        <div class="uninstalled-card__content">
-          <h2 class="uninstalled-title">
-            Server database {currentEngine.display_name} belum terkonfigurasi
-          </h2>
-          <p class="uninstalled-desc">
-            Layanan {currentEngine.display_name} belum dipasang pada server ini. Anda dapat menginstal
-            paket resmi secara otomatis dengan Quick Install atau menghubungkan database eksternal / remote.
-          </p>
-          <div class="uninstalled-actions">
-            <button class="btn btn-primary" onclick={openInstallModal}>
-              <i class="ri-download-cloud-line" aria-hidden="true"></i>
-              <span>Pasang Sekarang (Quick Install)</span>
-            </button>
-            <button
-              class="btn btn-outline"
-              onclick={() => notify('Fitur Remote DB akan segera tersedia pada versi mendatang', 'info')}
-            >
-              <i class="ri-external-link-line" aria-hidden="true"></i>
-              <span>Hubungkan Remote DB</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <UninstalledCard
+      displayName={currentEngine.display_name}
+      onInstall={openInstallModal}
+      onRemoteDb={() => notify('Fitur Remote DB akan segera tersedia pada versi mendatang', 'info')}
+    />
   {:else}
     <!-- Action Bar & Fitur saat Engine Sudah Terpasang -->
     <div class="action-bar-card">
