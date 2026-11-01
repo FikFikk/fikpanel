@@ -2,8 +2,10 @@
   import { onMount, onDestroy } from 'svelte';
   import { apiFetch } from '../lib/api';
   import type { AppPackage, InstallTask, GlobalPackage } from '../lib/types';
+  import Modal from '../lib/components/ui/Modal.svelte';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import '../styles/pages/appstore.css';
 
   // Kategori filter aplikasi
   type CategoryFilter = 'all' | 'installed' | 'webserver' | 'runtime' | 'database' | 'tools';
@@ -121,8 +123,8 @@
     const ok = await confirmDialog({
       title: `Pasang ${app.name}`,
       message: `Pasang "${app.name}" (${app.version}) ke sistem server? Proses instalasi berjalan di background.`,
-      confirmLabel: 'Mulai Pasang',
-      variant: 'primary',
+      confirmText: 'Mulai Pasang',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -140,8 +142,8 @@
     const ok = await confirmDialog({
       title: `Copot ${app.name}`,
       message: `Apakah Anda yakin ingin mencopot "${app.name}" dari server? Pastikan dependensi web tidak terdampak.`,
-      confirmLabel: 'Copot Paket',
-      variant: 'danger',
+      confirmText: 'Copot Paket',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -181,8 +183,8 @@
     const ok = await confirmDialog({
       title: `Pasang Paket ${pkg.name}`,
       message: `Pasang paket Linux "${pkg.name}" dari repositori sistem (apt-get)?`,
-      confirmLabel: 'Pasang Sekarang',
-      variant: 'primary',
+      confirmText: 'Pasang Sekarang',
+      tone: 'default',
     });
     if (!ok) return;
 
@@ -200,8 +202,8 @@
     const ok = await confirmDialog({
       title: `Copot Paket ${pkg.name}`,
       message: `Hapus paket "${pkg.name}" dari server via apt-get remove?`,
-      confirmLabel: 'Copot Paket',
-      variant: 'danger',
+      confirmText: 'Copot Paket',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -344,20 +346,25 @@
   });
 </script>
 
-<div class="store-page">
+<div class="pg-appstore store-page">
   <!-- Header Bar -->
-  <header class="store-head">
-    <div class="store-head__info">
-      <h1 class="store-title">
+  <header class="page-header">
+    <div>
+      <h1 class="page-header__title">
         <i class="ri-apps-2-line"></i> App Store & Paket Server
       </h1>
-      <p class="store-sub">
+      <p class="page-header__sub">
         Manajemen instalasi web stack, database, runtime, dan paket sistem Linux dengan 1-klik.
       </p>
     </div>
-    <div class="store-head__actions">
+    <div class="page-header__actions">
       <button class="btn btn--secondary btn--sm" onclick={loadCatalog} disabled={loading} title="Perbarui status daftar paket">
-        <i class="ri-refresh-line {loading ? 'spin' : ''}"></i> Perbarui Daftar
+        {#if loading}
+          <span class="spinner"></span>
+        {:else}
+          <i class="ri-refresh-line"></i>
+        {/if}
+        Perbarui Daftar
       </button>
     </div>
   </header>
@@ -365,21 +372,21 @@
   <!-- Search Card dengan Dropdown Autocomplete & Riwayat -->
   <div class="search-section">
     <div class="search-box card">
-      <div class="search-input-wrap">
-        <i class="ri-search-line search-icon" aria-hidden="true"></i>
+      <div class="input-wrap">
+        <i class="ri-search-line input__icon" aria-hidden="true"></i>
         <input
           type="text"
           value={searchQuery}
           oninput={handleSearchInput}
           onfocus={() => (searchFocused = true)}
           placeholder="Cari aplikasi atau paket sistem (misal: Nginx, PHP, MariaDB, Docker, htop, ffmpeg)..."
-          class="input search-field"
+          class="input input--search search-field"
           aria-label="Cari aplikasi dan paket"
         />
         {#if searching}
           <span class="spinner search-spin" aria-label="Mencari"></span>
         {:else if searchQuery}
-          <button class="btn-clear-search" onclick={clearSearchInput} aria-label="Bersihkan pencarian">
+          <button class="btn btn--icon btn--sm btn--ghost btn-clear-search" onclick={clearSearchInput} aria-label="Bersihkan pencarian">
             <i class="ri-close-line"></i>
           </button>
         {/if}
@@ -424,9 +431,10 @@
   <!-- Toolbar: Filter Kategori & View Switcher (Grid / Table) -->
   <div class="toolbar-row">
     <!-- Filter Kategori Kiri (Pills) -->
-    <div class="filter-pills" role="tablist" aria-label="Filter kategori software">
+    <div class="tabs tabs--pill" role="tablist" aria-label="Filter kategori software">
       <button
-        class="filter-pill {activeCategory === 'all' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'all'}
         onclick={() => (activeCategory = 'all')}
         role="tab"
         aria-selected={activeCategory === 'all'}
@@ -434,7 +442,8 @@
         Semua ({apps.length})
       </button>
       <button
-        class="filter-pill {activeCategory === 'installed' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'installed'}
         onclick={() => (activeCategory = 'installed')}
         role="tab"
         aria-selected={activeCategory === 'installed'}
@@ -443,7 +452,8 @@
         Terpasang ({installedCount})
       </button>
       <button
-        class="filter-pill {activeCategory === 'webserver' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'webserver'}
         onclick={() => (activeCategory = 'webserver')}
         role="tab"
         aria-selected={activeCategory === 'webserver'}
@@ -451,7 +461,8 @@
         Web Server
       </button>
       <button
-        class="filter-pill {activeCategory === 'runtime' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'runtime'}
         onclick={() => (activeCategory = 'runtime')}
         role="tab"
         aria-selected={activeCategory === 'runtime'}
@@ -459,7 +470,8 @@
         Runtime & Bahasa
       </button>
       <button
-        class="filter-pill {activeCategory === 'database' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'database'}
         onclick={() => (activeCategory = 'database')}
         role="tab"
         aria-selected={activeCategory === 'database'}
@@ -467,7 +479,8 @@
         Database & Cache
       </button>
       <button
-        class="filter-pill {activeCategory === 'tools' ? 'active' : ''}"
+        class="tabs__tab"
+        class:is-active={activeCategory === 'tools'}
         onclick={() => (activeCategory = 'tools')}
         role="tab"
         aria-selected={activeCategory === 'tools'}
@@ -503,15 +516,15 @@
 
   <!-- Area Konten Aplikasi Utama -->
   {#if loading && apps.length === 0}
-    <div class="empty-state">
+    <div class="state state--loading">
       <span class="spinner" aria-hidden="true"></span>
-      <p class="empty-state__title">Memeriksa repositori dan paket sistem...</p>
+      <p class="state__title">Memeriksa repositori dan paket sistem...</p>
     </div>
   {:else if filteredApps.length === 0 && searchResults.length === 0}
-    <div class="empty-state card">
+    <div class="state state--empty card">
       <i class="ri-inbox-line" aria-hidden="true"></i>
-      <p class="empty-state__title">Tidak ditemukan aplikasi yang cocok</p>
-      <p class="text-subtle">
+      <p class="state__title">Tidak ditemukan aplikasi yang cocok</p>
+      <p class="state__desc">
         {searchQuery ? `Tidak ada hasil untuk kata kunci "${searchQuery}".` : 'Belum ada software dalam kategori ini.'}
       </p>
       {#if searchQuery}
@@ -521,7 +534,7 @@
       {/if}
     </div>
   {:else}
-    <!-- MODE 1: GRID / KARTU (Sesuai Referensi Gambar 2) -->
+    <!-- MODE 1: GRID / KARTU -->
     {#if viewMode === 'grid'}
       <div class="apps-grid">
         {#each filteredApps as app (app.id)}
@@ -534,7 +547,7 @@
               <div class="app-card__meta">
                 <div class="app-card__title-row">
                   <h3 class="app-card__name">{app.name}</h3>
-                  <span class="badge badge--pill badge--secondary app-card__ver">{app.version}</span>
+                  <span class="badge badge--pill badge--neutral mono">{app.version}</span>
                 </div>
                 <span class="app-card__cat">{getCategoryLabel(app.category)}</span>
               </div>
@@ -555,7 +568,7 @@
                     <span class="dot"></span> Terpasang
                   </span>
                 {:else}
-                  <span class="badge badge--secondary badge--pill">
+                  <span class="badge badge--neutral badge--pill">
                     <span class="dot"></span> Belum Ada
                   </span>
                 {/if}
@@ -563,7 +576,6 @@
 
               <div class="app-card__actions">
                 {#if app.installed}
-                  <!-- Tombol Pengaturan Khusus jika didukung -->
                   {#if hasDedicatedManager(app.id)}
                     <button
                       class="btn btn--secondary btn--sm btn--icon"
@@ -603,17 +615,17 @@
       </div>
     {/if}
 
-    <!-- MODE 2: TABEL / LIST (Sesuai Referensi Gambar 1) -->
+    <!-- MODE 2: TABEL / LIST -->
     {#if viewMode === 'table'}
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
-              <th style="min-width: 220px;">NAMA SOFTWARE</th>
-              <th style="width: 150px;">KATEGORI</th>
+              <th class="col-software">NAMA SOFTWARE</th>
+              <th class="col-category">KATEGORI</th>
               <th>DESKRIPSI & PERUNTUKAN</th>
-              <th style="width: 130px;">STATUS</th>
-              <th class="text-right" style="min-width: 180px;">OPERASI</th>
+              <th class="col-status">STATUS</th>
+              <th class="text-right col-ops">OPERASI</th>
             </tr>
           </thead>
           <tbody>
@@ -631,7 +643,7 @@
                   </div>
                 </td>
                 <td>
-                  <span class="badge badge--secondary">{getCategoryLabel(app.category)}</span>
+                  <span class="badge badge--neutral">{getCategoryLabel(app.category)}</span>
                 </td>
                 <td class="text-muted text-xs">
                   {app.description}
@@ -646,7 +658,7 @@
                       <span class="dot"></span> Terpasang
                     </span>
                   {:else}
-                    <span class="badge badge--secondary badge--pill">
+                    <span class="badge badge--neutral badge--pill">
                       <span class="dot"></span> Belum Ada
                     </span>
                   {/if}
@@ -700,10 +712,10 @@
           <div class="global-head-title">
             <i class="ri-terminal-box-line text-accent"></i>
             <h3>Paket Repositori Linux Sistem (APT)</h3>
-            <span class="badge badge--secondary badge--pill">{searchResults.length} hasil</span>
+            <span class="badge badge--neutral badge--pill">{searchResults.length} hasil</span>
           </div>
           {#if searching}
-            <span class="text-xs text-subtle flex items-center gap-xs">
+            <span class="text-xs text-subtle row items-center">
               <span class="spinner" aria-hidden="true"></span> Mencari repositori OS...
             </span>
           {/if}
@@ -714,10 +726,10 @@
             <table class="table">
               <thead>
                 <tr>
-                  <th style="width: 220px;">NAMA PAKET</th>
+                  <th class="col-pkg">NAMA PAKET</th>
                   <th>DESKRIPSI LENGKAP</th>
-                  <th style="width: 140px;">STATUS</th>
-                  <th class="text-right" style="width: 130px;">AKSI</th>
+                  <th class="col-pkg-status">STATUS</th>
+                  <th class="text-right col-pkg-action">AKSI</th>
                 </tr>
               </thead>
               <tbody>
@@ -738,7 +750,7 @@
                           <span class="dot dot--success"></span> Terpasang
                         </span>
                       {:else}
-                        <span class="badge badge--secondary badge--pill">
+                        <span class="badge badge--neutral badge--pill">
                           <span class="dot"></span> Belum Ada
                         </span>
                       {/if}
@@ -763,551 +775,37 @@
       </div>
     {/if}
   {/if}
-</div>
 
-<!-- Modal Log Output Terminal Real-time -->
-{#if showLogModal}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) closeLogModal(); }}
-    onkeydown={(e) => { if (e.key === 'Escape') closeLogModal(); }}
+  <!-- Modal Log Output Terminal Real-time -->
+  <Modal
+    open={showLogModal}
+    title={logModalTitle || 'Eksekusi Paket Server'}
+    size="lg"
+    onclose={closeLogModal}
   >
-    <div class="modal-card card">
-      <div class="modal-card__head">
-        <div class="modal-card__title">
-          <i class="ri-terminal-box-line"></i>
-          <h3>{logModalTitle || 'Eksekusi Paket Server'}</h3>
-        </div>
-        <button class="btn-close" onclick={closeLogModal} aria-label="Tutup modal">&times;</button>
-      </div>
-
-      <div class="modal-card__body">
-        <div class="status-banner {currentTask?.status || 'running'}">
-          <span class="font-bold">STATUS OPERASI:</span>
-          {#if currentTask?.status === 'running'}
-            <span class="status-msg">
-              <span class="spinner" aria-hidden="true"></span> Sedang memproses paket di background...
-            </span>
-          {:else if currentTask?.status === 'success'}
-            <span class="status-msg text-accent">
-              <i class="ri-checkbox-circle-fill"></i> Operasi selesai dengan sukses!
-            </span>
-          {:else if currentTask?.status === 'failed'}
-            <span class="status-msg text-danger">
-              <i class="ri-close-circle-fill"></i> Terjadi kesalahan dalam eksekusi perintah apt.
-            </span>
-          {:else}
-            <span>Menunggu daemon...</span>
-          {/if}
-        </div>
-
-        <pre class="log-terminal mono">{currentTask?.logs || 'Memulai eksekusi...'}</pre>
-      </div>
-
-      <div class="modal-card__foot">
-        <button class="btn btn--secondary" onclick={closeLogModal}>Tutup</button>
-      </div>
+    <div class="status-banner {currentTask?.status || 'running'}">
+      <span class="font-bold">STATUS OPERASI:</span>
+      {#if currentTask?.status === 'running'}
+        <span class="status-msg">
+          <span class="spinner" aria-hidden="true"></span> Sedang memproses paket di background...
+        </span>
+      {:else if currentTask?.status === 'success'}
+        <span class="status-msg text-accent">
+          <i class="ri-checkbox-circle-fill"></i> Operasi selesai dengan sukses!
+        </span>
+      {:else if currentTask?.status === 'failed'}
+        <span class="status-msg text-danger">
+          <i class="ri-close-circle-fill"></i> Terjadi kesalahan dalam eksekusi perintah apt.
+        </span>
+      {:else}
+        <span>Menunggu daemon...</span>
+      {/if}
     </div>
-  </div>
-{/if}
 
-<style>
-  .store-page {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
+    <pre class="log-terminal mono">{currentTask?.logs || 'Memulai eksekusi...'}</pre>
 
-  /* Header Halaman */
-  .store-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .store-title {
-    font-size: var(--text-lg);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin: 0;
-  }
-  .store-title i {
-    color: var(--accent);
-  }
-  .store-sub {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin: var(--space-1) 0 0 0;
-  }
-  .store-head__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Search Area */
-  .search-section {
-    position: relative;
-    z-index: var(--z-dropdown);
-  }
-  .search-box {
-    position: relative;
-    padding: var(--space-2) var(--space-3);
-    background: var(--bg-surface);
-  }
-  .search-input-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .search-icon {
-    position: absolute;
-    left: var(--space-3);
-    color: var(--text-subtle);
-    font-size: 1.15rem;
-    pointer-events: none;
-  }
-  .search-field {
-    padding-left: calc(var(--space-3) * 2 + 1rem);
-    padding-right: 2.5rem;
-    height: var(--control-lg);
-    background: var(--bg-inset);
-    border-color: var(--border);
-    font-size: var(--text-sm);
-  }
-  .search-spin {
-    position: absolute;
-    right: var(--space-3);
-    color: var(--accent);
-  }
-  .btn-clear-search {
-    position: absolute;
-    right: var(--space-3);
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    font-size: 1.1rem;
-    padding: var(--space-1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-  }
-  .btn-clear-search:hover {
-    color: var(--text);
-  }
-
-  /* Popover Autocomplete */
-  .search-popover {
-    position: absolute;
-    top: calc(100% + var(--space-2));
-    left: 0;
-    right: 0;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-modal);
-    padding: var(--space-3) var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    z-index: var(--z-modal);
-  }
-  .popover-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .popover-title {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-semibold);
-    color: var(--text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .btn-clear-history {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: var(--text-2xs);
-    cursor: pointer;
-    text-decoration: underline;
-  }
-  .btn-clear-history:hover {
-    color: var(--danger-strong);
-  }
-  .popover-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-  .chip-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all var(--duration-fast) ease;
-  }
-  .chip-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-    border-color: var(--accent);
-  }
-  .chip-btn i {
-    color: var(--accent);
-  }
-
-  /* Toolbar: Filter Pills & View Switcher */
-  .toolbar-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .filter-pills {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-  .filter-pill {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    transition: all var(--duration-fast) ease;
-  }
-  .filter-pill:hover {
-    color: var(--text);
-    border-color: var(--border-strong);
-    background: var(--bg-hover);
-  }
-  .filter-pill.active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-    border-color: var(--accent);
-    font-weight: var(--weight-semibold);
-  }
-
-  /* View Switcher */
-  .view-toggle {
-    margin-left: auto;
-  }
-  .view-toggle button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    width: 34px;
-    padding: 0;
-  }
-
-  /* Apps Grid Layout */
-  .apps-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: var(--space-4);
-  }
-
-  /* App Card */
-  .app-card {
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: var(--space-3);
-    transition: transform var(--duration-fast) ease, border-color var(--duration-fast) ease;
-  }
-  .app-card:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-  }
-  .app-card__header {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-  }
-  .app-card__icon-box {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-lg);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .app-card__icon {
-    font-size: 1.6rem;
-    color: var(--accent);
-  }
-  .app-card__meta {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1;
-  }
-  .app-card__title-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    justify-content: space-between;
-    flex-wrap: wrap;
-  }
-  .app-card__name {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .app-card__ver {
-    font-family: var(--font-mono);
-  }
-  .app-card__cat {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-  }
-  .app-card__desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    line-height: var(--leading-relaxed);
-    margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    flex: 1;
-  }
-  .app-card__footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border-subtle);
-  }
-  .app-card__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Table Specific Styles */
-  .table-app-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .table-icon-wrap {
-    width: 34px;
-    height: 34px;
-    border-radius: var(--radius-md);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .table-icon-wrap i {
-    font-size: 1.2rem;
-    color: var(--accent);
-  }
-  .table-app-name {
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-  }
-  .table-app-ver {
-    font-size: var(--text-2xs);
-    color: var(--text-subtle);
-    font-family: var(--font-mono);
-  }
-  .table-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Linux OS Package Results */
-  .global-results-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    margin-top: var(--space-2);
-  }
-  .global-results-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--border);
-  }
-  .global-head-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .global-head-title h3 {
-    margin: 0;
-    font-size: var(--text-sm);
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-  }
-  .pkg-col {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Modal Log Styles */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: var(--z-modal);
-    padding: var(--space-4);
-  }
-  .modal-card {
-    width: 100%;
-    max-width: 760px;
-    background: var(--bg-surface);
-    box-shadow: var(--shadow-modal);
-  }
-  .modal-card__head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .modal-card__title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .modal-card__title i {
-    font-size: 1.25rem;
-    color: var(--accent);
-  }
-  .modal-card__title h3 {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text);
-  }
-  .btn-close {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    font-size: 1.5rem;
-    line-height: 1;
-    cursor: pointer;
-    padding: var(--space-1);
-    border-radius: var(--radius-sm);
-  }
-  .btn-close:hover {
-    color: var(--text);
-  }
-  .modal-card__body {
-    padding: var(--space-4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .status-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    font-size: var(--text-xs);
-  }
-  .status-banner.running {
-    background: var(--tint-warning);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-    color: var(--warning-strong);
-  }
-  .status-banner.success {
-    background: var(--tint-accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-    color: var(--accent-strong);
-  }
-  .status-banner.failed {
-    background: var(--tint-danger);
-    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
-    color: var(--danger-strong);
-  }
-  .status-msg {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .log-terminal {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    font-size: var(--text-2xs);
-    color: var(--text-secondary);
-    max-height: 320px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    margin: 0;
-    line-height: var(--leading-relaxed);
-  }
-  .modal-card__foot {
-    display: flex;
-    justify-content: flex-end;
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  /* Utility Helpers */
-  .text-right { text-align: right; }
-  .mono { font-family: var(--font-mono); }
-  .font-semibold { font-weight: var(--weight-semibold); }
-  .font-bold { font-weight: var(--weight-bold); }
-  .text-accent { color: var(--accent-strong); }
-  .text-muted { color: var(--text-muted); }
-  .text-subtle { color: var(--text-subtle); }
-  .text-danger { color: var(--danger-strong); }
-  .text-warning { color: var(--warning-strong); }
-  .text-xs { font-size: var(--text-xs); }
-  .flex { display: flex; }
-  .items-center { align-items: center; }
-  .gap-xs { gap: var(--space-1); }
-</style>
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={closeLogModal}>Tutup</button>
+    {/snippet}
+  </Modal>
+</div>
