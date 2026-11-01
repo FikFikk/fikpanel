@@ -14,6 +14,7 @@
   import CodeEditor from './files/CodeEditor.svelte';
   import RemoteDownloadModal from './files/RemoteDownloadModal.svelte';
   import SymlinkModal from './files/SymlinkModal.svelte';
+  import SearchContentModal from './files/SearchContentModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1831,58 +1832,15 @@
   />
 
   <!-- ═════════ MODAL: Search File Content ═════════ -->
-  <Modal
+  <SearchContentModal
     open={showSearchContentModal}
-    title="Search File Content (Cari Isi Berkas)"
-    size="lg"
-    onclose={() => (showSearchContentModal = false)}
-  >
-    <form onsubmit={handleSearchContent} class="search-content-form">
-      <div class="search-content-input-wrap">
-        <input
-          class="input"
-          type="text"
-          placeholder="Masukkan kata kunci yang ingin dicari di dalam teks berkas..."
-          bind:value={contentSearchQuery}
-          required
-        />
-        <button
-          type="submit"
-          class="btn btn--primary"
-          disabled={searchingContent}
-        >
-          {searchingContent ? "Mencari..." : "Cari"}
-        </button>
-      </div>
-    </form>
-    <div class="search-results-box">
-      {#if searchingContent}
-        <div class="search-loading">Memindai berkas di {currentPath}...</div>
-      {:else if contentSearchResults.length === 0}
-        <div class="search-empty">
-          Tidak ada hasil cocok atau belum dilakukan pencarian.
-        </div>
-      {:else}
-        <div class="results-list">
-          {#each contentSearchResults as res}
-            <div class="result-row">
-              <div class="res-head">
-                <span class="res-file font-bold mono">{res.file}</span>
-                <span class="res-line mono">Baris {res.line}</span>
-              </div>
-              <pre class="res-code mono">{res.text}</pre>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-    {#snippet footer()}
-      <button
-        class="btn btn--primary"
-        onclick={() => (showSearchContentModal = false)}>Tutup</button
-      >
-    {/snippet}
-  </Modal>
+    bind:contentSearchQuery
+    {contentSearchResults}
+    {searchingContent}
+    {currentPath}
+    onClose={() => (showSearchContentModal = false)}
+    onSubmit={handleSearchContent}
+  />
 
   <!-- ═════════ MODAL: Manajemen Favorit ═════════ -->
   <Modal
