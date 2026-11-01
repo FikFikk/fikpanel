@@ -1,0 +1,12 @@
+@layer pages {
+  .pg-waf-site-options-modal {
+    .form-check-group {
+      display: flex;
+      align-items: center;
+    }
+    .mt-3 {
+      margin-top: 0.75rem;
+    }
+  }
+}
+
