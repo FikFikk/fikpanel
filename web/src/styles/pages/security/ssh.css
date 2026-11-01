@@ -1,0 +1,93 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY SSH TAB — metrik, konfigurasi, akun sistem, dan log SSH (.pg-security-ssh)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-ssh {
+    /* Elemen modul SSH */
+    .ssh-top-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+    @media (max-width: 860px) {
+      .ssh-top-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .ssh-stat-boxes {
+      display: flex;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .stat-box {
+      flex: 1;
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+    .success-box {
+      background: var(--tint-accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+    .fail-box {
+      background: var(--tint-danger);
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+    .stat-big-num {
+      font-size: var(--text-xl);
+      font-weight: var(--weight-bold);
+      font-family: var(--font-mono);
+      display: block;
+    }
+    .success-box .stat-big-num { color: var(--accent-strong); }
+    .fail-box .stat-big-num { color: var(--danger-strong); }
+    .stat-box-label {
+      font-size: var(--text-2xs);
+      color: var(--text-muted);
+    }
+
+    .ssh-timeline-wrap {
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .timeline-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      font-size: var(--text-xs);
+    }
+    .timeline-label {
+      width: 70px;
+      color: var(--text-muted);
+    }
+    .timeline-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: var(--bg-inset);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+    .timeline-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: var(--radius-full);
+    }
+    .timeline-bar-fill--45 { width: 45%; }
+    .timeline-bar-fill--75 { width: 75%; }
+    .timeline-bar-fill--90 { width: 90%; }
+
+    .port-input-wrap {
+      display: flex;
+      gap: var(--space-2);
+      align-items: center;
+    }
+    .input-port-w {
+      width: 110px;
+    }
+  }
+}
