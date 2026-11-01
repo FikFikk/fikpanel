@@ -5,6 +5,8 @@
   import NginxManager from '../lib/components/NginxManager.svelte';
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
   import SiteSettings from '../lib/components/SiteSettings.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/sites.css';
 
   interface Props {
     onNotify: (msg: string) => void;
@@ -443,7 +445,7 @@
 
 <svelte:window onclick={() => { if (openMoreSiteId !== null) openMoreSiteId = null; }} />
 
-<div class="sites-container">
+<div class="pg-sites sites-container">
   <!-- ═════════ 1. Header Tab Kategori Proyek + Status Mesin Nginx di Kanan ═════════ -->
   <div class="project-tabs-bar">
     <div class="project-tabs-list">
@@ -536,7 +538,6 @@
 
   <!-- ═════════ 3. Tampilan Utama: Warning Nginx Belum Terpasang vs Tabel ═════════ -->
   {#if !webServer.installed}
-    <!-- TAMPILAN DEPENDENCY WARNING (Sesuai Permintaan Gambar 2, Desain FikPanel Modern) -->
     <div class="dep-warning-card">
       <div class="dep-warn-glow"></div>
       <div class="dep-warn-content">
@@ -563,7 +564,7 @@
               {/if}
             </button>
             <button
-              class="btn btn-ghost"
+              class="btn btn--ghost"
               onclick={() => (window.location.hash = '#/terminal')}
             >
               <i class="ri-terminal-box-line"></i>
@@ -574,18 +575,18 @@
       </div>
     </div>
   {:else}
-    <!-- TABEL SITUS WEB (Sesuai Screenshot aaPanel Gambar 1 dengan Desain Elegan) -->
+    <!-- TABEL SITUS WEB -->
     <div class="table-container">
       {#if loading}
-        <div class="loading-state">
-          <i class="ri-loader-4-line spin"></i>
-          <span>Memuat daftar situs web...</span>
+        <div class="state state--loading">
+          <i class="ri-loader-4-line spin state__icon"></i>
+          <span class="state__title">Memuat daftar situs web...</span>
         </div>
       {:else if filteredSites.length === 0}
-        <div class="empty-state">
-          <i class="ri-global-line empty-icon"></i>
-          <p>Tidak ada situs yang cocok dengan kriteria pencarian.</p>
-          <button class="btn btn-primary" onclick={() => (showAddModal = true)}>
+        <div class="state state--empty">
+          <i class="ri-global-line state__icon"></i>
+          <p class="state__desc">Tidak ada situs yang cocok dengan kriteria pencarian.</p>
+          <button class="btn btn--primary" onclick={() => (showAddModal = true)}>
             + Tambah Situs Baru
           </button>
         </div>
@@ -780,7 +781,7 @@
                   {/if}
                 </td>
 
-                <!-- Kolom Permintaan / Request Count (Data Riil dari Access Log Nginx) -->
+                <!-- Kolom Permintaan / Request Count -->
                 <td class="col-req mono">
                   <button
                     type="button"
@@ -793,7 +794,7 @@
                   </button>
                 </td>
 
-                <!-- Kolom Operasi (Ringkas: Git Pull / Conf + Menu More ▾) -->
+                <!-- Kolom Operasi -->
                 <td class="col-ops">
                   <div class="ops-wrap">
                     {#if s.has_git}
@@ -891,14 +892,14 @@
             <span>Total <strong>{filteredSites.length}</strong> situs terdaftar</span>
           </div>
           <div class="footer-right">
-            <span class="badge-tag">Halaman 1 dari 1</span>
+            <span class="badge">Halaman 1 dari 1</span>
           </div>
         </div>
       {/if}
     </div>
   {/if}
 
-  <!-- ═════════ MODAL: Tambah Situs (SSL diaktifkan setelah situs dibuat) ═════════ -->
+  <!-- ═════════ MODAL: Tambah Situs ═════════ -->
   {#if showAddModal}
     <AddSiteModal
       onClose={() => (showAddModal = false)}
@@ -908,7 +909,7 @@
     />
   {/if}
 
-  <!-- ═════════ MODAL: Pengaturan Situs (Domain, Situs, SSL, Konfigurasi) ═════════ -->
+  <!-- ═════════ MODAL: Pengaturan Situs ═════════ -->
   {#if settingsTarget}
     {#key settingsTarget.id}
       <SiteSettings
@@ -921,346 +922,304 @@
     {/key}
   {/if}
 
-  <!-- ═════════ MODAL: Penampil Log Akses & Error (Data Riil dari Server) ═════════ -->
-  {#if showLogModal && logTarget}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) showLogModal = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showLogModal = false; }}
-    >
-      <div class="modal-card modal-wide">
-        <div class="modal-head">
-          <div class="modal-title-wrap">
-            <i class="ri-file-list-3-line icon-amber"></i>
-            <h3>Log Web Server: {logTarget.domain}</h3>
-          </div>
-          <button class="btn-close" onclick={() => (showLogModal = false)}>&times;</button>
-        </div>
+  <!-- ═════════ MODAL: Penampil Log Akses & Error ═════════ -->
+  <Modal
+    open={showLogModal && !!logTarget}
+    title={logTarget ? `Log Web Server: ${logTarget.domain}` : 'Log Web Server'}
+    size="xl"
+    onclose={() => (showLogModal = false)}
+  >
+    {#if logTarget}
+      <div class="log-tabs">
+        <button class="log-tab {logTab === 'access' ? 'active' : ''}" onclick={() => switchLogTab('access')}>
+          Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
+        </button>
+        <button class="log-tab {logTab === 'error' ? 'active' : ''}" onclick={() => switchLogTab('error')}>
+          Error Log
+        </button>
+        <button
+          type="button"
+          class="log-tab"
+          onclick={() => logTarget && fetchSiteLogs(logTarget, logTab)}
+          disabled={logLoading}
+        >
+          <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
+        </button>
+      </div>
 
-        <div class="log-tabs">
-          <button class="log-tab {logTab === 'access' ? 'active' : ''}" onclick={() => switchLogTab('access')}>
-            Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
-          </button>
-          <button class="log-tab {logTab === 'error' ? 'active' : ''}" onclick={() => switchLogTab('error')}>
-            Error Log
-          </button>
-          <button
-            type="button"
-            class="log-tab"
-            onclick={() => logTarget && fetchSiteLogs(logTarget, logTab)}
-            disabled={logLoading}
-          >
-            <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
-          </button>
-        </div>
+      <div class="log-viewer mono">
+        {#if logLoading}
+          <div class="log-line text-muted"><i class="ri-loader-4-line spin"></i> Memuat catatan log {logTab} dari server...</div>
+        {:else}
+          <pre class="log-pre-raw">{logContent}</pre>
+        {/if}
+      </div>
+    {/if}
 
-        <div class="log-viewer mono">
-          {#if logLoading}
-            <div class="log-line text-muted"><i class="ri-loader-4-line spin"></i> Memuat catatan log {logTab} dari server...</div>
-          {:else}
-            <pre class="log-pre-raw">{logContent}</pre>
-          {/if}
-        </div>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showLogModal = false)}>
+        Tutup
+      </button>
+    {/snippet}
+  </Modal>
 
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={() => (showLogModal = false)}>
-            Tutup
-          </button>
+  <!-- ═════════ MODAL: Git Pull & Auto-Deploy ═════════ -->
+  <Modal
+    open={!!gitPullTarget}
+    title={gitPullTarget ? `Git Pull & Sinkronisasi: ${gitPullTarget.domain}` : 'Git Pull'}
+    size="lg"
+    onclose={closeGitPullModal}
+  >
+    {#if gitPullTarget}
+      <span class="danger-sub-caption">Tarik commit terbaru dari repositori remote tanpa menimpa file .env lokal</span>
+
+      <!-- Ringkasan Repositori & Branch Aktif -->
+      <div class="git-summary-strip mono">
+        <div class="git-sum-item">
+          <span class="git-sum-lbl">Repositori</span>
+          <strong><i class="ri-github-fill"></i> {gitPullTarget.git_repo || 'origin'}</strong>
+        </div>
+        <div class="git-sum-item">
+          <span class="git-sum-lbl">Branch Aktif</span>
+          <strong class="git-branch-highlight"><i class="ri-git-branch-line"></i> {gitPullTarget.git_branch || 'main'}</strong>
+        </div>
+        <div class="git-sum-item">
+          <span class="git-sum-lbl">Commit Saat Ini</span>
+          <strong>#{gitPullTarget.git_commit || 'HEAD'}</strong>
         </div>
       </div>
-    </div>
-  {/if}
 
-  <!-- ═════════ MODAL: Git Pull & Auto-Deploy (Khusus Situs Berbasis Git) ═════════ -->
-  {#if gitPullTarget}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) closeGitPullModal(); }}
-      onkeydown={(e) => { if (e.key === 'Escape') closeGitPullModal(); }}
-    >
-      <div class="modal-card git-pull-card">
-        <div class="modal-head git-pull-head">
-          <div class="modal-title-wrap">
-            <span class="git-icon-circle">
-              <i class="ri-git-pull-request-line"></i>
-            </span>
-            <div>
-              <h3>Git Pull &amp; Sinkronisasi: {gitPullTarget.domain}</h3>
-              <span class="danger-sub-caption">Tarik commit terbaru dari repositori remote tanpa menimpa file .env lokal</span>
-            </div>
-          </div>
-          <button class="btn-close" onclick={closeGitPullModal} disabled={gitPullRunning}>&times;</button>
+      <!-- Konfirmasi & Editor Perintah Dinamis Git Pull -->
+      <div class="git-cmd-section">
+        <div class="git-cmd-label-row">
+          <span class="git-cmd-label">
+            <i class="ri-terminal-box-line"></i>
+            Perintah Eksekusi (Dapat Diedit Dinamis)
+          </span>
+          <button
+            type="button"
+            class="git-chip-reset"
+            onclick={resetGitPullCmd}
+            disabled={gitPullRunning}
+            title="Kembalikan ke perintah git pull murni"
+          >
+            Reset ke git pull
+          </button>
         </div>
 
-        <!-- Ringkasan Repositori & Branch Aktif -->
-        <div class="git-summary-strip mono">
-          <div class="git-sum-item">
-            <span class="git-sum-lbl">Repositori</span>
-            <strong><i class="ri-github-fill"></i> {gitPullTarget.git_repo || 'origin'}</strong>
-          </div>
-          <div class="git-sum-item">
-            <span class="git-sum-lbl">Branch Aktif</span>
-            <strong class="git-branch-highlight"><i class="ri-git-branch-line"></i> {gitPullTarget.git_branch || 'main'}</strong>
-          </div>
-          <div class="git-sum-item">
-            <span class="git-sum-lbl">Commit Saat Ini</span>
-            <strong>#{gitPullTarget.git_commit || 'HEAD'}</strong>
-          </div>
+        <div class="git-cmd-input-wrap">
+          <span class="git-cmd-prompt mono">$</span>
+          <input
+            type="text"
+            class="git-cmd-input mono"
+            bind:value={gitPullCustomCmd}
+            disabled={gitPullRunning}
+            placeholder="git pull origin {gitPullTarget.git_branch || 'main'} && php artisan optimize:clear"
+          />
         </div>
 
-        <!-- Konfirmasi & Editor Perintah Dinamis Git Pull -->
-        <div class="git-cmd-section">
-          <div class="git-cmd-label-row">
-            <span class="git-cmd-label">
-              <i class="ri-terminal-box-line"></i>
-              Perintah Eksekusi (Dapat Diedit Dinamis)
-            </span>
+        <!-- Tombol Chip Tambah/Hapus Perintah Cepat -->
+        <div class="git-chips-bar">
+          <span class="git-chips-hint">Klik untuk tambah/hapus:</span>
+          {#each gitPullSnippets.filter((sn) => !sn.phpOnly || gitPullTarget?.kind === 'php') as sn}
             <button
               type="button"
-              class="git-chip-reset"
-              onclick={resetGitPullCmd}
+              class="git-snippet-chip mono {hasGitSnippet(sn.cmd) ? 'is-active' : ''}"
+              onclick={() => toggleGitSnippet(sn.cmd)}
               disabled={gitPullRunning}
-              title="Kembalikan ke perintah git pull murni"
+              title={sn.cmd}
             >
-              Reset ke git pull
+              <i class={hasGitSnippet(sn.cmd) ? 'ri-check-line' : 'ri-add-line'}></i>
+              <span>{sn.label.replace(/^\+\s*/, '')}</span>
             </button>
-          </div>
-
-          <div class="git-cmd-input-wrap">
-            <span class="git-cmd-prompt mono">$</span>
-            <input
-              type="text"
-              class="git-cmd-input mono"
-              bind:value={gitPullCustomCmd}
-              disabled={gitPullRunning}
-              placeholder="git pull origin {gitPullTarget.git_branch || 'main'} && php artisan optimize:clear"
-            />
-          </div>
-
-          <!-- Tombol Chip Tambah/Hapus Perintah Cepat -->
-          <div class="git-chips-bar">
-            <span class="git-chips-hint">Klik untuk tambah/hapus:</span>
-            {#each gitPullSnippets.filter((sn) => !sn.phpOnly || gitPullTarget?.kind === 'php') as sn}
-              <button
-                type="button"
-                class="git-snippet-chip mono {hasGitSnippet(sn.cmd) ? 'is-active' : ''}"
-                onclick={() => toggleGitSnippet(sn.cmd)}
-                disabled={gitPullRunning}
-                title={sn.cmd}
-              >
-                <i class={hasGitSnippet(sn.cmd) ? 'ri-check-line' : 'ri-add-line'}></i>
-                <span>{sn.label.replace(/^\+\s*/, '')}</span>
-              </button>
-            {/each}
-          </div>
-
-          <div class="git-confirm-note">
-            <i class="ri-shield-check-line"></i>
-            <span>
-              Dijalankan di <code class="mono">{getProjectRootDir(gitPullTarget)}</code>. File <code class="mono">.env</code> lokal dicadangkan otomatis &amp; izin <code class="mono">www-data</code> tetap terjaga.
-            </span>
-          </div>
+          {/each}
         </div>
 
-        {#if gitPullError}
-          <div class="git-pull-alert is-error">
-            <i class="ri-error-warning-fill"></i>
-            <div>
-              <strong>Git Pull Gagal</strong>
-              <p class="mono">{gitPullError}</p>
-            </div>
-          </div>
-        {/if}
-
-        {#if gitPullResult}
-          <div class="git-pull-alert {gitPullResult.updated ? 'is-updated' : 'is-uptodate'}">
-            <i class={gitPullResult.updated ? 'ri-checkbox-circle-fill' : 'ri-information-fill'}></i>
-            <div>
-              {#if gitPullResult.updated}
-                <strong>Berhasil Diperbarui ({gitPullResult.old_commit} &rarr; {gitPullResult.new_commit})</strong>
-              {:else}
-                <strong>Sudah Versi Terbaru (#{gitPullResult.new_commit})</strong>
-              {/if}
-              {#if gitPullResult.commit_message}
-                <p>Commit terakhir: <span class="mono">"{gitPullResult.commit_message}"</span></p>
-              {/if}
-            </div>
-          </div>
-
-          {#if gitPullResult.output}
-            <div class="git-output-box mono">
-              <div class="git-output-head">Log Eksekusi Git Pull &amp; Post-Deploy</div>
-              <pre class="log-pre-raw">{gitPullResult.output}</pre>
-            </div>
-          {/if}
-        {/if}
-
-        <div class="modal-actions delete-modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={closeGitPullModal} disabled={gitPullRunning}>
-            Tutup
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary btn-git-pull-exec"
-            disabled={gitPullRunning}
-            onclick={executeGitPull}
-          >
-            {#if gitPullRunning}
-              <i class="ri-loader-4-line spin"></i>
-              <span>Menarik Commit &amp; Menyinkronkan Aplikasi...</span>
-            {:else}
-              <i class="ri-git-pull-request-line"></i>
-              <span>Tarik Perubahan Terbaru (Git Pull)</span>
-            {/if}
-          </button>
+        <div class="git-confirm-note">
+          <i class="ri-shield-check-line"></i>
+          <span>
+            Dijalankan di <code class="mono">{getProjectRootDir(gitPullTarget)}</code>. File <code class="mono">.env</code> lokal dicadangkan otomatis &amp; izin <code class="mono">www-data</code> tetap terjaga.
+          </span>
         </div>
       </div>
-    </div>
-  {/if}
+
+      {#if gitPullError}
+        <div class="git-pull-alert is-error">
+          <i class="ri-error-warning-fill"></i>
+          <div>
+            <strong>Git Pull Gagal</strong>
+            <p class="mono">{gitPullError}</p>
+          </div>
+        </div>
+      {/if}
+
+      {#if gitPullResult}
+        <div class="git-pull-alert {gitPullResult.updated ? 'is-updated' : 'is-uptodate'}">
+          <i class={gitPullResult.updated ? 'ri-checkbox-circle-fill' : 'ri-information-fill'}></i>
+          <div>
+            {#if gitPullResult.updated}
+              <strong>Berhasil Diperbarui ({gitPullResult.old_commit} &rarr; {gitPullResult.new_commit})</strong>
+            {:else}
+              <strong>Sudah Versi Terbaru (#{gitPullResult.new_commit})</strong>
+            {/if}
+            {#if gitPullResult.commit_message}
+              <p>Commit terakhir: <span class="mono">"{gitPullResult.commit_message}"</span></p>
+            {/if}
+          </div>
+        </div>
+
+        {#if gitPullResult.output}
+          <div class="git-output-box mono">
+            <div class="git-output-head">Log Eksekusi Git Pull &amp; Post-Deploy</div>
+            <pre class="log-pre-raw">{gitPullResult.output}</pre>
+          </div>
+        {/if}
+      {/if}
+    {/if}
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={closeGitPullModal} disabled={gitPullRunning}>
+        Tutup
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary"
+        disabled={gitPullRunning}
+        onclick={executeGitPull}
+      >
+        {#if gitPullRunning}
+          <i class="ri-loader-4-line spin"></i>
+          <span>Menarik Commit &amp; Menyinkronkan Aplikasi...</span>
+        {:else}
+          <i class="ri-git-pull-request-line"></i>
+          <span>Tarik Perubahan Terbaru (Git Pull)</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ═════════ MODAL: Konfirmasi Hapus Situs (Danger Zone) ═════════ -->
-  {#if deleteTarget}
-    <div
-      class="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-      onclick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
-      onkeydown={(e) => { if (e.key === 'Escape') closeDeleteModal(); }}
-    >
-      <div class="modal-card delete-danger-card">
-        <div class="modal-head delete-danger-head">
-          <div class="modal-title-wrap">
-            <span class="danger-icon-circle">
-              <i class="ri-error-warning-fill"></i>
-            </span>
-            <div>
-              <h3>Hapus Situs "{deleteTarget.domain}"?</h3>
-              <span class="danger-sub-caption">Tindakan destruktif &amp; permanen pada server produksi</span>
-            </div>
-          </div>
-          <button class="btn-close" onclick={closeDeleteModal} disabled={deletingSite}>&times;</button>
-        </div>
+  <Modal
+    open={!!deleteTarget}
+    title={deleteTarget ? `Hapus Situs "${deleteTarget.domain}"?` : 'Hapus Situs'}
+    size="lg"
+    onclose={closeDeleteModal}
+  >
+    {#if deleteTarget}
+      <span class="danger-sub-caption">Tindakan destruktif &amp; permanen pada server produksi</span>
 
-        <!-- Banner Peringatan Dampak -->
-        <div class="danger-alert-banner">
-          <i class="ri-alarm-warning-line"></i>
-          <div>
-            <strong>Peringatan Penting Sebelum Menghapus!</strong>
-            <p>
-              Konfigurasi virtual host Nginx, sertifikat SSL, serta komponen yang Anda centang di bawah akan dihapus secara permanen.
-              Jika database dan kode proyek ini penting, pastikan opsi <strong>Auto-Backup Sebelum Hapus</strong> tetap aktif.
-            </p>
-          </div>
-        </div>
-
-        <!-- Opsi Granular Dampak Penghapusan & Cadangan Otomatis -->
-        <div class="delete-impact-list">
-          <label class="delete-opt-item opt-backup {backupFirstOpt ? 'is-checked' : ''}">
-            <input type="checkbox" bind:checked={backupFirstOpt} disabled={deletingSite} />
-            <div class="opt-body">
-              <div class="opt-title-row">
-                <span class="opt-title">Auto-Backup Proyek &amp; Database Sebelum Dihapus</span>
-                <span class="opt-badge badge-safe">Disarankan</span>
-              </div>
-              <span class="opt-desc">
-                Mencadangkan dump SQL + seluruh direktori proyek ke <code class="mono">/var/backups/fikpanel/{deleteTarget.domain}-pre-delete-*.tar.gz</code> agar dapat dipulihkan kapan saja lewat tab <b>Create from backup</b>.
-              </span>
-            </div>
-          </label>
-
-          <label class="delete-opt-item opt-destructive {deleteFilesOpt ? 'is-checked-danger' : ''}">
-            <input type="checkbox" bind:checked={deleteFilesOpt} disabled={deletingSite} />
-            <div class="opt-body">
-              <div class="opt-title-row">
-                <span class="opt-title">Hapus Direktori Proyek &amp; File Web Root</span>
-                <span class="opt-badge badge-danger">Permanen</span>
-              </div>
-              <span class="opt-desc">
-                Menghapus seluruh berkas kode sumber di <code class="mono">{getProjectRootDir(deleteTarget)}</code>
-              </span>
-            </div>
-          </label>
-
-          <label class="delete-opt-item opt-destructive {deleteDBOpt ? 'is-checked-danger' : ''}">
-            <input type="checkbox" bind:checked={deleteDBOpt} disabled={deletingSite} />
-            <div class="opt-body">
-              <div class="opt-title-row">
-                <span class="opt-title">Hapus Database &amp; User MySQL Terkait</span>
-                <span class="opt-badge badge-danger">DROP DATABASE</span>
-              </div>
-              <span class="opt-desc">
-                Menghapus skema database (<code class="mono">{getPredictedDBName(deleteTarget)}</code> / sesuai <code class="mono">.env</code>) beserta user MySQL dari server fisik.
-              </span>
-            </div>
-          </label>
-        </div>
-
-        <!-- Verifikasi Ketik Manual (Anti Copy-Paste) -->
-        <div class="delete-verify-box">
-          <label for="confirm-domain-input" class="verify-label">
-            Untuk konfirmasi, ketik manual nama domain <strong class="mono select-none">{deleteTarget.domain}</strong> di bawah ini:
-          </label>
-          <input
-            id="confirm-domain-input"
-            type="text"
-            class="verify-input mono"
-            placeholder="Ketik manual {deleteTarget.domain} (tidak bisa paste)"
-            bind:value={deleteConfirmInput}
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            disabled={deletingSite}
-            onpaste={handleBlockPaste}
-            ondrop={handleBlockPaste}
-            oncontextmenu={(e) => e.preventDefault()}
-            onkeydown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-                handleBlockPaste(e);
-              } else if (e.key === 'Enter' && deleteConfirmInput === deleteTarget.domain) {
-                confirmDeleteSite();
-              }
-            }}
-          />
-          {#if deletePasteWarning}
-            <div class="paste-blocked-hint">
-              <i class="ri-keyboard-box-line"></i>
-              <span>Demi keamanan, fitur Copy-Paste dinonaktifkan. Silakan ketik nama domain secara manual dengan keyboard.</span>
-            </div>
-          {/if}
-        </div>
-
-        <div class="modal-actions delete-modal-actions">
-          <button type="button" class="btn btn-ghost" onclick={closeDeleteModal} disabled={deletingSite}>
-            Batal
-          </button>
-          <button
-            type="button"
-            class="btn btn-danger-solid"
-            disabled={deleteConfirmInput !== deleteTarget.domain || deletingSite}
-            onclick={confirmDeleteSite}
-          >
-            {#if deletingSite}
-              <i class="ri-loader-4-line spin"></i>
-              <span>{backupFirstOpt ? 'Mencadangkan & Menghapus...' : 'Menghapus Situs...'}</span>
-            {:else}
-              <i class="ri-delete-bin-2-line"></i>
-              <span>Saya Mengerti, Hapus Situs Ini</span>
-            {/if}
-          </button>
+      <!-- Banner Peringatan Dampak -->
+      <div class="danger-alert-banner">
+        <i class="ri-alarm-warning-line"></i>
+        <div>
+          <strong>Peringatan Penting Sebelum Menghapus!</strong>
+          <p>
+            Konfigurasi virtual host Nginx, sertifikat SSL, serta komponen yang Anda centang di bawah akan dihapus secara permanen.
+            Jika database dan kode proyek ini penting, pastikan opsi <strong>Auto-Backup Sebelum Hapus</strong> tetap aktif.
+          </p>
         </div>
       </div>
-    </div>
-  {/if}
 
-  <!-- ═════════ MODAL: Nginx Manager (Layanan, Config, Versi, Beban, Optimasi, Log) ═════════ -->
+      <!-- Opsi Granular Dampak Penghapusan & Cadangan Otomatis -->
+      <div class="delete-impact-list">
+        <label class="delete-opt-item opt-backup {backupFirstOpt ? 'is-checked' : ''}">
+          <input type="checkbox" bind:checked={backupFirstOpt} disabled={deletingSite} />
+          <div class="opt-body">
+            <div class="opt-title-row">
+              <span class="opt-title">Auto-Backup Proyek &amp; Database Sebelum Dihapus</span>
+              <span class="opt-badge badge-safe">Disarankan</span>
+            </div>
+            <span class="opt-desc">
+              Mencadangkan dump SQL + seluruh direktori proyek ke <code class="mono">/var/backups/fikpanel/{deleteTarget.domain}-pre-delete-*.tar.gz</code> agar dapat dipulihkan kapan saja lewat tab <b>Create from backup</b>.
+            </span>
+          </div>
+        </label>
+
+        <label class="delete-opt-item opt-destructive {deleteFilesOpt ? 'is-checked-danger' : ''}">
+          <input type="checkbox" bind:checked={deleteFilesOpt} disabled={deletingSite} />
+          <div class="opt-body">
+            <div class="opt-title-row">
+              <span class="opt-title">Hapus Direktori Proyek &amp; File Web Root</span>
+              <span class="opt-badge badge-danger">Permanen</span>
+            </div>
+            <span class="opt-desc">
+              Menghapus seluruh berkas kode sumber di <code class="mono">{getProjectRootDir(deleteTarget)}</code>
+            </span>
+          </div>
+        </label>
+
+        <label class="delete-opt-item opt-destructive {deleteDBOpt ? 'is-checked-danger' : ''}">
+          <input type="checkbox" bind:checked={deleteDBOpt} disabled={deletingSite} />
+          <div class="opt-body">
+            <div class="opt-title-row">
+              <span class="opt-title">Hapus Database &amp; User MySQL Terkait</span>
+              <span class="opt-badge badge-danger">DROP DATABASE</span>
+            </div>
+            <span class="opt-desc">
+              Menghapus skema database (<code class="mono">{getPredictedDBName(deleteTarget)}</code> / sesuai <code class="mono">.env</code>) beserta user MySQL dari server fisik.
+            </span>
+          </div>
+        </label>
+      </div>
+
+      <!-- Verifikasi Ketik Manual (Anti Copy-Paste) -->
+      <div class="delete-verify-box">
+        <label for="confirm-domain-input" class="verify-label">
+          Untuk konfirmasi, ketik manual nama domain <strong class="mono select-none">{deleteTarget.domain}</strong> di bawah ini:
+        </label>
+        <input
+          id="confirm-domain-input"
+          type="text"
+          class="verify-input mono"
+          placeholder="Ketik manual {deleteTarget.domain} (tidak bisa paste)"
+          bind:value={deleteConfirmInput}
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          disabled={deletingSite}
+          onpaste={handleBlockPaste}
+          ondrop={handleBlockPaste}
+          oncontextmenu={(e) => e.preventDefault()}
+          onkeydown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+              handleBlockPaste(e);
+            } else if (e.key === 'Enter' && deleteConfirmInput === deleteTarget?.domain) {
+              confirmDeleteSite();
+            }
+          }}
+        />
+        {#if deletePasteWarning}
+          <div class="paste-blocked-hint">
+            <i class="ri-keyboard-box-line"></i>
+            <span>Demi keamanan, fitur Copy-Paste dinonaktifkan. Silakan ketik nama domain secara manual dengan keyboard.</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={closeDeleteModal} disabled={deletingSite}>
+        Batal
+      </button>
+      <button
+        type="button"
+        class="btn btn--danger"
+        disabled={!deleteTarget || deleteConfirmInput !== deleteTarget.domain || deletingSite}
+        onclick={confirmDeleteSite}
+      >
+        {#if deletingSite}
+          <i class="ri-loader-4-line spin"></i>
+          <span>{backupFirstOpt ? 'Mencadangkan & Menghapus...' : 'Menghapus Situs...'}</span>
+        {:else}
+          <i class="ri-delete-bin-2-line"></i>
+          <span>Saya Mengerti, Hapus Situs Ini</span>
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- ═════════ MODAL: Nginx Manager ═════════ -->
   {#if showNginxManager}
     <NginxManager
       onClose={() => (showNginxManager = false)}
@@ -1269,1523 +1228,3 @@
     />
   {/if}
 </div>
-
-<style>
-  .sites-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.1rem;
-  }
-
-  /* ═════════ 1. Project Tabs Bar (Gaya Modern aaPanel) ═════════ */
-  .project-tabs-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.45rem;
-    flex-wrap: wrap;
-  }
-
-  .project-tabs-list {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    overflow-x: auto;
-  }
-
-  .project-tabs-right {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
-
-  .proj-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.45rem 0.85rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    border-radius: 6px 6px 0 0;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-  }
-
-  .proj-tab:hover {
-    color: var(--text);
-    background: color-mix(in srgb, var(--text) 3%, transparent);
-  }
-
-  .proj-tab.active {
-    color: var(--accent);
-    font-weight: 600;
-    border-bottom-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
-  }
-
-  .icon-php { color: var(--brand-php); }
-  .icon-node { color: var(--brand-node); }
-  .icon-proxy { color: var(--info); }
-  .icon-go { color: var(--brand-go); }
-  .icon-python { color: var(--brand-python); }
-  .icon-static { color: var(--brand-html); }
-
-  /* ═════════ 2. Action Toolbar ═════════ */
-  .action-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .tb-left, .tb-right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .btn-add-site {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    height: 34px;
-    background: var(--accent-hover);
-    color: var(--text);
-    border: 1px solid var(--accent);
-    padding: 0 0.85rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-add-site:hover {
-    background: var(--accent-hover);
-    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
-  }
-
-  .btn-renew-ssl {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    height: 34px;
-    padding: 0 0.85rem;
-    background: var(--bg-surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .btn-renew-ssl:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--border-hover);
-  }
-  .btn-renew-ssl:disabled {
-    opacity: 0.65;
-    cursor: wait;
-  }
-  .btn-renew-ssl i {
-    color: var(--accent);
-  }
-
-  /* Badge Server Nginx */
-  .server-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.3rem 0.65rem;
-    border-radius: 6px;
-    font-size: 0.73rem;
-    font-weight: 500;
-    user-select: none;
-  }
-
-  .server-badge.is-running {
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    color: var(--accent);
-  }
-
-  .server-badge.is-stopped {
-    background: color-mix(in srgb, var(--danger-strong) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
-    color: var(--danger-strong);
-  }
-
-  .server-badge.is-missing {
-    background: color-mix(in srgb, var(--warning) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-    color: var(--warning);
-  }
-
-  .server-badge.clickable {
-    cursor: pointer;
-    font-family: inherit;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-  }
-
-  .server-badge.clickable:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px -4px currentColor;
-  }
-
-  .badge-gear {
-    opacity: 0.55;
-    transition: transform 0.4s ease, opacity 0.15s ease;
-  }
-
-  .server-badge.clickable:hover .badge-gear {
-    opacity: 1;
-    transform: rotate(90deg);
-  }
-
-  .pulse-indicator {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    animation: pulse 1.5s infinite;
-  }
-
-  .server-status-tag {
-    font-size: 0.65rem;
-    background: rgba(0, 0, 0, 0.25);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    text-transform: uppercase;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    height: 34px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0 0.7rem;
-    gap: 0.45rem;
-    min-width: 240px;
-    transition: border-color 0.15s ease;
-  }
-
-  .search-box:focus-within {
-    border-color: var(--accent);
-  }
-
-  .search-box input {
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: 0.78rem;
-    padding: 0;
-    height: 100%;
-    width: 100%;
-  }
-
-  .search-icon {
-    color: var(--text-subtle);
-    font-size: 0.85rem;
-  }
-
-  .btn-clear-search {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-  }
-
-  /* ═════════ 3. Dependency Warning Card (aaPanel Gambar 2 Style) ═════════ */
-  .dep-warning-card {
-    position: relative;
-    background: var(--bg-raised);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-    border-radius: 12px;
-    padding: 2.2rem 2rem;
-    overflow: hidden;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-  }
-
-  .dep-warn-glow {
-    position: absolute;
-    top: -50px;
-    left: -50px;
-    width: 200px;
-    height: 200px;
-    background: color-mix(in srgb, var(--warning) 8%, transparent);
-    filter: blur(60px);
-    border-radius: 50%;
-  }
-
-  .dep-warn-content {
-    display: flex;
-    align-items: flex-start;
-    gap: 1.5rem;
-    position: relative;
-    z-index: 1;
-  }
-
-  .dep-warn-icon-box {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    color: var(--warning);
-    flex-shrink: 0;
-  }
-
-  .dep-warn-details h3 {
-    color: var(--text);
-    font-size: 1.05rem;
-    font-weight: 700;
-    margin: 0 0 0.5rem 0;
-  }
-
-  .dep-warn-details p {
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    line-height: 1.6;
-    margin: 0 0 1.25rem 0;
-    max-width: 720px;
-  }
-
-  .dep-warn-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-  }
-
-  .btn-install-now {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--accent-hover);
-    color: var(--text);
-    border: 1px solid var(--accent);
-    padding: 0.5rem 1.1rem;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-install-now:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 40%, transparent);
-  }
-
-  /* ═════════ 4. Tabel Situs Web (aaPanel Gambar 1 Style) ═════════ */
-  .table-container {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: visible;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  }
-
-  .sites-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-  }
-
-  th {
-    text-align: left;
-    padding: 0.65rem 0.85rem;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-subtle);
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  td {
-    padding: 0.7rem 0.85rem;
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-  }
-
-  .site-row:hover {
-    background: color-mix(in srgb, var(--text) 2%, transparent);
-  }
-
-  .site-row.selected-row {
-    background: color-mix(in srgb, var(--accent) 4%, transparent);
-  }
-
-  .col-chk {
-    width: 32px;
-    text-align: center;
-  }
-
-  /* Nama Situs & Path */
-  .site-domain-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .domain-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    color: var(--text);
-    font-weight: 600;
-    text-decoration: none;
-    font-size: 0.85rem;
-  }
-
-  .domain-link:hover {
-    color: var(--accent);
-  }
-
-  .icon-ext {
-    font-size: 0.8rem;
-    color: var(--accent);
-    opacity: 0.75;
-  }
-
-  .site-path-sub {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.68rem;
-    color: var(--text-subtle);
-  }
-
-  /* Status Toggle */
-  .btn-status-play {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 0.76rem;
-    font-weight: 600;
-  }
-
-  .btn-status-play.is-active {
-    color: var(--accent);
-  }
-
-  .btn-status-play.is-paused {
-    color: var(--text-subtle);
-  }
-
-  /* Backup Box */
-  .btn-backup-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 0.72rem;
-  }
-
-  .btn-backup-info i {
-    font-size: 1.1rem;
-    color: var(--info);
-  }
-
-  .backup-text-wrap {
-    display: flex;
-    flex-direction: column;
-    text-align: left;
-    line-height: 1.2;
-  }
-
-  .backup-main {
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .backup-sub {
-    font-size: 0.65rem;
-    color: var(--text-subtle);
-  }
-
-  /* Quick Actions Bar (Folder -> File Manager) */
-  .quick-actions-bar {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .quick-act-btn {
-    width: 26px;
-    height: 26px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.15s ease;
-  }
-
-  .quick-act-btn:hover {
-    background: var(--bg-active);
-    border-color: var(--border-strong);
-  }
-
-  .icon-amber { color: var(--warning); }
-  .icon-cyan { color: var(--info); }
-  .icon-gray { color: var(--text-muted); }
-
-  .badge-runtime {
-    font-size: 0.68rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-weight: 600;
-    font-family: monospace;
-    cursor: pointer;
-    white-space: nowrap;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-  }
-  .badge-runtime:hover {
-    background: var(--bg-active);
-    border-color: var(--border-strong);
-    color: var(--text);
-  }
-
-  .perpetual-badge {
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-
-  /* SSL Badge */
-  .ssl-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.55rem;
-    border-radius: 4px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    white-space: nowrap;
-  }
-
-  .ssl-badge.ssl-active {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  }
-
-  .ssl-badge.ssl-inactive {
-    background: color-mix(in srgb, var(--warning) 10%, transparent);
-    color: var(--warning);
-    border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
-  }
-
-  .ssl-badge.ssl-active.ssl-expiring {
-    background: color-mix(in srgb, var(--warning) 10%, transparent);
-    color: var(--warning-strong);
-    border-color: color-mix(in srgb, var(--warning) 30%, transparent);
-  }
-
-  .ssl-badge.ssl-pending {
-    background: color-mix(in srgb, var(--info) 10%, transparent);
-    color: var(--info);
-    border: 1px solid color-mix(in srgb, var(--info) 25%, transparent);
-  }
-
-  .ssl-badge.ssl-failed {
-    background: color-mix(in srgb, var(--danger-strong) 10%, transparent);
-    color: var(--danger-strong);
-    border: 1px solid color-mix(in srgb, var(--danger-strong) 25%, transparent);
-  }
-
-  /* Permintaan */
-  .req-stat-box {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .req-sparkline {
-    width: 28px;
-    height: 10px;
-    background: linear-gradient(90deg, var(--accent) 30%, transparent 30%);
-    border-bottom: 2px solid var(--accent);
-  }
-
-  /* Operasi */
-  .ops-wrap {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .btn-op-link {
-    background: transparent;
-    border: none;
-    color: var(--info);
-    font-size: 0.75rem;
-    cursor: pointer;
-    font-weight: 500;
-  }
-
-  .btn-op-link:hover {
-    text-decoration: underline;
-  }
-
-  .btn-op-link.link-danger {
-    color: var(--danger-strong);
-  }
-
-  .op-div {
-    color: var(--text-on-accent);
-    font-size: 0.7rem;
-  }
-
-  /* Footer Bar */
-  .table-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0.85rem;
-    background: var(--bg-inset);
-    border-top: 1px solid var(--border-subtle);
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-  }
-
-  .badge-tag {
-    background: color-mix(in srgb, var(--text) 4%, transparent);
-    padding: 0.15rem 0.45rem;
-    border-radius: 4px;
-  }
-
-  /* Empty / Loading States */
-  .loading-state, .empty-state {
-    text-align: center;
-    padding: 3rem 1.5rem;
-    color: var(--text-muted);
-  }
-
-  .empty-icon {
-    font-size: 2.2rem;
-    color: var(--text-disabled);
-    margin-bottom: 0.5rem;
-    display: block;
-  }
-
-  /* Modal-modal */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.78);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
-  }
-
-  .modal-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: 100%;
-    max-width: 480px;
-    padding: 1.5rem;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
-  }
-
-  .modal-card.modal-wide {
-    max-width: 820px;
-  }
-
-  .modal-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.25rem;
-  }
-
-  .modal-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .modal-title-wrap i {
-    font-size: 1.25rem;
-    color: var(--accent);
-  }
-
-  .modal-title-wrap h3 {
-    font-size: 0.95rem;
-    color: var(--text);
-    margin: 0;
-  }
-
-  .btn-close {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    font-size: 1.3rem;
-    cursor: pointer;
-  }
-
-  input {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 0.8rem;
-    outline: none;
-  }
-
-  input:focus {
-    border-color: var(--accent);
-  }
-
-  .log-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.8rem;
-  }
-
-  .log-tab {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 0.35rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .log-tab.active {
-    background: var(--accent-hover);
-    border-color: var(--accent);
-    color: var(--text);
-  }
-
-  .log-viewer {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.85rem;
-    height: 260px;
-    overflow: auto;
-    font-size: 0.74rem;
-    line-height: 1.6;
-  }
-
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.65rem;
-  }
-
-  .btn {
-    padding: 0.45rem 0.85rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  .btn-ghost {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-
-  .btn-ghost:hover {
-    background: var(--bg-active);
-    color: var(--text);
-  }
-
-  .mono { font-family: 'Fira Code', monospace; }
-
-  /* ═════════ GitHub-Style Danger Zone Delete Modal ═════════ */
-  .delete-danger-card {
-    max-width: 540px;
-    border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
-  }
-
-  .delete-danger-head {
-    margin-bottom: 1rem;
-    padding-bottom: 0.85rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .danger-icon-circle {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--danger) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .danger-icon-circle i {
-    color: var(--danger-strong) !important;
-    font-size: 1.15rem !important;
-  }
-
-  .danger-sub-caption {
-    display: block;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin-top: 0.15rem;
-  }
-
-  .danger-alert-banner {
-    display: flex;
-    gap: 0.65rem;
-    align-items: flex-start;
-    padding: 0.75rem 0.9rem;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--danger) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
-    margin-bottom: 1rem;
-    font-size: 0.76rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
-
-  .danger-alert-banner > i {
-    color: var(--danger-strong);
-    font-size: 1.1rem;
-    margin-top: 0.05rem;
-    flex-shrink: 0;
-  }
-
-  .danger-alert-banner strong {
-    color: var(--text);
-  }
-
-  .danger-alert-banner p {
-    margin: 0.2rem 0 0;
-  }
-
-  .delete-impact-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    margin-bottom: 1.1rem;
-  }
-
-  .delete-opt-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.65rem;
-    padding: 0.65rem 0.8rem;
-    border-radius: 8px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-  }
-
-  .delete-opt-item input[type='checkbox'] {
-    width: 15px;
-    height: 15px;
-    margin-top: 0.15rem;
-    padding: 0;
-    accent-color: var(--accent);
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-
-  .delete-opt-item.opt-destructive input[type='checkbox'] {
-    accent-color: var(--danger);
-  }
-
-  .delete-opt-item.is-checked {
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-    background: color-mix(in srgb, var(--accent) 6%, var(--bg-inset));
-  }
-
-  .delete-opt-item.is-checked-danger {
-    border-color: color-mix(in srgb, var(--danger) 38%, transparent);
-    background: color-mix(in srgb, var(--danger) 5%, transparent);
-  }
-
-  .opt-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    min-width: 0;
-    flex: 1;
-  }
-
-  .opt-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .opt-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .opt-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 0.1rem 0.42rem;
-    border-radius: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    flex-shrink: 0;
-  }
-
-  .badge-safe {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  }
-
-  .badge-danger {
-    background: color-mix(in srgb, var(--danger) 14%, transparent);
-    color: var(--danger-strong);
-    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
-  }
-
-  .opt-desc {
-    font-size: 0.73rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    word-break: normal;
-    overflow-wrap: break-word;
-  }
-
-  .opt-desc code {
-    color: var(--text-secondary);
-    background: color-mix(in srgb, var(--text) 6%, transparent);
-    padding: 0.08rem 0.35rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    overflow-wrap: anywhere;
-  }
-
-  .delete-verify-box {
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.85rem;
-    margin-bottom: 1.15rem;
-  }
-
-  .verify-label {
-    display: block;
-    font-size: 0.76rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-    line-height: 1.45;
-  }
-
-  .verify-label strong.select-none {
-    user-select: none;
-    -webkit-user-select: none;
-    color: var(--danger-strong);
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
-    padding: 0.12rem 0.4rem;
-    border-radius: 4px;
-    border: 1px dashed color-mix(in srgb, var(--danger) 35%, transparent);
-  }
-
-  .verify-input {
-    border-color: var(--border-strong);
-    font-size: 0.82rem;
-  }
-
-  .verify-input:focus {
-    border-color: var(--danger-strong);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
-  }
-
-  .paste-blocked-hint {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-    padding: 0.4rem 0.6rem;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-    color: var(--warning);
-    font-size: 0.72rem;
-    line-height: 1.4;
-  }
-
-  .delete-modal-actions {
-    padding-top: 0.25rem;
-  }
-
-  .btn-danger-solid {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--danger);
-    color: var(--text);
-    border: 1px solid var(--danger-strong);
-    padding: 0.5rem 1rem;
-    transition: background 0.15s, opacity 0.15s;
-  }
-
-  .btn-danger-solid:hover:not(:disabled) {
-    background: var(--danger-strong);
-  }
-
-  .btn-danger-solid:disabled {
-    opacity: 0.42;
-    cursor: not-allowed;
-    background: color-mix(in srgb, var(--danger) 35%, transparent);
-    border-color: color-mix(in srgb, var(--danger) 25%, transparent);
-  }
-
-  /* ═════════ Git Badge, Git Pull Button & Modal ═════════ */
-  .site-git-meta {
-    margin-top: 0.15rem;
-  }
-
-  .git-meta-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.32rem;
-    padding: 0.12rem 0.45rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-raised));
-    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-    color: var(--text-secondary);
-    font-size: 0.66rem;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .git-meta-pill:hover {
-    border-color: var(--accent);
-    color: var(--text);
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg-raised));
-  }
-
-  .git-meta-pill i {
-    color: var(--accent);
-    font-size: 0.76rem;
-  }
-
-  .git-branch-tag {
-    color: var(--accent);
-    font-weight: 700;
-  }
-
-  .git-commit-hash {
-    color: var(--text-subtle);
-    font-size: 0.63rem;
-  }
-
-  .req-btn-trigger {
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 0.8rem;
-    padding: 0.2rem 0.35rem;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-
-  .req-btn-trigger:hover {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    color: var(--accent);
-  }
-
-  .btn-op-git {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.24rem 0.6rem;
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-    color: var(--accent);
-    font-size: 0.73rem;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-op-git:hover {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-
-  .btn-op-conf-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.28rem;
-    padding: 0.24rem 0.58rem;
-    border-radius: 6px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-size: 0.73rem;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-op-conf-pill:hover {
-    border-color: var(--info);
-    color: var(--info);
-    background: color-mix(in srgb, var(--info) 8%, var(--bg-raised));
-  }
-
-  .op-more-wrap {
-    position: relative;
-    display: inline-flex;
-  }
-
-  .btn-op-more {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-size: 0.73rem;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-    padding: 0.24rem 0.55rem;
-    border-radius: 6px;
-    transition: all 0.15s ease;
-  }
-
-  .btn-op-more:hover,
-  .btn-op-more.is-open {
-    background: var(--bg-hover);
-    border-color: var(--border-strong);
-    color: var(--text);
-  }
-
-  .op-more-menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    min-width: 248px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 10px;
-    padding: 0.4rem;
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.72);
-    z-index: 80;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .op-more-divider {
-    height: 1px;
-    background: var(--border-subtle);
-    margin: 0.25rem 0.35rem;
-  }
-
-  .op-more-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    padding: 0.5rem 0.65rem;
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--text);
-    transition: background 0.12s ease;
-  }
-
-  .op-more-item:hover {
-    background: var(--bg-hover);
-  }
-
-  .op-more-item.is-danger-item {
-    color: var(--danger-strong);
-  }
-
-  .op-more-item.is-danger-item b {
-    color: var(--danger-strong);
-  }
-
-  .op-more-item.is-danger-item:hover {
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
-  }
-
-  .op-more-item i {
-    font-size: 0.95rem;
-    margin-top: 0.1rem;
-    flex-shrink: 0;
-  }
-
-  .icon-accent {
-    color: var(--accent);
-  }
-
-  .op-more-item div {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-  }
-
-  .op-more-item b {
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .op-more-item small {
-    font-size: 0.65rem;
-    color: var(--text-subtle);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .log-pre-raw {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
-    font-family: 'Fira Code', monospace;
-    font-size: 0.73rem;
-    color: var(--text-secondary);
-    line-height: 1.55;
-  }
-
-  .git-pull-card {
-    max-width: 580px;
-    border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
-  }
-
-  .git-pull-head {
-    margin-bottom: 0.9rem;
-    padding-bottom: 0.8rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .git-icon-circle {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .git-icon-circle i {
-    color: var(--accent) !important;
-    font-size: 1.15rem !important;
-  }
-
-  .git-summary-strip {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.6rem;
-    padding: 0.65rem 0.8rem;
-    border-radius: 8px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    margin-bottom: 0.95rem;
-  }
-
-  .git-sum-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    min-width: 0;
-  }
-
-  .git-sum-lbl {
-    font-size: 0.64rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-subtle);
-  }
-
-  .git-sum-item strong {
-    font-size: 0.76rem;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .git-branch-highlight {
-    color: var(--accent) !important;
-  }
-
-  .git-cmd-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    margin-bottom: 1rem;
-    padding: 0.75rem 0.85rem;
-    border-radius: 8px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-  }
-
-  .git-cmd-label-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .git-cmd-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .git-cmd-label i {
-    color: var(--accent);
-  }
-
-  .git-chip-reset {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 0.15rem 0.45rem;
-    font-size: 0.65rem;
-    color: var(--text-subtle);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .git-chip-reset:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--accent);
-  }
-
-  .git-cmd-input-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    background: var(--bg-surface);
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    border-radius: 6px;
-    padding: 0 0.65rem;
-    height: 36px;
-  }
-
-  .git-cmd-input-wrap:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
-  }
-
-  .git-cmd-prompt {
-    color: var(--accent);
-    font-size: 0.78rem;
-    font-weight: 700;
-    user-select: none;
-  }
-
-  .git-cmd-input {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    height: 100%;
-    font-size: 0.75rem !important;
-    color: var(--text);
-    width: 100%;
-  }
-
-  .git-chips-bar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-top: 0.1rem;
-  }
-
-  .git-chips-hint {
-    font-size: 0.66rem;
-    color: var(--text-subtle);
-    margin-right: 0.15rem;
-  }
-
-  .git-snippet-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.22rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 5px;
-    font-size: 0.67rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.14s ease;
-  }
-
-  .git-snippet-chip:hover:not(:disabled) {
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  }
-
-  .git-snippet-chip.is-active {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-
-  .git-confirm-note {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    padding-top: 0.25rem;
-    border-top: 1px dashed var(--border-subtle);
-  }
-
-  .git-confirm-note i {
-    color: var(--accent);
-    font-size: 0.85rem;
-    flex-shrink: 0;
-  }
-
-  .git-pull-alert {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    padding: 0.7rem 0.85rem;
-    border-radius: 8px;
-    font-size: 0.76rem;
-    line-height: 1.45;
-    margin-bottom: 0.85rem;
-  }
-
-  .git-pull-alert i {
-    font-size: 1.05rem;
-    margin-top: 0.05rem;
-    flex-shrink: 0;
-  }
-
-  .git-pull-alert p {
-    margin: 0.2rem 0 0;
-    color: var(--text-secondary);
-  }
-
-  .git-pull-alert.is-updated {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-    color: var(--accent);
-  }
-
-  .git-pull-alert.is-uptodate {
-    background: color-mix(in srgb, var(--info) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
-    color: var(--info);
-  }
-
-  .git-pull-alert.is-error {
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-    color: var(--danger-strong);
-  }
-
-  .git-output-box {
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.65rem 0.8rem;
-    max-height: 210px;
-    overflow: auto;
-    margin-bottom: 1rem;
-  }
-
-  .git-output-head {
-    font-size: 0.66rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-subtle);
-    margin-bottom: 0.4rem;
-    padding-bottom: 0.3rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .btn-git-pull-exec {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1rem;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.85); }
-  }
-</style>

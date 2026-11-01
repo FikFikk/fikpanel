@@ -1,0 +1,1276 @@
+@layer pages {
+  .pg-sites {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4-5);
+
+    /* Bar tab kategori proyek & status mesin Nginx */
+    .project-tabs-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+      padding-bottom: var(--sp-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .project-tabs-list {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      overflow-x: auto;
+    }
+
+    .project-tabs-right {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .proj-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: var(--sp-2) var(--sp-3-5);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .proj-tab:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
+    .proj-tab.active {
+      background: var(--tint-accent);
+      border-bottom-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .icon-php { color: var(--brand-php); }
+    .icon-node { color: var(--brand-node); }
+    .icon-proxy { color: var(--info); }
+    .icon-go { color: var(--brand-go); }
+    .icon-python { color: var(--brand-python); }
+    .icon-static { color: var(--brand-html); }
+
+    /* Toolbar aksi utama */
+    .action-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--sp-4);
+    }
+
+    .tb-left,
+    .tb-right {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2-5);
+    }
+
+    .btn-add-site {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      height: 34px;
+      padding: 0 var(--sp-3-5);
+      background: var(--accent-hover);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-add-site:hover {
+      background: var(--accent-hover);
+      box-shadow: var(--ring-accent);
+    }
+
+    .btn-renew-ssl {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      height: 34px;
+      padding: 0 var(--sp-3-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-renew-ssl:hover:not(:disabled) {
+      background: var(--bg-hover);
+      border-color: var(--border-hover);
+    }
+
+    .btn-renew-ssl:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .btn-renew-ssl i {
+      color: var(--accent);
+    }
+
+    /* Badge status mesin web server Nginx */
+    .server-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: var(--sp-1) var(--sp-2-5);
+      border-radius: var(--radius-xs);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      user-select: none;
+    }
+
+    .server-badge.is-running {
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      color: var(--accent);
+    }
+
+    .server-badge.is-stopped {
+      background: var(--tint-danger);
+      border: 1px solid var(--ring-danger);
+      color: var(--danger-strong);
+    }
+
+    .server-badge.is-missing {
+      background: var(--tint-warning);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .server-badge.clickable {
+      font-family: inherit;
+      cursor: pointer;
+      transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+    }
+
+    .server-badge.clickable:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .badge-gear {
+      opacity: 0.55;
+      transition: transform var(--dur-slow) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+    }
+
+    .server-badge.clickable:hover .badge-gear {
+      opacity: 1;
+      transform: rotate(90deg);
+    }
+
+    .pulse-indicator {
+      width: 7px;
+      height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: fp-pulse 1.5s infinite;
+    }
+
+    .server-status-tag {
+      padding: 2px var(--sp-1-5);
+      background: var(--bg-inset);
+      border-radius: var(--radius-2xs);
+      font-size: var(--text-2xs);
+      text-transform: uppercase;
+    }
+
+    /* Kotak pencarian situs */
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      min-width: 240px;
+      height: 34px;
+      padding: 0 var(--sp-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      transition: border-color var(--dur-fast) var(--ease-out);
+    }
+
+    .search-box:focus-within {
+      border-color: var(--accent);
+    }
+
+    .search-box input {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: var(--text-xs);
+    }
+
+    .search-icon {
+      color: var(--text-subtle);
+      font-size: var(--text-sm);
+    }
+
+    .btn-clear-search {
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: var(--text-subtle);
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    /* Kartu peringatan dependensi Nginx belum terpasang */
+    .dep-warning-card {
+      position: relative;
+      padding: var(--sp-8);
+      background: var(--bg-raised);
+      border: 1px solid var(--warning);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .dep-warn-glow {
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 200px;
+      height: 200px;
+      background: var(--tint-warning);
+      border-radius: 50%;
+      filter: blur(60px);
+    }
+
+    .dep-warn-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-6);
+    }
+
+    .dep-warn-icon-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      background: var(--tint-warning);
+      border: 1px solid var(--warning);
+      border-radius: var(--radius-md);
+      color: var(--warning);
+      font-size: var(--text-2xl);
+    }
+
+    .dep-warn-details h3 {
+      margin: 0 0 var(--sp-2) 0;
+      color: var(--text);
+      font-size: var(--text-md);
+      font-weight: 700;
+    }
+
+    .dep-warn-details p {
+      max-width: 720px;
+      margin: 0 0 var(--sp-5) 0;
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+    }
+
+    .dep-warn-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    .btn-install-now {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: var(--sp-2) var(--sp-4);
+      background: var(--accent-hover);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    /* Tabel daftar situs web */
+    .table-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      overflow: visible;
+    }
+
+    .sites-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-xs);
+    }
+
+    .sites-table th {
+      padding: var(--sp-2-5) var(--sp-3-5);
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--border);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-align: left;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .sites-table td {
+      padding: var(--sp-3) var(--sp-3-5);
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: middle;
+    }
+
+    .site-row:hover {
+      background: var(--bg-hover);
+    }
+
+    .site-row.selected-row {
+      background: var(--tint-accent);
+    }
+
+    .col-chk {
+      width: 32px;
+      text-align: center;
+    }
+
+    .col-chk input[type='checkbox'] {
+      width: auto;
+      padding: 0;
+    }
+
+    /* Kolom nama situs & direktori root */
+    .site-domain-box {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .domain-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      color: var(--text);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .domain-link:hover {
+      color: var(--accent);
+    }
+
+    .icon-ext {
+      color: var(--accent);
+      font-size: var(--text-xs);
+      opacity: 0.75;
+    }
+
+    .site-path-sub {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+    }
+
+    /* Tombol status aktif/dijeda */
+    .btn-status-play {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      background: transparent;
+      border: none;
+      font-size: var(--text-xs);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-status-play.is-active {
+      color: var(--accent);
+    }
+
+    .btn-status-play.is-paused {
+      color: var(--text-subtle);
+    }
+
+    /* Kolom cadangan */
+    .btn-backup-info {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+
+    .btn-backup-info i {
+      color: var(--info);
+      font-size: var(--text-base);
+    }
+
+    .backup-text-wrap {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+      text-align: left;
+    }
+
+    .backup-main {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .backup-sub {
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+    }
+
+    /* Kolom aksi cepat */
+    .quick-actions-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+    }
+
+    .quick-act-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .quick-act-btn:hover {
+      background: var(--bg-active);
+      border-color: var(--border-strong);
+    }
+
+    .icon-amber { color: var(--warning); }
+    .icon-cyan { color: var(--info); }
+    .icon-gray { color: var(--text-muted); }
+    .icon-accent { color: var(--accent); }
+
+    .badge-runtime {
+      flex-shrink: 0;
+      padding: 2px var(--sp-2);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-2xs);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .badge-runtime:hover {
+      background: var(--bg-active);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .perpetual-badge {
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      white-space: nowrap;
+    }
+
+    /* Badge status SSL */
+    .ssl-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      padding: 2px var(--sp-2);
+      border: none;
+      border-radius: var(--radius-2xs);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .ssl-badge.ssl-active {
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      color: var(--accent);
+    }
+
+    .ssl-badge.ssl-inactive {
+      background: var(--tint-warning);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .ssl-badge.ssl-active.ssl-expiring {
+      background: var(--tint-warning);
+      border-color: var(--warning);
+      color: var(--warning-strong);
+    }
+
+    .ssl-badge.ssl-pending {
+      background: var(--tint-info);
+      border: 1px solid var(--info);
+      color: var(--info);
+    }
+
+    .ssl-badge.ssl-failed {
+      background: var(--tint-danger);
+      border: 1px solid var(--ring-danger);
+      color: var(--danger-strong);
+    }
+
+    /* Kolom statistik permintaan */
+    .req-stat-box {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+    }
+
+    .req-sparkline {
+      width: 28px;
+      height: 10px;
+      background: linear-gradient(90deg, var(--accent) 30%, transparent 30%);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    .req-btn-trigger {
+      padding: 2px var(--sp-1-5);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-family: inherit;
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out);
+    }
+
+    .req-btn-trigger:hover {
+      background: var(--tint-accent);
+      color: var(--accent);
+    }
+
+    /* Kolom operasi & menu dropdown More */
+    .ops-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+    }
+
+    .table-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--sp-2) var(--sp-3-5);
+      background: var(--bg-inset);
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-subtle);
+      font-size: var(--text-xs);
+    }
+
+    /* Pill Git & Tombol Git Pull */
+    .site-git-meta {
+      margin-top: 2px;
+    }
+
+    .git-meta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 2px var(--sp-2);
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      border-radius: var(--radius-full);
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: var(--text-2xs);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .git-meta-pill:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .git-meta-pill i {
+      color: var(--accent);
+      font-size: var(--text-xs);
+    }
+
+    .git-branch-tag {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .git-commit-hash {
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+    }
+
+    .btn-op-git {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: var(--sp-1) var(--sp-2-5);
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      border-radius: var(--radius-xs);
+      color: var(--accent);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-op-git:hover {
+      background: var(--accent);
+      color: var(--text-on-accent);
+    }
+
+    .btn-op-conf-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: var(--sp-1) var(--sp-2-5);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-op-conf-pill:hover {
+      background: var(--tint-info);
+      border-color: var(--info);
+      color: var(--info);
+    }
+
+    .op-more-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .btn-op-more {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: var(--sp-1) var(--sp-2);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-op-more:hover,
+    .btn-op-more.is-open {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .op-more-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: var(--z-dropdown);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 248px;
+      padding: var(--sp-1-5);
+      background: var(--bg-raised);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .op-more-divider {
+      height: 1px;
+      margin: var(--sp-1) var(--sp-1-5);
+      background: var(--border-subtle);
+    }
+
+    .op-more-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-2-5);
+      width: 100%;
+      padding: var(--sp-2) var(--sp-2-5);
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out);
+    }
+
+    .op-more-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .op-more-item.is-danger-item,
+    .op-more-item.is-danger-item b {
+      color: var(--danger-strong);
+    }
+
+    .op-more-item.is-danger-item:hover {
+      background: var(--tint-danger);
+    }
+
+    .op-more-item i {
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-size: var(--text-base);
+    }
+
+    .op-more-item div {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .op-more-item b {
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 600;
+    }
+
+    .op-more-item small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+    }
+
+    /* Penampil log akses & error di modal */
+    .log-tabs {
+      display: flex;
+      gap: var(--sp-2);
+      margin-bottom: var(--sp-3);
+    }
+
+    .log-tab {
+      padding: var(--sp-1-5) var(--sp-3);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+    }
+
+    .log-tab.active {
+      background: var(--accent-hover);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .log-viewer {
+      height: 260px;
+      padding: var(--sp-3-5);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      font-size: var(--text-xs);
+      line-height: 1.6;
+      overflow: auto;
+    }
+
+    .log-pre-raw {
+      margin: 0;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Modal Konfirmasi Hapus Situs (Danger Zone) */
+    .danger-sub-caption {
+      display: block;
+      margin-bottom: var(--sp-3);
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+    }
+
+    .danger-alert-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-2-5);
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-3) var(--sp-3-5);
+      background: var(--tint-danger);
+      border: 1px solid var(--ring-danger);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      line-height: 1.5;
+    }
+
+    .danger-alert-banner > i {
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: var(--danger-strong);
+      font-size: var(--text-md);
+    }
+
+    .danger-alert-banner strong {
+      color: var(--text);
+    }
+
+    .danger-alert-banner p {
+      margin: var(--sp-1) 0 0;
+    }
+
+    .delete-impact-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      margin-bottom: var(--sp-4);
+    }
+
+    .delete-opt-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-2-5);
+      padding: var(--sp-2-5) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+    }
+
+    .delete-opt-item input[type='checkbox'] {
+      flex-shrink: 0;
+      width: 15px;
+      height: 15px;
+      margin-top: 2px;
+      padding: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .delete-opt-item.opt-destructive input[type='checkbox'] {
+      accent-color: var(--danger);
+    }
+
+    .delete-opt-item.is-checked {
+      background: var(--tint-accent);
+      border-color: var(--accent);
+    }
+
+    .delete-opt-item.is-checked-danger {
+      background: var(--tint-danger);
+      border-color: var(--danger);
+    }
+
+    .opt-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .opt-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-2);
+    }
+
+    .opt-title {
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 600;
+    }
+
+    .opt-badge {
+      flex-shrink: 0;
+      padding: 2px var(--sp-1-5);
+      border-radius: var(--radius-2xs);
+      font-size: var(--text-2xs);
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .badge-safe {
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      color: var(--accent);
+    }
+
+    .badge-danger {
+      background: var(--tint-danger);
+      border: 1px solid var(--ring-danger);
+      color: var(--danger-strong);
+    }
+
+    .opt-desc {
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      line-height: 1.5;
+      overflow-wrap: break-word;
+    }
+
+    .opt-desc code {
+      padding: 1px var(--sp-1-5);
+      background: var(--bg-raised);
+      border-radius: var(--radius-2xs);
+      color: var(--text-secondary);
+      font-size: var(--text-2xs);
+      overflow-wrap: anywhere;
+    }
+
+    .delete-verify-box {
+      padding: var(--sp-3-5);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .verify-label {
+      display: block;
+      margin-bottom: var(--sp-2);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      line-height: 1.45;
+    }
+
+    .verify-label strong.select-none {
+      padding: 2px var(--sp-1-5);
+      background: var(--tint-danger);
+      border: 1px dashed var(--danger);
+      border-radius: var(--radius-2xs);
+      color: var(--danger-strong);
+      user-select: none;
+    }
+
+    .verify-input {
+      width: 100%;
+      padding: var(--sp-2) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-sm);
+      outline: none;
+    }
+
+    .verify-input:focus {
+      border-color: var(--danger-strong);
+      box-shadow: var(--ring-danger);
+    }
+
+    .paste-blocked-hint {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      margin-top: var(--sp-2);
+      padding: var(--sp-1-5) var(--sp-2-5);
+      background: var(--tint-warning);
+      border: 1px solid var(--warning);
+      border-radius: var(--radius-xs);
+      color: var(--warning);
+      font-size: var(--text-xs);
+      line-height: 1.4;
+    }
+
+    /* Modal Git Pull & Auto-Deploy */
+    .git-summary-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--sp-2-5);
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-2-5) var(--sp-3);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .git-sum-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .git-sum-lbl {
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .git-sum-item strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-size: var(--text-xs);
+    }
+
+    .git-sum-item strong.git-branch-highlight {
+      color: var(--accent);
+    }
+
+    .git-cmd-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      margin-bottom: var(--sp-4);
+      padding: var(--sp-3) var(--sp-3-5);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .git-cmd-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-2);
+    }
+
+    .git-cmd-label {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 600;
+    }
+
+    .git-cmd-label i {
+      color: var(--accent);
+    }
+
+    .git-chip-reset {
+      padding: 2px var(--sp-2);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-2xs);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .git-chip-reset:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .git-cmd-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      height: 36px;
+      padding: 0 var(--sp-2-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-xs);
+    }
+
+    .git-cmd-input-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: var(--ring-accent);
+    }
+
+    .git-cmd-prompt {
+      color: var(--accent);
+      font-size: var(--text-xs);
+      font-weight: 700;
+      user-select: none;
+    }
+
+    .git-cmd-input {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: var(--text-xs);
+    }
+
+    .git-chips-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-1-5);
+      margin-top: 2px;
+    }
+
+    .git-chips-hint {
+      margin-right: var(--sp-1);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+    }
+
+    .git-snippet-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 2px var(--sp-2);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-2xs);
+      color: var(--text-muted);
+      font-size: var(--text-2xs);
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .git-snippet-chip:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .git-snippet-chip.is-active {
+      background: var(--tint-accent);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .git-confirm-note {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      padding-top: var(--sp-1);
+      border-top: 1px dashed var(--border-subtle);
+      color: var(--text-muted);
+      font-size: var(--text-2xs);
+    }
+
+    .git-confirm-note i {
+      flex-shrink: 0;
+      color: var(--accent);
+      font-size: var(--text-sm);
+    }
+
+    .git-pull-alert {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-2-5);
+      margin-bottom: var(--sp-3-5);
+      padding: var(--sp-3) var(--sp-3-5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      line-height: 1.45;
+    }
+
+    .git-pull-alert i {
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-size: var(--text-md);
+    }
+
+    .git-pull-alert p {
+      margin: 2px 0 0;
+      color: var(--text-secondary);
+    }
+
+    .git-pull-alert.is-updated {
+      background: var(--tint-accent);
+      border: 1px solid var(--ring-accent);
+      color: var(--accent);
+    }
+
+    .git-pull-alert.is-uptodate {
+      background: var(--tint-info);
+      border: 1px solid var(--info);
+      color: var(--info);
+    }
+
+    .git-pull-alert.is-error {
+      background: var(--tint-danger);
+      border: 1px solid var(--ring-danger);
+      color: var(--danger-strong);
+    }
+
+    .git-output-box {
+      max-height: 210px;
+      margin-bottom: var(--sp-3);
+      padding: var(--sp-2-5) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: auto;
+    }
+
+    .git-output-head {
+      margin-bottom: var(--sp-1-5);
+      padding-bottom: var(--sp-1);
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+  }
+}
