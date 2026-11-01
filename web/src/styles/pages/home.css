@@ -1,0 +1,319 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   HOME PAGE — gaya khusus dashboard utama (.pg-home)
+   Komponen umum (.stat-card, .progress, .card, .table, .badge, .dot, .btn,
+   .modal, .state, .input, .spinner) diambil dari @layer components & utilities.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-home {
+    &.dash-container {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-5);
+    }
+
+    /* Baris 1: Grid kartu status (.stat-card) */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .stat-card--metric {
+      align-items: flex-start;
+    }
+
+    .stat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+    }
+
+    .stat-main {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-2);
+      margin: 2px 0 4px;
+    }
+
+    .stat-card__value small {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      color: var(--text-muted);
+      margin-left: 1px;
+    }
+
+    .metric-cap {
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    /* Panel Seksi Dashboard */
+    .bento-panel {
+      padding: var(--space-4) var(--space-5);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .panel-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .panel-heading {
+      font-size: var(--text-md);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+
+    .panel-subtext {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      margin: 2px 0 0;
+    }
+
+    /* Baris Tombol Aksi Cepat */
+    .quick-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    /* 4 Sub-Kartu Navigasi Cepat Modul */
+    .bento-subcards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .subcard {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-3) var(--space-4);
+      text-decoration: none;
+      transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+    }
+
+    .subcard:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+
+    .subcard-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+
+    .subcard-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--text-md);
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+    }
+
+    .subcard-arrow {
+      color: var(--text-subtle);
+      font-size: var(--text-sm);
+      transition: transform var(--duration-fast) ease, color var(--duration-fast) ease;
+    }
+
+    .subcard:hover .subcard-arrow {
+      transform: translate(1px, -1px);
+      color: var(--text);
+    }
+
+    .subcard-title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .subcard-stats {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-sm);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-highlight {
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+    }
+
+    .stat-sep {
+      color: var(--text-disabled);
+    }
+
+    .stat-muted {
+      color: var(--text-subtle);
+      font-size: var(--text-xs);
+    }
+
+    /* Indikator Trafik Jaringan */
+    .traffic-pills {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .traffic-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-md);
+      background: var(--bg-raised);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .traffic-pill .icon-in {
+      color: var(--accent-strong);
+    }
+
+    .traffic-pill .icon-out {
+      color: var(--text-muted);
+    }
+
+    /* Tautan Kelola Layanan */
+    .link-manage {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--accent-strong);
+      text-decoration: none;
+      transition: color var(--duration-fast) ease;
+    }
+
+    .link-manage:hover {
+      color: var(--accent);
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .svc-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-2);
+    }
+
+    /* Konten Modal Host Discovery */
+    .discovery-sub {
+      margin: 0 0 var(--space-3);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .discovery-filter-row {
+      display: flex;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .discovery-results {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .discovery-summary-banner {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: var(--space-3);
+      background: var(--bg-inset);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+    }
+
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sum-label {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    .sum-val {
+      font-size: var(--text-lg);
+      font-weight: var(--weight-bold);
+      color: var(--text);
+    }
+
+    .disc-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .disc-section h4 {
+      margin: 0;
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .disc-empty {
+      margin: 0;
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    @media (max-width: 768px) {
+      .bento-panel {
+        padding: var(--space-3) var(--space-4);
+      }
+
+      .discovery-filter-row {
+        flex-direction: column;
+      }
+    }
+  }
+}
