@@ -189,83 +189,6 @@
       width: 220px;
     }
 
-    /* Layout Tab Overview */
-    .overview-grid {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
-    }
-
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: var(--space-3);
-    }
-
-    .stat-card {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      padding: var(--space-4);
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-    }
-
-    .stat-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      border-radius: var(--radius-md);
-      font-size: 1.4rem;
-    }
-
-    .stat-icon--active {
-      background: var(--tint-accent);
-      color: var(--accent-strong);
-    }
-
-    .stat-icon--danger {
-      background: var(--tint-danger);
-      color: var(--danger-strong);
-    }
-
-    .stat-icon--info {
-      background: var(--tint-info);
-      color: var(--info);
-    }
-
-    .stat-icon--violet {
-      background: var(--tint-violet);
-      color: var(--violet);
-    }
-
-    .stat-meta {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .stat-val {
-      font-size: var(--text-2xl);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-      line-height: var(--leading-tight);
-    }
-
-    .stat-lbl {
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-    }
-
-    .shortcuts-bar {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      flex-wrap: wrap;
-    }
-
     /* Tabel spesifikasi perangkat keras host */
     .specs-grid {
       display: grid;
@@ -669,3 +592,4 @@
     }
   }
 }
+
