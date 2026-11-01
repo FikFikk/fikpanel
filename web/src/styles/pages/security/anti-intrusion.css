@@ -1,0 +1,11 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY ANTI INTRUSION TAB — Fail2Ban dan pengerasan kernel (.pg-security-anti-intrusion)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-anti-intrusion {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
