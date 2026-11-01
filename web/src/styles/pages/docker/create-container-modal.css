@@ -1,0 +1,16 @@
+@layer pages {
+  .pg-docker-create-container-modal {
+    .form-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mapping-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+  }
+}
+
