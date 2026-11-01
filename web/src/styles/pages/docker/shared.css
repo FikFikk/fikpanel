@@ -238,13 +238,6 @@
       width: 200px;
     }
 
-    /* Form pencarian Cloud Image */
-    .search-form-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
     /* Settings Suite */
     .settings-rows {
       display: flex;

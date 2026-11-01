@@ -1,0 +1,10 @@
+@layer pages {
+  .pg-docker-cloud-image {
+    .search-form-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+  }
+}
+
