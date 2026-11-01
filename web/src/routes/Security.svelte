@@ -29,6 +29,7 @@
   import AntiIntrusionTab from './security/AntiIntrusionTab.svelte';
   import ScanDetectionTab from './security/ScanDetectionTab.svelte';
   import AddPortModal from './security/AddPortModal.svelte';
+  import AddWhitelistModal from './security/AddWhitelistModal.svelte';
   import '../styles/pages/security/shared.css';
 
   // Tab navigasi aktif
@@ -842,38 +843,13 @@
   />
 
   <!-- MODAL: ADD WHITELIST IP -->
-  <Modal
+  <AddWhitelistModal
     open={showAddWhitelistModal}
-    title="Tambah IP ke Whitelist"
-    size="sm"
-    onclose={() => (showAddWhitelistModal = false)}
-  >
-    <div class="field mb-3">
-      <label class="field__label" for="white-ip">Alamat IP / Subnet</label>
-      <input
-        id="white-ip"
-        type="text"
-        class="input input--mono"
-        placeholder="Contoh: 202.59.205.41"
-        bind:value={newWhiteIP}
-      />
-    </div>
-    <div class="field mb-3">
-      <label class="field__label" for="white-remarks">Catatan Keterangan</label>
-      <input
-        id="white-remarks"
-        type="text"
-        class="input"
-        placeholder="Contoh: Kantor Utama Fikri"
-        bind:value={newWhiteRemarks}
-      />
-    </div>
-
-    {#snippet footer()}
-      <button class="btn btn--secondary" onclick={() => (showAddWhitelistModal = false)}>Batal</button>
-      <button class="btn btn--primary" onclick={handleAddWhitelist}>Simpan Whitelist</button>
-    {/snippet}
-  </Modal>
+    bind:newWhiteIP
+    bind:newWhiteRemarks
+    onClose={() => (showAddWhitelistModal = false)}
+    onSubmit={handleAddWhitelist}
+  />
 
   <!-- MODAL: ADD BLACKLIST IP -->
   <Modal

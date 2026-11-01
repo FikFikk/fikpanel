@@ -1,0 +1,10 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY ADD WHITELIST MODAL — formulir tambah IP whitelist (.pg-security-add-whitelist-modal)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-add-whitelist-modal {
+    display: flex;
+    flex-direction: column;
+  }
+}
