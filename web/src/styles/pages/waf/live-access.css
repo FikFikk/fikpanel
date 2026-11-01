@@ -1,0 +1,12 @@
+@layer pages {
+  .pg-waf-live-access {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+
+    .mt-05 {
+      margin-top: 0.15rem;
+    }
+  }
+}
+
