@@ -4,6 +4,8 @@
   import { copyText } from '../lib/utils/browser';
   import type { Service } from '../lib/types';
   import NginxManager from '../lib/components/NginxManager.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/services.css';
 
   interface Props {
     services?: Service[];
@@ -211,37 +213,39 @@
   });
 </script>
 
-<div class="services-container">
+<div class="pg-services services-container">
   <!-- Baris Judul & Aksi Global -->
-  <div class="head-bar">
-    <div class="head-title-wrap">
+  <div class="page-header">
+    <div>
       <div class="title-with-pill">
-        <h2 class="title">Layanan Sistem &amp; Supervisor</h2>
-        <span class="system-badge">Systemd Linux</span>
+        <h2 class="page-header__title">Layanan Sistem &amp; Supervisor</h2>
+        <span class="badge badge--success badge--pill">Systemd Linux</span>
       </div>
-      <p class="subtitle">
+      <p class="page-header__sub">
         Pantau seluruh proses latar belakang host, supervisor worker, status boot startup, dan log real-time
       </p>
     </div>
 
-    <div class="head-actions">
+    <div class="page-header__actions">
       <!-- Pengatur Cakupan Layanan (Scope Switcher) -->
-      <div class="scope-switch" role="group" aria-label="Cakupan Layanan">
+      <div class="tabs tabs--pill" role="group" aria-label="Cakupan Layanan">
         <button
           type="button"
-          class="scope-btn {scope === 'running' ? 'active' : ''}"
+          class="tabs__tab"
+          class:is-active={scope === 'running'}
           onclick={() => {
             scope = 'running';
             loadServices();
           }}
           title="Tampilkan hanya layanan yang aktif berjalan pada memori"
         >
-          <span class="dot-indicator green"></span>
+          <span class="dot dot--success"></span>
           Hanya Berjalan
         </button>
         <button
           type="button"
-          class="scope-btn {scope === 'all' ? 'active' : ''}"
+          class="tabs__tab"
+          class:is-active={scope === 'all'}
           onclick={() => {
             scope = 'all';
             loadServices();
@@ -254,12 +258,16 @@
       </div>
 
       <button
-        class="btn btn-ghost refresh-btn"
+        class="btn btn--secondary btn--sm"
         onclick={() => loadServices()}
         disabled={loading}
         title="Muat ulang status layanan sekarang"
       >
-        <i class="ri-refresh-line {loading ? 'spin' : ''}"></i>
+        {#if loading}
+          <span class="spinner"></span>
+        {:else}
+          <i class="ri-refresh-line"></i>
+        {/if}
         Refresh
       </button>
     </div>
@@ -268,70 +276,71 @@
   <!-- Ringkasan Statistik Metrik Cepat -->
   <div class="stats-grid">
     <div class="stat-card">
-      <div class="stat-icon icon-total">
+      <div class="stat-card__icon">
         <i class="ri-server-line"></i>
       </div>
-      <div class="stat-info">
-        <span class="stat-label">Total Terdeteksi</span>
-        <span class="stat-value">{counts.total}</span>
-        <span class="stat-desc">Unit layanan sistem</span>
+      <div class="stat-card__body">
+        <span class="stat-card__label">Total Terdeteksi</span>
+        <span class="stat-card__value">{counts.total}</span>
+        <span class="stat-card__sub">Unit layanan sistem</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon icon-running">
+      <div class="stat-card__icon">
         <i class="ri-play-circle-line"></i>
       </div>
-      <div class="stat-info">
-        <span class="stat-label">Aktif Berjalan</span>
-        <span class="stat-value text-accent">{counts.running}</span>
-        <span class="stat-desc">Proses runtime aktif</span>
+      <div class="stat-card__body">
+        <span class="stat-card__label">Aktif Berjalan</span>
+        <span class="stat-card__value text-accent">{counts.running}</span>
+        <span class="stat-card__sub">Proses runtime aktif</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon icon-stopped">
+      <div class="stat-card__icon">
         <i class="ri-stop-circle-line"></i>
       </div>
-      <div class="stat-info">
-        <span class="stat-label">Nonaktif / Exited</span>
-        <span class="stat-value text-muted">{counts.stopped}</span>
-        <span class="stat-desc">Layanan berhenti</span>
+      <div class="stat-card__body">
+        <span class="stat-card__label">Nonaktif / Exited</span>
+        <span class="stat-card__value text-muted">{counts.stopped}</span>
+        <span class="stat-card__sub">Layanan berhenti</span>
       </div>
     </div>
 
     <div class="stat-card {counts.failed > 0 ? 'card-failed-alert' : ''}">
-      <div class="stat-icon icon-failed">
+      <div class="stat-card__icon stat-card__icon--danger">
         <i class="ri-error-warning-line"></i>
       </div>
-      <div class="stat-info">
-        <span class="stat-label">Bermasalah (Failed)</span>
-        <span class="stat-value {counts.failed > 0 ? 'text-danger' : 'text-muted'}">{counts.failed}</span>
-        <span class="stat-desc">{counts.failed > 0 ? 'Perlu tindakan segera!' : 'Seluruh layanan stabil'}</span>
+      <div class="stat-card__body">
+        <span class="stat-card__label">Bermasalah (Failed)</span>
+        <span class="stat-card__value {counts.failed > 0 ? 'text-danger' : 'text-muted'}">{counts.failed}</span>
+        <span class="stat-card__sub">{counts.failed > 0 ? 'Perlu tindakan segera!' : 'Seluruh layanan stabil'}</span>
       </div>
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon icon-ram">
+      <div class="stat-card__icon stat-card__icon--info">
         <i class="ri-dashboard-3-line"></i>
       </div>
-      <div class="stat-info">
-        <span class="stat-label">Total RAM Layanan</span>
-        <span class="stat-value text-info mono">{formatBytes(counts.total_memory)}</span>
-        <span class="stat-desc">Akumulasi penggunaan RSS</span>
+      <div class="stat-card__body">
+        <span class="stat-card__label">Total RAM Layanan</span>
+        <span class="stat-card__value text-info mono">{formatBytes(counts.total_memory)}</span>
+        <span class="stat-card__sub">Akumulasi penggunaan RSS</span>
       </div>
     </div>
   </div>
 
   <!-- Panel Utama: Tab Kategori, Pencarian, & Tabel Layanan -->
-  <div class="panel">
+  <div class="card services-panel">
     <!-- Baris Filter Kategori & Pencarian -->
     <div class="filter-bar">
-      <div class="tabs-scroll">
+      <div class="tabs tabs--pill">
         {#each CATEGORIES as cat}
           <button
             type="button"
-            class="cat-tab {selectedCategory === cat.id ? 'active' : ''}"
+            class="tabs__tab"
+            class:is-active={selectedCategory === cat.id}
             onclick={() => {
               selectedCategory = cat.id;
             }}
@@ -343,16 +352,16 @@
         {/each}
       </div>
 
-      <div class="search-box">
-        <i class="ri-search-line search-icon"></i>
+      <div class="input-wrap search-box">
+        <i class="ri-search-line input__icon"></i>
         <input
           type="text"
           placeholder="Cari nama unit, deskripsi, atau proses..."
           bind:value={searchQuery}
-          class="search-input"
+          class="input input--search"
         />
         {#if searchQuery}
-          <button class="search-clear" onclick={() => { searchQuery = ''; }}>
+          <button class="btn btn--icon btn--sm btn--ghost search-clear" onclick={() => { searchQuery = ''; }} aria-label="Bersihkan pencarian">
             <i class="ri-close-line"></i>
           </button>
         {/if}
@@ -361,32 +370,36 @@
 
     <!-- Tabel Data Layanan Super Detail -->
     <div class="table-wrap">
-      <table>
+      <table class="table">
         <thead>
           <tr>
-            <th style="min-width: 220px;">Unit / Daemon</th>
-            <th style="width: 140px;">Kategori</th>
-            <th style="width: 150px;">Status Aktif</th>
-            <th style="width: 130px;">Boot Startup</th>
-            <th style="width: 110px;">PID / Thread</th>
-            <th style="width: 140px;">Penggunaan RAM</th>
-            <th style="width: 100px;">Uptime</th>
-            <th style="text-align: right; min-width: 220px;">Aksi Kontrol</th>
+            <th class="col-unit">Unit / Daemon</th>
+            <th class="col-cat">Kategori</th>
+            <th class="col-status">Status Aktif</th>
+            <th class="col-boot">Boot Startup</th>
+            <th class="col-pid">PID / Thread</th>
+            <th class="col-ram">Penggunaan RAM</th>
+            <th class="col-uptime">Uptime</th>
+            <th class="text-right col-actions">Aksi Kontrol</th>
           </tr>
         </thead>
         <tbody>
           {#if loading && allServicesList.length === 0}
             <tr>
-              <td colspan="8" class="empty-state">
-                <i class="ri-loader-4-line spin"></i>
-                <p>Memindai seluruh unit layanan sistem...</p>
+              <td colspan="8">
+                <div class="state state--loading">
+                  <span class="spinner"></span>
+                  <p class="state__desc">Memindai seluruh unit layanan sistem...</p>
+                </div>
               </td>
             </tr>
           {:else if displayedServices.length === 0}
             <tr>
-              <td colspan="8" class="empty-state">
-                <i class="ri-inbox-line"></i>
-                <p>Tidak ada unit layanan yang sesuai dengan kriteria filter ({selectedCategory !== 'all' ? selectedCategory : 'semua'}).</p>
+              <td colspan="8">
+                <div class="state state--empty">
+                  <i class="ri-inbox-line"></i>
+                  <p class="state__desc">Tidak ada unit layanan yang sesuai dengan kriteria filter ({selectedCategory !== 'all' ? selectedCategory : 'semua'}).</p>
+                </div>
               </td>
             </tr>
           {:else}
@@ -405,17 +418,17 @@
                           {s.unit} <i class="ri-settings-4-line"></i>
                         </button>
                       {:else}
-                        <span class="mono font-bold text-main">{s.unit}</span>
+                        <span class="mono font-bold">{s.unit}</span>
                       {/if}
 
                       {#if s.protected}
-                        <span class="shield-badge" title="Unit vital sistem: dilindungi dari penghentian paksa">
+                        <span class="badge badge--warning" title="Unit vital sistem: dilindungi dari penghentian paksa">
                           <i class="ri-shield-fill"></i> PROTECTED
                         </span>
                       {/if}
 
                       {#if s.category === 'supervisor'}
-                        <span class="supervisor-badge" title="Supervisor worker daemon">
+                        <span class="badge badge--violet" title="Supervisor worker daemon">
                           <i class="ri-cpu-line"></i> SUPERVISOR
                         </span>
                       {/if}
@@ -454,23 +467,23 @@
                 <!-- Kolom Status Aktif -->
                 <td>
                   {#if s.active_state === 'active'}
-                    <span class="badge badge-ok">
-                      <span class="dot-status dot-green"></span>
+                    <span class="badge badge--success">
+                      <span class="dot dot--success"></span>
                       active ({s.sub_state})
                     </span>
                   {:else if s.active_state === 'failed'}
-                    <span class="badge badge-fail">
-                      <span class="dot-status dot-red pulse-dot"></span>
+                    <span class="badge badge--danger">
+                      <span class="dot dot--danger dot--pulse"></span>
                       failed ({s.sub_state})
                     </span>
                   {:else if s.active_state === 'activating'}
-                    <span class="badge badge-warn">
-                      <span class="dot-status dot-amber"></span>
+                    <span class="badge badge--warning">
+                      <span class="dot dot--warning"></span>
                       activating
                     </span>
                   {:else}
-                    <span class="badge badge-inactive">
-                      <span class="dot-status dot-gray"></span>
+                    <span class="badge badge--neutral">
+                      <span class="dot"></span>
                       {s.active_state} ({s.sub_state})
                     </span>
                   {/if}
@@ -522,9 +535,9 @@
                 <!-- Kolom Penggunaan RAM -->
                 <td>
                   <div class="ram-cell">
-                    <span class="mono font-bold text-main">{formatBytes(s.memory_current)}</span>
+                    <span class="mono font-bold">{formatBytes(s.memory_current)}</span>
                     {#if s.memory_peak && s.memory_peak > s.memory_current}
-                      <span class="ram-peak text-subtle mono" title="Puncak penggunaan memori tercatat">
+                      <span class="ram-peak mono" title="Puncak penggunaan memori tercatat">
                         Puncak: {formatBytes(s.memory_peak)}
                       </span>
                     {/if}
@@ -537,45 +550,57 @@
                 </td>
 
                 <!-- Kolom Aksi Kontrol -->
-                <td style="text-align: right;">
+                <td class="text-right">
                   <div class="actions-cell">
                     <!-- Tombol Restart -->
                     <button
-                      class="btn-sm btn-ghost"
+                      class="btn btn--sm btn--ghost"
                       onclick={() => executeAction(s.unit, 'restart')}
                       disabled={actionLoading === `${s.unit}:restart`}
                       title="Muat ulang proses layanan (restart)"
                     >
-                      <i class="ri-restart-line {actionLoading === `${s.unit}:restart` ? 'spin' : ''}"></i>
+                      {#if actionLoading === `${s.unit}:restart`}
+                        <span class="spinner"></span>
+                      {:else}
+                        <i class="ri-restart-line"></i>
+                      {/if}
                       Restart
                     </button>
 
                     <!-- Tombol Start / Stop -->
                     {#if s.active_state === 'active'}
                       <button
-                        class="btn-sm btn-danger"
+                        class="btn btn--sm btn--danger"
                         onclick={() => executeAction(s.unit, 'stop')}
                         disabled={s.protected || actionLoading === `${s.unit}:stop`}
                         title={s.protected ? 'Layanan vital sistem tidak boleh dihentikan' : 'Hentikan layanan sekarang'}
                       >
-                        <i class="ri-stop-fill {actionLoading === `${s.unit}:stop` ? 'spin' : ''}"></i>
+                        {#if actionLoading === `${s.unit}:stop`}
+                          <span class="spinner"></span>
+                        {:else}
+                          <i class="ri-stop-fill"></i>
+                        {/if}
                         Stop
                       </button>
                     {:else}
                       <button
-                        class="btn-sm btn-accent"
+                        class="btn btn--sm btn--primary"
                         onclick={() => executeAction(s.unit, 'start')}
                         disabled={actionLoading === `${s.unit}:start`}
                         title="Jalankan layanan sekarang"
                       >
-                        <i class="ri-play-fill {actionLoading === `${s.unit}:start` ? 'spin' : ''}"></i>
+                        {#if actionLoading === `${s.unit}:start`}
+                          <span class="spinner"></span>
+                        {:else}
+                          <i class="ri-play-fill"></i>
+                        {/if}
                         Start
                       </button>
                     {/if}
 
                     <!-- Tombol Lihat Log Journalctl -->
                     <button
-                      class="btn-sm btn-tool"
+                      class="btn btn--sm btn--secondary"
                       onclick={() => openLogModal(s.unit)}
                       title="Buka log journalctl real-time"
                     >
@@ -585,9 +610,10 @@
 
                     <!-- Tombol Inspeksi Metadata Teknis -->
                     <button
-                      class="btn-sm btn-tool"
+                      class="btn btn--sm btn--icon btn--secondary"
                       onclick={() => openInspectModal(s.unit)}
                       title="Periksa metadata teknis systemctl"
+                      aria-label="Inspeksi teknis {s.unit}"
                     >
                       <i class="ri-information-line"></i>
                     </button>
@@ -600,989 +626,156 @@
       </table>
     </div>
   </div>
-</div>
 
-<!-- Modal Nginx Manager Khusus -->
-{#if showNginxManager}
-  <NginxManager
-    onClose={() => {
-      showNginxManager = false;
-      loadServices();
-    }}
-    {onNotify}
-  />
-{/if}
+  <!-- Modal Nginx Manager Khusus -->
+  {#if showNginxManager}
+    <NginxManager
+      onClose={() => {
+        showNginxManager = false;
+        loadServices();
+      }}
+      {onNotify}
+    />
+  {/if}
 
-<!-- Modal Live Journalctl Logs -->
-{#if showLogModal}
-  <div class="modal-backdrop" onclick={() => (showLogModal = false)} role="presentation">
-    <div class="modal-card modal-lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <h2 class="modal-title">
-            <i class="ri-terminal-box-line"></i> Log Real-time: <span class="mono text-accent">{logUnit}</span>
-          </h2>
-          <span class="text-subtle text-xs">Jurnal log peristiwa sistem via journalctl</span>
-        </div>
-
-        <div class="modal-head-tools">
-          <div class="limit-selector">
-            <span class="text-xs text-muted">Baris:</span>
-            <select
-              bind:value={logLines}
-              onchange={() => fetchLogs()}
-              class="select-sm"
-              disabled={loadingLogs}
-            >
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-              <option value={500}>500</option>
-            </select>
-          </div>
-
-          <button
-            class="btn btn-ghost btn-sm"
-            onclick={copyLogs}
-            disabled={loadingLogs || !logContent}
-            title="Salin seluruh isi log ke clipboard"
-          >
-            <i class="{copyLogSuccess ? 'ri-check-line text-accent' : 'ri-file-copy-line'}"></i>
-            {copyLogSuccess ? 'Tersalin!' : 'Salin'}
-          </button>
-
-          <button
-            class="btn btn-ghost btn-sm"
-            onclick={() => fetchLogs()}
+  <!-- Modal Live Journalctl Logs -->
+  <Modal
+    open={showLogModal}
+    title={`Log Real-time: ${logUnit}`}
+    size="lg"
+    onclose={() => (showLogModal = false)}
+  >
+    <div class="log-toolbar">
+      <span class="text-subtle text-xs">Jurnal log peristiwa sistem via journalctl</span>
+      <div class="log-tools">
+        <div class="limit-selector">
+          <span class="text-xs text-muted">Baris:</span>
+          <select
+            bind:value={logLines}
+            onchange={() => fetchLogs()}
+            class="input select-sm"
             disabled={loadingLogs}
-            title="Segarkan log"
           >
-            <i class="ri-refresh-line {loadingLogs ? 'spin' : ''}"></i>
-            Refresh
-          </button>
-
-          <button class="modal-close" onclick={() => (showLogModal = false)} aria-label="Tutup modal">
-            <i class="ri-close-line"></i>
-          </button>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+            <option value={500}>500</option>
+          </select>
         </div>
-      </div>
 
-      <div class="modal-body p-0">
-        <div class="log-terminal">
+        <button
+          class="btn btn--secondary btn--sm"
+          onclick={copyLogs}
+          disabled={loadingLogs || !logContent}
+          title="Salin seluruh isi log ke clipboard"
+        >
+          <i class="{copyLogSuccess ? 'ri-check-line text-accent' : 'ri-file-copy-line'}"></i>
+          {copyLogSuccess ? 'Tersalin!' : 'Salin'}
+        </button>
+
+        <button
+          class="btn btn--secondary btn--sm"
+          onclick={() => fetchLogs()}
+          disabled={loadingLogs}
+          title="Segarkan log"
+        >
           {#if loadingLogs}
-            <div class="log-loading">
-              <i class="ri-loader-4-line spin"></i> Membaca log journalctl dari host sistem...
-            </div>
+            <span class="spinner"></span>
           {:else}
-            <pre class="log-pre">{logContent}</pre>
+            <i class="ri-refresh-line"></i>
           {/if}
-        </div>
+          Refresh
+        </button>
       </div>
+    </div>
 
-      <div class="modal-foot">
+    <div class="log-terminal">
+      {#if loadingLogs}
+        <div class="state state--loading">
+          <span class="spinner"></span>
+          <span class="state__desc">Membaca log journalctl dari host sistem...</span>
+        </div>
+      {:else}
+        <pre class="log-pre">{logContent}</pre>
+      {/if}
+    </div>
+
+    {#snippet footer()}
+      <div class="modal-foot-row">
         <span class="text-subtle text-xs">
           Menampilkan catatan eksekusi, runtime output, dan sinyal error unit {logUnit}.
         </span>
-        <button class="btn btn-ghost" onclick={() => (showLogModal = false)}>Tutup</button>
+        <button class="btn btn--secondary" onclick={() => (showLogModal = false)}>Tutup</button>
       </div>
-    </div>
-  </div>
-{/if}
+    {/snippet}
+  </Modal>
 
-<!-- Modal Inspeksi Metadata Teknis (Systemctl Show) -->
-{#if showInspectModal}
-  <div class="modal-backdrop" onclick={() => (showInspectModal = false)} role="presentation">
-    <div class="modal-card modal-md" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <h2 class="modal-title">
-            <i class="ri-information-line"></i> Inspeksi Teknis: <span class="mono text-accent">{inspectUnit}</span>
-          </h2>
-          <span class="text-subtle text-xs">Informasi arsitektur runtime dari systemctl show</span>
+  <!-- Modal Inspeksi Metadata Teknis (Systemctl Show) -->
+  <Modal
+    open={showInspectModal}
+    title={`Inspeksi Teknis: ${inspectUnit}`}
+    size="md"
+    onclose={() => (showInspectModal = false)}
+  >
+    {#if loadingInspect}
+      <div class="state state--loading">
+        <span class="spinner"></span>
+        <span class="state__desc">Mengambil konfigurasi teknis unit...</span>
+      </div>
+    {:else}
+      <div class="inspect-grid">
+        <div class="inspect-item full-width">
+          <span class="inspect-key">ExecStart (Perintah Utama)</span>
+          <span class="inspect-val mono code-snippet">{inspectProps.ExecStart || '—'}</span>
         </div>
 
-        <button class="modal-close" onclick={() => (showInspectModal = false)} aria-label="Tutup modal">
-          <i class="ri-close-line"></i>
-        </button>
+        <div class="inspect-item">
+          <span class="inspect-key">Main PID</span>
+          <span class="inspect-val mono">{inspectProps.MainPID || '—'}</span>
+        </div>
+
+        <div class="inspect-item">
+          <span class="inspect-key">Tasks Current</span>
+          <span class="inspect-val mono">{inspectProps.TasksCurrent || '—'}</span>
+        </div>
+
+        <div class="inspect-item">
+          <span class="inspect-key">Unit File State</span>
+          <span class="inspect-val mono">{inspectProps.UnitFileState || '—'}</span>
+        </div>
+
+        <div class="inspect-item">
+          <span class="inspect-key">Restart Policy</span>
+          <span class="inspect-val mono">{inspectProps.Restart || '—'}</span>
+        </div>
+
+        <div class="inspect-item">
+          <span class="inspect-key">Load State</span>
+          <span class="inspect-val mono">{inspectProps.LoadState || '—'}</span>
+        </div>
+
+        <div class="inspect-item">
+          <span class="inspect-key">Active &amp; Sub State</span>
+          <span class="inspect-val mono">{inspectProps.ActiveState} ({inspectProps.SubState})</span>
+        </div>
+
+        <div class="inspect-item full-width">
+          <span class="inspect-key">Active Enter Timestamp</span>
+          <span class="inspect-val mono">{inspectProps.ActiveEnterTimestamp || '—'}</span>
+        </div>
+
+        <div class="inspect-item full-width">
+          <span class="inspect-key">Unit File Path</span>
+          <span class="inspect-val mono text-subtle">{inspectProps.FragmentPath || `/etc/systemd/system/${inspectUnit}`}</span>
+        </div>
       </div>
+    {/if}
 
-      <div class="modal-body">
-        {#if loadingInspect}
-          <div class="inspect-loading">
-            <i class="ri-loader-4-line spin"></i> Mengambil konfigurasi teknis unit...
-          </div>
-        {:else}
-          <div class="inspect-grid">
-            <div class="inspect-item full-width">
-              <span class="inspect-key">ExecStart (Perintah Utama)</span>
-              <span class="inspect-val mono code-snippet">{inspectProps.ExecStart || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Main PID</span>
-              <span class="inspect-val mono">{inspectProps.MainPID || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Tasks Current</span>
-              <span class="inspect-val mono">{inspectProps.TasksCurrent || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Unit File State</span>
-              <span class="inspect-val mono">{inspectProps.UnitFileState || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Restart Policy</span>
-              <span class="inspect-val mono">{inspectProps.Restart || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Load State</span>
-              <span class="inspect-val mono">{inspectProps.LoadState || '—'}</span>
-            </div>
-
-            <div class="inspect-item">
-              <span class="inspect-key">Active &amp; Sub State</span>
-              <span class="inspect-val mono">{inspectProps.ActiveState} ({inspectProps.SubState})</span>
-            </div>
-
-            <div class="inspect-item full-width">
-              <span class="inspect-key">Active Enter Timestamp</span>
-              <span class="inspect-val mono">{inspectProps.ActiveEnterTimestamp || '—'}</span>
-            </div>
-
-            <div class="inspect-item full-width">
-              <span class="inspect-key">Unit File Path</span>
-              <span class="inspect-val mono text-subtle">{inspectProps.FragmentPath || `/etc/systemd/system/${inspectUnit}`}</span>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <div class="modal-foot">
+    {#snippet footer()}
+      <div class="modal-foot-row">
         <span class="text-subtle text-xs">Data diekstrak langsung dari bus systemd cgroup kernel.</span>
-        <button class="btn btn-ghost" onclick={() => (showInspectModal = false)}>Tutup</button>
+        <button class="btn btn--secondary" onclick={() => (showInspectModal = false)}>Tutup</button>
       </div>
-    </div>
-  </div>
-{/if}
-
-<style>
-  .services-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  /* ═══ Header Bar ═══ */
-  .head-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-  }
-  .head-title-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .title-with-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: -0.01em;
-  }
-  .system-badge {
-    font-size: 0.68rem;
-    font-weight: 700;
-    padding: 0.15rem 0.5rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .subtitle {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-  }
-  .head-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-  }
-
-  /* ═══ Scope Switcher ═══ */
-  .scope-switch {
-    display: inline-flex;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.2rem;
-    gap: 0.2rem;
-  }
-  .scope-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .scope-btn:hover {
-    color: var(--text);
-  }
-  .scope-btn.active {
-    background: var(--bg-raised);
-    color: var(--text);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-  .dot-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-  .dot-indicator.green {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent);
-  }
-
-  /* ═══ Stats Cards Grid ═══ */
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 0.85rem;
-  }
-  .stat-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    transition: transform 0.15s ease, border-color 0.15s ease;
-  }
-  .stat-card:hover {
-    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-  }
-  .card-failed-alert {
-    border-color: color-mix(in srgb, var(--danger-strong) 40%, var(--border));
-    background: color-mix(in srgb, var(--danger-strong) 5%, var(--bg-surface));
-  }
-  .stat-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-  }
-  .icon-total {
-    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
-    color: var(--text);
-  }
-  .icon-running {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-    color: var(--accent);
-  }
-  .icon-stopped {
-    background: color-mix(in srgb, var(--text-subtle) 15%, transparent);
-    color: var(--text-subtle);
-  }
-  .icon-failed {
-    background: color-mix(in srgb, var(--danger-strong) 15%, transparent);
-    color: var(--danger-strong);
-  }
-  .icon-ram {
-    background: var(--tint-info);
-    color: var(--info);
-  }
-  .stat-info {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .stat-label {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-  }
-  .stat-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.2;
-    margin: 0.1rem 0;
-  }
-  .stat-desc {
-    font-size: 0.68rem;
-    color: var(--text-subtle);
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
-  }
-
-  /* ═══ Panel Utama ═══ */
-  .panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.15rem 1.35rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  /* ═══ Filter Bar & Tabs ═══ */
-  .filter-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 0.85rem;
-  }
-  .tabs-scroll {
-    display: flex;
-    gap: 0.4rem;
-    overflow-x: auto;
-    padding-bottom: 0.2rem;
-  }
-  .cat-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: 8px;
-    font-size: 0.76rem;
-    font-weight: 600;
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-  }
-  .cat-tab:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .cat-tab.active {
-    background: var(--bg-raised);
-    border-color: var(--border);
-    color: var(--accent);
-  }
-  .cat-count-pill {
-    font-size: 0.65rem;
-    padding: 0.1rem 0.4rem;
-    border-radius: 9999px;
-    background: var(--bg-hover);
-    color: var(--text-subtle);
-  }
-  .cat-tab.active .cat-count-pill {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-    color: var(--accent);
-  }
-
-  /* ═══ Search Box ═══ */
-  .search-box {
-    position: relative;
-    display: flex;
-    align-items: center;
-    min-width: 260px;
-    flex: 1;
-    max-width: 360px;
-  }
-  .search-icon {
-    position: absolute;
-    left: 0.75rem;
-    color: var(--text-subtle);
-    pointer-events: none;
-    font-size: 0.9rem;
-  }
-  .search-input {
-    width: 100%;
-    padding: 0.45rem 2rem 0.45rem 2.2rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--bg-base);
-    color: var(--text);
-    font-size: 0.78rem;
-    outline: none;
-    transition: border-color 0.15s ease;
-  }
-  .search-input:focus {
-    border-color: var(--accent);
-  }
-  .search-clear {
-    position: absolute;
-    right: 0.5rem;
-    background: none;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    padding: 0.2rem;
-    border-radius: 4px;
-  }
-  .search-clear:hover {
-    color: var(--text);
-  }
-
-  /* ═══ Tabel Data ═══ */
-  .table-wrap {
-    overflow-x: auto;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-  th {
-    text-align: left;
-    padding: 0.65rem 0.75rem;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-subtle);
-    border-bottom: 1px solid var(--border);
-  }
-  td {
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-  }
-  tr.row-failed {
-    background: color-mix(in srgb, var(--danger-strong) 4%, transparent);
-  }
-
-  /* ═══ Unit Cell ═══ */
-  .unit-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .unit-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-  .unit-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--accent-strong);
-    font-size: inherit;
-    cursor: pointer;
-    border-bottom: 1px dashed color-mix(in srgb, var(--accent-strong) 40%, transparent);
-  }
-  .unit-link:hover {
-    color: var(--accent-strong);
-    border-bottom-style: solid;
-  }
-  .unit-desc-row {
-    font-size: 0.72rem;
-    max-width: 320px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .unit-cmd-row {
-    font-size: 0.65rem;
-    max-width: 320px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* ═══ Badges & Pills ═══ */
-  .shield-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.6rem;
-    font-weight: 700;
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    color: var(--warning);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  }
-  .supervisor-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.6rem;
-    font-weight: 700;
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    background: var(--tint-violet);
-    color: var(--violet);
-    border: 1px solid color-mix(in srgb, var(--violet) 30%, transparent);
-  }
-  .category-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    background: var(--bg-hover);
-    color: var(--text-secondary);
-  }
-  .cat-web {
-    background: var(--tint-info);
-    color: var(--info);
-  }
-  .cat-database {
-    background: var(--tint-warning);
-    color: var(--warning-strong);
-  }
-  .cat-security {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-  .cat-supervisor {
-    background: var(--tint-violet);
-    color: var(--violet);
-  }
-  .cat-system {
-    background: color-mix(in srgb, var(--text-subtle) 15%, transparent);
-    color: var(--text-muted);
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.55rem;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-  .badge-ok {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  }
-  .badge-fail {
-    background: color-mix(in srgb, var(--danger-strong) 12%, transparent);
-    color: var(--danger-strong);
-    border: 1px solid color-mix(in srgb, var(--danger-strong) 30%, transparent);
-  }
-  .badge-warn {
-    background: color-mix(in srgb, var(--warning) 12%, transparent);
-    color: var(--warning);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
-  }
-  .badge-inactive {
-    background: var(--bg-hover);
-    color: var(--text-subtle);
-    border: 1px solid var(--border);
-  }
-  .dot-status {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-  .dot-green {
-    background: var(--accent);
-  }
-  .dot-red {
-    background: var(--danger-strong);
-  }
-  .dot-amber {
-    background: var(--warning);
-  }
-  .dot-gray {
-    background: var(--text-subtle);
-  }
-  .pulse-dot {
-    animation: pulseRed 1.8s infinite;
-  }
-  @keyframes pulseRed {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(1.3); }
-  }
-
-  /* ═══ Boot Startup Badge & Toggle ═══ */
-  .boot-cell {
-    display: flex;
-    align-items: center;
-  }
-  .boot-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.45rem;
-    border-radius: 5px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s ease;
-  }
-  .boot-enabled {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  }
-  .boot-enabled:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 20%, transparent);
-  }
-  .boot-disabled {
-    background: var(--bg-hover);
-    color: var(--text-subtle);
-    border: 1px solid var(--border);
-  }
-  .boot-disabled:hover:not(:disabled) {
-    background: var(--bg-raised);
-    color: var(--text);
-  }
-  .boot-static {
-    font-size: 0.68rem;
-    color: var(--text-subtle);
-  }
-  .boot-badge:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  /* ═══ PID & RAM Cells ═══ */
-  .pid-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .tasks-pill {
-    font-size: 0.65rem;
-    color: var(--text-subtle);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-  }
-  .ram-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .ram-peak {
-    font-size: 0.65rem;
-  }
-  .uptime-text {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  /* ═══ Actions Cell ═══ */
-  .actions-cell {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .btn {
-    padding: 0.45rem 0.85rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: background 0.15s ease;
-  }
-  .btn-ghost {
-    background: var(--bg-raised);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-  }
-  .btn-ghost:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .btn-sm {
-    padding: 0.25rem 0.55rem;
-    border-radius: 5px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    transition: all 0.15s ease;
-  }
-  .btn-accent {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-  .btn-accent:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-  .btn-danger {
-    background: color-mix(in srgb, var(--danger-strong) 12%, transparent);
-    color: var(--danger-strong);
-    border: 1px solid color-mix(in srgb, var(--danger-strong) 30%, transparent);
-  }
-  .btn-danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--danger-strong) 22%, transparent);
-  }
-  .btn-tool {
-    background: var(--bg-hover);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-  }
-  .btn-tool:hover:not(:disabled) {
-    background: var(--bg-raised);
-    color: var(--text);
-  }
-  .btn-sm:disabled, .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* ═══ Empty State ═══ */
-  .empty-state {
-    text-align: center;
-    padding: 3rem 1rem !important;
-    color: var(--text-subtle);
-  }
-  .empty-state i {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
-    display: block;
-  }
-
-  /* ═══ Modal Generic ═══ */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1050;
-    padding: 1.5rem;
-  }
-  .modal-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: 100%;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .modal-md {
-    max-width: 650px;
-  }
-  .modal-lg {
-    max-width: 850px;
-  }
-  .modal-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .modal-title-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .modal-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .modal-head-tools {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .limit-selector {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  .select-sm {
-    background: var(--bg-base);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.2rem 0.4rem;
-    font-size: 0.72rem;
-  }
-  .modal-close {
-    background: none;
-    border: none;
-    color: var(--text-subtle);
-    font-size: 1.25rem;
-    cursor: pointer;
-    padding: 0.2rem;
-    border-radius: 4px;
-  }
-  .modal-close:hover {
-    color: var(--text);
-  }
-  .modal-body {
-    padding: 1.25rem;
-    max-height: 70vh;
-    overflow-y: auto;
-  }
-  .modal-body.p-0 {
-    padding: 0;
-  }
-  .modal-foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-
-  /* ═══ Terminal Log Viewer ═══ */
-  .log-terminal {
-    background: var(--bg-inset);
-    min-height: 400px;
-    max-height: 550px;
-    overflow-y: auto;
-    padding: 1rem 1.25rem;
-  }
-  .log-pre {
-    margin: 0;
-    font-family: 'Fira Code', monospace;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .log-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    height: 350px;
-    color: var(--text-subtle);
-    font-size: 0.85rem;
-  }
-
-  /* ═══ Inspect Grid ═══ */
-  .inspect-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    height: 200px;
-    color: var(--text-subtle);
-  }
-  .inspect-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.85rem;
-  }
-  .inspect-item {
-    background: var(--bg-base);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.65rem 0.85rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  .inspect-item.full-width {
-    grid-column: 1 / -1;
-  }
-  .inspect-key {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-subtle);
-  }
-  .inspect-val {
-    font-size: 0.82rem;
-    color: var(--text);
-    word-break: break-all;
-  }
-  .code-snippet {
-    background: var(--bg-hover);
-    padding: 0.4rem 0.6rem;
-    border-radius: 4px;
-    border: 1px solid var(--border-subtle);
-    font-size: 0.75rem;
-  }
-
-  /* ═══ Utilitas & Font ═══ */
-  .mono {
-    font-family: 'Fira Code', monospace;
-  }
-  .font-bold {
-    font-weight: 700;
-  }
-  .text-main {
-    color: var(--text);
-  }
-  .text-accent {
-    color: var(--accent);
-  }
-  .text-muted {
-    color: var(--text-muted);
-  }
-  .text-subtle {
-    color: var(--text-subtle);
-  }
-  .text-danger {
-    color: var(--danger-strong);
-  }
-  .text-info {
-    color: var(--info);
-  }
-  .text-xs {
-    font-size: 0.72rem;
-  }
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-</style>
+    {/snippet}
+  </Modal>
+</div>
