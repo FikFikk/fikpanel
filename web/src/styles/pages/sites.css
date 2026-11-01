@@ -321,50 +321,6 @@
       transition: all var(--dur-fast) var(--ease-out);
     }
 
-    /* Penampil log akses & error di modal */
-    .log-tabs {
-      display: flex;
-      gap: var(--sp-2);
-      margin-bottom: var(--sp-3);
-    }
-
-    .log-tab {
-      padding: var(--sp-1-5) var(--sp-3);
-      background: var(--bg-raised);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-xs);
-      color: var(--text-muted);
-      font-size: var(--text-xs);
-      cursor: pointer;
-    }
-
-    .log-tab.active {
-      background: var(--accent-hover);
-      border-color: var(--accent);
-      color: var(--text);
-    }
-
-    .log-viewer {
-      height: 260px;
-      padding: var(--sp-3-5);
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-xs);
-      font-size: var(--text-xs);
-      line-height: 1.6;
-      overflow: auto;
-    }
-
-    .log-pre-raw {
-      margin: 0;
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
     /* Modal Konfirmasi Hapus Situs (Danger Zone) */
     .danger-sub-caption {
       display: block;

@@ -6,6 +6,7 @@
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
   import SiteSettings from '../lib/components/SiteSettings.svelte';
   import SitesTable from './sites/SitesTable.svelte';
+  import LogsModal from './sites/LogsModal.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
   import '../styles/pages/sites.css';
 
@@ -623,45 +624,16 @@
   {/if}
 
   <!-- ═════════ MODAL: Penampil Log Akses & Error ═════════ -->
-  <Modal
+  <LogsModal
     open={showLogModal && !!logTarget}
-    title={logTarget ? `Log Web Server: ${logTarget.domain}` : 'Log Web Server'}
-    size="xl"
-    onclose={() => (showLogModal = false)}
-  >
-    {#if logTarget}
-      <div class="log-tabs">
-        <button class="log-tab {logTab === 'access' ? 'active' : ''}" onclick={() => switchLogTab('access')}>
-          Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
-        </button>
-        <button class="log-tab {logTab === 'error' ? 'active' : ''}" onclick={() => switchLogTab('error')}>
-          Error Log
-        </button>
-        <button
-          type="button"
-          class="log-tab"
-          onclick={() => logTarget && fetchSiteLogs(logTarget, logTab)}
-          disabled={logLoading}
-        >
-          <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
-        </button>
-      </div>
-
-      <div class="log-viewer mono">
-        {#if logLoading}
-          <div class="log-line text-muted"><i class="ri-loader-4-line spin"></i> Memuat catatan log {logTab} dari server...</div>
-        {:else}
-          <pre class="log-pre-raw">{logContent}</pre>
-        {/if}
-      </div>
-    {/if}
-
-    {#snippet footer()}
-      <button type="button" class="btn btn--ghost" onclick={() => (showLogModal = false)}>
-        Tutup
-      </button>
-    {/snippet}
-  </Modal>
+    {logTarget}
+    {logTab}
+    {logLoading}
+    {logContent}
+    onClose={() => (showLogModal = false)}
+    onSwitchLogTab={switchLogTab}
+    onRefreshLogs={fetchSiteLogs}
+  />
 
   <!-- ═════════ MODAL: Git Pull & Auto-Deploy ═════════ -->
   <Modal
