@@ -30,6 +30,7 @@
   import CreateContainerModal from './docker/CreateContainerModal.svelte';
   import PullImageModal from './docker/PullImageModal.svelte';
   import ContainerLogsModal from './docker/ContainerLogsModal.svelte';
+  import ComposeModal from './docker/ComposeModal.svelte';
   import '../styles/pages/docker/shared.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
@@ -1264,47 +1265,12 @@
   />
 
   <!-- ══════════════ MODAL: DOCKER COMPOSE EDITOR ══════════════ -->
-  <Modal
-    open={showComposeModal}
-    title="Stack Docker Compose"
-    size="lg"
-    onclose={() => (showComposeModal = false)}
-  >
-    <form id="docker-compose-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitComposeUp(); }}>
-      <div class="field">
-        <label class="field__label" for="compose-name">Nama Proyek / Stack *</label>
-        <input
-          id="compose-name"
-          type="text"
-          class="input font-mono"
-          placeholder="misal: wordpress-stack atau microservices"
-          bind:value={composeForm.name}
-          required
-        />
-      </div>
-
-      <div class="field">
-        <label class="field__label" for="compose-yaml">Konfigurasi docker-compose.yml *</label>
-        <textarea
-          id="compose-yaml"
-          class="input font-mono text-xs"
-          rows="12"
-          bind:value={composeForm.yaml}
-          required
-        ></textarea>
-      </div>
-    </form>
-
-    {#snippet footer()}
-      <button type="button" class="btn btn--secondary" onclick={() => (showComposeModal = false)}>
-        Batal
-      </button>
-      <button type="submit" form="docker-compose-form" class="btn btn--primary" disabled={actionLoading}>
-        <i class="ri-play-line" aria-hidden="true"></i>
-        <span>Deploy Stack (Compose Up)</span>
-      </button>
-    {/snippet}
-  </Modal>
+  <ComposeModal
+    bind:showComposeModal
+    bind:composeForm
+    {actionLoading}
+    onSubmitComposeUp={submitComposeUp}
+  />
 
   <!-- ══════════════ MODAL: BUAT JARINGAN ══════════════ -->
   <Modal
