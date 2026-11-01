@@ -155,4 +155,38 @@
     background: var(--tint-accent);
     color: var(--accent-strong);
   }
+
+  /* Stepper / indikator langkah wizard & progress multi-tahap (.stepper, .stepper__step) */
+  .stepper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .stepper__step {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    padding: 3px var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    transition: all var(--duration-fast) ease;
+  }
+  .stepper__step.is-active,
+  .stepper__step.active {
+    color: var(--info);
+    border-color: color-mix(in srgb, var(--info) 45%, var(--border));
+    background: color-mix(in srgb, var(--info) 12%, var(--bg-inset));
+    font-weight: var(--weight-semibold);
+  }
+  .stepper__step.is-done,
+  .stepper__step.done {
+    color: var(--accent-strong);
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-inset));
+  }
 }
+

@@ -3,6 +3,8 @@
   import { apiFetch, formatBytes } from '../api';
   import { copyText as copyToClipboard } from '../utils/browser';
   import type { DomainReport, Site, SiteKind, SiteMeta } from '../types';
+  import Modal from './ui/Modal.svelte';
+  import '../../styles/pages/components/add-site-modal.css';
 
   interface Props {
     onClose: () => void;
@@ -866,55 +868,39 @@
   }
 
   let allPointHere = $derived((report?.dns ?? []).length > 0 && (report?.dns ?? []).every((d) => d.points_here));
-
-  function onWindowKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && !submitting) onClose();
-  }
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
-
-<div class="as-backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}>
-  <div class="as-card" role="dialog" aria-modal="true" aria-labelledby="as-title">
-    <header class="as-head-wrap">
-      <div class="as-head">
-        <div class="as-head-title">
-          <span class="as-icon"><i class={created ? 'ri-checkbox-circle-fill' : 'ri-global-line'}></i></span>
-          <div>
-            <h3 id="as-title">
-              {created ? 'Situs berhasil dibuat' : 'Add site — Support batch & dynamic site building'}
-            </h3>
-            <p>
-              {created
-                ? created.domain
-                : 'Provisioning vhost Nginx, Multi-Runtime, GitHub Private/Public Repo, Database MySQL & Auto-SSL'}
-            </p>
-          </div>
-        </div>
-        <button class="as-close" onclick={onClose} aria-label="Tutup" id="as-close-btn" disabled={submitting}>
-          <i class="ri-close-line"></i>
-        </button>
-      </div>
-
-      {#if !created}
-        <nav class="builder-tabs" aria-label="Mode Pembuatan Situs">
-          {#each BUILDER_TABS as t (t.id)}
-            <button
-              type="button"
-              class="builder-tab"
-              class:active={activeTab === t.id}
-              onclick={() => switchTab(t.id)}
-            >
-              <div class="tab-top">
-                <i class={t.icon}></i>
-                <span>{t.label}</span>
-              </div>
-              <small>{t.sub}</small>
-            </button>
-          {/each}
-        </nav>
-      {/if}
-    </header>
+<Modal
+  open={true}
+  title={created ? 'Situs berhasil dibuat' : 'Add site — Support batch & dynamic site building'}
+  subtitle={created
+    ? created.domain
+    : 'Provisioning vhost Nginx, Multi-Runtime, GitHub Private/Public Repo, Database MySQL & Auto-SSL'}
+  size="xl"
+  onclose={() => {
+    if (!submitting) onClose();
+  }}
+>
+  <div class="cmp-add-site">
+    {#if !created}
+      <nav class="tabs tabs--underline builder-tabs" aria-label="Mode Pembuatan Situs">
+        {#each BUILDER_TABS as t (t.id)}
+          <button
+            type="button"
+            class="tabs__tab builder-tab"
+            class:active={activeTab === t.id}
+            class:is-active={activeTab === t.id}
+            onclick={() => switchTab(t.id)}
+          >
+            <div class="tab-top">
+              <i class={t.icon}></i>
+              <span>{t.label}</span>
+            </div>
+            <small>{t.sub}</small>
+          </button>
+        {/each}
+      </nav>
+    {/if}
 
     {#if created}
       <!-- Langkah 2: ringkasan + ajakan aktivasi SSL -->
@@ -952,8 +938,8 @@
           </div>
         </div>
         <footer class="as-foot">
-          <button class="btn-ghost" onclick={onClose} id="as-done-btn">Selesai</button>
-          <button class="btn-primary" onclick={() => onOpenSSL(created!)} id="as-ssl-btn">
+          <button class="btn btn-ghost" onclick={onClose} id="as-done-btn">Selesai</button>
+          <button class="btn btn-primary" onclick={() => onOpenSSL(created!)} id="as-ssl-btn">
             <i class="ri-lock-line"></i> Kelola / Aktifkan SSL
           </button>
         </footer>
@@ -1184,7 +1170,7 @@
                       </div>
                       <button
                         type="button"
-                        class="btn-primary btn-sm"
+                        class="btn btn-primary btn-sm"
                         onclick={() => (gitConnectOpen = !gitConnectOpen)}
                       >
                         <i class="ri-github-fill"></i>
@@ -1218,10 +1204,10 @@
                         </div>
                       </div>
                       <div class="gh-btn-row">
-                        <button type="button" class="btn-ghost btn-sm" onclick={loadGitRepos} disabled={gitBusy}>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick={loadGitRepos} disabled={gitBusy}>
                           <i class="ri-refresh-line"></i> Refresh
                         </button>
-                        <button type="button" class="btn-ghost btn-sm" onclick={disconnectGitHubAccount} disabled={gitBusy}>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick={disconnectGitHubAccount} disabled={gitBusy}>
                           Disconnect
                         </button>
                       </div>
@@ -1262,7 +1248,7 @@
                           Berbeda dengan aaPanel yang hanya menampilkan repo publik, mode Token Akses menghubungkan server Anda langsung ke API GitHub untuk mengakses <b>repositori Private & Public</b>:
                         </p>
                         <div class="gh-inline-step">
-                          <button type="button" class="btn-ghost btn-sm" onclick={openGitHubQuickTokenPage}>
+                          <button type="button" class="btn btn-ghost btn-sm" onclick={openGitHubQuickTokenPage}>
                             <i class="ri-external-link-line"></i> 1. Buka GitHub & Buat Token Otomatis
                           </button>
                           <small>Scope <code>repo</code> sudah tercentang otomatis, cukup klik <b>Generate token</b> di GitHub.</small>
@@ -1276,7 +1262,7 @@
                           />
                           <button
                             type="button"
-                            class="btn-primary btn-sm"
+                            class="btn btn-primary btn-sm"
                             disabled={gitBusy || !gitTokenInput.trim()}
                             onclick={connectGitHubAccount}
                           >
@@ -1296,7 +1282,7 @@
                           />
                           <button
                             type="button"
-                            class="btn-primary btn-sm"
+                            class="btn btn-primary btn-sm"
                             disabled={gitBusy || !gitClientId.trim()}
                             onclick={startGitHubDeviceFlow}
                           >
@@ -1314,13 +1300,13 @@
                                 href={gitDeviceFlow.verification_uri}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                class="btn-ghost btn-sm"
+                                class="btn btn-ghost btn-sm"
                               >
                                 Buka GitHub ↗
                               </a>
                               <button
                                 type="button"
-                                class="btn-primary btn-sm"
+                                class="btn btn-primary btn-sm"
                                 disabled={gitDevicePolling}
                                 onclick={pollGitHubDeviceFlow}
                               >
@@ -1342,7 +1328,7 @@
                           />
                           <button
                             type="button"
-                            class="btn-primary btn-sm"
+                            class="btn btn-primary btn-sm"
                             disabled={gitBusy || !gitPublicUser.trim()}
                             onclick={connectGitHubAccount}
                           >
@@ -1519,11 +1505,11 @@
                         <small>Tambahkan kunci ini ke <em>GitHub → Repo Settings → Deploy Keys</em> untuk clone repo privat via SSH.</small>
                       </div>
                       <div class="gh-btn-row">
-                        <button type="button" class="btn-ghost btn-sm" onclick={fetchServerSSHKey} disabled={sshKeyLoading}>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick={fetchServerSSHKey} disabled={sshKeyLoading}>
                           {sshKeyLoading ? 'Memuat…' : 'Generate / Lihat SSH Key'}
                         </button>
                         {#if sshPublicKey}
-                          <button type="button" class="btn-primary btn-sm" onclick={copySSHKey}>
+                          <button type="button" class="btn btn-primary btn-sm" onclick={copySSHKey}>
                             {sshKeyCopied ? 'Tersalin!' : 'Salin Kunci'}
                           </button>
                         {/if}
@@ -1623,10 +1609,10 @@
                 <div class="row-between">
                   <span class="fld-label">Sumber Arsip Backup (<code>.tar.gz</code>, <code>.tgz</code>, <code>.zip</code>)</span>
                   <div class="gh-btn-row">
-                    <button type="button" class="btn-ghost btn-sm" onclick={loadBackupArchives} disabled={backupLoading}>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick={loadBackupArchives} disabled={backupLoading}>
                       <i class="ri-refresh-line"></i> {backupLoading ? 'Memindai…' : 'Pindai Server'}
                     </button>
-                    <label class="btn-primary btn-sm upload-lbl">
+                    <label class="btn btn-primary btn-sm upload-lbl">
                       <i class="ri-upload-2-line"></i>
                       <span>{backupUploading ? 'Mengunggah…' : 'Upload Arsip'}</span>
                       <input
@@ -1906,30 +1892,30 @@
             <div class="deploy-prog-track">
               <div class="deploy-prog-fill" style="width: {deployPercent}%"></div>
             </div>
-            <div class="deploy-prog-steps">
-              <span class="dp-step" class:done={deployPercent >= 15} class:active={deployPercent < 15}>
+            <div class="stepper deploy-prog-steps">
+              <span class="stepper__step dp-step" class:done={deployPercent >= 15} class:active={deployPercent < 15}>
                 <i class={deployPercent >= 15 ? 'ri-checkbox-circle-fill' : 'ri-loader-4-line spin'}></i> Vhost Nginx
               </span>
               {#if createDB}
-                <span class="dp-step" class:done={deployPercent >= 25} class:active={deployPercent >= 15 && deployPercent < 25}>
+                <span class="stepper__step dp-step" class:done={deployPercent >= 25} class:active={deployPercent >= 15 && deployPercent < 25}>
                   <i class={deployPercent >= 25 ? 'ri-checkbox-circle-fill' : deployPercent >= 15 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> MySQL DB
                 </span>
               {/if}
               {#if activeTab === 'git'}
-                <span class="dp-step" class:done={deployPercent >= 50} class:active={deployPercent >= 25 && deployPercent < 50}>
+                <span class="stepper__step dp-step" class:done={deployPercent >= 50} class:active={deployPercent >= 25 && deployPercent < 50}>
                   <i class={deployPercent >= 50 ? 'ri-checkbox-circle-fill' : deployPercent >= 25 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Git Clone & .env
                 </span>
-                <span class="dp-step" class:done={deployPercent >= 88} class:active={deployPercent >= 50 && deployPercent < 88}>
+                <span class="stepper__step dp-step" class:done={deployPercent >= 88} class:active={deployPercent >= 50 && deployPercent < 88}>
                   <i class={deployPercent >= 88 ? 'ri-checkbox-circle-fill' : deployPercent >= 50 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Composer & Migrasi
                 </span>
               {/if}
               {#if kind === 'php' && createDB && createAdmin}
-                <span class="dp-step" class:done={deployPercent >= 94} class:active={deployPercent >= 88 && deployPercent < 94}>
+                <span class="stepper__step dp-step" class:done={deployPercent >= 94} class:active={deployPercent >= 88 && deployPercent < 94}>
                   <i class={deployPercent >= 94 ? 'ri-checkbox-circle-fill' : deployPercent >= 88 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Super Admin
                 </span>
               {/if}
               {#if autoSSL}
-                <span class="dp-step" class:done={deployPercent >= 99} class:active={deployPercent >= 94 && deployPercent < 99}>
+                <span class="stepper__step dp-step" class:done={deployPercent >= 99} class:active={deployPercent >= 94 && deployPercent < 99}>
                   <i class={deployPercent >= 99 ? 'ri-checkbox-circle-fill' : deployPercent >= 94 ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i> Auto-SSL
                 </span>
               {/if}
@@ -1938,10 +1924,10 @@
         {/if}
 
         <footer class="as-foot">
-          <button type="button" class="btn-ghost" onclick={onClose} disabled={submitting} id="as-cancel-btn">
+          <button type="button" class="btn btn-ghost" onclick={onClose} disabled={submitting} id="as-cancel-btn">
             Cancel
           </button>
-          <button type="submit" class="btn-primary" disabled={!canSubmit} id="as-submit-btn">
+          <button type="submit" class="btn btn-primary" disabled={!canSubmit} id="as-submit-btn">
             {#if submitting}
               <i class="ri-loader-4-line spin"></i> Memproses… {deployPercent}%
             {:else if activeTab === 'batch'}
@@ -1954,1274 +1940,4 @@
       </form>
     {/if}
   </div>
-</div>
-
-<style>
-  .as-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    background: var(--overlay);
-    backdrop-filter: blur(4px);
-    display: grid;
-    place-items: center;
-    padding: 1rem;
-    animation: fade 0.15s ease;
-  }
-  .as-card {
-    width: min(880px, 100%);
-    max-height: 92vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 14px;
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-    animation: pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-  .as-head-wrap {
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .as-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.95rem 1.25rem 0.75rem;
-  }
-  .as-head-title {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .as-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: grid;
-    place-items: center;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent-strong);
-    font-size: 1.15rem;
-  }
-  .as-head h3 {
-    margin: 0;
-    font-size: 0.98rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .as-head p {
-    margin: 0.1rem 0 0;
-    font-size: 0.74rem;
-    color: var(--text-subtle);
-  }
-  .as-close {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-subtle);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    font-size: 1.15rem;
-  }
-  .as-close:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-  }
-
-  /* Baris Navigasi 5 Tab */
-  .builder-tabs {
-    display: flex;
-    align-items: stretch;
-    gap: 0.3rem;
-    padding: 0 1rem;
-    overflow-x: auto;
-  }
-  .builder-tab {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 0.14rem;
-    padding: 0.55rem 0.7rem;
-    border: none;
-    border-bottom: 2px solid transparent;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    text-align: left;
-    white-space: nowrap;
-    transition: all 0.14s ease;
-  }
-  .builder-tab:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-    border-radius: 7px 7px 0 0;
-  }
-  .builder-tab.active {
-    color: var(--accent-strong);
-    border-bottom-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-    border-radius: 7px 7px 0 0;
-  }
-  .tab-top {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .builder-tab small {
-    font-size: 0.66rem;
-    color: var(--text-subtle);
-    white-space: nowrap;
-  }
-
-  .as-body {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
-  }
-  .as-scroll {
-    padding: 1.05rem 1.25rem;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    transition: opacity 0.2s ease;
-  }
-  .as-scroll.is-submitting {
-    opacity: 0.45;
-    pointer-events: none;
-    user-select: none;
-  }
-  .as-foot {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    padding: 0.85rem 1.25rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg-canvas);
-  }
-
-  .fld {
-    display: flex;
-    flex-direction: column;
-    gap: 0.38rem;
-  }
-  .fld-label {
-    font-size: 0.76rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-  }
-  .fld-label em {
-    font-style: normal;
-    font-weight: 400;
-    color: var(--text-subtle);
-    font-size: 0.71rem;
-  }
-  .fld input,
-  .fld textarea,
-  .fld select {
-    width: 100%;
-    padding: 0.55rem 0.72rem;
-    border-radius: 8px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 0.82rem;
-    outline: none;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    font-family: inherit;
-  }
-  .fld textarea {
-    resize: vertical;
-    min-height: 74px;
-    font-family: var(--font-mono);
-    line-height: 1.5;
-  }
-  .fld input:focus,
-  .fld textarea:focus,
-  .fld select:focus {
-    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .mono {
-    font-family: var(--font-mono);
-  }
-
-  .row-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-  .ssl-inline-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    color: var(--accent-strong);
-    cursor: pointer;
-    user-select: none;
-  }
-  .ssl-inline-check input {
-    width: 14px;
-    height: 14px;
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-
-  .user-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .user-input {
-    width: 130px;
-    padding: 0.25rem 0.55rem;
-    border-radius: 6px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 0.76rem;
-    outline: none;
-  }
-  .switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.76rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    user-select: none;
-  }
-  .switch input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-  }
-  .switch .track {
-    width: 30px;
-    height: 17px;
-    border-radius: 999px;
-    background: var(--border-strong);
-    position: relative;
-    transition: background 0.15s ease;
-  }
-  .switch .track::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: var(--text);
-    transition: transform 0.15s ease;
-  }
-  .switch input:checked + .track {
-    background: var(--accent);
-  }
-  .switch input:checked + .track::after {
-    transform: translateX(13px);
-  }
-  .switch code {
-    color: var(--accent-strong);
-    font-size: 0.74rem;
-  }
-
-  .hint {
-    font-size: 0.74rem;
-    color: var(--text-subtle);
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-  }
-  .hint.ok {
-    color: var(--accent-strong);
-  }
-  .hint.bad {
-    color: var(--danger-strong);
-  }
-
-  .chips {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.26rem 0.55rem;
-    border-radius: 7px;
-    font-size: 0.74rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-  }
-  .chip .ok {
-    color: var(--accent-strong);
-  }
-  .chip .warn {
-    color: var(--warning);
-  }
-  .chip.bad {
-    border-color: color-mix(in srgb, var(--danger-strong) 45%, transparent);
-    background: color-mix(in srgb, var(--danger-strong) 8%, transparent);
-    color: var(--danger-strong);
-  }
-  .chip .tag {
-    font-size: 0.63rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    padding: 0.05rem 0.35rem;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent-strong);
-  }
-  .chip small {
-    color: var(--text-subtle);
-    font-size: 0.68rem;
-  }
-  .ip-note {
-    margin: -0.25rem 0 0;
-    font-size: 0.71rem;
-    color: var(--text-subtle);
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  /* Grid Template One-Click Deploy */
-  .tpl-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.55rem;
-  }
-  .tpl-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.22rem;
-    padding: 0.7rem 0.8rem;
-    border-radius: 9px;
-    border: 1px solid var(--border);
-    background: var(--bg-raised);
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.14s ease;
-  }
-  .tpl-card:hover {
-    border-color: var(--border-strong);
-  }
-  .tpl-card.active {
-    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-  }
-  .tpl-head {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.4rem;
-  }
-  .tpl-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.8rem;
-  }
-  .tpl-title i {
-    color: var(--accent-strong);
-  }
-  .tpl-ver {
-    font-size: 0.68rem;
-    color: var(--accent-strong);
-  }
-  .tpl-desc {
-    font-size: 0.69rem;
-    color: var(--text-subtle);
-    line-height: 1.35;
-  }
-
-  /* Seksi Git & GitHub */
-  .git-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.85rem;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .seg-group {
-    display: inline-flex;
-    padding: 0.18rem;
-    border-radius: 8px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    gap: 0.2rem;
-  }
-  .seg-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.32rem 0.65rem;
-    border-radius: 6px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.73rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .seg-btn.active {
-    background: var(--accent);
-    color: var(--text-on-accent);
-  }
-  .gh-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.7rem 0.85rem;
-    border-radius: 9px;
-    border: 1px solid var(--border);
-    background: var(--bg-surface);
-  }
-  .gh-card.connected {
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-  .gh-card-left {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-  }
-  .gh-card-left b {
-    font-size: 0.82rem;
-    color: var(--text);
-  }
-  .gh-card-left small {
-    display: block;
-    font-size: 0.71rem;
-    color: var(--text-subtle);
-    margin-top: 0.1rem;
-  }
-  .gh-logo {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: var(--bg-hover);
-    color: var(--text);
-    display: grid;
-    place-items: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-  }
-  .gh-avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: 1px solid var(--border-strong);
-  }
-  .gh-user-line {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-    font-size: 0.8rem;
-  }
-  .gh-btn-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-shrink: 0;
-  }
-  .gh-connect-drawer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-    padding: 0.8rem;
-    border-radius: 9px;
-    border: 1px solid var(--border-strong);
-    background: var(--bg-surface);
-  }
-  .gh-mode-switch {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.4rem;
-  }
-  .gh-mode-btn {
-    padding: 0.42rem 0.55rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--bg-raised);
-    color: var(--text-muted);
-    font-size: 0.71rem;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .gh-mode-btn.active {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent-strong);
-  }
-  .gh-help {
-    margin: 0;
-    font-size: 0.73rem;
-    color: var(--text-muted);
-    line-height: 1.45;
-  }
-  .gh-inline-step,
-  .gh-input-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .gh-inline-step small {
-    font-size: 0.71rem;
-    color: var(--text-subtle);
-  }
-  .gh-input-group input {
-    flex: 1;
-    min-width: 220px;
-    padding: 0.48rem 0.68rem;
-    border-radius: 7px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 0.78rem;
-  }
-  .device-approval-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.65rem 0.8rem;
-    border-radius: 8px;
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-  }
-  .device-code-badge {
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: var(--accent-strong);
-    margin-top: 0.15rem;
-  }
-  .grid-repo {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 0.65rem;
-    align-items: start;
-  }
-  .repo-combo-wrap {
-    position: relative;
-  }
-  .repo-combobox {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .repo-combo-bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0 0.45rem 0 0.65rem;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    z-index: 22;
-  }
-  .repo-combobox.open .repo-combo-bar {
-    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .repo-search-icon {
-    font-size: 0.9rem;
-    color: var(--text-subtle);
-    margin-right: 0.4rem;
-    flex-shrink: 0;
-  }
-  .repo-combo-input {
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0.52rem 0.25rem !important;
-    font-size: 0.8rem !important;
-    flex: 1;
-    min-width: 0;
-  }
-  .repo-clear-btn,
-  .repo-toggle-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-subtle);
-    cursor: pointer;
-    padding: 0.25rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.95rem;
-  }
-  .repo-clear-btn:hover,
-  .repo-toggle-btn:hover {
-    color: var(--text);
-  }
-  .repo-selected-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.42rem 0.65rem;
-    border-radius: 7px;
-    background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised));
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    color: var(--text);
-    font-size: 0.76rem;
-    cursor: pointer;
-    text-align: left;
-  }
-  .repo-selected-pill:hover {
-    border-color: var(--accent);
-  }
-  .repo-pill-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--accent-strong);
-  }
-  .repo-dropdown-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-  }
-  .repo-dropdown-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    max-height: 230px;
-    overflow-y: auto;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 9px;
-    box-shadow: var(--shadow-lg);
-    padding: 0.3rem;
-    z-index: 25;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .repo-option-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.46rem 0.6rem;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.77rem;
-    cursor: pointer;
-    text-align: left;
-  }
-  .repo-option-item:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-  .repo-option-item.active {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent-strong);
-    font-weight: 600;
-  }
-  .repo-opt-left {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    min-width: 0;
-    flex: 1;
-  }
-  .repo-opt-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .repo-opt-right {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-shrink: 0;
-  }
-  .repo-vis-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.22rem;
-    padding: 0.1rem 0.38rem;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
-    background: color-mix(in srgb, var(--info) 14%, transparent);
-    color: var(--info);
-    flex-shrink: 0;
-  }
-  .repo-vis-badge.priv {
-    background: color-mix(in srgb, var(--warning) 15%, transparent);
-    color: var(--warning);
-  }
-  .repo-lang-tag {
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-size: 0.66rem;
-    background: color-mix(in srgb, var(--text) 7%, transparent);
-    color: var(--text-muted);
-    flex-shrink: 0;
-  }
-  .repo-check-icon {
-    color: var(--accent-strong);
-    font-size: 0.9rem;
-  }
-  .repo-empty-item {
-    padding: 0.75rem;
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--text-subtle);
-  }
-  .ssh-key-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.65rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--bg-surface);
-  }
-  .ssh-key-card b {
-    font-size: 0.76rem;
-    color: var(--text);
-  }
-  .ssh-key-card small {
-    display: block;
-    font-size: 0.69rem;
-    color: var(--text-subtle);
-  }
-  .ssh-pre {
-    margin: 0;
-    padding: 0.5rem;
-    border-radius: 6px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    font-size: 0.69rem;
-    color: var(--accent-strong);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .kinds {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
-  }
-  .kind {
-    text-align: left;
-    padding: 0.6rem 0.75rem;
-    border-radius: 9px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: 0.14rem;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    transition: all 0.15s ease;
-  }
-  .kind i {
-    font-size: 1.15rem;
-    color: var(--text-subtle);
-    transition: color 0.15s ease;
-  }
-  .kind b {
-    font-size: 0.8rem;
-  }
-  .kind small {
-    font-size: 0.68rem;
-    color: var(--text-subtle);
-  }
-  .kind:hover {
-    border-color: var(--border-strong);
-  }
-  .kind.active {
-    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-  }
-  .kind.active i {
-    color: var(--accent-strong);
-  }
-
-  .presets {
-    display: flex;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-  .preset {
-    padding: 0.22rem 0.52rem;
-    font-size: 0.7rem;
-    border-radius: 6px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .preset:hover,
-  .preset.active {
-    color: var(--accent-strong);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 210px;
-    gap: 0.65rem;
-  }
-  .grid-2.single {
-    grid-template-columns: 1fr;
-  }
-  .grid-3 {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.55rem;
-  }
-  .db-auto-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    padding: 0.75rem;
-    border-radius: 9px;
-    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    background: var(--bg-raised);
-  }
-  .admin-auto-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 0.25rem 0;
-  }
-  .check-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    color: var(--text);
-    cursor: pointer;
-    flex-wrap: wrap;
-  }
-  .check-inline input[type='checkbox'] {
-    accent-color: var(--accent);
-    width: 14px;
-    height: 14px;
-    cursor: pointer;
-  }
-  .filament-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    font-size: 0.66rem;
-    font-weight: 700;
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent-strong);
-    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  }
-  .link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--accent-strong);
-    font-size: 0.7rem;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  /* Seksi Batch Create */
-  .batch-head-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.7rem 0.85rem;
-    border-radius: 9px;
-    border: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .batch-head-card b {
-    font-size: 0.8rem;
-    color: var(--text);
-  }
-  .batch-head-card p {
-    margin: 0.15rem 0 0;
-    font-size: 0.72rem;
-    color: var(--text-subtle);
-  }
-  .batch-preview {
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    overflow: hidden;
-    background: var(--bg-raised);
-  }
-  .batch-preview-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  .tag-accent {
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent-strong);
-  }
-  .batch-table-scroll {
-    max-height: 165px;
-    overflow-y: auto;
-  }
-  .batch-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.73rem;
-  }
-  .batch-table th,
-  .batch-table td {
-    padding: 0.42rem 0.65rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-  }
-  .batch-table th {
-    background: var(--bg-inset);
-    color: var(--text-subtle);
-    font-weight: 600;
-  }
-  .muted-cell {
-    color: var(--text-subtle);
-  }
-  .batch-result-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .batch-res-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0.65rem;
-    border-radius: 7px;
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-    color: var(--accent-strong);
-    font-size: 0.74rem;
-  }
-  .batch-res-item.bad {
-    background: color-mix(in srgb, var(--danger-strong) 9%, transparent);
-    color: var(--danger-strong);
-  }
-
-  .err-line {
-    margin: 0;
-    font-size: 0.76rem;
-    color: var(--danger-strong);
-    display: flex;
-    gap: 0.35rem;
-    align-items: center;
-  }
-
-  .btn-primary,
-  .btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.52rem 0.95rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    text-decoration: none;
-  }
-  .btn-sm {
-    padding: 0.36rem 0.68rem;
-    font-size: 0.73rem;
-    border-radius: 6px;
-  }
-  .btn-primary {
-    border: none;
-    color: var(--text-on-accent);
-    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
-  }
-  .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-  }
-  .btn-primary:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-  }
-  .btn-ghost:hover:not(:disabled) {
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-  .upload-lbl {
-    cursor: pointer;
-  }
-
-  .as-done {
-    padding: 1.3rem 1.3rem 0;
-    gap: 1rem;
-    overflow-y: auto;
-  }
-  .as-done .as-foot {
-    margin: 0 -1.3rem;
-  }
-  .done-hero {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.6rem;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-  .done-hero p {
-    margin: 0;
-  }
-  .done-hero b {
-    color: var(--text);
-  }
-  .done-ring {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent-strong);
-    font-size: 1.8rem;
-  }
-  .done-grid {
-    display: grid;
-    grid-template-columns: 120px 1fr;
-    gap: 0.45rem 0.8rem;
-    margin: 0;
-    padding: 0.85rem 1rem;
-    border-radius: 10px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border);
-    font-size: 0.8rem;
-  }
-  .done-grid dt {
-    color: var(--text-subtle);
-  }
-  .done-grid dd {
-    margin: 0;
-    color: var(--text);
-    word-break: break-all;
-  }
-  .ssl-cta {
-    display: flex;
-    gap: 0.7rem;
-    padding: 0.8rem 0.9rem;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--accent) 7%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    font-size: 0.78rem;
-  }
-  .ssl-cta i {
-    font-size: 1.3rem;
-    color: var(--accent-strong);
-  }
-  .ssl-cta div {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .ssl-cta b {
-    color: var(--text);
-  }
-  .ssl-cta span {
-    color: var(--text-muted);
-    line-height: 1.5;
-  }
-  .ssl-cta.warn {
-    background: color-mix(in srgb, var(--warning) 7%, transparent);
-    border-color: color-mix(in srgb, var(--warning) 28%, transparent);
-  }
-  .ssl-cta.warn i {
-    color: var(--warning);
-  }
-
-  .deploy-progress-panel {
-    margin: 0 1.35rem 0.65rem;
-    padding: 0.85rem 1rem;
-    background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised));
-    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    animation: fade 0.18s ease;
-  }
-  .deploy-prog-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-  .deploy-prog-left {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-  }
-  .deploy-prog-icon {
-    font-size: 1.25rem;
-    color: var(--accent-strong);
-    flex-shrink: 0;
-  }
-  .deploy-prog-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-  }
-  .deploy-prog-text strong {
-    font-size: 0.84rem;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .deploy-prog-text small {
-    font-size: 0.73rem;
-    color: var(--text-muted);
-  }
-  .deploy-prog-pct {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--accent-strong);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-    padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    flex-shrink: 0;
-  }
-  .deploy-prog-track {
-    width: 100%;
-    height: 10px;
-    background: var(--bg-inset);
-    border-radius: 999px;
-    overflow: hidden;
-    border: 1px solid var(--border-strong);
-  }
-  .deploy-prog-fill {
-    height: 100%;
-    min-width: 6px;
-    background: linear-gradient(90deg, var(--accent-hover), var(--accent), var(--accent-strong));
-    box-shadow: 0 0 10px var(--ring-accent);
-    border-radius: 999px;
-    transition: width 0.35s ease;
-  }
-  .deploy-prog-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    padding-top: 0.15rem;
-  }
-  .dp-step {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.72rem;
-    padding: 0.16rem 0.5rem;
-    border-radius: 999px;
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-  }
-  .dp-step.active {
-    color: var(--info);
-    border-color: color-mix(in srgb, var(--info) 45%, var(--border));
-    background: color-mix(in srgb, var(--info) 12%, var(--bg-inset));
-    font-weight: 600;
-  }
-  .dp-step.done {
-    color: var(--accent-strong);
-    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg-inset));
-  }
-
-  .spin {
-    display: inline-block;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @keyframes fade {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes pop {
-    from {
-      opacity: 0;
-      transform: translateY(8px) scale(0.98);
-    }
-  }
-  @media (max-width: 720px) {
-    .builder-tabs {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .tpl-grid,
-    .kinds,
-    .grid-2,
-    .grid-3,
-    .grid-repo,
-    .gh-mode-switch {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
+</Modal>
