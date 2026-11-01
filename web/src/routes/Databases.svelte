@@ -15,6 +15,7 @@
   import AddDatabaseModal from './databases/AddDatabaseModal.svelte';
   import EngineManagerModal from './databases/EngineManagerModal.svelte';
   import WebGuiModal from './databases/WebGuiModal.svelte';
+  import QuotaModal from './databases/QuotaModal.svelte';
   import '../styles/pages/databases/shared.css';
   import '../styles/pages/databases.css';
 
@@ -1031,60 +1032,15 @@
   />
 
   <!-- Modal Atur Kuota Kapasitas Database (Screenshot 3 aaPanel) -->
-  <Modal
+  <QuotaModal
     open={showQuotaModal && Boolean(quotaTargetDb)}
-    title={quotaTargetDb ? `Atur Kuota Baru [${quotaTargetDb.name}]` : 'Atur Kuota Baru'}
-    size="md"
-    onclose={() => { if (!savingQuota) showQuotaModal = false; }}
-  >
-    {#if quotaTargetDb}
-      <div class="form-group">
-        <label for="quota-used-info" class="form-label">Kapasitas Terpakai Saat Ini</label>
-        <div class="input-with-unit">
-          <input
-            id="quota-used-info"
-            type="text"
-            class="form-input"
-            value={formatBytes(quotaTargetDb.size_bytes)}
-            disabled
-          />
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="quota-val-input" class="form-label">Kapasitas Batas Kuota (Quota)</label>
-        <div class="input-with-unit">
-          <input
-            id="quota-val-input"
-            type="number"
-            class="form-input"
-            min="0"
-            bind:value={quotaMB}
-            disabled={savingQuota}
-          />
-          <span class="unit-badge">MB</span>
-        </div>
-      </div>
-
-      <div class="quota-reminder-box">
-        <p class="reminder-line">
-          • <strong>Catatan:</strong> Fitur pembatasan kuota kapasitas database menggunakan kuota sistem file OS (XFS / ext4 prjquota).
-        </p>
-        <p class="reminder-line">
-          • Untuk menonaktifkan atau membatalkan batasan kuota, isi nilai dengan <strong>"0"</strong>.
-        </p>
-      </div>
-    {/if}
-
-    {#snippet footer()}
-      <button class="btn btn-outline" disabled={savingQuota} onclick={() => (showQuotaModal = false)}>
-        Batal
-      </button>
-      <button class="btn btn-primary" disabled={savingQuota} onclick={saveQuota}>
-        Konfirmasi Kuota
-      </button>
-    {/snippet}
-  </Modal>
+    {quotaTargetDb}
+    bind:quotaMB
+    {savingQuota}
+    onFormatBytes={formatBytes}
+    onClose={() => (showQuotaModal = false)}
+    onSave={saveQuota}
+  />
 
   <!-- Modal Password Root -->
   <Modal
