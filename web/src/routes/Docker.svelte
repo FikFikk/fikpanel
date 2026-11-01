@@ -16,6 +16,8 @@
     DockerRegistry,
     SystemTask,
   } from '../lib/types';
+  import Modal from '../lib/components/ui/Modal.svelte';
+  import '../styles/pages/docker.css';
 
   // Daftar Tab Navigasi Utama (10 Tab Lengkap Sesuai aaPanel Suite)
   type DockerTab =
@@ -234,7 +236,7 @@
       const res = await apiFetch<{ ok: boolean; containers: DockerContainer[] }>('/api/docker/containers');
       containers = res.containers || [];
     } catch (err: any) {
-      notify('Gagal memuat kontainer: ' + (err.message || 'Error server'), 'danger');
+      notify('Gagal memuat kontainer: ' + (err.message || 'Error server'), 'error');
     } finally {
       loadingContainers = false;
     }
@@ -246,7 +248,7 @@
         title: 'Hapus Kontainer',
         message: `Hapus kontainer "${id.slice(0, 12)}"? Kontainer yang dihapus tidak dapat dipulihkan.`,
         confirmText: 'Hapus Permanen',
-        danger: true,
+        tone: 'danger',
       });
       if (!confirmed) return;
     }
@@ -256,11 +258,11 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/containers/${id}/${action}`, {
         method: 'POST',
       });
-      notify(res.message || `Aksi ${action} berhasil`, 'accent');
+      notify(res.message || `Aksi ${action} berhasil`, 'success');
       await loadContainers();
       await fetchStatus(false);
     } catch (err: any) {
-      notify(`Gagal ${action} kontainer: ` + (err.message || 'Error'), 'danger');
+      notify(`Gagal ${action} kontainer: ` + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -352,7 +354,7 @@
         }),
       });
 
-      notify(res.message || 'Kontainer berhasil dibuat', 'accent');
+      notify(res.message || 'Kontainer berhasil dibuat', 'success');
       showCreateContainerModal = false;
       // Reset form
       newContainer = {
@@ -368,7 +370,7 @@
       await loadContainers();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal membuat kontainer: ' + (err.message || 'Error server'), 'danger');
+      notify('Gagal membuat kontainer: ' + (err.message || 'Error server'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -381,7 +383,7 @@
       const res = await apiFetch<{ ok: boolean; images: DockerImage[] }>('/api/docker/images');
       images = res.images || [];
     } catch (err: any) {
-      notify('Gagal memuat daftar citra: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat daftar citra: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingImages = false;
     }
@@ -399,14 +401,14 @@
         method: 'POST',
         body: JSON.stringify({ image: fullTag }),
       });
-      notify(res.message || `Citra ${fullTag} berhasil diunduh`, 'accent');
+      notify(res.message || `Citra ${fullTag} berhasil diunduh`, 'success');
       showPullImageModal = false;
       pullImageName = '';
       pullImageTag = 'latest';
       await loadImages();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal mengunduh citra: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal mengunduh citra: ' + (err.message || 'Error'), 'error');
     } finally {
       pulling = false;
     }
@@ -417,7 +419,7 @@
       title: 'Hapus Citra Docker',
       message: `Hapus citra "${img.repository}:${img.tag}" (${img.size_human})?`,
       confirmText: 'Hapus Citra',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -426,11 +428,11 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/images/${img.id}`, {
         method: 'DELETE',
       });
-      notify(res.message || 'Citra berhasil dihapus', 'accent');
+      notify(res.message || 'Citra berhasil dihapus', 'success');
       await loadImages();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal menghapus citra: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menghapus citra: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -451,7 +453,7 @@
         notify('Tidak ditemukan citra dengan kata kunci tersebut', 'info');
       }
     } catch (err: any) {
-      notify('Gagal mencari di Docker Hub: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal mencari di Docker Hub: ' + (err.message || 'Error'), 'error');
     } finally {
       cloudSearching = false;
     }
@@ -477,7 +479,7 @@
       const res = await apiFetch<{ ok: boolean; volumes: DockerVolume[] }>('/api/docker/volumes');
       volumes = res.volumes || [];
     } catch (err: any) {
-      notify('Gagal memuat volume: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat volume: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingVolumes = false;
     }
@@ -494,13 +496,13 @@
         method: 'POST',
         body: JSON.stringify({ name: newVolume.name.trim(), driver: newVolume.driver }),
       });
-      notify(res.message || 'Volume berhasil dibuat', 'accent');
+      notify(res.message || 'Volume berhasil dibuat', 'success');
       showCreateVolumeModal = false;
       newVolume.name = '';
       await loadVolumes();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal membuat volume: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal membuat volume: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -511,7 +513,7 @@
       title: 'Hapus Volume',
       message: `Hapus volume "${v.name}"? Data persisten di dalamnya akan hilang permanen!`,
       confirmText: 'Hapus Volume',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -520,11 +522,11 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/volumes/${v.name}`, {
         method: 'DELETE',
       });
-      notify(res.message || 'Volume berhasil dihapus', 'accent');
+      notify(res.message || 'Volume berhasil dihapus', 'success');
       await loadVolumes();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal menghapus volume: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menghapus volume: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -535,7 +537,7 @@
       title: 'Bersihkan Volume Tak Terpakai',
       message: 'Apakah Anda yakin ingin menghapus seluruh volume yang saat ini tidak terkait dengan kontainer manapun?',
       confirmText: 'Prune All Unused',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -544,11 +546,11 @@
       const res = await apiFetch<{ ok: boolean; message: string }>('/api/docker/volumes/prune', {
         method: 'POST',
       });
-      notify(res.message || 'Volume tak terpakai berhasil dibersihkan', 'accent');
+      notify(res.message || 'Volume tak terpakai berhasil dibersihkan', 'success');
       await loadVolumes();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal membersihkan volume: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal membersihkan volume: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -561,7 +563,7 @@
       const res = await apiFetch<{ ok: boolean; networks: DockerNetwork[] }>('/api/docker/networks');
       networks = res.networks || [];
     } catch (err: any) {
-      notify('Gagal memuat jaringan Docker: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat jaringan Docker: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingNetworks = false;
     }
@@ -578,13 +580,13 @@
         method: 'POST',
         body: JSON.stringify(newNetwork),
       });
-      notify(res.message || 'Jaringan berhasil dibuat', 'accent');
+      notify(res.message || 'Jaringan berhasil dibuat', 'success');
       showCreateNetworkModal = false;
       newNetwork.name = '';
       await loadNetworks();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal membuat jaringan: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal membuat jaringan: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -595,7 +597,7 @@
       title: 'Hapus Jaringan Docker',
       message: `Hapus jaringan "${net.name}"? Kontainer yang terhubung ke jaringan ini akan terputus.`,
       confirmText: 'Hapus Jaringan',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -604,11 +606,11 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/networks/${net.id}`, {
         method: 'DELETE',
       });
-      notify(res.message || 'Jaringan berhasil dihapus', 'accent');
+      notify(res.message || 'Jaringan berhasil dihapus', 'success');
       await loadNetworks();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal menghapus jaringan: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menghapus jaringan: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -621,7 +623,7 @@
       const res = await apiFetch<{ ok: boolean; projects: DockerComposeProject[] }>('/api/docker/compose');
       composeProjects = res.projects || [];
     } catch (err: any) {
-      notify('Gagal memuat proyek compose: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat proyek compose: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingCompose = false;
     }
@@ -638,12 +640,12 @@
         method: 'POST',
         body: JSON.stringify(composeForm),
       });
-      notify(res.message || 'Stack Compose berhasil dijalankan', 'accent');
+      notify(res.message || 'Stack Compose berhasil dijalankan', 'success');
       showComposeModal = false;
       await loadComposeProjects();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal menjalankan Compose: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menjalankan Compose: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -654,7 +656,7 @@
       title: 'Hentikan Stack Compose',
       message: `Hentikan seluruh kontainer dan jaringan dari proyek "${project.name}"?`,
       confirmText: 'Hentikan (Down)',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -664,11 +666,11 @@
         method: 'POST',
         body: JSON.stringify({ name: project.name }),
       });
-      notify(res.message || 'Stack Compose berhasil dihentikan', 'accent');
+      notify(res.message || 'Stack Compose berhasil dihentikan', 'success');
       await loadComposeProjects();
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal menghentikan Compose: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menghentikan Compose: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -687,7 +689,7 @@
       const res = await apiFetch<{ ok: boolean; templates: OneClickTemplate[] }>('/api/docker/templates');
       templates = res.templates || [];
     } catch (err: any) {
-      notify('Gagal memuat katalog template: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat katalog template: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingTemplates = false;
     }
@@ -728,12 +730,12 @@
         }),
       });
 
-      notify(res.message || 'Aplikasi berhasil dipasang dan berjalan', 'accent');
+      notify(res.message || 'Aplikasi berhasil dipasang dan berjalan', 'success');
       showDeployTemplateModal = false;
       await fetchStatus(false);
       await switchTab('container');
     } catch (err: any) {
-      notify('Gagal memasang aplikasi: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memasang aplikasi: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -746,7 +748,7 @@
       const res = await apiFetch<{ ok: boolean; registries: DockerRegistry[] }>('/api/docker/registries');
       registries = res.registries || [];
     } catch (err: any) {
-      notify('Gagal memuat registri: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memuat registri: ' + (err.message || 'Error'), 'error');
     } finally {
       loadingRegistries = false;
     }
@@ -763,12 +765,12 @@
         method: 'POST',
         body: JSON.stringify(newRegistry),
       });
-      notify(res.message || 'Registri berhasil ditambahkan', 'accent');
+      notify(res.message || 'Registri berhasil ditambahkan', 'success');
       showAddRegistryModal = false;
       newRegistry = { name: '', url: '', username: '', password: '' };
       await loadRegistries();
     } catch (err: any) {
-      notify('Gagal menambahkan registri: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menambahkan registri: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -779,7 +781,7 @@
       title: 'Hapus Registri Privat',
       message: `Hapus kredensial registri "${reg.name}" (${reg.url})?`,
       confirmText: 'Hapus Registri',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -788,10 +790,10 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/registries/${reg.id}`, {
         method: 'DELETE',
       });
-      notify(res.message || 'Registri berhasil dihapus', 'accent');
+      notify(res.message || 'Registri berhasil dihapus', 'success');
       await loadRegistries();
     } catch (err: any) {
-      notify('Gagal menghapus registri: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal menghapus registri: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -804,10 +806,10 @@
       const res = await apiFetch<{ ok: boolean; message: string }>(`/api/docker/service/${action}`, {
         method: 'POST',
       });
-      notify(res.message || `Layanan Docker di-${action}`, 'accent');
+      notify(res.message || `Layanan Docker di-${action}`, 'success');
       await fetchStatus(true);
     } catch (err: any) {
-      notify(`Gagal ${action} layanan Docker: ` + (err.message || 'Error'), 'danger');
+      notify(`Gagal ${action} layanan Docker: ` + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -819,10 +821,10 @@
       const res = await apiFetch<{ ok: boolean; task_id: string; message: string }>('/api/docker/install', {
         method: 'POST',
       });
-      notify(res.message || 'Tugas instalasi Docker dikirim ke Messages Box', 'accent');
+      notify(res.message || 'Tugas instalasi Docker dikirim ke Messages Box', 'success');
       await fetchStatus(false);
     } catch (err: any) {
-      notify('Gagal memulai instalasi Docker: ' + (err.message || 'Error'), 'danger');
+      notify('Gagal memulai instalasi Docker: ' + (err.message || 'Error'), 'error');
     } finally {
       actionLoading = false;
     }
@@ -836,12 +838,12 @@
         method: 'POST',
         body: JSON.stringify(daemonConfig),
       });
-      notify(res.message || 'Konfigurasi Docker daemon.json disimpan', 'accent');
+      notify(res.message || 'Konfigurasi Docker daemon.json disimpan', 'success');
       showConfigModal = false;
       showLogRotationModal = false;
       await fetchDaemonConfig();
     } catch (err: any) {
-      notify('Gagal menyimpan konfigurasi: ' + (err.message || 'Error format JSON'), 'danger');
+      notify('Gagal menyimpan konfigurasi: ' + (err.message || 'Error format JSON'), 'error');
     } finally {
       savingConfig = false;
     }
@@ -853,7 +855,7 @@
       // Validasi sintaks JSON
       JSON.parse(rawJsonConfig);
     } catch (e: any) {
-      notify('Sintaks JSON tidak valid: ' + e.message, 'danger');
+      notify('Sintaks JSON tidak valid: ' + e.message, 'error');
       return;
     }
 
@@ -866,7 +868,7 @@
       title: 'Uninstall Docker Engine & Data',
       message: 'PERINGATAN TINGKAT TINGGI: Menghapus Docker akan menghentikan seluruh kontainer, menghapus seluruh citra, volume, dan berkas konfigurasi daemon. Anda yakin ingin melanjutkan?',
       confirmText: 'Uninstall Docker Sekarang',
-      danger: true,
+      tone: 'danger',
     });
     if (!confirmed) return;
 
@@ -901,7 +903,7 @@
   );
 </script>
 
-<div class="docker-page">
+<div class="pg-docker docker-page">
   <!-- Peringatan Melayang Bila Docker / Compose Belum Terpasang (Screenshot Match) -->
   {#if status && (!status.installed || !status.compose_installed)}
     <aside class="floating-banner" aria-label="Status instalasi Docker">
@@ -976,16 +978,18 @@
   </header>
 
   <!-- 10 Tab Navigasi Horizontal Sesuai aaPanel Suite -->
-  <nav class="nav-tabs-bar" aria-label="Navigasi Docker">
+  <nav class="tabs nav-tabs-bar" aria-label="Navigasi Docker">
     <button
-      class="tab-item {activeTab === 'overview' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'overview'}
       onclick={() => switchTab('overview')}
     >
       <i class="ri-pie-chart-2-line" aria-hidden="true"></i>
       <span>Overview</span>
     </button>
     <button
-      class="tab-item {activeTab === 'container' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'container'}
       onclick={() => switchTab('container')}
     >
       <i class="ri-terminal-box-line" aria-hidden="true"></i>
@@ -995,21 +999,24 @@
       {/if}
     </button>
     <button
-      class="tab-item {activeTab === 'template' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'template'}
       onclick={() => switchTab('template')}
     >
       <i class="ri-magic-line" aria-hidden="true"></i>
       <span>One-Click Install</span>
     </button>
     <button
-      class="tab-item {activeTab === 'cloud_image' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'cloud_image'}
       onclick={() => switchTab('cloud_image')}
     >
       <i class="ri-cloud-line" aria-hidden="true"></i>
       <span>Cloud image</span>
     </button>
     <button
-      class="tab-item {activeTab === 'local_image' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'local_image'}
       onclick={() => switchTab('local_image')}
     >
       <i class="ri-hard-drive-2-line" aria-hidden="true"></i>
@@ -1019,14 +1026,16 @@
       {/if}
     </button>
     <button
-      class="tab-item {activeTab === 'compose' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'compose'}
       onclick={() => switchTab('compose')}
     >
       <i class="ri-git-merge-line" aria-hidden="true"></i>
       <span>Docker Compose</span>
     </button>
     <button
-      class="tab-item {activeTab === 'network' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'network'}
       onclick={() => switchTab('network')}
     >
       <i class="ri-global-line" aria-hidden="true"></i>
@@ -1036,7 +1045,8 @@
       {/if}
     </button>
     <button
-      class="tab-item {activeTab === 'volume' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'volume'}
       onclick={() => switchTab('volume')}
     >
       <i class="ri-database-line" aria-hidden="true"></i>
@@ -1046,14 +1056,16 @@
       {/if}
     </button>
     <button
-      class="tab-item {activeTab === 'repository' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'repository'}
       onclick={() => switchTab('repository')}
     >
       <i class="ri-shield-keyhole-line" aria-hidden="true"></i>
       <span>Repository</span>
     </button>
     <button
-      class="tab-item {activeTab === 'settings' ? 'tab-item--active' : ''}"
+      class="tabs__tab"
+      class:is-active={activeTab === 'settings'}
       onclick={() => switchTab('settings')}
     >
       <i class="ri-settings-3-line" aria-hidden="true"></i>
@@ -1262,13 +1274,13 @@
           <table class="table">
             <thead>
               <tr>
-                <th style="width: 140px;">Status</th>
+                <th class="col-w-140">Status</th>
                 <th>Nama Kontainer</th>
                 <th>Citra</th>
                 <th>Port Mapping</th>
-                <th style="width: 120px;">CPU / Mem</th>
-                <th style="width: 140px;">Dibuat</th>
-                <th style="width: 200px; text-align: right;">Aksi</th>
+                <th class="col-w-120">CPU / Mem</th>
+                <th class="col-w-140">Dibuat</th>
+                <th class="col-w-200 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -1354,7 +1366,7 @@
                     <td>
                       <span class="text-xs text-muted">{new Date(c.created * 1000).toLocaleDateString()}</span>
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       <div class="action-btns-row">
                         {#if c.state === 'running'}
                           <button
@@ -1537,9 +1549,9 @@
                 <tr>
                   <th>Citra Docker Hub</th>
                   <th>Deskripsi</th>
-                  <th style="width: 100px;">Bintang</th>
-                  <th style="width: 120px;">Lencana</th>
-                  <th style="width: 120px; text-align: right;">Aksi</th>
+                  <th class="col-w-100">Bintang</th>
+                  <th class="col-w-120">Lencana</th>
+                  <th class="col-w-120 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -1566,7 +1578,7 @@
                         <span class="badge badge--secondary">Community</span>
                       {/if}
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       <button
                         class="btn btn--primary btn--sm"
                         onclick={() => openPullModalFor(r.name)}
@@ -1626,7 +1638,7 @@
                 <th>Ukuran</th>
                 <th>Terpakai</th>
                 <th>Dibuat</th>
-                <th style="width: 180px; text-align: right;">Aksi</th>
+                <th class="col-w-180 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -1676,7 +1688,7 @@
                     <td>
                       <span class="text-xs text-muted">{new Date(img.created * 1000).toLocaleDateString()}</span>
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       <div class="action-btns-row">
                         <button
                           class="btn btn--secondary btn--sm"
@@ -1736,7 +1748,7 @@
                 <th>Status</th>
                 <th>Lokasi Berkas</th>
                 <th>Kontainer Aktif</th>
-                <th style="width: 200px; text-align: right;">Aksi</th>
+                <th class="col-w-200 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -1783,7 +1795,7 @@
                     <td>
                       <span class="badge badge--info">{proj.containers_count} service</span>
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       <div class="action-btns-row">
                         <button
                           class="btn btn--ghost btn--sm btn--icon"
@@ -1861,7 +1873,7 @@
                 <th>Subnet</th>
                 <th>Gateway</th>
                 <th>Kontainer Terhubung</th>
-                <th style="width: 100px; text-align: right;">Aksi</th>
+                <th class="col-w-100 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -1902,7 +1914,7 @@
                     <td>
                       <span class="badge badge--info">{net.containers_count} kontainer</span>
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       {#if net.name !== 'bridge' && net.name !== 'host' && net.name !== 'none'}
                         <button
                           class="btn btn--ghost btn--sm btn--icon"
@@ -1961,7 +1973,7 @@
                 <th>Mountpoint</th>
                 <th>Ukuran</th>
                 <th>Ref Count</th>
-                <th style="width: 100px; text-align: right;">Aksi</th>
+                <th class="col-w-100 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -2003,7 +2015,7 @@
                         <span class="badge badge--secondary">0 (Bebas)</span>
                       {/if}
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       <button
                         class="btn btn--ghost btn--sm btn--icon"
                         title="Hapus Volume"
@@ -2053,7 +2065,7 @@
                 <th>URL Host</th>
                 <th>Username</th>
                 <th>Status Default</th>
-                <th style="width: 100px; text-align: right;">Aksi</th>
+                <th class="col-w-100 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -2093,7 +2105,7 @@
                         <span class="badge badge--secondary">Alternatif</span>
                       {/if}
                     </td>
-                    <td style="text-align: right;">
+                    <td class="text-right">
                       {#if !reg.is_default}
                         <button
                           class="btn btn--ghost btn--sm btn--icon"
@@ -2468,1425 +2480,649 @@
   </main>
 
   <!-- ══════════════ MODAL: BUAT KONTAINER BARU ══════════════ -->
-  {#if showCreateContainerModal}
-    <div class="modal-backdrop" onclick={() => (showCreateContainerModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal modal--lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-add-box-line" aria-hidden="true"></i>
-            <span>Buat Kontainer Baru</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showCreateContainerModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
+  <Modal
+    open={showCreateContainerModal}
+    title="Buat Kontainer Baru"
+    size="lg"
+    onclose={() => (showCreateContainerModal = false)}
+  >
+    <form id="docker-create-cnt-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitCreateContainer(); }}>
+      <div class="form-row">
+        <div class="field flex-1">
+          <label class="field__label" for="cnt-name">Nama Kontainer *</label>
+          <input
+            id="cnt-name"
+            type="text"
+            class="input"
+            placeholder="misal: my-nginx-app"
+            bind:value={newContainer.name}
+            required
+          />
+        </div>
+        <div class="field flex-1">
+          <label class="field__label" for="cnt-image">Nama Citra (Image) *</label>
+          <input
+            id="cnt-image"
+            type="text"
+            class="input font-mono"
+            placeholder="misal: nginx:alpine atau redis:7"
+            bind:value={newContainer.image}
+            required
+          />
+        </div>
+      </div>
+
+      <!-- Port Mapping -->
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="font-semibold text-sm">Pemetaan Port (Host : Container)</span>
+          <button type="button" class="btn btn--secondary btn--sm" onclick={addPortMapping}>
+            <i class="ri-add-line" aria-hidden="true"></i>
+            <span>Tambah Port</span>
           </button>
         </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitCreateContainer(); }}>
-          <div class="form-row">
-            <div class="field flex-1">
-              <label class="field__label" for="cnt-name">Nama Kontainer *</label>
-              <input
-                id="cnt-name"
-                type="text"
-                class="input"
-                placeholder="misal: my-nginx-app"
-                bind:value={newContainer.name}
-                required
-              />
-            </div>
-            <div class="field flex-1">
-              <label class="field__label" for="cnt-image">Nama Citra (Image) *</label>
-              <input
-                id="cnt-image"
-                type="text"
-                class="input font-mono"
-                placeholder="misal: nginx:alpine atau redis:7"
-                bind:value={newContainer.image}
-                required
-              />
-            </div>
-          </div>
-
-          <!-- Port Mapping -->
-          <div class="form-section">
-            <div class="form-section-head">
-              <span class="font-semibold text-sm">Pemetaan Port (Host : Container)</span>
-              <button type="button" class="btn btn--secondary btn--sm" onclick={addPortMapping}>
-                <i class="ri-add-line" aria-hidden="true"></i>
-                <span>Tambah Port</span>
-              </button>
-            </div>
-            {#each newContainer.ports as p, idx}
-              <div class="mapping-row">
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="Port Host (misal: 8080)"
-                  bind:value={p.host}
-                />
-                <span class="text-muted">:</span>
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="Port Kontainer (misal: 80)"
-                  bind:value={p.container}
-                />
-                <select class="input input--sm w-24" bind:value={p.protocol}>
-                  <option value="tcp">TCP</option>
-                  <option value="udp">UDP</option>
-                </select>
-                <button
-                  type="button"
-                  class="btn btn--ghost btn--sm btn--icon"
-                  title="Hapus baris port"
-                  aria-label="Hapus baris port"
-                  onclick={() => removePortMapping(idx)}
-                >
-                  <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
-                </button>
-              </div>
-            {/each}
-          </div>
-
-          <!-- Volume Mapping -->
-          <div class="form-section">
-            <div class="form-section-head">
-              <span class="font-semibold text-sm">Pemetaan Volume / Direktori Host</span>
-              <button type="button" class="btn btn--secondary btn--sm" onclick={addVolumeMapping}>
-                <i class="ri-add-line" aria-hidden="true"></i>
-                <span>Tambah Mount</span>
-              </button>
-            </div>
-            {#each newContainer.volumes as v, idx}
-              <div class="mapping-row">
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="Path Host (misal: /www/data/html)"
-                  bind:value={v.host}
-                />
-                <span class="text-muted">:</span>
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="Path Kontainer (misal: /usr/share/nginx/html)"
-                  bind:value={v.container}
-                />
-                <button
-                  type="button"
-                  class="btn btn--ghost btn--sm btn--icon"
-                  title="Hapus mount"
-                  aria-label="Hapus mount"
-                  onclick={() => removeVolumeMapping(idx)}
-                >
-                  <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
-                </button>
-              </div>
-            {/each}
-          </div>
-
-          <!-- Environment Variables -->
-          <div class="form-section">
-            <div class="form-section-head">
-              <span class="font-semibold text-sm">Environment Variables</span>
-              <button type="button" class="btn btn--secondary btn--sm" onclick={addEnvParam}>
-                <i class="ri-add-line" aria-hidden="true"></i>
-                <span>Tambah Env</span>
-              </button>
-            </div>
-            {#each newContainer.envs as e, idx}
-              <div class="mapping-row">
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="KEY (misal: NODE_ENV)"
-                  bind:value={e.key}
-                />
-                <span class="text-muted">=</span>
-                <input
-                  type="text"
-                  class="input input--sm flex-1 font-mono"
-                  placeholder="VALUE (misal: production)"
-                  bind:value={e.value}
-                />
-                <button
-                  type="button"
-                  class="btn btn--ghost btn--sm btn--icon"
-                  title="Hapus env"
-                  aria-label="Hapus env"
-                  onclick={() => removeEnvParam(idx)}
-                >
-                  <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
-                </button>
-              </div>
-            {/each}
-          </div>
-
-          <!-- Restart Policy -->
-          <div class="form-row">
-            <div class="field flex-1">
-              <label class="field__label" for="cnt-restart">Kebijakan Restart</label>
-              <select id="cnt-restart" class="input" bind:value={newContainer.restart_policy}>
-                <option value="unless-stopped">Unless Stopped (Direkomendasikan)</option>
-                <option value="always">Always Restart</option>
-                <option value="on-failure">On Failure Only</option>
-                <option value="no">Do Not Restart (No)</option>
-              </select>
-            </div>
-            <div class="field flex-1">
-              <label class="field__label" for="cnt-cmd">Custom Command (Opsional)</label>
-              <input
-                id="cnt-cmd"
-                type="text"
-                class="input font-mono"
-                placeholder="misal: npm start atau redis-server --appendonly yes"
-                bind:value={newContainer.cmd}
-              />
-            </div>
-          </div>
-
-          <div class="modal__foot">
+        {#each newContainer.ports as p, idx}
+          <div class="mapping-row">
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="Port Host (misal: 8080)"
+              bind:value={p.host}
+            />
+            <span class="text-muted">:</span>
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="Port Kontainer (misal: 80)"
+              bind:value={p.container}
+            />
+            <select class="input input--sm w-24" bind:value={p.protocol}>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
             <button
               type="button"
-              class="btn btn--secondary"
-              onclick={() => (showCreateContainerModal = false)}
+              class="btn btn--ghost btn--sm btn--icon"
+              title="Hapus baris port"
+              aria-label="Hapus baris port"
+              onclick={() => removePortMapping(idx)}
             >
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-check-line" aria-hidden="true"></i>
-              <span>Buat & Jalankan Kontainer</span>
+              <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
             </button>
           </div>
-        </form>
+        {/each}
       </div>
-    </div>
-  {/if}
+
+      <!-- Volume Mapping -->
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="font-semibold text-sm">Pemetaan Volume / Direktori Host</span>
+          <button type="button" class="btn btn--secondary btn--sm" onclick={addVolumeMapping}>
+            <i class="ri-add-line" aria-hidden="true"></i>
+            <span>Tambah Mount</span>
+          </button>
+        </div>
+        {#each newContainer.volumes as v, idx}
+          <div class="mapping-row">
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="Path Host (misal: /www/data/html)"
+              bind:value={v.host}
+            />
+            <span class="text-muted">:</span>
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="Path Kontainer (misal: /usr/share/nginx/html)"
+              bind:value={v.container}
+            />
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm btn--icon"
+              title="Hapus mount"
+              aria-label="Hapus mount"
+              onclick={() => removeVolumeMapping(idx)}
+            >
+              <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Environment Variables -->
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="font-semibold text-sm">Environment Variables</span>
+          <button type="button" class="btn btn--secondary btn--sm" onclick={addEnvParam}>
+            <i class="ri-add-line" aria-hidden="true"></i>
+            <span>Tambah Env</span>
+          </button>
+        </div>
+        {#each newContainer.envs as e, idx}
+          <div class="mapping-row">
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="KEY (misal: NODE_ENV)"
+              bind:value={e.key}
+            />
+            <span class="text-muted">=</span>
+            <input
+              type="text"
+              class="input input--sm flex-1 font-mono"
+              placeholder="VALUE (misal: production)"
+              bind:value={e.value}
+            />
+            <button
+              type="button"
+              class="btn btn--ghost btn--sm btn--icon"
+              title="Hapus env"
+              aria-label="Hapus env"
+              onclick={() => removeEnvParam(idx)}
+            >
+              <i class="ri-delete-bin-line text-danger" aria-hidden="true"></i>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Restart Policy -->
+      <div class="form-row">
+        <div class="field flex-1">
+          <label class="field__label" for="cnt-restart">Kebijakan Restart</label>
+          <select id="cnt-restart" class="input" bind:value={newContainer.restart_policy}>
+            <option value="unless-stopped">Unless Stopped (Direkomendasikan)</option>
+            <option value="always">Always Restart</option>
+            <option value="on-failure">On Failure Only</option>
+            <option value="no">Do Not Restart (No)</option>
+          </select>
+        </div>
+        <div class="field flex-1">
+          <label class="field__label" for="cnt-cmd">Custom Command (Opsional)</label>
+          <input
+            id="cnt-cmd"
+            type="text"
+            class="input font-mono"
+            placeholder="misal: npm start atau redis-server --appendonly yes"
+            bind:value={newContainer.cmd}
+          />
+        </div>
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button
+        type="button"
+        class="btn btn--secondary"
+        onclick={() => (showCreateContainerModal = false)}
+      >
+        Batal
+      </button>
+      <button type="submit" form="docker-create-cnt-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Buat & Jalankan Kontainer</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: TARIK CITRA (PULL IMAGE) ══════════════ -->
-  {#if showPullImageModal}
-    <div class="modal-backdrop" onclick={() => (showPullImageModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-download-cloud-line" aria-hidden="true"></i>
-            <span>Tarik Citra (Pull Image)</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showPullImageModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitPullImage(); }}>
-          <div class="field">
-            <label class="field__label" for="pull-name">Nama Citra Docker *</label>
-            <input
-              id="pull-name"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: nginx, ubuntu, redis, postgres"
-              bind:value={pullImageName}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="pull-tag">Tag Versi (Default: latest)</label>
-            <input
-              id="pull-tag"
-              type="text"
-              class="input font-mono"
-              placeholder="latest, alpine, 18-bookworm, dll."
-              bind:value={pullImageTag}
-            />
-          </div>
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showPullImageModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={pulling}>
-              <i class="ri-download-line {pulling ? 'spin' : ''}" aria-hidden="true"></i>
-              <span>{pulling ? 'Sedang Mengunduh...' : 'Mulai Tarik Citra'}</span>
-            </button>
-          </div>
-        </form>
+  <Modal
+    open={showPullImageModal}
+    title="Tarik Citra (Pull Image)"
+    size="md"
+    onclose={() => (showPullImageModal = false)}
+  >
+    <form id="docker-pull-img-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitPullImage(); }}>
+      <div class="field">
+        <label class="field__label" for="pull-name">Nama Citra Docker *</label>
+        <input
+          id="pull-name"
+          type="text"
+          class="input font-mono"
+          placeholder="misal: nginx, ubuntu, redis, postgres"
+          bind:value={pullImageName}
+          required
+        />
       </div>
-    </div>
-  {/if}
+
+      <div class="field">
+        <label class="field__label" for="pull-tag">Tag Versi (Default: latest)</label>
+        <input
+          id="pull-tag"
+          type="text"
+          class="input font-mono"
+          placeholder="latest, alpine, 18-bookworm, dll."
+          bind:value={pullImageTag}
+        />
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showPullImageModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-pull-img-form" class="btn btn--primary" disabled={pulling}>
+        <i class="ri-download-line {pulling ? 'spin' : ''}" aria-hidden="true"></i>
+        <span>{pulling ? 'Sedang Mengunduh...' : 'Mulai Tarik Citra'}</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: LOG KONTAINER ══════════════ -->
-  {#if showLogsModal}
-    <div class="modal-backdrop" onclick={() => (showLogsModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal modal--lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-file-list-3-line" aria-hidden="true"></i>
-            <span>Log Kontainer: {selectedContainerLogs.name}</span>
-          </h2>
-          <div class="flex-row items-center gap-2">
-            <select
-              class="input input--sm w-28"
-              bind:value={selectedContainerLogs.lines}
-              onchange={refreshContainerLogs}
-            >
-              <option value={100}>100 baris</option>
-              <option value={200}>200 baris</option>
-              <option value={500}>500 baris</option>
-              <option value={1000}>1000 baris</option>
-            </select>
-            <button
-              class="btn btn--secondary btn--sm btn--icon"
-              title="Segarkan Log"
-              aria-label="Segarkan Log"
-              onclick={refreshContainerLogs}
-            >
-              <i class="ri-refresh-line {logsLoading ? 'spin' : ''}" aria-hidden="true"></i>
-            </button>
-            <button
-              class="modal__close btn btn--ghost btn--sm btn--icon"
-              aria-label="Tutup log"
-              title="Tutup log"
-              onclick={() => (showLogsModal = false)}
-            >
-              <i class="ri-close-line" aria-hidden="true"></i>
-            </button>
-          </div>
-        </div>
-
-        <div class="modal__body p-0">
-          <pre class="terminal-log-viewer font-mono text-xs">{selectedContainerLogs.content}</pre>
-        </div>
-
-        <div class="modal__foot">
-          <span class="text-xs text-muted">ID: {selectedContainerLogs.id.slice(0, 12)}</span>
-          <button class="btn btn--secondary btn--sm" onclick={() => (showLogsModal = false)}>
-            Tutup
-          </button>
-        </div>
+  <Modal
+    open={showLogsModal}
+    size="lg"
+    onclose={() => (showLogsModal = false)}
+  >
+    {#snippet header()}
+      <div class="flex-row items-center gap-3 flex-1">
+        <h2 class="modal__title flex-1">
+          <i class="ri-file-list-3-line" aria-hidden="true"></i>
+          <span>Log Kontainer: {selectedContainerLogs.name}</span>
+        </h2>
+        <select
+          class="input input--sm w-28"
+          bind:value={selectedContainerLogs.lines}
+          onchange={refreshContainerLogs}
+        >
+          <option value={100}>100 baris</option>
+          <option value={200}>200 baris</option>
+          <option value={500}>500 baris</option>
+          <option value={1000}>1000 baris</option>
+        </select>
+        <button
+          class="btn btn--secondary btn--sm btn--icon"
+          title="Segarkan Log"
+          aria-label="Segarkan Log"
+          onclick={refreshContainerLogs}
+        >
+          <i class="ri-refresh-line {logsLoading ? 'spin' : ''}" aria-hidden="true"></i>
+        </button>
       </div>
-    </div>
-  {/if}
+    {/snippet}
+
+    <pre class="terminal-log-viewer font-mono text-xs">{selectedContainerLogs.content}</pre>
+
+    {#snippet footer()}
+      <span class="text-xs text-muted flex-1">ID: {selectedContainerLogs.id.slice(0, 12)}</span>
+      <button class="btn btn--secondary btn--sm" onclick={() => (showLogsModal = false)}>
+        Tutup
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: DOCKER COMPOSE EDITOR ══════════════ -->
-  {#if showComposeModal}
-    <div class="modal-backdrop" onclick={() => (showComposeModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal modal--lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-git-merge-line" aria-hidden="true"></i>
-            <span>Stack Docker Compose</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showComposeModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitComposeUp(); }}>
-          <div class="field">
-            <label class="field__label" for="compose-name">Nama Proyek / Stack *</label>
-            <input
-              id="compose-name"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: wordpress-stack atau microservices"
-              bind:value={composeForm.name}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="compose-yaml">Konfigurasi docker-compose.yml *</label>
-            <textarea
-              id="compose-yaml"
-              class="input font-mono text-xs"
-              rows="12"
-              bind:value={composeForm.yaml}
-              required
-            ></textarea>
-          </div>
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showComposeModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-play-line" aria-hidden="true"></i>
-              <span>Deploy Stack (Compose Up)</span>
-            </button>
-          </div>
-        </form>
+  <Modal
+    open={showComposeModal}
+    title="Stack Docker Compose"
+    size="lg"
+    onclose={() => (showComposeModal = false)}
+  >
+    <form id="docker-compose-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitComposeUp(); }}>
+      <div class="field">
+        <label class="field__label" for="compose-name">Nama Proyek / Stack *</label>
+        <input
+          id="compose-name"
+          type="text"
+          class="input font-mono"
+          placeholder="misal: wordpress-stack atau microservices"
+          bind:value={composeForm.name}
+          required
+        />
       </div>
-    </div>
-  {/if}
+
+      <div class="field">
+        <label class="field__label" for="compose-yaml">Konfigurasi docker-compose.yml *</label>
+        <textarea
+          id="compose-yaml"
+          class="input font-mono text-xs"
+          rows="12"
+          bind:value={composeForm.yaml}
+          required
+        ></textarea>
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showComposeModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-compose-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-play-line" aria-hidden="true"></i>
+        <span>Deploy Stack (Compose Up)</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: BUAT JARINGAN ══════════════ -->
-  {#if showCreateNetworkModal}
-    <div class="modal-backdrop" onclick={() => (showCreateNetworkModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-global-line" aria-hidden="true"></i>
-            <span>Buat Jaringan Virtual Baru</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showCreateNetworkModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitCreateNetwork(); }}>
-          <div class="field">
-            <label class="field__label" for="net-name">Nama Network *</label>
-            <input
-              id="net-name"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: backend-net"
-              bind:value={newNetwork.name}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="net-driver">Driver</label>
-            <select id="net-driver" class="input" bind:value={newNetwork.driver}>
-              <option value="bridge">bridge (Default isolasi lokal)</option>
-              <option value="host">host (Gunakan network host langsung)</option>
-              <option value="overlay">overlay (Multi-host swarm)</option>
-              <option value="macvlan">macvlan</option>
-            </select>
-          </div>
-
-          <div class="form-row">
-            <div class="field flex-1">
-              <label class="field__label" for="net-subnet">Subnet CIDR</label>
-              <input
-                id="net-subnet"
-                type="text"
-                class="input font-mono"
-                placeholder="172.28.0.0/16"
-                bind:value={newNetwork.subnet}
-              />
-            </div>
-            <div class="field flex-1">
-              <label class="field__label" for="net-gw">Gateway IP</label>
-              <input
-                id="net-gw"
-                type="text"
-                class="input font-mono"
-                placeholder="172.28.0.1"
-                bind:value={newNetwork.gateway}
-              />
-            </div>
-          </div>
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showCreateNetworkModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-check-line" aria-hidden="true"></i>
-              <span>Buat Jaringan</span>
-            </button>
-          </div>
-        </form>
+  <Modal
+    open={showCreateNetworkModal}
+    title="Buat Jaringan Virtual Baru"
+    size="md"
+    onclose={() => (showCreateNetworkModal = false)}
+  >
+    <form id="docker-create-net-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitCreateNetwork(); }}>
+      <div class="field">
+        <label class="field__label" for="net-name">Nama Network *</label>
+        <input
+          id="net-name"
+          type="text"
+          class="input font-mono"
+          placeholder="misal: backend-net"
+          bind:value={newNetwork.name}
+          required
+        />
       </div>
-    </div>
-  {/if}
+
+      <div class="field">
+        <label class="field__label" for="net-driver">Driver</label>
+        <select id="net-driver" class="input" bind:value={newNetwork.driver}>
+          <option value="bridge">bridge (Default isolasi lokal)</option>
+          <option value="host">host (Gunakan network host langsung)</option>
+          <option value="overlay">overlay (Multi-host swarm)</option>
+          <option value="macvlan">macvlan</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="field flex-1">
+          <label class="field__label" for="net-subnet">Subnet CIDR</label>
+          <input
+            id="net-subnet"
+            type="text"
+            class="input font-mono"
+            placeholder="172.28.0.0/16"
+            bind:value={newNetwork.subnet}
+          />
+        </div>
+        <div class="field flex-1">
+          <label class="field__label" for="net-gw">Gateway IP</label>
+          <input
+            id="net-gw"
+            type="text"
+            class="input font-mono"
+            placeholder="172.28.0.1"
+            bind:value={newNetwork.gateway}
+          />
+        </div>
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showCreateNetworkModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-create-net-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Buat Jaringan</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: BUAT VOLUME ══════════════ -->
-  {#if showCreateVolumeModal}
-    <div class="modal-backdrop" onclick={() => (showCreateVolumeModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-database-line" aria-hidden="true"></i>
-            <span>Buat Volume Docker Baru</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showCreateVolumeModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitCreateVolume(); }}>
-          <div class="field">
-            <label class="field__label" for="vol-name">Nama Volume *</label>
-            <input
-              id="vol-name"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: pg_data, redis_cache"
-              bind:value={newVolume.name}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="vol-driver">Driver</label>
-            <select id="vol-driver" class="input" bind:value={newVolume.driver}>
-              <option value="local">local (Penyimpanan host bawaan)</option>
-            </select>
-          </div>
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showCreateVolumeModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-check-line" aria-hidden="true"></i>
-              <span>Buat Volume</span>
-            </button>
-          </div>
-        </form>
+  <Modal
+    open={showCreateVolumeModal}
+    title="Buat Volume Docker Baru"
+    size="md"
+    onclose={() => (showCreateVolumeModal = false)}
+  >
+    <form id="docker-create-vol-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitCreateVolume(); }}>
+      <div class="field">
+        <label class="field__label" for="vol-name">Nama Volume *</label>
+        <input
+          id="vol-name"
+          type="text"
+          class="input font-mono"
+          placeholder="misal: pg_data, redis_cache"
+          bind:value={newVolume.name}
+          required
+        />
       </div>
-    </div>
-  {/if}
+
+      <div class="field">
+        <label class="field__label" for="vol-driver">Driver</label>
+        <select id="vol-driver" class="input" bind:value={newVolume.driver}>
+          <option value="local">local (Penyimpanan host bawaan)</option>
+        </select>
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showCreateVolumeModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-create-vol-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Buat Volume</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: REGISTRI PRIVAT ══════════════ -->
-  {#if showAddRegistryModal}
-    <div class="modal-backdrop" onclick={() => (showAddRegistryModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-shield-keyhole-line" aria-hidden="true"></i>
-            <span>Tambah Kredensial Registri Privat</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showAddRegistryModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitAddRegistry(); }}>
-          <div class="field">
-            <label class="field__label" for="reg-name">Nama Registri *</label>
-            <input
-              id="reg-name"
-              type="text"
-              class="input"
-              placeholder="misal: Harbor Internal, Gitlab Registry"
-              bind:value={newRegistry.name}
-              required
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="reg-url">URL Registri *</label>
-            <input
-              id="reg-url"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: registry.mycompany.com atau ghcr.io"
-              bind:value={newRegistry.url}
-              required
-            />
-          </div>
-
-          <div class="form-row">
-            <div class="field flex-1">
-              <label class="field__label" for="reg-user">Username</label>
-              <input
-                id="reg-user"
-                type="text"
-                class="input"
-                placeholder="Username atau Token"
-                bind:value={newRegistry.username}
-              />
-            </div>
-            <div class="field flex-1">
-              <label class="field__label" for="reg-pass">Password / Token Akses</label>
-              <input
-                id="reg-pass"
-                type="password"
-                class="input font-mono"
-                placeholder="••••••••"
-                bind:value={newRegistry.password}
-              />
-            </div>
-          </div>
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showAddRegistryModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-check-line" aria-hidden="true"></i>
-              <span>Simpan Registri</span>
-            </button>
-          </div>
-        </form>
+  <Modal
+    open={showAddRegistryModal}
+    title="Tambah Kredensial Registri Privat"
+    size="md"
+    onclose={() => (showAddRegistryModal = false)}
+  >
+    <form id="docker-add-reg-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitAddRegistry(); }}>
+      <div class="field">
+        <label class="field__label" for="reg-name">Nama Registri *</label>
+        <input
+          id="reg-name"
+          type="text"
+          class="input"
+          placeholder="misal: Harbor Internal, Gitlab Registry"
+          bind:value={newRegistry.name}
+          required
+        />
       </div>
-    </div>
-  {/if}
+
+      <div class="field">
+        <label class="field__label" for="reg-url">URL Registri *</label>
+        <input
+          id="reg-url"
+          type="text"
+          class="input font-mono"
+          placeholder="misal: registry.mycompany.com atau ghcr.io"
+          bind:value={newRegistry.url}
+          required
+        />
+      </div>
+
+      <div class="form-row">
+        <div class="field flex-1">
+          <label class="field__label" for="reg-user">Username</label>
+          <input
+            id="reg-user"
+            type="text"
+            class="input"
+            placeholder="Username atau Token"
+            bind:value={newRegistry.username}
+          />
+        </div>
+        <div class="field flex-1">
+          <label class="field__label" for="reg-pass">Password / Token Akses</label>
+          <input
+            id="reg-pass"
+            type="password"
+            class="input font-mono"
+            placeholder="••••••••"
+            bind:value={newRegistry.password}
+          />
+        </div>
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showAddRegistryModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-add-reg-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Simpan Registri</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: DEPLOY ONE-CLICK TEMPLATE ══════════════ -->
-  {#if showDeployTemplateModal && selectedTemplate}
-    <div class="modal-backdrop" onclick={() => (showDeployTemplateModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal modal--lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <div class="flex-row items-center gap-3">
-            <i class="{selectedTemplate.icon} text-xl text-accent" aria-hidden="true"></i>
-            <div>
-              <h2 class="modal__title">Pasang {selectedTemplate.name}</h2>
-              <span class="text-xs text-muted font-mono">{selectedTemplate.image}</span>
-            </div>
+  <Modal
+    open={showDeployTemplateModal && Boolean(selectedTemplate)}
+    size="lg"
+    onclose={() => (showDeployTemplateModal = false)}
+  >
+    {#snippet header()}
+      {#if selectedTemplate}
+        <div class="flex-row items-center gap-3">
+          <i class="{selectedTemplate.icon} text-xl text-accent" aria-hidden="true"></i>
+          <div>
+            <h2 class="modal__title">Pasang {selectedTemplate.name}</h2>
+            <span class="text-xs text-muted font-mono">{selectedTemplate.image}</span>
           </div>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showDeployTemplateModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
+        </div>
+      {/if}
+    {/snippet}
+
+    {#if selectedTemplate}
+      <form id="docker-deploy-tmpl-form" class="docker-modal-form" onsubmit={(e) => { e.preventDefault(); submitDeployTemplate(); }}>
+        <div class="form-row">
+          <div class="field flex-1">
+            <label class="field__label" for="deploy-name">Nama Kontainer *</label>
+            <input
+              id="deploy-name"
+              type="text"
+              class="input font-mono"
+              bind:value={deployForm.name}
+              required
+            />
+          </div>
+          <div class="field flex-1">
+            <label class="field__label" for="deploy-port">Port Host Terbuka *</label>
+            <input
+              id="deploy-port"
+              type="number"
+              class="input font-mono"
+              bind:value={deployForm.port}
+              required
+            />
+          </div>
         </div>
 
-        <form class="modal__body" onsubmit={(e) => { e.preventDefault(); submitDeployTemplate(); }}>
-          <div class="form-row">
-            <div class="field flex-1">
-              <label class="field__label" for="deploy-name">Nama Kontainer *</label>
-              <input
-                id="deploy-name"
-                type="text"
-                class="input font-mono"
-                bind:value={deployForm.name}
-                required
-              />
-            </div>
-            <div class="field flex-1">
-              <label class="field__label" for="deploy-port">Port Host Terbuka *</label>
-              <input
-                id="deploy-port"
-                type="number"
-                class="input font-mono"
-                bind:value={deployForm.port}
-                required
-              />
+        {#if selectedTemplate.volume_mount}
+          <div class="field">
+            <label class="field__label" for="deploy-vol">Direktori Penyimpanan Host</label>
+            <input
+              id="deploy-vol"
+              type="text"
+              class="input font-mono"
+              bind:value={deployForm.volume_path}
+            />
+            <span class="field__hint">
+              Akan dipetakan ke direktori kontainer: <code class="font-mono">{selectedTemplate.volume_mount}</code>
+            </span>
+          </div>
+        {/if}
+
+        {#if selectedTemplate.env_params && selectedTemplate.env_params.length > 0}
+          <div class="form-section">
+            <span class="font-semibold text-sm">Parameter Konfigurasi Lingkungan</span>
+            <div class="mt-2 space-y-2">
+              {#each selectedTemplate.env_params as p}
+                <div class="field mb-2">
+                  <label class="field__label" for="env-{p.key}">
+                    {p.label} <code class="font-mono text-2xs">({p.key})</code>
+                  </label>
+                  <input
+                    id="env-{p.key}"
+                    type={p.type === 'password' ? 'password' : 'text'}
+                    class="input font-mono"
+                    bind:value={deployForm.env_values[p.key]}
+                  />
+                </div>
+              {/each}
             </div>
           </div>
+        {/if}
+      </form>
+    {/if}
 
-          {#if selectedTemplate.volume_mount}
-            <div class="field">
-              <label class="field__label" for="deploy-vol">Direktori Penyimpanan Host</label>
-              <input
-                id="deploy-vol"
-                type="text"
-                class="input font-mono"
-                bind:value={deployForm.volume_path}
-              />
-              <span class="field__hint">
-                Akan dipetakan ke direktori kontainer: <code class="font-mono">{selectedTemplate.volume_mount}</code>
-              </span>
-            </div>
-          {/if}
-
-          {#if selectedTemplate.env_params && selectedTemplate.env_params.length > 0}
-            <div class="form-section">
-              <span class="font-semibold text-sm">Parameter Konfigurasi Lingkungan</span>
-              <div class="mt-2 space-y-2">
-                {#each selectedTemplate.env_params as p}
-                  <div class="field mb-2">
-                    <label class="field__label" for="env-{p.key}">
-                      {p.label} <code class="font-mono text-2xs">({p.key})</code>
-                    </label>
-                    <input
-                      id="env-{p.key}"
-                      type={p.type === 'password' ? 'password' : 'text'}
-                      class="input font-mono"
-                      bind:value={deployForm.env_values[p.key]}
-                    />
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-
-          <div class="modal__foot">
-            <button type="button" class="btn btn--secondary" onclick={() => (showDeployTemplateModal = false)}>
-              Batal
-            </button>
-            <button type="submit" class="btn btn--primary" disabled={actionLoading}>
-              <i class="ri-check-line" aria-hidden="true"></i>
-              <span>Mulai Pasang & Jalankan</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {/if}
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary" onclick={() => (showDeployTemplateModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="docker-deploy-tmpl-form" class="btn btn--primary" disabled={actionLoading}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Mulai Pasang & Jalankan</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: DAEMON.JSON CONFIGURATION FILE ══════════════ -->
-  {#if showConfigModal}
-    <div class="modal-backdrop" onclick={() => (showConfigModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal modal--lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-file-code-line" aria-hidden="true"></i>
-            <span>Configuration file (/etc/docker/daemon.json)</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showConfigModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
-        </div>
+  <Modal
+    open={showConfigModal}
+    title="Configuration file (/etc/docker/daemon.json)"
+    size="lg"
+    onclose={() => (showConfigModal = false)}
+  >
+    <textarea
+      class="json-editor-textarea font-mono text-xs"
+      rows="16"
+      bind:value={rawJsonConfig}
+    ></textarea>
 
-        <div class="modal__body p-0">
-          <textarea
-            class="json-editor-textarea font-mono text-xs"
-            rows="16"
-            bind:value={rawJsonConfig}
-          ></textarea>
-        </div>
-
-        <div class="modal__foot">
-          <button class="btn btn--secondary" onclick={() => (showConfigModal = false)}>
-            Batal
-          </button>
-          <button class="btn btn--primary" disabled={savingConfig} onclick={saveRawJsonConfig}>
-            <i class="ri-save-line" aria-hidden="true"></i>
-            <span>Simpan & Terapkan Konfigurasi</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showConfigModal = false)}>
+        Batal
+      </button>
+      <button class="btn btn--primary" disabled={savingConfig} onclick={saveRawJsonConfig}>
+        <i class="ri-save-line" aria-hidden="true"></i>
+        <span>Simpan & Terapkan Konfigurasi</span>
+      </button>
+    {/snippet}
+  </Modal>
 
   <!-- ══════════════ MODAL: LOG ROTATION SETTINGS ══════════════ -->
-  {#if showLogRotationModal && daemonConfig}
-    <div class="modal-backdrop" onclick={() => (showLogRotationModal = false)} role="presentation">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="modal__head">
-          <h2 class="modal__title">
-            <i class="ri-settings-line" aria-hidden="true"></i>
-            <span>Modifikasi Log Rotation</span>
-          </h2>
-          <button
-            class="modal__close btn btn--ghost btn--sm btn--icon"
-            aria-label="Tutup dialog"
-            title="Tutup dialog"
-            onclick={() => (showLogRotationModal = false)}
-          >
-            <i class="ri-close-line" aria-hidden="true"></i>
-          </button>
+  <Modal
+    open={showLogRotationModal && Boolean(daemonConfig)}
+    title="Modifikasi Log Rotation"
+    size="md"
+    onclose={() => (showLogRotationModal = false)}
+  >
+    {#if daemonConfig}
+      <div class="docker-modal-form">
+        <div class="field">
+          <label class="field__label" for="log-max-size">Max Size per File (max-size)</label>
+          <input
+            id="log-max-size"
+            type="text"
+            class="input font-mono"
+            placeholder="misal: 10m atau 50m"
+            bind:value={daemonConfig.log_max_size}
+          />
         </div>
 
-        <div class="modal__body">
-          <div class="field">
-            <label class="field__label" for="log-max-size">Max Size per File (max-size)</label>
-            <input
-              id="log-max-size"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: 10m atau 50m"
-              bind:value={daemonConfig.log_max_size}
-            />
-          </div>
-
-          <div class="field">
-            <label class="field__label" for="log-max-file">Jumlah File Rotasi (max-file)</label>
-            <input
-              id="log-max-file"
-              type="text"
-              class="input font-mono"
-              placeholder="misal: 3 atau 5"
-              bind:value={daemonConfig.log_max_file}
-            />
-          </div>
-        </div>
-
-        <div class="modal__foot">
-          <button class="btn btn--secondary" onclick={() => (showLogRotationModal = false)}>
-            Batal
-          </button>
-          <button class="btn btn--primary" disabled={savingConfig} onclick={saveDaemonConfig}>
-            <i class="ri-check-line" aria-hidden="true"></i>
-            <span>Simpan Rotasi Log</span>
-          </button>
+        <div class="field">
+          <label class="field__label" for="log-max-file">Jumlah File Rotasi (max-file)</label>
+          <input
+            id="log-max-file"
+            type="text"
+            class="input font-mono"
+            placeholder="misal: 3 atau 5"
+            bind:value={daemonConfig.log_max_file}
+          />
         </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+
+    {#snippet footer()}
+      <button class="btn btn--secondary" onclick={() => (showLogRotationModal = false)}>
+        Batal
+      </button>
+      <button class="btn btn--primary" disabled={savingConfig} onclick={saveDaemonConfig}>
+        <i class="ri-check-line" aria-hidden="true"></i>
+        <span>Simpan Rotasi Log</span>
+      </button>
+    {/snippet}
+  </Modal>
 </div>
-
-<style>
-  /* ════════════════════════════════════════════════════════════════════════════
-     GAYA KHUSUS MODUL DOCKER MANAGEMENT SUITE — 100% DESIGN TOKENS COMPLIANT
-     ════════════════════════════════════════════════════════════════════════════ */
-  .docker-page {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-height: 100%;
-  }
-
-  /* Peringatan Melayang Persis aaPanel */
-  .floating-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    background: var(--tint-warning);
-    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-    border-radius: var(--radius-md);
-    padding: var(--space-3) var(--space-4);
-    box-shadow: var(--shadow-sm);
-  }
-  .banner-content {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    color: var(--warning-strong);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
-  }
-  .banner-icon {
-    font-size: 1.25rem;
-  }
-  .banner-btn {
-    flex-shrink: 0;
-  }
-
-  /* Header Halaman */
-  .page-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: var(--space-4);
-    flex-wrap: wrap;
-  }
-  .title-cluster {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .page-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin: 0;
-  }
-  .title-icon {
-    color: var(--accent);
-  }
-  .badges-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .status-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: var(--radius-full);
-    margin-right: var(--space-1);
-  }
-  .status-dot--active {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent);
-  }
-  .status-dot--danger {
-    background: var(--danger);
-  }
-  .status-dot--warning {
-    background: var(--warning);
-  }
-  .page-subtitle {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin: var(--space-1) 0 0 0;
-  }
-
-  /* 10 Tab Navigasi Bar */
-  .nav-tabs-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--space-1);
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .nav-tabs-bar::-webkit-scrollbar {
-    display: none;
-  }
-  .tab-item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    white-space: nowrap;
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .tab-item:hover {
-    color: var(--text);
-    background: var(--bg-hover);
-  }
-  .tab-item--active {
-    background: var(--bg-active);
-    color: var(--accent-strong);
-    font-weight: var(--weight-semibold);
-    box-shadow: inset 0 0 0 1px var(--border-strong);
-  }
-  .tab-count {
-    display: inline-block;
-    padding: 1px var(--space-1);
-    border-radius: var(--radius-full);
-    background: var(--bg-inset);
-    color: var(--text-secondary);
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-bold);
-  }
-
-  /* Toolbar */
-  .toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
-    flex-wrap: wrap;
-  }
-  .toolbar-left,
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .filter-pills {
-    display: inline-flex;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 2px;
-  }
-  .pill {
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-sm);
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
-  }
-  .pill:hover {
-    color: var(--text);
-  }
-  .pill--active {
-    background: var(--bg-active);
-    color: var(--text);
-    font-weight: var(--weight-semibold);
-  }
-  .search-box {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .search-icon {
-    position: absolute;
-    left: var(--space-2);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    pointer-events: none;
-  }
-  .search-box .input {
-    padding-left: var(--space-6);
-    width: 220px;
-  }
-
-  /* Overview Tab Layout */
-  .overview-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
-  }
-  .stat-card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-  }
-  .stat-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-md);
-    font-size: 1.4rem;
-  }
-  .stat-icon--active {
-    background: var(--tint-accent);
-    color: var(--accent-strong);
-  }
-  .stat-icon--danger {
-    background: var(--tint-danger);
-    color: var(--danger-strong);
-  }
-  .stat-icon--info {
-    background: var(--tint-info);
-    color: var(--info);
-  }
-  .stat-icon--violet {
-    background: var(--tint-violet);
-    color: var(--violet);
-  }
-  .stat-meta {
-    display: flex;
-    flex-direction: column;
-  }
-  .stat-val {
-    font-size: var(--text-2xl);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    line-height: var(--leading-tight);
-  }
-  .stat-lbl {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-  .shortcuts-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-
-  /* Hardware Specs Grid (aaPanel bottom table) */
-  .specs-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    border-top: 1px solid var(--border-subtle);
-  }
-  .spec-cell {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-    border-right: 1px solid var(--border-subtle);
-  }
-  .spec-k {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-  .spec-v {
-    font-size: var(--text-xs);
-    color: var(--text);
-    font-weight: var(--weight-medium);
-  }
-
-  /* Port Chips */
-  .ports-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-  .port-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 1px var(--space-2);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xs);
-    font-size: var(--text-2xs);
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-  }
-  .port-chip--link {
-    color: var(--info);
-    text-decoration: none;
-  }
-  .port-chip--link:hover {
-    border-color: var(--info);
-  }
-  .action-btns-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-  }
-
-  /* One-Click Template Cards */
-  .templates-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--space-3);
-  }
-  .template-card {
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-4);
-    gap: var(--space-3);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    transition: transform var(--duration-fast) ease, border-color var(--duration-fast) ease;
-  }
-  .template-card:hover {
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-  }
-  .template-card-top {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-  .template-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    border-radius: var(--radius-md);
-    background: var(--bg-inset);
-    border: 1px solid var(--border);
-    font-size: 1.5rem;
-    color: var(--accent);
-  }
-  .template-name {
-    font-size: var(--text-md);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin: 0;
-  }
-  .template-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin: 0;
-    line-height: var(--leading-normal);
-    flex: 1;
-  }
-  .template-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-2);
-  }
-
-  /* Cloud Search Form */
-  .search-form-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  /* Settings Suite (Persis Screenshot) */
-  .settings-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 0;
-  }
-  .setting-row {
-    display: flex;
-    align-items: flex-start;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .setting-label {
-    width: 220px;
-    flex-shrink: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    padding-top: var(--space-1);
-  }
-  .setting-ctrl {
-    flex: 1;
-  }
-  .status-indicator-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .mirror-box {
-    display: flex;
-    flex-direction: column;
-    max-width: 500px;
-  }
-  .setting-hint {
-    font-size: var(--text-2xs);
-    color: var(--text-muted);
-    margin-top: var(--space-1);
-  }
-  .border-top-danger {
-    background: color-mix(in srgb, var(--danger) 5%, transparent);
-  }
-
-  /* Modals */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    backdrop-filter: blur(4px);
-    z-index: var(--z-modal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-  }
-  .modal {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    width: 100%;
-    max-width: 560px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .modal--lg {
-    max-width: 760px;
-  }
-  .modal__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .modal__title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-md);
-    font-weight: var(--weight-bold);
-    color: var(--text);
-    margin: 0;
-  }
-  .modal__body {
-    padding: var(--space-4);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .modal__foot {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--border);
-    background: var(--bg-raised);
-  }
-  .form-row {
-    display: flex;
-    gap: var(--space-3);
-  }
-  .form-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    background: var(--bg-inset);
-  }
-  .form-section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .mapping-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .terminal-log-viewer {
-    background: var(--bg-inset);
-    color: var(--text-secondary);
-    padding: var(--space-4);
-    margin: 0;
-    max-height: 480px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    border-bottom: 1px solid var(--border);
-  }
-  .json-editor-textarea {
-    width: 100%;
-    background: var(--bg-inset);
-    color: var(--text);
-    border: none;
-    padding: var(--space-4);
-    resize: vertical;
-    outline: none;
-  }
-
-  /* Utility classes */
-  .spin {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  .font-mono {
-    font-family: var(--font-mono);
-  }
-  .text-xs {
-    font-size: var(--text-xs);
-  }
-  .text-2xs {
-    font-size: var(--text-2xs);
-  }
-  .text-muted {
-    color: var(--text-muted);
-  }
-  .text-secondary {
-    color: var(--text-secondary);
-  }
-  .text-accent {
-    color: var(--accent);
-  }
-  .text-warning {
-    color: var(--warning);
-  }
-  .text-danger {
-    color: var(--danger);
-  }
-  .text-info {
-    color: var(--info);
-  }
-  .flex-row {
-    display: flex;
-  }
-  .items-center {
-    align-items: center;
-  }
-  .gap-2 {
-    gap: var(--space-2);
-  }
-  .gap-4 {
-    gap: var(--space-4);
-  }
-  .flex-1 {
-    flex: 1;
-  }
-  .w-full {
-    width: 100%;
-  }
-  .w-24 {
-    width: 6rem;
-  }
-  .w-28 {
-    width: 7rem;
-  }
-  .p-0 {
-    padding: 0 !important;
-  }
-  .mt-2 {
-    margin-top: var(--space-2);
-  }
-  .mt-3 {
-    margin-top: var(--space-3);
-  }
-  .mt-4 {
-    margin-top: var(--space-4);
-  }
-  .py-6 {
-    padding-top: var(--space-6);
-    padding-bottom: var(--space-6);
-  }
-  .py-8 {
-    padding-top: var(--space-8);
-    padding-bottom: var(--space-8);
-  }
-  .py-10 {
-    padding-top: 2.5rem;
-    padding-bottom: 2.5rem;
-  }
-  .text-center {
-    text-align: center;
-  }
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  .empty-icon {
-    font-size: 2.5rem;
-    color: var(--text-disabled);
-  }
-  .empty-title {
-    font-size: var(--text-md);
-    font-weight: var(--weight-semibold);
-    color: var(--text);
-    margin: var(--space-2) 0 var(--space-1) 0;
-  }
-  .empty-desc {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin: 0;
-  }
-</style>
