@@ -138,68 +138,6 @@
       color: var(--text);
     }
 
-    /* Panel Studio Serangan */
-    .attack-studio-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    .studio-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin-bottom: 0;
-    }
-    .radar-live-indicator {
-      position: relative;
-      width: 36px;
-      height: 36px;
-      background: var(--tint-accent);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.25rem;
-    }
-    .live-dot {
-      position: absolute;
-      top: 2px;
-      right: 2px;
-      width: 8px;
-      height: 8px;
-      background: var(--accent);
-      border-radius: 50%;
-      box-shadow: 0 0 6px var(--accent);
-    }
-    .studio-stats-pills {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-    .stat-pill {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      padding: 0.35rem 0.75rem;
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.75rem;
-    }
-    .stat-pill-label {
-      color: var(--text-subtle);
-    }
-    .stat-pill-val {
-      font-weight: 700;
-      font-family: var(--font-mono);
-    }
-    .stat-pill-val.danger { color: var(--danger); }
-    .stat-pill-val.warning { color: var(--warning); }
-    .stat-pill-val.info { color: var(--info); }
-
     /* Toolbar Studio */
     .studio-toolbar {
       display: flex;
@@ -250,118 +188,8 @@
       cursor: pointer;
       width: auto;
     }
-    .toolbar-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
 
-    /* Bar Chip Negara */
-    .country-chips-bar {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-      flex-wrap: wrap;
-      padding: 0.25rem 0;
-    }
-    .chips-label {
-      font-size: 0.75rem;
-      color: var(--text-subtle);
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .country-chip {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 0.25rem 0.6rem;
-      border-radius: 9999px;
-      font-size: 0.72rem;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      transition: all 0.15s ease;
-    }
-    .country-chip:hover {
-      background: var(--bg-hover);
-      color: var(--text);
-      border-color: var(--border-strong);
-    }
-    .country-chip.active {
-      background: var(--tint-accent);
-      color: var(--accent-strong);
-      border-color: var(--accent);
-      font-weight: 600;
-    }
-    .chip-badge {
-      background: var(--bg-surface);
-      color: var(--danger);
-      font-weight: 700;
-      font-size: 0.65rem;
-      padding: 0.05rem 0.35rem;
-      border-radius: 9999px;
-    }
-
-    /* Viewport Peta & Drawer Telemetri */
-    .map-studio-viewport {
-      position: relative;
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .attack-map-canvas {
-      width: 100%;
-      height: 520px;
-      background: var(--bg-inset);
-    }
-
-    /* Drawer Telemetri Melayang */
-    .telemetry-inspector-drawer {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
-      bottom: 1rem;
-      width: 380px;
-      max-width: calc(100% - 2rem);
-      background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-lg);
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      animation: pg-waf-slideInRight 0.25s ease-out;
-    }
-    .drawer-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-raised);
-    }
-    .drawer-title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-    .drawer-ip {
-      margin: 0;
-      font-size: 0.95rem;
-      color: var(--text);
-    }
-    .drawer-body {
-      padding: 1rem 1.25rem;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
-      flex: 1;
-    }
+    /* Kartu Telemetri Bersama (Drawer & Forensics Modal) */
     .drawer-card {
       background: var(--bg-inset);
       border: 1px solid var(--border);
@@ -412,14 +240,6 @@
     }
     .payload-box {
       color: var(--warning-strong);
-    }
-    .drawer-actions {
-      padding: 0.85rem 1.25rem;
-      border-top: 1px solid var(--border);
-      background: var(--bg-raised);
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
     }
 
     /* Beacon Marker & Busur Laser Leaflet */
@@ -594,34 +414,10 @@
       overflow-x: auto;
       width: 100%;
     }
-    .threat-row {
-      transition: background 0.15s ease;
-    }
-    .threat-row:hover {
-      background: var(--bg-hover);
-    }
-    .threat-row.row-selected {
-      background: var(--bg-active);
-    }
     .geo-cell {
       display: flex;
       align-items: center;
       gap: 0.35rem;
-    }
-    .geo-city {
-      color: var(--text);
-    }
-    .device-cell {
-      display: flex;
-      flex-direction: column;
-    }
-    .method-tag {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-size: 0.68rem;
-      font-weight: 700;
     }
     .btn-icon-xs {
       background: transparent;
@@ -634,12 +430,6 @@
     }
     .btn-icon-xs:hover {
       background: var(--bg-hover);
-    }
-    .table-action-cell {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 0.25rem;
     }
 
     .flag-code {
@@ -675,24 +465,6 @@
       padding: 0.15rem 0.45rem;
       border-radius: 4px;
       font-size: 0.72rem;
-    }
-    .badge-action {
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      font-weight: 700;
-    }
-    .badge-action.block {
-      background: var(--tint-danger);
-      color: var(--danger);
-    }
-    .badge-action.intercept {
-      background: var(--tint-info);
-      color: var(--accent);
-    }
-    .badge-action.challenge {
-      background: var(--tint-warning);
-      color: var(--warning-strong);
     }
 
     .btn-link {
@@ -1102,26 +874,6 @@
       font-size: 0.78rem;
       color: var(--text-muted);
       font-weight: 500;
-    }
-
-    .btn-close {
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--text-muted);
-      font-size: 1.35rem;
-      line-height: 1;
-      width: 30px;
-      height: 30px;
-      border-radius: 6px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .btn-close:hover {
-      background: var(--bg-hover);
-      color: var(--text);
-      border-color: var(--border);
     }
 
     /* Komponen Cloudflare Hub & Diagnostik Izin Token (Collapsible) */
