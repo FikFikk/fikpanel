@@ -111,23 +111,6 @@
       word-break: break-all;
     }
 
-    /* Cloud Storage */
-    .cloud-info-body {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      text-align: center;
-    }
-    .cloud-huge-icon {
-      font-size: 3rem;
-      color: var(--info);
-      margin: 0.5rem 0;
-    }
-    .cloud-info-body p {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
     /* Tabel Properties */
     .prop-table {
       display: flex;

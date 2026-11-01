@@ -16,6 +16,7 @@
   import SymlinkModal from './files/SymlinkModal.svelte';
   import SearchContentModal from './files/SearchContentModal.svelte';
   import FavoritesModal from './files/FavoritesModal.svelte';
+  import CloudStorageModal from './files/CloudStorageModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1853,56 +1854,15 @@
   />
 
   <!-- ═════════ MODAL: Cloud Storage Connector ═════════ -->
-  <Modal
+  <CloudStorageModal
     open={showCloudStorageModal}
-    title={`${selectedCloud} Connector`}
-    size="md"
-    onclose={() => (showCloudStorageModal = false)}
-  >
-    <div class="cloud-info-body">
-      <i class="ri-cloud-line cloud-huge-icon"></i>
-      <p>
-        Konektor penyimpanan awan untuk <strong>{selectedCloud}</strong> telah terintegrasi.
-      </p>
-      <div class="field">
-        <label class="field__label" for="f-cloud-ep"
-          >Storage Bucket / Endpoint</label
-        >
-        <input
-          id="f-cloud-ep"
-          class="input"
-          type="text"
-          placeholder="misal: my-backup-bucket atau ftp.domain.com"
-        />
-      </div>
-      <div class="field">
-        <label class="field__label" for="f-cloud-key"
-          >Access Key / Credential</label
-        >
-        <input
-          id="f-cloud-key"
-          class="input"
-          type="password"
-          placeholder="API Key / Password"
-        />
-      </div>
-    </div>
-    {#snippet footer()}
-      <button
-        class="btn btn--ghost"
-        onclick={() => (showCloudStorageModal = false)}>Batal</button
-      >
-      <button
-        class="btn btn--primary"
-        onclick={() => {
-          showCloudStorageModal = false;
-          onNotify(`Konfigurasi ${selectedCloud} tersimpan`);
-        }}
-      >
-        Hubungkan Sekarang
-      </button>
-    {/snippet}
-  </Modal>
+    {selectedCloud}
+    onClose={() => (showCloudStorageModal = false)}
+    onConnect={() => {
+      showCloudStorageModal = false;
+      onNotify(`Konfigurasi ${selectedCloud} tersimpan`);
+    }}
+  />
 
   <!-- ═════════ MODAL: Properties (Detail Metadata Berkas) ═════════ -->
   <Modal

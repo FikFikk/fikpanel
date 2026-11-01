@@ -1,0 +1,20 @@
+@layer pages {
+  .pg-files-cloud-storage-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    text-align: center;
+
+    .cloud-huge-icon {
+      font-size: 3rem;
+      color: var(--info);
+      margin: 0.5rem 0;
+    }
+
+    p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  }
+}
+
