@@ -15,6 +15,7 @@
   import RemoteDownloadModal from './files/RemoteDownloadModal.svelte';
   import SymlinkModal from './files/SymlinkModal.svelte';
   import SearchContentModal from './files/SearchContentModal.svelte';
+  import FavoritesModal from './files/FavoritesModal.svelte';
   import type { FileItem, FileListData } from '../lib/types';
   import '../styles/pages/files/shared.css';
 
@@ -1843,48 +1844,13 @@
   />
 
   <!-- ═════════ MODAL: Manajemen Favorit ═════════ -->
-  <Modal
+  <FavoritesModal
     open={showFavManageModal}
-    title="Favorite Management"
-    size="md"
-    onclose={() => (showFavManageModal = false)}
-  >
-    <div class="fav-manager-body">
-      <div class="fav-add-action">
-        <button
-          class="btn btn--secondary w-full"
-          onclick={addCurrentToFavorites}
-        >
-          + Tambahkan Folder Saat Ini ke Favorit
-        </button>
-      </div>
-      <div class="fav-list">
-        {#each customFavorites as fav, idx}
-          <div class="fav-row">
-            <div>
-              <div class="fav-row-name font-bold">{fav.name}</div>
-              <div class="fav-row-path mono text-muted">
-                {fav.path || "Root"}
-              </div>
-            </div>
-            <button
-              class="btn-icon link-danger"
-              onclick={() => removeFavorite(idx)}
-              title="Hapus"
-            >
-              <i class="ri-delete-bin-line"></i>
-            </button>
-          </div>
-        {/each}
-      </div>
-    </div>
-    {#snippet footer()}
-      <button
-        class="btn btn--primary"
-        onclick={() => (showFavManageModal = false)}>Selesai</button
-      >
-    {/snippet}
-  </Modal>
+    {customFavorites}
+    onClose={() => (showFavManageModal = false)}
+    onAddCurrent={addCurrentToFavorites}
+    onRemoveFavorite={removeFavorite}
+  />
 
   <!-- ═════════ MODAL: Cloud Storage Connector ═════════ -->
   <Modal

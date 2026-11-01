@@ -1,0 +1,32 @@
+@layer pages {
+  .pg-files-favorites-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    .fav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .fav-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-surface);
+      padding: 0.4rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .fav-row-name {
+      font-size: 0.78rem;
+      color: var(--text);
+    }
+    .fav-row-path {
+      font-size: 0.7rem;
+    }
+  }
+}
+
