@@ -1,0 +1,11 @@
+@layer pages {
+  .pg-waf-cf-edge-modal {
+    .pt-2 {
+      padding-top: 0.5rem;
+    }
+    .w-full {
+      width: 100%;
+    }
+  }
+}
+
