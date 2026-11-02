@@ -154,18 +154,18 @@ git add .
 git commit -m "feat: deskripsi pembaruan atau fitur baru"
 git push origin main
 
-# 2. Buat tag versi baru (gunakan format vX.Y.Z, misal: v0.3.0)
-git tag v0.3.0
+# 2. Buat tag versi baru (gunakan format vX.Y.Z, misal: v0.3.1)
+git tag v0.3.1
 
 # 3. Push tag ke GitHub (otomatis memicu build & release di GitHub Actions)
-git push origin v0.3.0
+git push origin v0.3.1
 ```
 
 #### Opsi B: Menggunakan Web GitHub (Tombol "Run workflow")
 1. Buka repositori Anda di GitHub > tab **Actions**.
 2. Pilih workflow **Release FikPanel Binaries** di bilah kiri.
 3. Klik tombol biru **Run workflow** di sebelah kanan.
-4. Masukkan nama tag rilis (misal `v0.3.0`), lalu klik **Run workflow**.
+4. Masukkan nama tag rilis (misal `v0.3.1`), lalu klik **Run workflow**.
 
 > **Apa yang terjadi secara otomatis?**  
 > Runner GitHub Actions akan secara otomatis mengompilasi frontend Svelte 5, mengompilasi biner Go multi-arsitektur (`Linux amd64`, `Linux arm64`, dan `Windows amd64`), lalu mengunggahnya ke halaman [GitHub Releases](https://github.com/FikFikk/fikpanel/releases). Server yang menjalankan `curl ... install.sh` atau `fikpanel update` akan langsung mendapatkan versi terbaru tersebut.
