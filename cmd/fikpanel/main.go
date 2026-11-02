@@ -24,7 +24,7 @@ import (
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.3.3"
+	version = "0.3.4"
 )
 
 func main() {
@@ -318,6 +318,11 @@ func runDiscover(args []string) {
 			sslMode := "none"
 			if item.SSL {
 				sslMode = "custom"
+				lowerIssuer := strings.ToLower(item.SSLIssuer)
+				lowerCert := strings.ToLower(item.SSLCertPath)
+				if strings.Contains(lowerIssuer, "letsencrypt") || strings.Contains(lowerIssuer, "let's encrypt") || strings.Contains(lowerCert, "letsencrypt") {
+					sslMode = "letsencrypt"
+				}
 			}
 
 			aliasJSON, _ := json.Marshal(aliases)
@@ -334,8 +339,33 @@ func runDiscover(args []string) {
 				Description: "Diadopsi secara otomatis oleh fikpanel discover",
 			}
 
-			if _, err := st.CreateSite(ctx, &site); err == nil {
+			if created, err := st.CreateSite(ctx, &site); err == nil && created != nil {
 				adoptedCount++
+				if item.SSL {
+					issuer := item.SSLIssuer
+					if issuer == "" {
+						if sslMode == "letsencrypt" {
+							issuer = "Let's Encrypt"
+						} else {
+							issuer = "Custom SSL"
+						}
+					}
+					notAfter := item.SSLNotAfter
+					if notAfter <= 0 {
+						notAfter = time.Now().Add(90 * 24 * time.Hour).Unix()
+					}
+					certDomainsJSON, _ := json.Marshal(append([]string{primary}, aliases...))
+					certRecord := store.Certificate{
+						SiteID:    created.ID,
+						Status:    "issued",
+						Issuer:    issuer,
+						NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+						NotAfter:  notAfter,
+						Domains:   string(certDomainsJSON),
+						RenewedAt: time.Now().Unix(),
+					}
+					_ = st.UpsertCertificate(ctx, &certRecord)
+				}
 				fmt.Printf("    ✓ Situs '%s' berhasil didaftarkan (Root: %s)\n", primary, item.RootDir)
 			}
 		}
@@ -455,7 +485,7 @@ func runVersions(args []string) {
 	fmt.Println()
 }
 
-// compareVersions membandingkan dua format versi semver (misal: "0.3.3" vs "0.3.2")
+// compareVersions membandingkan dua format versi semver (misal: "0.3.4" vs "0.3.3")
 // Mengembalikan 1 jika v1 > v2, -1 jika v1 < v2, dan 0 jika sama
 func compareVersions(v1, v2 string) int {
 	v1 = strings.TrimPrefix(strings.TrimSpace(v1), "v")

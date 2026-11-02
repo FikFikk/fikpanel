@@ -111,6 +111,10 @@
           has_php: vh.config_file.includes('php') || vh.port === 80 || vh.port === 443,
           proxy_pass: vh.proxy_pass,
           has_ssl: vh.ssl,
+          ssl_cert_path: vh.ssl_cert_path,
+          ssl_key_path: vh.ssl_key_path,
+          ssl_issuer: vh.ssl_issuer,
+          ssl_not_after: vh.ssl_not_after,
         };
       });
 

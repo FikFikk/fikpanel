@@ -94,6 +94,7 @@ type DockerRegistry struct {
 // DockerStatus merepresentasikan status menyeluruh daemon Docker
 type DockerStatus struct {
 	Installed           bool    `json:"installed"`
+	ComposeInstalled    bool    `json:"compose_installed"`
 	Running             bool    `json:"running"`
 	DockerVersion       string  `json:"docker_version"`
 	ComposeVersion      string  `json:"compose_version"`

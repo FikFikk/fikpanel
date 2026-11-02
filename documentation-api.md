@@ -77,7 +77,7 @@
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.3.3", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}, "server_time": {"unix": 1793160893, "timezone_name": "UTC", "offset_sec": 0}}` |
+| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.3.4", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}, "server_time": {"unix": 1793160893, "timezone_name": "UTC", "offset_sec": 0}}` |
 | Notes | Menyediakan ringkasan status sistem, ringkasan jumlah resource, metrik terkini, nomor versi rilis FikPanel yang aktif, serta objek `server_time` (waktu epoch unix, nama timezone, dan offset detik) untuk sinkronisasi live clock global di header Topbar. |
 
 | Field | Detail |
@@ -1477,9 +1477,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`) |
+| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`, `ssl_cert_path`, `ssl_key_path`, `ssl_issuer`, `ssl_not_after`) |
 | Response | HTTP 200 `{"ok": true, "adopted_sites": 2, "message": "..."}` |
-| Notes | Mengadopsi vhost host yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli tanpa merombak struktur folder server. |
+| Notes | Mengadopsi vhost host yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli dan langsung mendaftarkan entri sertifikat SSL (`certificates`) berstatus `issued` jika vhost memiliki SSL aktif. |
 
 ---
 

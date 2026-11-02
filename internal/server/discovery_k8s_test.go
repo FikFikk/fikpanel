@@ -81,7 +81,7 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 		t.Errorf("POST /api/discovery/scan mengharapkan status 200, didapat %d: %s", wScan.Code, wScan.Body.String())
 	}
 
-	// 4. Uji POST /api/discovery/adopt
+	// 4. Uji POST /api/discovery/adopt (termasuk verifikasi adopsi situs dengan SSL)
 	adoptBody, _ := json.Marshal(map[string]interface{}{
 		"sites": []map[string]interface{}{
 			{
@@ -90,6 +90,16 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 				"document_root":  "/home/fikfikk/projects/web/kostash",
 				"has_php":        true,
 				"has_ssl":        false,
+			},
+			{
+				"primary_domain": "ssl-site.test",
+				"aliases":       []string{"www.ssl-site.test"},
+				"document_root":  "/var/www/ssl-site",
+				"has_php":        true,
+				"has_ssl":        true,
+				"ssl_issuer":     "Let's Encrypt",
+				"ssl_cert_path":  "/etc/letsencrypt/live/ssl-site.test/fullchain.pem",
+				"ssl_not_after":  time.Now().Add(60 * 24 * time.Hour).Unix(),
 			},
 		},
 	})
@@ -118,8 +128,24 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 			break
 		}
 	}
+	foundSSL := false
+	for _, st := range sitesList {
+		if st.Domain == "ssl-site.test" {
+			foundSSL = true
+			if st.SSLStatus != "issued" {
+				t.Errorf("SSLStatus situs salah: got %s, want issued", st.SSLStatus)
+			}
+			if st.SSLMode != "letsencrypt" {
+				t.Errorf("SSLMode situs salah: got %s, want letsencrypt", st.SSLMode)
+			}
+			break
+		}
+	}
 	if !found {
 		t.Errorf("Situs yang diadopsi tidak ditemukan di daftar situs SQLite")
+	}
+	if !foundSSL {
+		t.Errorf("Situs ber-SSL yang diadopsi tidak ditemukan di daftar situs SQLite")
 	}
 
 	// 5. Uji GET /api/k8s/status (Fallback jika k8s belum ada)

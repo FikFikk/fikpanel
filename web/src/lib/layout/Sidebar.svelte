@@ -10,7 +10,7 @@
     onOpenPalette?: () => void;
   }
 
-  let { current, open, version = '0.3.3', onNavigate, onLogout, onOpenPalette }: Props = $props();
+  let { current, open, version = '0.3.4', onNavigate, onLogout, onOpenPalette }: Props = $props();
 
   const COLLAPSED_KEY = 'fp:nav-collapsed';
 

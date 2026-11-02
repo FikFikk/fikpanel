@@ -20,6 +20,10 @@ type AdoptSiteItem struct {
 	HasPHP        bool     `json:"has_php"`
 	ProxyPass     string   `json:"proxy_pass"`
 	HasSSL        bool     `json:"has_ssl"`
+	SSLCertPath   string   `json:"ssl_cert_path,omitempty"`
+	SSLKeyPath    string   `json:"ssl_key_path,omitempty"`
+	SSLIssuer     string   `json:"ssl_issuer,omitempty"`
+	SSLNotAfter   int64    `json:"ssl_not_after,omitempty"`
 }
 
 // AdoptPayload merepresentasikan daftar resource yang dipilih pengguna untuk didaftarkan ke FikPanel
@@ -198,6 +202,11 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 		sslMode := "none"
 		if item.HasSSL {
 			sslMode = "custom"
+			lowerIssuer := strings.ToLower(item.SSLIssuer)
+			lowerCert := strings.ToLower(item.SSLCertPath)
+			if strings.Contains(lowerIssuer, "letsencrypt") || strings.Contains(lowerIssuer, "let's encrypt") || strings.Contains(lowerCert, "letsencrypt") {
+				sslMode = "letsencrypt"
+			}
 		}
 
 		aliasJSON, _ := json.Marshal(item.Aliases)
@@ -218,6 +227,33 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 		if err == nil && created != nil {
 			adoptedSitesCount++
 			adoptedNames = append(adoptedNames, domain)
+
+			// Jika vhost memiliki SSL aktif, simpan metadata sertifikat ke database
+			if item.HasSSL {
+				issuer := item.SSLIssuer
+				if issuer == "" {
+					if sslMode == "letsencrypt" {
+						issuer = "Let's Encrypt"
+					} else {
+						issuer = "Custom SSL"
+					}
+				}
+				notAfter := item.SSLNotAfter
+				if notAfter <= 0 {
+					notAfter = time.Now().Add(90 * 24 * time.Hour).Unix()
+				}
+				certDomainsJSON, _ := json.Marshal(append([]string{domain}, item.Aliases...))
+				certRecord := store.Certificate{
+					SiteID:    created.ID,
+					Status:    "issued",
+					Issuer:    issuer,
+					NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+					NotAfter:  notAfter,
+					Domains:   string(certDomainsJSON),
+					RenewedAt: time.Now().Unix(),
+				}
+				_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+			}
 		}
 	}
 

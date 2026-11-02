@@ -107,10 +107,17 @@ func (m *Manager) DetectStatus(ctx context.Context) DockerStatus {
 	composeOut, err := exec.CommandContext(ctx, "docker", "compose", "version", "--short").Output()
 	if err == nil && len(bytes.TrimSpace(composeOut)) > 0 {
 		st.ComposeVersion = string(bytes.TrimSpace(composeOut))
+		st.ComposeInstalled = true
 	} else {
 		// Fallback ke docker-compose standalone
-		cOut, _ := exec.CommandContext(ctx, "docker-compose", "--version").Output()
-		st.ComposeVersion = strings.TrimSpace(string(cOut))
+		cOut, errStand := exec.CommandContext(ctx, "docker-compose", "--version").Output()
+		if errStand == nil && len(bytes.TrimSpace(cOut)) > 0 {
+			st.ComposeVersion = strings.TrimSpace(string(cOut))
+			st.ComposeInstalled = true
+		}
+	}
+	if st.ComposeVersion != "" {
+		st.ComposeInstalled = true
 	}
 
 	// 4. Jika daemon tidak berjalan, kembalikan data dasar

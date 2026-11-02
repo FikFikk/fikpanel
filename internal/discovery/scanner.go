@@ -3,7 +3,9 @@ package discovery
 import (
 	"bufio"
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,13 +18,18 @@ import (
 )
 
 type NginxVhostItem struct {
-	ConfigFile string `json:"config_file"`
-	ServerName string `json:"server_name"`
-	RootDir    string `json:"root_dir"`
-	Port       int    `json:"port"`
-	SSL        bool   `json:"ssl"`
-	ProxyPass  string `json:"proxy_pass"`
-	IsAdopted  bool   `json:"is_adopted"`
+	ConfigFile  string   `json:"config_file"`
+	ServerName  string   `json:"server_name"`
+	Aliases     []string `json:"aliases,omitempty"`
+	RootDir     string   `json:"root_dir"`
+	Port        int      `json:"port"`
+	SSL         bool     `json:"ssl"`
+	ProxyPass   string   `json:"proxy_pass"`
+	IsAdopted   bool     `json:"is_adopted"`
+	SSLCertPath string   `json:"ssl_cert_path,omitempty"`
+	SSLKeyPath  string   `json:"ssl_key_path,omitempty"`
+	SSLIssuer   string   `json:"ssl_issuer,omitempty"`
+	SSLNotAfter int64    `json:"ssl_not_after,omitempty"`
 }
 
 type DockerDiscoveredItem struct {
@@ -87,6 +94,204 @@ func NewScanner() *Scanner {
 	return &Scanner{}
 }
 
+// inspectCertificate menganalisis berkas sertifikat TLS dan mengekstrak issuer, notAfter, dan domain SAN
+func inspectCertificate(certPath string) (issuer string, notAfter int64, domains []string) {
+	cleanPath := filepath.ToSlash(certPath)
+	lowerPath := strings.ToLower(cleanPath)
+
+	// Klasifikasi issuer awal berdasarkan path direktori standar
+	if strings.Contains(lowerPath, "letsencrypt") {
+		issuer = "Let's Encrypt"
+	} else if strings.Contains(lowerPath, "zerossl") {
+		issuer = "ZeroSSL"
+	} else if strings.Contains(lowerPath, "cloudflare") {
+		issuer = "Cloudflare Origin CA"
+	} else {
+		issuer = "Custom SSL"
+	}
+
+	data, err := os.ReadFile(certPath)
+	if err != nil {
+		return issuer, 0, nil
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return issuer, 0, nil
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return issuer, 0, nil
+	}
+
+	notAfter = cert.NotAfter.Unix()
+	domains = cert.DNSNames
+	if len(domains) == 0 && cert.Subject.CommonName != "" {
+		domains = []string{cert.Subject.CommonName}
+	}
+
+	// Gunakan CommonName atau Organization dari sertifikat X.509 bila tersedia
+	if cert.Issuer.CommonName != "" {
+		issuer = cert.Issuer.CommonName
+	} else if len(cert.Issuer.Organization) > 0 {
+		issuer = cert.Issuer.Organization[0]
+	}
+
+	return issuer, notAfter, domains
+}
+
+// extractServerBlocks mengekstrak blok "server { ... }" dengan parser berbasis stack kurung kurawal
+// Mendukung kedalaman nested location berapapun (misal location di dalam location pada kostash.conf)
+func extractServerBlocks(content string) []string {
+	var blocks []string
+	n := len(content)
+	i := 0
+
+	for i < n {
+		idx := strings.Index(content[i:], "server")
+		if idx == -1 {
+			break
+		}
+		pos := i + idx
+
+		// Pastikan "server" berdiri sendiri sebagai kata kunci
+		isWordStart := (pos == 0) || isWhitespaceOrDelimiter(content[pos-1])
+		posAfter := pos + len("server")
+		isWordEnd := (posAfter < n) && isWhitespaceOrOpenBrace(content[posAfter])
+
+		if !isWordStart || !isWordEnd {
+			i = pos + len("server")
+			continue
+		}
+
+		// Telusuri hingga kurung kurawal buka '{'
+		braceStart := -1
+		j := posAfter
+		for j < n {
+			c := content[j]
+			if c == '{' {
+				braceStart = j
+				break
+			}
+			// Batalkan jika ada ';' atau karakter non-spasi (contoh "server 127.0.0.1:8000;" pada upstream)
+			if c == ';' || (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+				break
+			}
+			j++
+		}
+
+		if braceStart == -1 {
+			i = posAfter
+			continue
+		}
+
+		// Hitung nesting kurung kurawal dengan stack counter serta mengabaikan kurung dalam tanda kutip
+		depth := 1
+		k := braceStart + 1
+		var inQuote byte
+
+		for k < n && depth > 0 {
+			c := content[k]
+			if inQuote != 0 {
+				if c == inQuote && (k == 0 || content[k-1] != '\\') {
+					inQuote = 0
+				}
+			} else {
+				switch c {
+				case '"', '\'':
+					inQuote = c
+				case '{':
+					depth++
+				case '}':
+					depth--
+				}
+			}
+			k++
+		}
+
+		if depth == 0 {
+			blockContent := content[braceStart+1 : k-1]
+			blocks = append(blocks, blockContent)
+			i = k
+		} else {
+			// Kurung kurawal tidak seimbang (unbalanced braces)
+			break
+		}
+	}
+
+	return blocks
+}
+
+func isWhitespaceOrDelimiter(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == ';' || b == '}' || b == '{'
+}
+
+func isWhitespaceOrOpenBrace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '{'
+}
+
+func uniqueStrings(slice []string) []string {
+	keys := make(map[string]bool)
+	var list []string
+	for _, entry := range slice {
+		entry = strings.TrimSpace(entry)
+		if entry != "" && !keys[entry] {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
+
+// mergeVhostEntries menggabungkan blok HTTP (redirect port 80) dan HTTPS (port 443) untuk domain yang sama
+func mergeVhostEntries(items []NginxVhostItem) []NginxVhostItem {
+	byPrimary := make(map[string]int)
+	var merged []NginxVhostItem
+
+	for _, it := range items {
+		fields := strings.Fields(it.ServerName)
+		if len(fields) == 0 {
+			continue
+		}
+		primary := fields[0]
+
+		if idx, exists := byPrimary[primary]; exists {
+			existing := &merged[idx]
+			if it.RootDir != "" && existing.RootDir == "" {
+				existing.RootDir = it.RootDir
+			}
+			if it.ProxyPass != "" && existing.ProxyPass == "" {
+				existing.ProxyPass = it.ProxyPass
+			}
+			if it.SSL {
+				existing.SSL = true
+				existing.Port = it.Port
+				if it.SSLCertPath != "" {
+					existing.SSLCertPath = it.SSLCertPath
+				}
+				if it.SSLKeyPath != "" {
+					existing.SSLKeyPath = it.SSLKeyPath
+				}
+				if it.SSLIssuer != "" {
+					existing.SSLIssuer = it.SSLIssuer
+				}
+				if it.SSLNotAfter > 0 {
+					existing.SSLNotAfter = it.SSLNotAfter
+				}
+			}
+			allAliases := append(existing.Aliases, it.Aliases...)
+			existing.Aliases = uniqueStrings(allAliases)
+			existing.ServerName = strings.Join(append([]string{primary}, existing.Aliases...), " ")
+		} else {
+			byPrimary[primary] = len(merged)
+			merged = append(merged, it)
+		}
+	}
+
+	return merged
+}
+
 // parseConfigFile membaca konfigurasi vhost Nginx dan mengekstrak blok server
 func parseConfigFile(path string) []NginxVhostItem {
 	data, err := os.ReadFile(path)
@@ -110,64 +315,88 @@ func parseConfigFile(path string) []NginxVhostItem {
 	}
 	content := strings.Join(cleanLines, "\n")
 
-	// Regex pencocokan blok server
-	serverBlockRe := regexp.MustCompile(`(?s)server\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}`)
-	matches := serverBlockRe.FindAllStringSubmatch(content, -1)
+	// Ekstrak seluruh blok server menggunakan stack parser kurung kurawal
+	serverBlocks := extractServerBlocks(content)
 
 	var items []NginxVhostItem
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
-		}
-		block := m[1]
-
+	for _, block := range serverBlocks {
 		item := NginxVhostItem{
 			ConfigFile: path,
 			Port:       80,
 		}
 
-		// Cari listen port & ssl
-		listenRe := regexp.MustCompile(`listen\s+([0-9]+)(\s+ssl)?`)
-		if lMatch := listenRe.FindStringSubmatch(block); len(lMatch) > 1 {
-			if p, err := strconv.Atoi(lMatch[1]); err == nil {
-				item.Port = p
-			}
-			if len(lMatch) > 2 && strings.Contains(lMatch[2], "ssl") {
-				item.SSL = true
-			}
-		}
-		if strings.Contains(block, "ssl_certificate") {
-			item.SSL = true
-		}
-
-		// Cari server_name
-		nameRe := regexp.MustCompile(`server_name\s+([^;]+);`)
+		// 1. Cari server_name (seluruh domain dan alias)
+		nameRe := regexp.MustCompile(`(?m)^\s*server_name\s+([^;]+);`)
 		if nMatch := nameRe.FindStringSubmatch(block); len(nMatch) > 1 {
 			names := strings.Fields(nMatch[1])
-			if len(names) > 0 {
-				item.ServerName = names[0]
+			var validNames []string
+			for _, nm := range names {
+				nm = strings.Trim(strings.TrimSpace(nm), "\"'")
+				if nm != "" && nm != "_" && nm != "localhost" && nm != "example.com" {
+					validNames = append(validNames, nm)
+				}
 			}
-		}
-
-		// Cari root directory
-		rootRe := regexp.MustCompile(`root\s+([^;]+);`)
-		if rMatch := rootRe.FindStringSubmatch(block); len(rMatch) > 1 {
-			item.RootDir = strings.TrimSpace(rMatch[1])
-		}
-
-		// Cari proxy_pass
-		proxyRe := regexp.MustCompile(`proxy_pass\s+([^;]+);`)
-		if pMatch := proxyRe.FindStringSubmatch(block); len(pMatch) > 1 {
-			item.ProxyPass = strings.TrimSpace(pMatch[1])
+			if len(validNames) > 0 {
+				item.ServerName = strings.Join(validNames, " ")
+				if len(validNames) > 1 {
+					item.Aliases = validNames[1:]
+				}
+			}
 		}
 
 		// Hanya sertakan domain aktif riil (bukan placeholder, wildcard default, atau localhost)
-		if item.ServerName != "" && item.ServerName != "_" && item.ServerName != "localhost" && item.ServerName != "example.com" {
-			items = append(items, item)
+		if item.ServerName == "" {
+			continue
 		}
+
+		// 2. Cari listen port & ssl
+		listenRe := regexp.MustCompile(`(?m)^\s*listen\s+(?:\[[^\]]+\]:|[0-9.]+:)?([0-9]+)(?:\s+[^;]*)?;`)
+		listenMatches := listenRe.FindAllStringSubmatch(block, -1)
+		for _, lm := range listenMatches {
+			if len(lm) > 1 {
+				if p, err := strconv.Atoi(lm[1]); err == nil {
+					if item.Port == 0 || item.Port == 80 || p == 443 {
+						item.Port = p
+					}
+				}
+			}
+			if strings.Contains(lm[0], "ssl") {
+				item.SSL = true
+			}
+		}
+
+		// 3. Cari root directory
+		rootRe := regexp.MustCompile(`(?m)^\s*root\s+([^;]+);`)
+		if rMatch := rootRe.FindStringSubmatch(block); len(rMatch) > 1 {
+			item.RootDir = strings.Trim(strings.TrimSpace(rMatch[1]), "\"'")
+		}
+
+		// 4. Cari proxy_pass
+		proxyRe := regexp.MustCompile(`(?m)^\s*proxy_pass\s+([^;]+);`)
+		if pMatch := proxyRe.FindStringSubmatch(block); len(pMatch) > 1 {
+			item.ProxyPass = strings.Trim(strings.TrimSpace(pMatch[1]), "\"'")
+		}
+
+		// 5. Ekstraksi dan inspeksi berkas sertifikat SSL
+		certRe := regexp.MustCompile(`(?m)^\s*ssl_certificate\s+([^;]+);`)
+		if cMatch := certRe.FindStringSubmatch(block); len(cMatch) > 1 {
+			item.SSL = true
+			item.SSLCertPath = strings.Trim(strings.TrimSpace(cMatch[1]), "\"'")
+		}
+
+		keyRe := regexp.MustCompile(`(?m)^\s*ssl_certificate_key\s+([^;]+);`)
+		if kMatch := keyRe.FindStringSubmatch(block); len(kMatch) > 1 {
+			item.SSLKeyPath = strings.Trim(strings.TrimSpace(kMatch[1]), "\"'")
+		}
+
+		if item.SSLCertPath != "" {
+			item.SSLIssuer, item.SSLNotAfter, _ = inspectCertificate(item.SSLCertPath)
+		}
+
+		items = append(items, item)
 	}
 
-	return items
+	return mergeVhostEntries(items)
 }
 
 // ScanNginxVhosts memindai vhost Nginx yang sudah aktif di direktori Linux standar
@@ -179,7 +408,6 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 		"/etc/nginx/conf.d",
 	}
 
-	seen := make(map[string]bool)
 	for _, dir := range dirs {
 		select {
 		case <-ctx.Done():
@@ -198,17 +426,11 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 			}
 			filePath := filepath.Join(dir, f.Name())
 			vhosts := parseConfigFile(filePath)
-			for _, v := range vhosts {
-				key := v.ServerName + ":" + strconv.Itoa(v.Port)
-				if !seen[key] {
-					seen[key] = true
-					results = append(results, v)
-				}
-			}
+			results = append(results, vhosts...)
 		}
 	}
 
-	return results, nil
+	return mergeVhostEntries(results), nil
 }
 
 // scanComposeInPaths menelusuri direktori target untuk menemukan berkas docker-compose

@@ -1003,11 +1003,16 @@ export interface ClusterStatus {
 export interface NginxDiscoveredItem {
   config_file: string;
   server_name: string;
+  aliases?: string[];
   root_dir: string;
   port: number;
   ssl: boolean;
   proxy_pass: string;
   is_adopted: boolean;
+  ssl_cert_path?: string;
+  ssl_key_path?: string;
+  ssl_issuer?: string;
+  ssl_not_after?: number;
 }
 
 export interface DockerDiscoveredItem {

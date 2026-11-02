@@ -41,8 +41,11 @@ server {
 	}
 
 	// Verifikasi vhost 1
-	if items[0].ServerName != "kostash.my.id" {
+	if items[0].ServerName != "kostash.my.id www.kostash.my.id" {
 		t.Errorf("ServerName tidak sesuai: %s", items[0].ServerName)
+	}
+	if len(items[0].Aliases) == 0 || items[0].Aliases[0] != "www.kostash.my.id" {
+		t.Errorf("Aliases tidak sesuai: %v", items[0].Aliases)
 	}
 	if items[0].RootDir != "/home/fikfikk/projects/web/kostash/public" {
 		t.Errorf("RootDir tidak sesuai: %s", items[0].RootDir)
@@ -121,5 +124,52 @@ services:
 	}
 	if projects[0].ComposePath != composeFile {
 		t.Errorf("ComposePath salah: %s", projects[0].ComposePath)
+	}
+}
+
+// TestParseNginxConfigNestedLocations menguji pemindaian konfigurasi Nginx dengan lokasi bersarang (nested locations)
+func TestParseNginxConfigNestedLocations(t *testing.T) {
+	kostashConf := `
+server {
+    listen 80;
+    server_name kostash.my.id www.kostash.my.id;
+    root /var/www/kostash/public;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location /phpmyadmin {
+        alias /usr/share/phpmyadmin;
+        location ~ \.php$ {
+            fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            include fastcgi_params;
+        }
+    }
+}
+`
+	tmpDir := t.TempDir()
+	confFile := filepath.Join(tmpDir, "kostash.conf")
+	if err := os.WriteFile(confFile, []byte(kostashConf), 0644); err != nil {
+		t.Fatalf("Gagal membuat file sementara: %v", err)
+	}
+
+	items := parseConfigFile(confFile)
+	if len(items) != 1 {
+		t.Fatalf("Diharapkan 1 vhost untuk konfigurasi nested location, didapatkan: %d", len(items))
+	}
+
+	if items[0].ServerName != "kostash.my.id www.kostash.my.id" {
+		t.Errorf("ServerName salah: got %s, want kostash.my.id www.kostash.my.id", items[0].ServerName)
+	}
+	if items[0].RootDir != "/var/www/kostash/public" {
+		t.Errorf("RootDir salah: got %s, want /var/www/kostash/public", items[0].RootDir)
+	}
+	if items[0].Port != 80 {
+		t.Errorf("Port salah: got %d, want 80", items[0].Port)
+	}
+	if len(items[0].Aliases) != 1 || items[0].Aliases[0] != "www.kostash.my.id" {
+		t.Errorf("Aliases salah: %v", items[0].Aliases)
 	}
 }
