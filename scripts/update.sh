@@ -63,7 +63,7 @@ echo -e "[*] Arsitektur sistem        : ${CYAN}linux-${ARCH}${NC}"
 # 3. Backup Biner Lama untuk Pencegahan Kegagalan
 if [ -f "$INSTALL_DIR/bin/fikpanel" ]; then
     echo -e "[*] Membuat cadangan biner lama ke fikpanel.bak..."
-    cp "$INSTALL_DIR/bin/fikpanel" "$INSTALL_DIR/bin/fikpanel.bak"
+    install -m 755 "$INSTALL_DIR/bin/fikpanel" "$INSTALL_DIR/bin/fikpanel.bak"
 fi
 
 # 4. Unduh Biner Versi Terbaru dari GitHub Releases
@@ -82,10 +82,21 @@ if ! curl -fL --progress-bar --connect-timeout 20 --retry 3 "$DOWNLOAD_URL" -o "
 fi
 echo -e "${GREEN}[✓] Unduhan selesai.${NC}\n"
 
-# 5. Pasang Biner Baru
+# 5. Pasang Biner Baru secara Atomik
 echo -e "[*] Memasang biner baru..."
-tar -xzf "$TEMP_FILE" -C "$INSTALL_DIR/bin/"
-chmod +x "$INSTALL_DIR/bin/fikpanel"
+TEMP_EXTRACT_DIR=$(mktemp -d /tmp/fikpanel-extract.XXXXXX)
+tar -xzf "$TEMP_FILE" -C "$TEMP_EXTRACT_DIR"
+
+if [ -f "$TEMP_EXTRACT_DIR/fikpanel" ]; then
+    # Gunakan 'install -m 755' untuk penggantian inode secara atomik (mencegah error Text file busy)
+    install -m 755 "$TEMP_EXTRACT_DIR/fikpanel" "$INSTALL_DIR/bin/fikpanel"
+    install -m 755 "$TEMP_EXTRACT_DIR/fikpanel" /usr/local/bin/fikpanel
+    rm -rf "$TEMP_EXTRACT_DIR"
+else
+    echo -e "${RED}[ERROR] Berkas biner fikpanel tidak ditemukan dalam paket rilis.${NC}"
+    rm -rf "$TEMP_EXTRACT_DIR" "$TEMP_FILE"
+    exit 1
+fi
 rm -f "$TEMP_FILE"
 
 # 6. Restart Service Daemon FikPanel
@@ -107,8 +118,8 @@ else
     echo -e "\n${RED}[!] Pembaruan mengalami kendala saat menyalakan layanan.${NC}"
     echo -e "${YELLOW}[*] Melakukan rollback ke versi sebelumnya...${NC}"
     if [ -f "$INSTALL_DIR/bin/fikpanel.bak" ]; then
-        cp "$INSTALL_DIR/bin/fikpanel.bak" "$INSTALL_DIR/bin/fikpanel"
-        chmod +x "$INSTALL_DIR/bin/fikpanel"
+        install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" "$INSTALL_DIR/bin/fikpanel"
+        install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" /usr/local/bin/fikpanel
         systemctl restart fikpanel.service || true
         echo -e "${GREEN}[✓] Berhasil dipulihkan ke versi cadangan.${NC}"
     fi
