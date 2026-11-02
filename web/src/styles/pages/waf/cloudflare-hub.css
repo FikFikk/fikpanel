@@ -95,14 +95,6 @@
       align-items: center;
       gap: 0.3rem;
     }
-    .badge-ssl-mode {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.72rem;
-      color: var(--info);
-    }
 
     .cf-empty-promo {
       text-align: center;

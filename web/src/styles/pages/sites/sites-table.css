@@ -174,7 +174,6 @@
     .icon-amber { color: var(--warning); }
     .icon-cyan { color: var(--info); }
     .icon-gray { color: var(--text-muted); }
-    .icon-accent { color: var(--accent); }
 
     .badge-runtime {
       flex-shrink: 0;
