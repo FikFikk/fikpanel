@@ -51,13 +51,13 @@
     --text-muted: #94a3b8;    /* deskripsi, metadata */
     --text-subtle: #64748b;   /* hint, placeholder, timestamp */
     --text-disabled: #475569; /* hanya untuk elemen nonaktif */
-    --text-on-accent: #04130d;/* teks di atas tombol aksen */
+    --text-on-accent: #121110;/* teks di atas tombol aksen lava (kontras 6.06:1 AA) */
 
     /* ── Warna semantik (pakai sesuai MAKNA, bukan selera) ──────────────────── */
-    --accent: #10b981;        /* aksi utama, status aktif/sehat, brand */
-    --accent-strong: #34d399; /* teks/ikon aksen di atas latar gelap */
-    --accent-hover: #059669;
-    --success: #10b981;       /* alias status sukses / berhasil */
+    --accent: #ff5a2b;        /* aksi utama, brand lava hangat */
+    --accent-strong: #ff7852; /* teks/ikon aksen di atas latar gelap */
+    --accent-hover: #e04619;
+    --success: #10b981;       /* alias status sukses / berhasil / sehat */
     --success-strong: #34d399;
     --info: #38bdf8;          /* informasi netral, tautan, proses berjalan */
     --warning: #f59e0b;       /* perlu perhatian, belum berbahaya */
@@ -75,7 +75,7 @@
     --brand-nginx: #009639;
 
     /* ── Palet grafik / seri chart ──────────────────────────────────────────── */
-    --chart-1: #10b981;
+    --chart-1: #ff5a2b;
     --chart-2: #38bdf8;
     --chart-3: #818cf8;
     --chart-4: #f59e0b;
@@ -208,11 +208,11 @@
     --text-muted: #475569;
     --text-subtle: #64748b;
     --text-disabled: #94a3b8;
-    --text-on-accent: #ffffff;
+    --text-on-accent: #ffffff;/* teks di atas tombol aksen lava dalam (kontras 5.57:1 AA) */
 
-    --accent: #059669;
-    --accent-strong: #047857;
-    --accent-hover: #047857;
+    --accent: #c2330a;        /* aksi utama, brand lava dalam */
+    --accent-strong: #9e2806;
+    --accent-hover: #9e2806;
     --success: #059669;
     --success-strong: #047857;
     --info: #0284c7;
@@ -222,7 +222,7 @@
     --danger-strong: #be123c;
     --violet: #4f46e5;
 
-    --chart-1: #059669;
+    --chart-1: #c2330a;
     --chart-2: #0284c7;
     --chart-3: #4f46e5;
     --chart-4: #d97706;
@@ -260,11 +260,11 @@
       --text-muted: #475569;
       --text-subtle: #64748b;
       --text-disabled: #94a3b8;
-      --text-on-accent: #ffffff;
+      --text-on-accent: #ffffff;/* teks di atas tombol aksen lava dalam (kontras 5.57:1 AA) */
 
-      --accent: #059669;
-      --accent-strong: #047857;
-      --accent-hover: #047857;
+      --accent: #c2330a;        /* aksi utama, brand lava dalam */
+      --accent-strong: #9e2806;
+      --accent-hover: #9e2806;
       --success: #059669;
       --success-strong: #047857;
       --info: #0284c7;
@@ -274,7 +274,7 @@
       --danger-strong: #be123c;
       --violet: #4f46e5;
 
-      --chart-1: #059669;
+      --chart-1: #c2330a;
       --chart-2: #0284c7;
       --chart-3: #4f46e5;
       --chart-4: #d97706;

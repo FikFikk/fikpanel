@@ -89,6 +89,14 @@
     padding: 0 var(--space-5);
     border-bottom: 1px solid var(--border-subtle);
   }
+  .sidebar__brand-icon {
+    flex-shrink: 0;
+  }
+  .sidebar__brand-wordmark {
+    flex-shrink: 0;
+    height: 20px;
+    width: auto;
+  }
   .sidebar__name {
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
@@ -251,6 +259,7 @@
     .sidebar {
       width: var(--sidebar-collapsed);
     }
+    .sidebar__brand-wordmark,
     .sidebar__name,
     .sidebar__search-text,
     .sidebar__search-kbd,
