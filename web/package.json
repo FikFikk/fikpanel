@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "lint:ui": "node scripts/lint-ui.mjs",
-    "build": "node scripts/lint-ui.mjs && vite build",
+    "check:css": "node scripts/css-collision.mjs",
+    "build": "node scripts/lint-ui.mjs && node scripts/css-collision.mjs && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {

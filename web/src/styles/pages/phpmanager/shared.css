@@ -3,12 +3,6 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
-  .pg-phpmanager {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
   /* Gaya bersama Code Editor (php.ini dan www.conf) */
   .editor-tips-bar {
     background: var(--bg-raised);
