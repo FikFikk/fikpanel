@@ -8,8 +8,10 @@ export interface ConfirmOptions {
   title: string;
   message?: string;
   confirmText?: string;
+  confirmLabel?: string;
   cancelText?: string;
   tone?: 'default' | 'danger';
+  variant?: 'default' | 'danger';
   /** Bila diisi, tombol konfirmasi aktif hanya setelah user mengetik teks ini persis. */
   requireText?: string;
 }
@@ -49,9 +51,9 @@ function openDialog(opts: ConfirmOptions, prompt: PromptField | null): Promise<b
   resolver?.(false);
   Object.assign(confirmState, {
     message: '',
-    confirmText: 'Lanjutkan',
+    confirmText: opts.confirmText || opts.confirmLabel || 'Lanjutkan',
     cancelText: 'Batal',
-    tone: 'default',
+    tone: opts.tone || (opts.variant === 'danger' ? 'danger' : 'default'),
     requireText: '',
     ...opts,
     prompt,

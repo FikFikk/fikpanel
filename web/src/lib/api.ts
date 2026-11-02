@@ -34,8 +34,8 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
   }
 
   const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: externalSignal, ...init } = options;
-  const headers = new Headers(init.headers || {});
   const method = (init.method || 'GET').toUpperCase();
+  const headers = new Headers(init.headers || {});
 
   // Wajibkan header anti-CSRF untuk request mutasi (POST, PUT, DELETE, PATCH)
   if (method !== 'GET' && method !== 'HEAD') {
@@ -114,6 +114,7 @@ export async function apiFetchText(endpoint: string, options: ApiOptions = {}): 
   }
 
   const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: externalSignal, ...init } = options;
+  const method = (init.method || 'GET').toUpperCase();
   const headers = new Headers(init.headers || {});
   headers.set('Accept', 'text/html, text/plain, */*');
 

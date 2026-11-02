@@ -572,8 +572,8 @@
       targetWebGuiUser = db.username || db.name;
       targetWebGuiPass = db.password || '';
     } else {
-      targetWebGuiDb = db || '';
-      targetWebGuiUser = db || 'root';
+      targetWebGuiDb = (typeof db === 'string' ? db : '') || '';
+      targetWebGuiUser = (typeof db === 'string' ? db : '') || 'root';
       targetWebGuiPass = '';
     }
     showWebGuiPassword = false;

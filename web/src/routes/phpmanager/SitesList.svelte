@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SiteItem } from '../../lib/types';
+  import type { AttachedSite } from '../../lib/types';
   import '../../styles/pages/phpmanager/sites-list.css';
 
   type ManageTab = 'service' | 'sites' | 'config' | 'raw_ini' | 'fpm_pool' | 'raw_fpm' | 'disabled_func' | 'extensions' | 'opcache' | 'logs' | 'phpinfo';
@@ -7,7 +7,7 @@
   // Antarmuka properti untuk daftar ringkas situs terhubung pada kartu versi PHP
   interface Props {
     version: string;
-    sites?: SiteItem[];
+    sites?: AttachedSite[];
     sitesCount?: number;
     onOpenManageModal: (version: string, tab: ManageTab) => void;
   }

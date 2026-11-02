@@ -160,7 +160,7 @@
     // Tambahkan pesan user sementara secara optimis
     const tempUserMsg: AIMessage = {
       id: Date.now(),
-      conversationID: activeConvId || 0,
+      conversation_id: activeConvId || 0,
       role: 'user',
       content: cleanText,
       ts: Math.floor(Date.now() / 1000),
@@ -193,7 +193,7 @@
       // Tambahkan respon asisten ke feed
       const assistantMsg: AIMessage = {
         id: Date.now() + 1,
-        conversationID: data.conversation_id,
+        conversation_id: data.conversation_id,
         role: 'assistant',
         content: data.response,
         tool_name: data.actions && data.actions.length > 0 ? JSON.stringify(data.actions) : undefined,
@@ -204,7 +204,7 @@
     } catch (err: any) {
       const errorMsg: AIMessage = {
         id: Date.now() + 1,
-        conversationID: activeConvId || 0,
+        conversation_id: activeConvId || 0,
         role: 'assistant',
         content: `Kesalahan AI: ${err.message || 'Tidak ada respon dari server'}`,
         ts: Math.floor(Date.now() / 1000),

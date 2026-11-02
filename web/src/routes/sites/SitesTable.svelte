@@ -8,7 +8,7 @@
     filteredSites: Site[];
     selectedIds: Set<number>;
     openMoreSiteId: number | null;
-    onToggleSelectAll: () => void;
+    onToggleSelectAll: (e?: Event) => void;
     onToggleSelectSite: (id: number) => void;
     onToggleSite: (id: number) => void;
     onTriggerBackup: (s: Site) => void;

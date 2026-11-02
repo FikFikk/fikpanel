@@ -14,6 +14,7 @@ export interface MetricPoint {
 export type SiteKind = 'proxy' | 'static' | 'php' | 'node' | 'go' | 'python';
 export type SSLStatus = 'none' | 'pending' | 'issued' | 'failed';
 
+export type SiteItem = Site;
 export interface Site {
   id: number;
   domain: string;
@@ -294,6 +295,7 @@ export interface AIConversation {
 export interface AIMessage {
   id: number;
   conversation_id: number;
+  conversationID?: number;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   tool_name?: string;
@@ -331,6 +333,7 @@ export interface DatabaseItem {
   location: string;
   note: string;
   created_at: number;
+  timestamp?: number;
 }
 
 export interface SystemTask {
@@ -372,6 +375,7 @@ export interface ScanFinding {
   title: string;
   detail: string;
   fix_hint: string;
+  fixHint?: string;
 }
 
 export interface SecurityScanReport {
@@ -469,6 +473,7 @@ export interface DNSRecord {
   priority: number;
   ttl: number;
   created_at: number;
+  timestamp?: number;
 }
 
 // ── PHP Versions ──────────────────────────────────────────────────────────
@@ -508,6 +513,15 @@ export interface PHPVersionDetail {
   all_extensions: PHPExtensionInfo[];
   sites?: AttachedSite[];
   sites_count?: number;
+  fpmSocket?: string;
+  iniPath?: string;
+  serviceStatus?: {
+    active?: boolean;
+    pid?: string | number;
+    memory?: string;
+    uptime?: string;
+    since?: string;
+  };
 }
 
 export interface AttachedSite {
@@ -1111,6 +1125,7 @@ export interface WAFAccessLog {
   action: 'allow' | 'block' | 'intercept' | 'challenge';
   rule_name?: string;
   created_at: number;
+  timestamp?: number;
 }
 
 export interface WAFVisitorItem {
@@ -1128,6 +1143,9 @@ export interface WAFVisitorItem {
   last_site?: string;
   last_path?: string;
   last_seen: number;
+  requests?: number;
+  threats?: number;
+  bytes_sent?: number;
 }
 
 export interface WAFOverview {
@@ -1160,6 +1178,7 @@ export interface WAFOverview {
     domain: string;
     requests: number;
     bandwidth_bytes?: number;
+    bytes_sent?: number;
     threats?: number;
     status_2xx?: number;
     status_3xx?: number;
@@ -1168,7 +1187,10 @@ export interface WAFOverview {
   }[];
   visited_pages: {
     site_name?: string;
+    domain?: string;
     path: string;
+    last_status?: number;
+    bytes_sent?: number;
     method?: string;
     count: number;
     status_code?: number;

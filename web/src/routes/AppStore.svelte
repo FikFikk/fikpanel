@@ -495,7 +495,7 @@
         type="button"
         class={viewMode === 'grid' ? 'active' : ''}
         onclick={() => setViewMode('grid')}
-        aria-checked={viewMode === 'grid'}
+        aria-pressed={viewMode === 'grid'}
         aria-label="Tampilan Kartu (Grid)"
         title="Tampilan Kartu"
       >
@@ -505,7 +505,7 @@
         type="button"
         class={viewMode === 'table' ? 'active' : ''}
         onclick={() => setViewMode('table')}
-        aria-checked={viewMode === 'table'}
+        aria-pressed={viewMode === 'table'}
         aria-label="Tampilan Tabel (List)"
         title="Tampilan Tabel"
       >

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check": "svelte-check --tsconfig ./tsconfig.json --threshold error",
     "lint:ui": "node scripts/lint-ui.mjs",
     "check:css": "node scripts/css-collision.mjs",
     "build": "node scripts/lint-ui.mjs && node scripts/css-collision.mjs && vite build",
@@ -13,6 +14,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "svelte": "^5.0.0",
+    "svelte-check": "^4.7.8",
     "typescript": "^5.4.0",
     "vite": "^5.2.0",
     "vite-plugin-compression": "^0.5.1"
