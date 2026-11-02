@@ -69,7 +69,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.3.2"
+		return "0.3.3"
 	}
 	return s.version
 }

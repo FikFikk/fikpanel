@@ -264,7 +264,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"gagal membuat request tile upstream"}`, http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/0.3.2; +https://fikpanel.net)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/0.3.3; +https://fikpanel.net)")
 
 	resp, err := wafTileClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -272,7 +272,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		osmURL := fmt.Sprintf("https://tile.openstreetmap.org/%s/%s/%s.png", z, x, y)
 		fallbackReq, _ := http.NewRequestWithContext(r.Context(), "GET", osmURL, nil)
 		if fallbackReq != nil {
-			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/0.3.2 (Admin panel map proxy)")
+			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/0.3.3 (Admin panel map proxy)")
 			resp, err = wafTileClient.Do(fallbackReq)
 		}
 	}

@@ -24,7 +24,7 @@ import (
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.3.2"
+	version = "0.3.3"
 )
 
 func main() {
@@ -41,6 +41,10 @@ func main() {
 	case "version", "--version", "-v":
 		fmt.Printf("fikpanel v%s\n", version)
 		os.Exit(0)
+	case "versions", "version-list", "releases":
+		runVersions(os.Args[2:])
+	case "check-update":
+		runUpdateCheck()
 	case "serve":
 		runServe(os.Args[2:])
 	case "agent":
@@ -82,7 +86,11 @@ Perintah yang Tersedia:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
                     --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
                     --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
-  update          Perbarui biner FikPanel ke versi rilis terbaru tanpa menyentuh data
+  versions        Daftar seluruh versi rilis FikPanel yang tersedia di GitHub Releases
+  update          Perbarui biner FikPanel (opsi: --check, atau tentukan <versi>)
+                  Opsi / Parameter:
+                    --check, -c      Hanya cek ketersediaan rilis baru tanpa memasang
+                    <versi>          Target versi spesifik untuk upgrade/downgrade (misal: v0.3.1)
   renew-ssl       Pindai seluruh domain dan perpanjang sertifikat SSL yang < 30 hari
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
@@ -94,9 +102,11 @@ Perintah yang Tersedia:
 
 Contoh Penggunaan:
   fikpanel serve --port 1405
-  fikpanel discover --adopt --roots "/home/fikfikk/projects,/var/www"
-  fikpanel reset-password --user root
+  fikpanel versions
+  fikpanel update --check
   fikpanel update
+  fikpanel update v0.3.1
+  fikpanel reset-password --user root
 `, version)
 }
 
@@ -338,34 +348,232 @@ func runDiscover(args []string) {
 	fmt.Println("[4/4] Proses discovery selesai!")
 }
 
+// GitHubReleaseItem merepresentasikan satu entri rilis dari GitHub Releases API
+type GitHubReleaseItem struct {
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	PublishedAt time.Time `json:"published_at"`
+	HTMLURL     string    `json:"html_url"`
+}
+
+// fetchGitHubReleases mengambil daftar rilis resmi dari repositori GitHub
+func fetchGitHubReleases() ([]GitHubReleaseItem, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/FikFikk/fikpanel/releases", nil)
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat permintaan HTTP: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "FikPanel-CLI/"+version)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("koneksi ke GitHub API gagal: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API merespon dengan status: %s", resp.Status)
+	}
+
+	var releases []GitHubReleaseItem
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("gagal mengurai data JSON rilis: %w", err)
+	}
+
+	return releases, nil
+}
+
+// runVersions menampilkan daftar versi rilis yang tersedia di GitHub Releases
+func runVersions(args []string) {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Println("Penggunaan: fikpanel versions")
+			fmt.Println("Menampilkan daftar seluruh versi rilis FikPanel yang tersedia di GitHub Releases.")
+			return
+		}
+	}
+
+	fmt.Println("==========================================================================")
+	fmt.Println("             Daftar Rilis FikPanel yang Tersedia (GitHub)                 ")
+	fmt.Println("==========================================================================")
+	fmt.Printf("[*] Versi terpasang saat ini : v%s\n", version)
+	fmt.Println("[*] Menghubungi GitHub Releases API...")
+
+	releases, err := fetchGitHubReleases()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] Gagal memuat daftar rilis: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(releases) == 0 {
+		fmt.Println("Tidak ada rilis yang ditemukan.")
+		return
+	}
+
+	currentNorm := strings.TrimPrefix(version, "v")
+
+	fmt.Printf("\n%-12s  %-20s  %-15s  %s\n", "TAG / VERSI", "TANGGAL RILIS", "STATUS", "KETERANGAN")
+	fmt.Println(strings.Repeat("-", 74))
+
+	for _, rel := range releases {
+		if rel.Draft {
+			continue
+		}
+
+		relNorm := strings.TrimPrefix(rel.TagName, "v")
+		dateStr := "-"
+		if !rel.PublishedAt.IsZero() {
+			dateStr = rel.PublishedAt.UTC().Format("2006-01-02 15:04 UTC")
+		}
+
+		status := "Tersedia"
+		if relNorm == currentNorm {
+			status = "[TERPASANG]"
+		} else if rel.Prerelease {
+			status = "Pre-release"
+		}
+
+		title := rel.Name
+		if title == "" {
+			title = rel.TagName
+		}
+
+		fmt.Printf("%-12s  %-20s  %-15s  %s\n", rel.TagName, dateStr, status, title)
+	}
+
+	fmt.Println(strings.Repeat("-", 74))
+	fmt.Println("Pilihan Perintah Pembaruan:")
+	fmt.Println("  fikpanel update             # Perbarui ke rilis stabil terbaru")
+	fmt.Println("  fikpanel update <versi>     # Pasang versi tertentu (contoh: fikpanel update v0.3.1)")
+	fmt.Println()
+}
+
+// compareVersions membandingkan dua format versi semver (misal: "0.3.3" vs "0.3.2")
+// Mengembalikan 1 jika v1 > v2, -1 jika v1 < v2, dan 0 jika sama
+func compareVersions(v1, v2 string) int {
+	v1 = strings.TrimPrefix(strings.TrimSpace(v1), "v")
+	v2 = strings.TrimPrefix(strings.TrimSpace(v2), "v")
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			fmt.Sscanf(parts1[i], "%d", &n1)
+		}
+		if i < len(parts2) {
+			fmt.Sscanf(parts2[i], "%d", &n2)
+		}
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+	return 0
+}
+
+// runUpdateCheck memeriksa apakah rilis baru tersedia di GitHub Releases tanpa mengunduh
+func runUpdateCheck() {
+	fmt.Println("[*] Memeriksa ketersediaan pembaruan FikPanel...")
+	releases, err := fetchGitHubReleases()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] Gagal memeriksa rilis terbaru: %v\n", err)
+		return
+	}
+
+	var latest *GitHubReleaseItem
+	for i := range releases {
+		if !releases[i].Draft && !releases[i].Prerelease {
+			latest = &releases[i]
+			break
+		}
+	}
+
+	if latest == nil {
+		fmt.Println("[✓] Belum ada rilis stabil terbaru di GitHub.")
+		return
+	}
+
+	if compareVersions(version, latest.TagName) >= 0 {
+		fmt.Printf("[✓] FikPanel sudah berada di versi terbaru (v%s).\n    Tidak ada pembaruan yang diperlukan.\n", version)
+		return
+	}
+
+	fmt.Printf("[!] Pembaruan tersedia: v%s -> %s (%s)\n", version, latest.TagName, latest.Name)
+	fmt.Printf("    Tanggal rilis : %s\n", latest.PublishedAt.UTC().Format("2006-01-02 15:04 UTC"))
+	fmt.Printf("    Tautan rilis  : %s\n\n", latest.HTMLURL)
+	fmt.Println("Jalankan perintah berikut untuk memperbarui secara otomatis:")
+	fmt.Println("  fikpanel update")
+}
+
 // runUpdate menangani pembaruan otomatis biner fikpanel
 func runUpdate(args []string) {
 	fmt.Println("==========================================================")
 	fmt.Println("             FikPanel Self-Update Utility                 ")
 	fmt.Println("==========================================================")
 
-	if runtime.GOOS != "linux" {
-		fmt.Printf("Pembaruan otomatis saat ini dioptimalkan untuk lingkungan Linux (produksi).\nVersi lokal saat ini: v%s\n", version)
-		return
-	}
-
-	updateScript := "/opt/fikpanel/scripts/update.sh"
-	if _, err := os.Stat(updateScript); err == nil {
-		cmd := exec.Command("bash", updateScript)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", err)
-			os.Exit(1)
+	// Periksa opsi pengecekan atau panduan
+	for _, arg := range args {
+		if arg == "--check" || arg == "-c" {
+			runUpdateCheck()
+			return
 		}
+		if arg == "--help" || arg == "-h" {
+			fmt.Printf(`Penggunaan:
+  fikpanel update             Perbarui ke rilis terbaru dan restart service otomatis
+  fikpanel update --check     Cek ketersediaan pembaruan tanpa memasang
+  fikpanel update <versi>     Pasang target versi spesifik (contoh: v0.3.1 atau 0.3.1)
+`)
+			return
+		}
+	}
+
+	if runtime.GOOS != "linux" {
+		fmt.Printf("Pembaruan biner otomatis dioptimalkan untuk lingkungan Linux (produksi).\nVersi lokal saat ini: v%s\n", version)
 		return
 	}
 
-	// Fallback jika file skrip lokal belum tersedia: eksekusi via unduhan langsung
-	cmd := exec.Command("bash", "-c", "curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | bash")
+	targetVer := "latest"
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
+			targetVer = strings.TrimSpace(arg)
+			break
+		}
+	}
+
+	// Utamakan eksekusi skrip updater live dari GitHub agar selalu membawa perbaikan instalasi terbaru
+	scriptCmd := fmt.Sprintf("curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | bash -s -- %s", targetVer)
+	cmd := exec.Command("bash", "-c", scriptCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
+		// Fallback ke skrip lokal jika unduhan live mengalami kendala
+		localScript := "/opt/fikpanel/scripts/update.sh"
+		if _, statErr := os.Stat(localScript); statErr == nil {
+			fmt.Fprintf(os.Stderr, "[*] Gagal mengunduh skrip online, beralih ke skrip lokal (%s)...\n", localScript)
+			fallbackCmd := exec.Command("bash", localScript, targetVer)
+			fallbackCmd.Stdout = os.Stdout
+			fallbackCmd.Stderr = os.Stderr
+			fallbackCmd.Stdin = os.Stdin
+			if fbErr := fallbackCmd.Run(); fbErr != nil {
+				fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", fbErr)
+				os.Exit(1)
+			}
+			return
+		}
 		fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", err)
 		os.Exit(1)
 	}
