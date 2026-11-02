@@ -117,7 +117,23 @@ func TestServerAuthAndProtectedRoutes(t *testing.T) {
 		t.Errorf("Request mutasi dengan header CSRF gagal: %d, body: %s", wActionValid.Code, wActionValid.Body.String())
 	}
 
-	// 5. Uji Logout
+	// 5. Uji Ubah Kata Sandi Administrator
+	passChangeBody, _ := json.Marshal(map[string]string{
+		"old_password": "",
+		"new_password": "NewSecretPassword123!",
+	})
+	reqPassChange := httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(passChangeBody))
+	reqPassChange.AddCookie(sessionCookie)
+	reqPassChange.Header.Set("X-Panel-Request", "1")
+	reqPassChange.Header.Set("Content-Type", "application/json")
+	wPassChange := httptest.NewRecorder()
+
+	srv.server.Handler.ServeHTTP(wPassChange, reqPassChange)
+	if wPassChange.Code != http.StatusOK {
+		t.Fatalf("Gagal ubah kata sandi: %d, body: %s", wPassChange.Code, wPassChange.Body.String())
+	}
+
+	// 6. Uji Logout
 	reqLogout := httptest.NewRequest("POST", "/api/auth/logout", nil)
 	reqLogout.AddCookie(sessionCookie)
 	reqLogout.Header.Set("X-Panel-Request", "1")
@@ -126,5 +142,33 @@ func TestServerAuthAndProtectedRoutes(t *testing.T) {
 	srv.server.Handler.ServeHTTP(wLogout, reqLogout)
 	if wLogout.Code != http.StatusOK {
 		t.Errorf("Logout gagal: %d", wLogout.Code)
+	}
+
+	// 7. Uji Login dengan password lama (kosong) -> Wajib DITOLAK (401)
+	loginOldBody, _ := json.Marshal(map[string]string{
+		"username": "root",
+		"password": "",
+	})
+	reqLoginOld := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(loginOldBody))
+	reqLoginOld.Header.Set("Content-Type", "application/json")
+	wLoginOld := httptest.NewRecorder()
+
+	srv.server.Handler.ServeHTTP(wLoginOld, reqLoginOld)
+	if wLoginOld.Code != http.StatusUnauthorized {
+		t.Fatalf("Login dengan password kosong seharusnya DITOLAK 401 setelah diubah, didapat: %d", wLoginOld.Code)
+	}
+
+	// 8. Uji Login dengan password baru -> Wajib SUKSES (200)
+	loginNewBody, _ := json.Marshal(map[string]string{
+		"username": "root",
+		"password": "NewSecretPassword123!",
+	})
+	reqLoginNew := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(loginNewBody))
+	reqLoginNew.Header.Set("Content-Type", "application/json")
+	wLoginNew := httptest.NewRecorder()
+
+	srv.server.Handler.ServeHTTP(wLoginNew, reqLoginNew)
+	if wLoginNew.Code != http.StatusOK {
+		t.Fatalf("Login dengan password baru gagal: %d, body: %s", wLoginNew.Code, wLoginNew.Body.String())
 	}
 }

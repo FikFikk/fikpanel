@@ -167,6 +167,23 @@
     --content-max: 1400px;
     --bp-tablet: 1024px;
     --bp-mobile: 768px;
+
+    /* ── Token Kompatibilitas Spasi, Radius, Durasi & Tipografi ─────────────── */
+    --sp-1: var(--space-1);
+    --sp-1-5: 0.375rem;
+    --sp-2: var(--space-2);
+    --sp-2-5: 0.625rem;
+    --sp-3: var(--space-3);
+    --sp-3-5: 0.875rem;
+    --sp-4: var(--space-4);
+    --sp-4-5: 1.125rem;
+    --sp-5: var(--space-5);
+    --sp-6: var(--space-6);
+    --sp-8: var(--space-8);
+    --radius-2xs: 2px;
+    --dur-fast: var(--duration-fast);
+    --dur-slow: var(--duration-slow);
+    --text-base: 0.875rem;
   }
 
   /* ── Tema terang (eksplisit data-theme="light", kontras WCAG AA ≥ 4.5:1) ─── */

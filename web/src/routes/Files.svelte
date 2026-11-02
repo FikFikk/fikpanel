@@ -1252,321 +1252,26 @@
   />
 
   <!-- ═════════ 3. Toolbar Aksi (Action Toolbar aaPanel Asli) ═════════ -->
-  <div class="toolbar action-toolbar">
-    <div class="tool-left">
-      <!-- 1. Dropdown Upload > -->
-      <div class="tool-dropdown-wrap">
-        <button
-          class="tool-btn {activeToolbarMenu === 'upload' ? 'is-active' : ''}"
-          onclick={(e) => toggleToolbarMenu("upload", e)}
-        >
-          <i class="ri-upload-line"></i>
-          <span>Upload &gt;</span>
-        </button>
-
-        {#if activeToolbarMenu === "upload"}
-          <div
-            class="toolbar-dropdown-menu"
-            role="menu"
-            tabindex="-1"
-            onclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
-          >
-            <button
-              class="tb-menu-item"
-              onclick={() => {
-                activeToolbarMenu = null;
-                showUploadModal = true;
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-upload-2-line"></i>
-                <span>Upload File</span>
-              </div>
-            </button>
-            <button
-              class="tb-menu-item"
-              onclick={() => openCloudStorage("FTP Storage")}
-            >
-              <div class="tb-item-left">
-                <i class="ri-server-line"></i>
-                <span>FTP Storage</span>
-              </div>
-              <i class="ri-vip-diamond-fill badge-vip"></i>
-            </button>
-            <button
-              class="tb-menu-item"
-              onclick={() => openCloudStorage("S3 Storage")}
-            >
-              <div class="tb-item-left">
-                <i class="ri-cloud-line"></i>
-                <span>S3 Storage</span>
-              </div>
-              <i class="ri-vip-diamond-fill badge-vip"></i>
-            </button>
-            <button
-              class="tb-menu-item"
-              onclick={() => openCloudStorage("Google Drive")}
-            >
-              <div class="tb-item-left">
-                <i class="ri-google-fill"></i>
-                <span>Google Drive</span>
-              </div>
-              <i class="ri-vip-diamond-fill badge-vip"></i>
-            </button>
-            <button
-              class="tb-menu-item"
-              onclick={() => openCloudStorage("Google Cloud Storage")}
-            >
-              <div class="tb-item-left">
-                <i class="ri-cloudy-line"></i>
-                <span>Google Cloud Storage</span>
-              </div>
-              <i class="ri-vip-diamond-fill badge-vip"></i>
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <!-- 2. Remote Download -->
-      <button class="tool-btn" onclick={() => (showRemoteModal = true)}>
-        <i class="ri-download-cloud-line icon-blue"></i>
-        <span>Remote Download</span>
-      </button>
-
-      <!-- 3. Dropdown New > -->
-      <div class="tool-dropdown-wrap">
-        <button
-          class="tool-btn {activeToolbarMenu === 'new' ? 'is-active' : ''}"
-          onclick={(e) => toggleToolbarMenu("new", e)}
-        >
-          <i class="ri-folder-add-fill icon-amber"></i>
-          <span>New &gt;</span>
-        </button>
-
-        {#if activeToolbarMenu === "new"}
-          <div
-            class="toolbar-dropdown-menu"
-            role="menu"
-            tabindex="-1"
-            onclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
-          >
-            <button class="tb-menu-item" onclick={() => openNewModal("dir")}>
-              <div class="tb-item-left">
-                <i class="ri-folder-fill icon-amber"></i>
-                <span>New Directory</span>
-              </div>
-            </button>
-            <button class="tb-menu-item" onclick={() => openNewModal("file")}>
-              <div class="tb-item-left">
-                <i class="ri-file-3-line"></i>
-                <span>New Blank File</span>
-              </div>
-            </button>
-            <button
-              class="tb-menu-item"
-              onclick={() => {
-                activeToolbarMenu = null;
-                showSymlinkModal = true;
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-links-line icon-blue"></i>
-                <span>Soft Link</span>
-              </div>
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <!-- 4. Search File Content -->
-      <button class="tool-btn" onclick={() => (showSearchContentModal = true)}>
-        <i class="ri-file-search-line"></i>
-        <span>Search File Content</span>
-      </button>
-
-      <!-- 5. Dropdown Favorite > -->
-      <div class="tool-dropdown-wrap">
-        <button
-          class="tool-btn {activeToolbarMenu === 'favorite' ? 'is-active' : ''}"
-          onclick={(e) => toggleToolbarMenu("favorite", e)}
-        >
-          <i class="ri-star-fill icon-yellow"></i>
-          <span>Favorite &gt;</span>
-        </button>
-
-        {#if activeToolbarMenu === "favorite"}
-          <div
-            class="toolbar-dropdown-menu"
-            role="menu"
-            tabindex="-1"
-            onclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
-          >
-            {#each customFavorites as fav}
-              <button
-                class="tb-menu-item"
-                onclick={() => {
-                  activeToolbarMenu = null;
-                  jumpFavorite(fav.path);
-                }}
-              >
-                <div class="tb-item-left">
-                  <i class="ri-folder-line icon-amber"></i>
-                  <span>{fav.name}</span>
-                </div>
-              </button>
-            {/each}
-            <div class="operate-divider"></div>
-            <button
-              class="tb-menu-item"
-              onclick={() => {
-                activeToolbarMenu = null;
-                showFavManageModal = true;
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-settings-3-line"></i>
-                <span>Management</span>
-              </div>
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <!-- 6. Share List -->
-      <button
-        class="tool-btn"
-        onclick={() =>
-          onNotify(
-            "Fitur Share List: tautan unduhan langsung terdaftar di menu Properties",
-          )}
-      >
-        <i class="ri-share-line icon-green"></i>
-        <span>Share List</span>
-      </button>
-
-      <!-- 7. File Operations > -->
-      <div class="tool-dropdown-wrap">
-        <button
-          class="tool-btn {activeToolbarMenu === 'operations'
-            ? 'is-active'
-            : ''}"
-          onclick={(e) => toggleToolbarMenu("operations", e)}
-        >
-          <i class="ri-folder-settings-line icon-amber"></i>
-          <span>File Operations &gt;</span>
-        </button>
-
-        {#if activeToolbarMenu === "operations"}
-          <div
-            class="toolbar-dropdown-menu"
-            role="menu"
-            tabindex="-1"
-            onclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => e.key === "Escape" && closeAllMenus()}
-          >
-            <button
-              class="tb-menu-item"
-              disabled={selectedPaths.size === 0}
-              onclick={() => {
-                if (selectedPaths.size > 0) {
-                  clipboard = {
-                    action: "copy",
-                    paths: Array.from(selectedPaths),
-                    names: Array.from(selectedPaths).map(
-                      (p) => p.split(/[/\\]+/).pop() || "",
-                    ),
-                  };
-                  onNotify(`${selectedPaths.size} item disalin ke clipboard`);
-                  activeToolbarMenu = null;
-                }
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-file-copy-line"></i>
-                <span>Copy ({selectedPaths.size})</span>
-              </div>
-            </button>
-            <button
-              class="tb-menu-item"
-              disabled={selectedPaths.size === 0}
-              onclick={() => {
-                if (selectedPaths.size > 0) {
-                  clipboard = {
-                    action: "cut",
-                    paths: Array.from(selectedPaths),
-                    names: Array.from(selectedPaths).map(
-                      (p) => p.split(/[/\\]+/).pop() || "",
-                    ),
-                  };
-                  onNotify(`${selectedPaths.size} item dipotong ke clipboard`);
-                  activeToolbarMenu = null;
-                }
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-scissors-line icon-cyan"></i>
-                <span>Cut ({selectedPaths.size})</span>
-              </div>
-            </button>
-            <button
-              class="tb-menu-item item-danger"
-              disabled={selectedPaths.size === 0}
-              onclick={() => {
-                activeToolbarMenu = null;
-                handleBatchDelete();
-              }}
-            >
-              <div class="tb-item-left">
-                <i class="ri-delete-bin-line"></i>
-                <span>Delete ({selectedPaths.size})</span>
-              </div>
-            </button>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Paste Button jika Clipboard Aktif -->
-      {#if clipboard}
-        <div class="paste-indicator">
-          <button
-            class="tool-btn tool-primary"
-            onclick={handlePasteClipboard}
-            title="Klik untuk menempel di direktori ini"
-          >
-            <i class="ri-clipboard-line"></i>
-            <span>Paste ({clipboard.names.length} item)</span>
-          </button>
-          <button
-            class="btn-cancel-clip"
-            onclick={() => (clipboard = null)}
-            title="Batalkan salin/potong">&times;</button
-          >
-        </div>
-      {/if}
-    </div>
-
-    <div class="tool-right">
-      <div class="view-toggle">
-        <button
-          class="toggle-btn {viewMode === 'list' ? 'active' : ''}"
-          onclick={() => (viewMode = "list")}
-          title="Tampilan Daftar"
-        >
-          <i class="ri-list-check"></i>
-        </button>
-        <button
-          class="toggle-btn {viewMode === 'grid' ? 'active' : ''}"
-          onclick={() => (viewMode = "grid")}
-          title="Tampilan Grid"
-        >
-          <i class="ri-grid-fill"></i>
-        </button>
-      </div>
-    </div>
-  </div>
+  <FileToolbar
+    bind:activeToolbarMenu
+    {customFavorites}
+    {selectedPaths}
+    bind:clipboard
+    bind:viewMode
+    onToggleToolbarMenu={toggleToolbarMenu}
+    onCloseAllMenus={closeAllMenus}
+    onOpenUploadModal={() => (showUploadModal = true)}
+    onOpenCloudStorage={openCloudStorage}
+    onOpenRemoteModal={() => (showRemoteModal = true)}
+    onOpenNewModal={openNewModal}
+    onOpenSymlinkModal={() => (showSymlinkModal = true)}
+    onOpenSearchContentModal={() => (showSearchContentModal = true)}
+    onJumpFavorite={jumpFavorite}
+    onOpenFavManageModal={() => (showFavManageModal = true)}
+    {onNotify}
+    onBatchDelete={handleBatchDelete}
+    onPasteClipboard={handlePasteClipboard}
+  />
 
   <!-- ═════════ 4. Area Konten File (Table / Grid) ═════════ -->
   <div class="file-content-panel">
@@ -1595,185 +1300,31 @@
         </div>
       </div>
     {:else if viewMode === "list"}
-      <!-- Tampilan Tabel List Gaya aaPanel -->
-      <div class="table-wrap table-container">
-        <table class="table file-table">
-          <thead>
-            <tr>
-              <th class="col-check">
-                <input
-                  type="checkbox"
-                  checked={paginatedItems.length > 0 &&
-                    selectedPaths.size === paginatedItems.length}
-                  onchange={toggleSelectAll}
-                />
-              </th>
-              <th class="col-name">File Name &darr;</th>
-              <th class="col-prot">Protected</th>
-              <th class="col-pmsn">PMSN/Owner</th>
-              <th class="col-size">Size &darr;</th>
-              <th class="col-time">Modified Time &darr;</th>
-              <th class="col-ps">Ps</th>
-              <th class="col-ops">Operation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each paginatedItems as item (item.path)}
-              {@const iconMeta = getFileIcon(item)}
-              <tr
-                class="{selectedPaths.has(item.path)
-                  ? 'selected-row'
-                  : ''} {activeMenuItem?.path === item.path
-                  ? 'highlight-row'
-                  : ''}"
-                oncontextmenu={(e) => handleRowContextMenu(item, e)}
-              >
-                <td class="col-check">
-                  <input
-                    type="checkbox"
-                    checked={selectedPaths.has(item.path)}
-                    onchange={() => toggleSelectItem(item.path)}
-                  />
-                </td>
-                <td class="col-name">
-                  <div
-                    class="name-cell"
-                    role="button"
-                    tabindex="0"
-                    onclick={() => handleItemClick(item)}
-                    onkeydown={(e) =>
-                      e.key === "Enter" && handleItemClick(item)}
-                  >
-                    <i
-                      class="{iconMeta.icon} item-icon"
-                      style="color: {iconMeta.color};"
-                    ></i>
-                    <span class="item-name {item.is_dir ? 'dir-name' : ''}"
-                      >{item.name}</span
-                    >
-                  </div>
-                </td>
-                <td class="col-prot">
-                  <span class="badge-prot">
-                    <i class="ri-lock-unlock-line"></i> Unprotected
-                  </span>
-                </td>
-                <td class="col-pmsn">
-                  <button
-                    class="pmsn-pill"
-                    onclick={() => openChmodModal(item)}
-                    title="Klik untuk ubah perizinan (chmod)"
-                  >
-                    {item.mode.slice(-3)} / {item.owner}
-                  </button>
-                </td>
-                <td class="col-size mono">
-                  {#if item.is_dir}
-                    <span class="calc-text">Calculate</span>
-                  {:else}
-                    {formatBytes(item.size)}
-                  {/if}
-                </td>
-                <td class="col-time mono">{item.mod_time}</td>
-                <td class="col-ps text-muted"
-                  >{item.is_dir ? "Directory" : item.ext || "File"}</td
-                >
-                <td class="col-ops">
-                  <div class="row-operations">
-                    <!-- Hover Quick Shortcuts (hanya terlihat saat baris di-hover) -->
-                    <div class="hover-shortcuts">
-                      {#if !item.is_dir}
-                        <button
-                          class="quick-icon-btn"
-                          onclick={() => openEditor(item)}
-                          title="Edit Cepat"
-                        >
-                          <i class="ri-edit-line"></i>
-                        </button>
-                        <button
-                          class="quick-icon-btn"
-                          onclick={() => downloadFile(item)}
-                          title="Unduh"
-                        >
-                          <i class="ri-download-line"></i>
-                        </button>
-                      {:else}
-                        <button
-                          class="quick-icon-btn"
-                          onclick={() => handleItemClick(item)}
-                          title="Buka"
-                        >
-                          <i class="ri-folder-open-line"></i>
-                        </button>
-                      {/if}
-                      <button
-                        class="quick-icon-btn link-danger"
-                        onclick={() => deleteSingleItem(item)}
-                        title="Hapus"
-                      >
-                        <i class="ri-delete-bin-line"></i>
-                      </button>
-                    </div>
-
-                    <!-- Tombol Dropdown Operate (Sesuai Screenshot aaPanel) -->
-                    <button
-                      class="btn-operate {activeMenuItem?.path === item.path
-                        ? 'is-active'
-                        : ''}"
-                      onclick={(e) => toggleOperateMenu(item, e)}
-                      title="Menu Operasi"
-                    >
-                      <span>Operate</span>
-                      <i class="ri-arrow-down-s-line"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <FileTable
+        {paginatedItems}
+        {selectedPaths}
+        {activeMenuItem}
+        {getFileIcon}
+        onToggleSelectAll={toggleSelectAll}
+        onToggleSelectItem={toggleSelectItem}
+        onRowContextMenu={handleRowContextMenu}
+        onItemClick={handleItemClick}
+        onOpenChmodModal={openChmodModal}
+        onOpenEditor={openEditor}
+        onDownloadFile={downloadFile}
+        onDeleteSingleItem={deleteSingleItem}
+        onToggleOperateMenu={toggleOperateMenu}
+      />
     {:else}
-      <!-- Tampilan Grid Bento -->
-      <div class="grid-container">
-        {#each paginatedItems as item (item.path)}
-          {@const iconMeta = getFileIcon(item)}
-          <div
-            class="grid-card {selectedPaths.has(item.path)
-              ? 'selected-card'
-              : ''}"
-            role="button"
-            tabindex="0"
-            onclick={() => handleItemClick(item)}
-            onkeydown={(e) => e.key === "Enter" && handleItemClick(item)}
-            oncontextmenu={(e) => handleRowContextMenu(item, e)}
-          >
-            <div class="card-top">
-              <input
-                type="checkbox"
-                checked={selectedPaths.has(item.path)}
-                onclick={(e) => e.stopPropagation()}
-                onchange={() => toggleSelectItem(item.path)}
-              />
-              <button
-                class="card-operate-btn"
-                onclick={(e) => toggleOperateMenu(item, e)}
-                title="Menu Operasi"
-              >
-                <i class="ri-more-2-fill"></i>
-              </button>
-            </div>
-            <i
-              class="{iconMeta.icon} card-icon"
-              style="color: {iconMeta.color};"
-            ></i>
-            <span class="card-name" title={item.name}>{item.name}</span>
-            <span class="card-size mono"
-              >{item.is_dir ? "Directory" : formatBytes(item.size)}</span
-            >
-          </div>
-        {/each}
-      </div>
+      <FileGrid
+        {paginatedItems}
+        {selectedPaths}
+        {getFileIcon}
+        onItemClick={handleItemClick}
+        onRowContextMenu={handleRowContextMenu}
+        onToggleSelectItem={toggleSelectItem}
+        onToggleOperateMenu={toggleOperateMenu}
+      />
     {/if}
   </div>
 

@@ -239,7 +239,7 @@ func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredI
 
 			// Batasi kedalaman pencarian maksimal 2 subdirektori
 			rel, errRel := filepath.Rel(root, path)
-			if errRel == nil && strings.Count(rel, string(filepath.Separator)) > 2 {
+			if errRel == nil && strings.Count(rel, string(filepath.Separator)) > 3 {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}

@@ -69,7 +69,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.3.1"
+		return "0.3.2"
 	}
 	return s.version
 }
@@ -140,6 +140,7 @@ func (s *Server) registerRoutes() {
 
 	// Endpoint terproteksi autentikasi sesi
 	s.mux.Handle("GET /api/auth/me", s.AuthMiddleware(http.HandlerFunc(s.handleMe)))
+	s.mux.Handle("POST /api/auth/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePassword)))
 	s.mux.Handle("GET /api/metrics/live", s.AuthMiddleware(http.HandlerFunc(s.metrics.ServeHTTP)))
 	s.mux.Handle("GET /api/overview", s.AuthMiddleware(http.HandlerFunc(s.handleOverview)))
 

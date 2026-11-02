@@ -126,6 +126,64 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdatePasswordRequest merepresentasikan payload perubahan kata sandi
+type UpdatePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+// handleUpdatePassword memproses perubahan kata sandi administrator dengan verifikasi kata sandi lama
+func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
+	user := GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	var req UpdatePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	newPass := req.NewPassword
+	if len(newPass) < 4 {
+		http.Error(w, `{"error":"kata sandi baru minimal 4 karakter"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Ambil data user terkini dari database untuk memverifikasi kata sandi lama
+	dbUser, err := s.store.GetUserByID(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, `{"error":"pengguna tidak ditemukan"}`, http.StatusNotFound)
+		return
+	}
+
+	valid, err := auth.VerifyPassword(req.OldPassword, dbUser.PasswordHash)
+	if err != nil || !valid {
+		_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_fail", user.Username, false, "Kata sandi saat ini tidak cocok", &user.ID)
+		http.Error(w, `{"error":"kata sandi saat ini tidak sesuai"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Buat hash Argon2id baru
+	newHash, err := auth.HashPassword(newPass)
+	if err != nil {
+		http.Error(w, `{"error":"gagal mengenkripsi kata sandi baru"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.store.UpdatePassword(r.Context(), user.ID, newHash); err != nil {
+		http.Error(w, `{"error":"gagal menyimpan kata sandi baru ke database"}`, http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_success", user.Username, true, "Kata sandi administrator berhasil diperbarui", &user.ID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true,"message":"Kata sandi berhasil diperbarui"}`))
+}
+
 // handleOverview menyajikan ringkasan sistem, hardware, dan status modul panel (mirip aaPanel)
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()

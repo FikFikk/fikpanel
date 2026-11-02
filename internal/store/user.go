@@ -89,3 +89,10 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	return &u, nil
 }
 
+// UpdatePassword memperbarui hash kata sandi pengguna di database
+func (s *Store) UpdatePassword(ctx context.Context, userID int64, newHash string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE users SET password_hash = ? WHERE id = ?", newHash, userID)
+	return err
+}
+
+

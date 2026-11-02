@@ -56,6 +56,16 @@
 | Response | HTTP 200 `{"ok": true, "sudo_until": 1771747800}` |
 | Notes | Mengaktifkan window sudo selama 5 menit untuk eksekusi aksi sensitif/terminal root. |
 
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/password` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `old_password` (string, wajib), `new_password` (string, wajib, min 4 karakter) |
+| Response | HTTP 200 `{"ok": true, "message": "Kata sandi berhasil diperbarui"}` |
+| Notes | Memverifikasi kecocokan kata sandi saat ini (`old_password`), mengenkripsi kata sandi baru menggunakan algoritma Argon2id (19 MiB RAM cost, 2 iterasi), menyimpan hash ke SQLite `users`, serta mencatat riwayat audit log. Sesi login berikutnya dengan kata sandi lama/kosong akan ditolak HTTP 401 Unauthorized. |
+
 ---
 
 ### 1.2 Pemantauan Sistem (Monitoring & Metrik)
@@ -67,7 +77,7 @@
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.3.1", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}, "server_time": {"unix": 1793160893, "timezone_name": "UTC", "offset_sec": 0}}` |
+| Response | HTTP 200 `{"system": {"hostname": "ip-172-31-45-195", "os": "Ubuntu 24.04", "arch": "amd64", "version": "0.3.2", "uptime_sec": 3600}, "sites_count": 0, "databases_count": 0, "cron_count": 0, "latest_metric": {...}, "server_time": {"unix": 1793160893, "timezone_name": "UTC", "offset_sec": 0}}` |
 | Notes | Menyediakan ringkasan status sistem, ringkasan jumlah resource, metrik terkini, nomor versi rilis FikPanel yang aktif, serta objek `server_time` (waktu epoch unix, nama timezone, dan offset detik) untuk sinkronisasi live clock global di header Topbar. |
 
 | Field | Detail |
