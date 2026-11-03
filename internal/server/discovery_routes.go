@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"fikpanel/internal/cloudflare"
 	"fikpanel/internal/discovery"
+	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 )
 
@@ -173,6 +175,38 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+
+			// Jika status SSL masih false, periksa apakah domain diproxy oleh Cloudflare Anycast Edge
+			if !result.NginxVhosts[i].SSL {
+				for _, d := range domains {
+					lowerDomain := strings.ToLower(d)
+					if cloudflare.IsDomainProxiedByCloudflare(ctx, lowerDomain) {
+						result.NginxVhosts[i].SSL = true
+						result.NginxVhosts[i].SSLIssuer = "Cloudflare Edge SSL (Flexible)"
+
+						// Jika situs sudah diadopsi dan sebelumnya masih 'none', perbarui otomatis ke mode cloudflare
+						if es, ok := siteMap[lowerDomain]; ok && es.SSLMode == "none" {
+							es.SSLMode = "cloudflare"
+							es.ForceHTTPS = 0
+							es.HSTS = 0
+							_ = s.store.UpdateSite(dbCtx, &es)
+
+							certDomainsJSON, _ := json.Marshal(sites.AllDomains(&es))
+							certRecord := store.Certificate{
+								SiteID:    es.ID,
+								Status:    "issued",
+								Issuer:    "Cloudflare Edge SSL (Flexible)",
+								NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+								NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+								Domains:   string(certDomainsJSON),
+								RenewedAt: time.Now().Unix(),
+							}
+							_ = s.store.UpsertCertificate(dbCtx, &certRecord)
+						}
+						break
+					}
+				}
+			}
 		}
 	}
 
@@ -224,9 +258,13 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			sslMode = "custom"
 			lowerIssuer := strings.ToLower(item.SSLIssuer)
 			lowerCert := strings.ToLower(item.SSLCertPath)
-			if strings.Contains(lowerIssuer, "letsencrypt") || strings.Contains(lowerIssuer, "let's encrypt") || strings.Contains(lowerCert, "letsencrypt") {
+			if strings.Contains(lowerIssuer, "cloudflare") {
+				sslMode = "cloudflare"
+			} else if strings.Contains(lowerIssuer, "letsencrypt") || strings.Contains(lowerIssuer, "let's encrypt") || strings.Contains(lowerCert, "letsencrypt") {
 				sslMode = "letsencrypt"
 			}
+		} else if strings.Contains(strings.ToLower(item.SSLIssuer), "cloudflare") || cloudflare.IsDomainProxiedByCloudflare(r.Context(), domain) {
+			sslMode = "cloudflare"
 		}
 
 		aliasJSON, _ := json.Marshal(item.Aliases)
@@ -286,6 +324,18 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
+			} else if sslMode == "cloudflare" {
+				certDomainsJSON, _ := json.Marshal(sites.AllDomains(created))
+				certRecord := store.Certificate{
+					SiteID:    created.ID,
+					Status:    "issued",
+					Issuer:    "Cloudflare Edge SSL (Flexible)",
+					NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+					NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+					Domains:   string(certDomainsJSON),
+					RenewedAt: time.Now().Unix(),
+				}
+				_ = s.store.UpsertCertificate(r.Context(), &certRecord)
 			}
 
 			// Terapkan konfigurasi vhost Nginx FikPanel langsung agar blok listen 443 ssl aktif

@@ -152,23 +152,16 @@ echo -e "• Database dan konfigurasi website : ${GREEN}Aman 100% (Tidak Tersent
 echo -e "• Biner Cadangan                   : ${INSTALL_DIR}/bin/fikpanel.bak"
 echo -e "• Lokasi Biner                     : ${INSTALL_DIR}/bin/fikpanel dan /usr/local/bin/fikpanel"
 
-# 10. Restart Service Daemon FikPanel Secara Asinkron (Mencegah Deadlock Web Terminal)
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "fikpanel.service"; then
-    echo -e "• Status Layanan Daemon            : ${CYAN}Me-restart di latar belakang...${NC}"
+# 10. Restart Service Daemon FikPanel
+if command -v systemctl >/dev/null 2>&1; then
+    echo -e "• Status Layanan Daemon            : ${CYAN}Me-restart service fikpanel...${NC}"
     echo -e "==============================================================\n"
-    systemctl daemon-reload || true
-    if command -v systemd-run >/dev/null 2>&1; then
-        # Berikan jeda 2 detik agar skrip selesai, output terbaca utuh oleh handler terminal,
-        # dan respons HTTP sukses sempat dikirim ke browser sebelum daemon dimatikan.
-        systemd-run --no-block sh -c "sleep 2 && systemctl restart fikpanel.service"
-    else
-        # Fallback background process jika systemd-run tidak tersedia
-        nohup sh -c "sleep 2 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
-    fi
-    echo -e "${GREEN}[✓] Perintah restart berhasil dikirim ke systemd secara terpisah (detached).${NC}"
-    echo -e "[*] Jika Anda memperbarui lewat Web Terminal, koneksi akan terputus sesaat selagi panel memuat biner baru."
-    echo -e "[*] Silakan muat ulang (refresh) halaman peramban Anda dalam 2-3 detik.\n"
+    systemctl daemon-reload 2>/dev/null || true
+    # Eksekusi langsung restart fikpanel agar daemon segera berjalan dengan biner baru
+    systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true
+    echo -e "${GREEN}[✓] Layanan fikpanel berhasil direstart (systemctl restart fikpanel).${NC}"
+    echo -e "[*] Silakan muat ulang (refresh) dashboard di peramban Anda dalam 2-3 detik.\n"
 else
-    echo -e "• Status Layanan Daemon            : Standalone (systemd fikpanel.service tidak ditemukan)"
+    echo -e "• Status Layanan Daemon            : Standalone (systemctl tidak ditemukan)"
     echo -e "==============================================================\n"
 fi

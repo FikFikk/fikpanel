@@ -127,6 +127,32 @@ func init() {
 	}
 }
 
+// IsCloudflareEdgeIP memeriksa apakah alamat IP merupakan IP proxy Anycast Cloudflare (Orange Cloud)
+func IsCloudflareEdgeIP(ipStr string) bool {
+	return isCloudflareEdgeIP(ipStr)
+}
+
+// IsDomainProxiedByCloudflare memeriksa apakah domain mengarah ke Cloudflare Edge (Orange Cloud)
+func IsDomainProxiedByCloudflare(ctx context.Context, domain string) bool {
+	cleanDomain := strings.TrimSpace(domain)
+	if cleanDomain == "" || cleanDomain == "_" || cleanDomain == "localhost" {
+		return false
+	}
+	ctxTimeout, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+
+	ips, err := net.DefaultResolver.LookupIP(ctxTimeout, "ip4", cleanDomain)
+	if err != nil {
+		return false
+	}
+	for _, ip := range ips {
+		if isCloudflareEdgeIP(ip.String()) {
+			return true
+		}
+	}
+	return false
+}
+
 // isCloudflareEdgeIP memeriksa apakah IP merupakan IP proxy Anycast Cloudflare (Orange Cloud)
 func isCloudflareEdgeIP(ipStr string) bool {
 	ip := net.ParseIP(strings.TrimSpace(ipStr))
