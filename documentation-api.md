@@ -1469,7 +1469,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `custom_roots` (opsional, array of string) |
 | Response | HTTP 200 `{"ok": true, "result": {"nginx_vhosts": [...], "docker_projects": [...], "pm2_apps": [...], "kubernetes_detected": bool, "kubernetes_type": "k3s"}}` |
-| Notes | Memindai konfigurasi vhost Nginx host (`/etc/nginx/**`), aturan ingress Cloudflare Tunnel (`/etc/cloudflared/`, `~/.cloudflared/`, `/home/*/.cloudflared/`), stack docker compose (kedalaman maks 2 subfolder & melewati folder berat `actions-runner`, `.cache`, `vendor`, `node_modules`, dll.), proses PM2 multi-user (`/root/.pm2` & `/home/*/.pm2`), dan status cluster K8s dengan batas waktu 10 detik. Mengembalikan HTTP 200 dengan hasil parsial bila terjadi timeout. |
+| Notes | Memindai konfigurasi vhost Nginx host (`/etc/nginx/**`), aturan ingress Cloudflare Tunnel (`/etc/cloudflared/`, `~/.cloudflared/`, `/home/*/.cloudflared/`), stack docker compose (kedalaman maks 2 subfolder & melewati folder berat `actions-runner`, `.cache`, `vendor`, `node_modules`, dll.), proses PM2 multi-user (`/root/.pm2` & `/home/*/.pm2`), port listening sistem via `ss -lptn` ter-cache dalam satu putaran, verifikasi Cloudflare Anycast SSL secara paralel, dan status cluster K8s dengan batas waktu 25 detik. Mengembalikan HTTP 200 dengan flag `partial: true` bila terjadi timeout. |
 
 | Field | Detail |
 |---|---|

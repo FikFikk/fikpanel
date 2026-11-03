@@ -86,6 +86,7 @@
       const res = await apiFetch<{ ok: boolean; result: DiscoveryResult }>('/api/discovery/scan', {
         method: 'POST',
         body: JSON.stringify({ custom_roots: roots }),
+        timeoutMs: 45_000,
       });
       if (res && res.result) {
         discoveryResult = res.result;

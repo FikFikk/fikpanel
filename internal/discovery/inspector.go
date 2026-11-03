@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -11,6 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // ProjectRuntimeInfo merangkum hasil deteksi runtime dan framework sebuah direktori atau port proxy
@@ -260,6 +263,142 @@ func inspectPythonDirectory(rootDir string) (ProjectRuntimeInfo, bool) {
 	return ProjectRuntimeInfo{}, false
 }
 
+// listeningProcess menyimpan informasi proses yang sedang me-listen suatu port di Linux
+type listeningProcess struct {
+	Port int
+	PID  string
+	Name string
+	CWD  string
+}
+
+var (
+	inspectorMu          sync.Mutex
+	cachedListeningPorts map[int]listeningProcess
+	cachedPM2Ports       map[int]ProjectRuntimeInfo
+	cachedPHPVersion     string
+	lastInspectorScan    time.Time
+)
+
+// InvalidateInspectorCache mengosongkan cache proses agar pemindaian berikutnya mengambil data segar dari sistem
+func InvalidateInspectorCache() {
+	inspectorMu.Lock()
+	defer inspectorMu.Unlock()
+	cachedListeningPorts = nil
+	cachedPM2Ports = nil
+	cachedPHPVersion = ""
+	lastInspectorScan = time.Time{}
+}
+
+// ensureInspectorData memuat daftar port listening dan proses PM2 secara efisien satu kali untuk digunakan bersama
+func ensureInspectorData(ctx context.Context) {
+	inspectorMu.Lock()
+	defer inspectorMu.Unlock()
+
+	// Jika data cache masih baru (kurang dari 15 detik), hindari eksekusi perintah berulang
+	if !lastInspectorScan.IsZero() && time.Since(lastInspectorScan) < 15*time.Second && cachedListeningPorts != nil {
+		return
+	}
+
+	cachedListeningPorts = make(map[int]listeningProcess)
+	cachedPM2Ports = make(map[int]ProjectRuntimeInfo)
+	lastInspectorScan = time.Now()
+
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	// 1. Pindai seluruh port listening via satu perintah ss -lptn (maksimal 1 detik)
+	ssCtx, cancelSS := context.WithTimeout(ctx, 1*time.Second)
+	defer cancelSS()
+
+	if out, err := exec.CommandContext(ssCtx, "ss", "-lptn").Output(); err == nil && len(out) > 0 {
+		lines := strings.Split(string(out), "\n")
+		portRe := regexp.MustCompile(`:([0-9]+)\s+`)
+		userRe := regexp.MustCompile(`users:\(\("([^"]+)",pid=([0-9]+)`)
+
+		for _, line := range lines {
+			if !strings.Contains(line, "users:") {
+				continue
+			}
+			pMatch := portRe.FindStringSubmatch(line)
+			uMatch := userRe.FindStringSubmatch(line)
+			if len(pMatch) >= 2 && len(uMatch) >= 3 {
+				p, err := strconv.Atoi(pMatch[1])
+				if err == nil && p > 0 {
+					pid := uMatch[2]
+					name := strings.ToLower(uMatch[1])
+					cwd, _ := os.Readlink(fmt.Sprintf("/proc/%s/cwd", pid))
+					cachedListeningPorts[p] = listeningProcess{
+						Port: p,
+						PID:  pid,
+						Name: name,
+						CWD:  cwd,
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Pindai proses PM2 satu kali dengan batas waktu 1 detik
+	pm2Ctx, cancelPM2 := context.WithTimeout(ctx, 1*time.Second)
+	defer cancelPM2()
+
+	pm2Bin := "pm2"
+	if p, err := exec.LookPath("pm2"); err == nil {
+		pm2Bin = p
+	}
+
+	cmd := exec.CommandContext(pm2Ctx, pm2Bin, "jlist")
+	if out, err := cmd.Output(); err == nil && len(out) > 0 {
+		outStr := string(out)
+		fB := strings.Index(outStr, "[")
+		lB := strings.LastIndex(outStr, "]")
+		if fB != -1 && lB != -1 && lB > fB {
+			var apps []struct {
+				Name   string `json:"name"`
+				PM2Env struct {
+					CWD  string                 `json:"pm_cwd"`
+					Env  map[string]interface{} `json:"env"`
+					Port interface{}            `json:"PORT"`
+				} `json:"pm2_env"`
+			}
+			if err := json.Unmarshal([]byte(outStr[fB:lB+1]), &apps); err == nil {
+				for _, app := range apps {
+					cwd := app.PM2Env.CWD
+					var foundPort int
+
+					if app.PM2Env.Port != nil {
+						if p, ok := app.PM2Env.Port.(float64); ok {
+							foundPort = int(p)
+						} else if pStr, ok := app.PM2Env.Port.(string); ok {
+							foundPort, _ = strconv.Atoi(pStr)
+						}
+					}
+					if foundPort == 0 && app.PM2Env.Env != nil {
+						if pVal, ok := app.PM2Env.Env["PORT"]; ok {
+							if p, ok := pVal.(float64); ok {
+								foundPort = int(p)
+							} else if pStr, ok := pVal.(string); ok {
+								foundPort, _ = strconv.Atoi(pStr)
+							}
+						}
+					}
+
+					if foundPort > 0 {
+						rt := ProjectRuntimeInfo{Kind: "node", Framework: "Node.js", PHPVersion: "8.3"}
+						if cwd != "" {
+							if node, ok := inspectNodeDirectory(cwd); ok {
+								rt = node
+							}
+						}
+						cachedPM2Ports[foundPort] = rt
+					}
+				}
+			}
+		}
+	}
+}
+
 // inspectProxyRuntime memeriksa proses internal sistem yang me-listen target port localhost
 func inspectProxyRuntime(proxyPass string, domain string, fallbackRootDir string) ProjectRuntimeInfo {
 	// Nilai bawaan jika bukan proxy lokal atau tidak terdeteksi
@@ -291,7 +430,48 @@ func inspectProxyRuntime(proxyPass string, domain string, fallbackRootDir string
 		return def
 	}
 
-	// 1. Periksa kandidat folder proyek berdasarkan domain
+	// Pastikan data port listening dan PM2 telah dimuat secara aman tanpa blokir
+	ensureInspectorData(context.Background())
+
+	inspectorMu.Lock()
+	lp, hasLP := cachedListeningPorts[port]
+	pm2Info, hasPM2 := cachedPM2Ports[port]
+	inspectorMu.Unlock()
+
+	// 1. Cek aplikasi PM2 yang cocok
+	if hasPM2 {
+		return pm2Info
+	}
+
+	// 2. Cek proses listening sistem (ss -lptn)
+	if hasLP {
+		if lp.CWD != "" {
+			if php, ok := inspectPHPDirectory(lp.CWD); ok {
+				return php
+			}
+			if node, ok := inspectNodeDirectory(lp.CWD); ok {
+				return node
+			}
+			if g, ok := inspectGoDirectory(lp.CWD); ok {
+				return g
+			}
+			if py, ok := inspectPythonDirectory(lp.CWD); ok {
+				return py
+			}
+		}
+
+		if strings.Contains(lp.Name, "node") {
+			return ProjectRuntimeInfo{Kind: "node", Framework: "Node.js", PHPVersion: "8.3"}
+		}
+		if strings.Contains(lp.Name, "python") || strings.Contains(lp.Name, "gunicorn") || strings.Contains(lp.Name, "uvicorn") {
+			return ProjectRuntimeInfo{Kind: "python", Framework: "Python", PHPVersion: "8.3"}
+		}
+		if strings.Contains(lp.Name, "go") || strings.Contains(lp.Name, "api") || strings.Contains(lp.Name, "server") || strings.Contains(lp.Name, "app") {
+			return ProjectRuntimeInfo{Kind: "go", Framework: "Go Service", PHPVersion: "8.3"}
+		}
+	}
+
+	// 3. Fallback periksa kandidat folder proyek berdasarkan domain jika cwd proses tidak ditemukan
 	for _, cand := range candidateDirsForDomain(domain) {
 		if php, ok := inspectPHPDirectory(cand); ok {
 			return php
@@ -307,16 +487,6 @@ func inspectProxyRuntime(proxyPass string, domain string, fallbackRootDir string
 		}
 	}
 
-	// 2. Periksa PM2 process list di Linux jika tersedia
-	if pm2Info, ok := inspectPM2Port(port); ok {
-		return pm2Info
-	}
-
-	// 3. Periksa port listening via command 'ss -lptn' di Linux
-	if sysInfo, ok := inspectListeningProcessPort(port); ok {
-		return sysInfo
-	}
-
 	// 4. Jika nama domain memuat kata kunci seperti "go-api", "go.", atau "api" dengan biner di sistem
 	lowerDom := strings.ToLower(domain)
 	if strings.Contains(lowerDom, "go-") || strings.Contains(lowerDom, "go.") || strings.HasSuffix(lowerDom, ".go") {
@@ -328,107 +498,45 @@ func inspectProxyRuntime(proxyPass string, domain string, fallbackRootDir string
 
 // inspectPM2Port membaca daftar aplikasi PM2 untuk menemukan aplikasi yang berjalan pada port tertentu
 func inspectPM2Port(targetPort int) (ProjectRuntimeInfo, bool) {
-	if runtime.GOOS != "linux" {
-		return ProjectRuntimeInfo{}, false
-	}
-
-	out, err := exec.Command("pm2", "jlist").Output()
-	if err != nil || len(out) == 0 {
-		return ProjectRuntimeInfo{}, false
-	}
-
-	var apps []struct {
-		Name   string `json:"name"`
-		PM2Env struct {
-			CWD  string                 `json:"pm_cwd"`
-			Env  map[string]interface{} `json:"env"`
-			Port interface{}            `json:"PORT"`
-		} `json:"pm2_env"`
-	}
-	if err := json.Unmarshal(out, &apps); err != nil {
-		return ProjectRuntimeInfo{}, false
-	}
-
-	for _, app := range apps {
-		cwd := app.PM2Env.CWD
-		// Periksa kecocokan port dari env
-		match := false
-		if app.PM2Env.Port != nil {
-			if p, ok := app.PM2Env.Port.(float64); ok && int(p) == targetPort {
-				match = true
-			} else if pStr, ok := app.PM2Env.Port.(string); ok && pStr == strconv.Itoa(targetPort) {
-				match = true
-			}
-		}
-		if !match && app.PM2Env.Env != nil {
-			if pVal, ok := app.PM2Env.Env["PORT"]; ok {
-				if p, ok := pVal.(float64); ok && int(p) == targetPort {
-					match = true
-				} else if pStr, ok := pVal.(string); ok && pStr == strconv.Itoa(targetPort) {
-					match = true
-				}
-			}
-		}
-
-		if match && cwd != "" {
-			if node, ok := inspectNodeDirectory(cwd); ok {
-				return node, true
-			}
-			return ProjectRuntimeInfo{Kind: "node", Framework: "Node.js", PHPVersion: "8.3"}, true
-		}
-	}
-
-	return ProjectRuntimeInfo{}, false
+	ensureInspectorData(context.Background())
+	inspectorMu.Lock()
+	defer inspectorMu.Unlock()
+	info, ok := cachedPM2Ports[targetPort]
+	return info, ok
 }
 
 // inspectListeningProcessPort memeriksa proses Linux yang sedang me-listen pada port tertentu
 func inspectListeningProcessPort(port int) (ProjectRuntimeInfo, bool) {
-	if runtime.GOOS != "linux" {
+	ensureInspectorData(context.Background())
+	inspectorMu.Lock()
+	lp, ok := cachedListeningPorts[port]
+	inspectorMu.Unlock()
+	if !ok {
 		return ProjectRuntimeInfo{}, false
 	}
 
-	// Gunakan perintah ss -lptn "sport = :<port>"
-	out, err := exec.Command("ss", "-lptn", fmt.Sprintf("sport = :%d", port)).Output()
-	if err != nil || len(out) == 0 {
-		return ProjectRuntimeInfo{}, false
-	}
-
-	outStr := string(out)
-	// Ekstrak nama proses dan PID: misal users:(("node",pid=1234,fd=19)) atau users:(("go-api",pid=5678,fd=3))
-	pidRe := regexp.MustCompile(`users:\(\("([^"]+)",pid=([0-9]+)`)
-	matches := pidRe.FindStringSubmatch(outStr)
-	if len(matches) < 3 {
-		return ProjectRuntimeInfo{}, false
-	}
-
-	procName := strings.ToLower(matches[1])
-	pidStr := matches[2]
-
-	// Baca working directory proses via /proc/<pid>/cwd
-	cwdPath, err := os.Readlink(fmt.Sprintf("/proc/%s/cwd", pidStr))
-	if err == nil && cwdPath != "" {
-		if php, ok := inspectPHPDirectory(cwdPath); ok {
+	if lp.CWD != "" {
+		if php, ok := inspectPHPDirectory(lp.CWD); ok {
 			return php, true
 		}
-		if node, ok := inspectNodeDirectory(cwdPath); ok {
+		if node, ok := inspectNodeDirectory(lp.CWD); ok {
 			return node, true
 		}
-		if g, ok := inspectGoDirectory(cwdPath); ok {
+		if g, ok := inspectGoDirectory(lp.CWD); ok {
 			return g, true
 		}
-		if py, ok := inspectPythonDirectory(cwdPath); ok {
+		if py, ok := inspectPythonDirectory(lp.CWD); ok {
 			return py, true
 		}
 	}
 
-	// Deteksi berdasarkan nama biner proses
-	if strings.Contains(procName, "node") {
+	if strings.Contains(lp.Name, "node") {
 		return ProjectRuntimeInfo{Kind: "node", Framework: "Node.js", PHPVersion: "8.3"}, true
 	}
-	if strings.Contains(procName, "python") || strings.Contains(procName, "gunicorn") || strings.Contains(procName, "uvicorn") {
+	if strings.Contains(lp.Name, "python") || strings.Contains(lp.Name, "gunicorn") || strings.Contains(lp.Name, "uvicorn") {
 		return ProjectRuntimeInfo{Kind: "python", Framework: "Python", PHPVersion: "8.3"}, true
 	}
-	if strings.Contains(procName, "go") || strings.Contains(procName, "api") || strings.Contains(procName, "server") || strings.Contains(procName, "app") {
+	if strings.Contains(lp.Name, "go") || strings.Contains(lp.Name, "api") || strings.Contains(lp.Name, "server") || strings.Contains(lp.Name, "app") {
 		return ProjectRuntimeInfo{Kind: "go", Framework: "Go Service", PHPVersion: "8.3"}, true
 	}
 
@@ -457,45 +565,73 @@ func candidateDirsForDomain(domain string) []string {
 	sub := parts[0]
 
 	baseLocations := []string{
-		"/home/fikfikk/projects",
-		"/home/fikfikk/projects/web",
-		"/home/fikfikk/projects/node",
-		"/home/fikfikk/projects/go",
 		"/var/www",
 		"/var/www/html",
 	}
 
+	// Deteksi direktori home pengguna Linux secara dinamis
+	if entries, err := os.ReadDir("/home"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+				uDir := filepath.Join("/home", e.Name())
+				baseLocations = append(baseLocations,
+					filepath.Join(uDir, "projects"),
+					filepath.Join(uDir, "projects/web"),
+					filepath.Join(uDir, "projects/node"),
+					filepath.Join(uDir, "projects/go"),
+				)
+			}
+		}
+	}
+
 	var results []string
 	for _, base := range baseLocations {
-		results = append(results,
-			filepath.Join(base, clean),
-			filepath.Join(base, sub),
-			filepath.Join(base, sub, "public"),
-			filepath.Join(base, sub, "dist"),
-		)
+		// Validasi direktori dasar sebelum memeriksa anak jalurnya
+		if st, err := os.Stat(base); err == nil && st.IsDir() {
+			results = append(results,
+				filepath.Join(base, clean),
+				filepath.Join(base, sub),
+				filepath.Join(base, sub, "public"),
+				filepath.Join(base, sub, "dist"),
+			)
+		}
 	}
 
 	return results
 }
 
-// detectAvailablePHPVersion mencari socket PHP-FPM aktif tertinggi di sistem
+// detectAvailablePHPVersion mencari socket PHP-FPM aktif tertinggi di sistem dengan cache memori
 func detectAvailablePHPVersion() string {
-	if runtime.GOOS != "linux" {
-		return "8.3"
+	inspectorMu.Lock()
+	if cachedPHPVersion != "" {
+		v := cachedPHPVersion
+		inspectorMu.Unlock()
+		return v
 	}
-	entries, err := os.ReadDir("/run/php")
-	if err != nil {
-		return "8.3"
-	}
+	inspectorMu.Unlock()
 
-	// Prioritaskan versi PHP yang sering digunakan
-	versions := []string{"8.4", "8.3", "8.2", "8.1", "8.0", "7.4"}
-	for _, v := range versions {
-		for _, e := range entries {
-			if strings.Contains(e.Name(), "php"+v+"-fpm.sock") {
-				return v
+	v := "8.3"
+	if runtime.GOOS == "linux" {
+		if entries, err := os.ReadDir("/run/php"); err == nil {
+			versions := []string{"8.4", "8.3", "8.2", "8.1", "8.0", "7.4"}
+			found := false
+			for _, ver := range versions {
+				for _, e := range entries {
+					if strings.Contains(e.Name(), "php"+ver+"-fpm.sock") {
+						v = ver
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
 			}
 		}
 	}
-	return "8.3"
+
+	inspectorMu.Lock()
+	cachedPHPVersion = v
+	inspectorMu.Unlock()
+	return v
 }

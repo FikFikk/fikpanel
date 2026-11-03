@@ -299,10 +299,12 @@ func mergeVhostEntries(items []NginxVhostItem) []NginxVhostItem {
 	}
 
 	for i := range merged {
-		rt := DetectProjectRuntime(merged[i].RootDir, merged[i].ProxyPass, merged[i].ServerName)
-		merged[i].Kind = rt.Kind
-		merged[i].Framework = rt.Framework
-		merged[i].PHPVersion = rt.PHPVersion
+		if merged[i].Framework == "" {
+			rt := DetectProjectRuntime(merged[i].RootDir, merged[i].ProxyPass, merged[i].ServerName)
+			merged[i].Kind = rt.Kind
+			merged[i].Framework = rt.Framework
+			merged[i].PHPVersion = rt.PHPVersion
+		}
 	}
 
 	return merged
@@ -1024,9 +1026,9 @@ func DetectKubernetes(ctx context.Context) (bool, string) {
 	return false, "none"
 }
 
-// ScanAll menjalankan seluruh modul deteksi secara komprehensif dengan batas waktu 10 detik
+// ScanAll menjalankan seluruh modul deteksi secara komprehensif dengan batas waktu 15 detik
 func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*DiscoveryResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	res := &DiscoveryResult{
@@ -1047,8 +1049,8 @@ func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*Discovery
 	}
 	res.NginxVhosts = mergeVhostEntries(res.NginxVhosts)
 
-	// Batasi pemindaian berkas compose maksimal 5 detik agar PM2 & K8s tetap memiliki sisa waktu
-	dockerCtx, cancelDocker := context.WithTimeout(ctx, 5*time.Second)
+	// Batasi pemindaian berkas compose maksimal 3 detik agar modul lain tidak terhambat
+	dockerCtx, cancelDocker := context.WithTimeout(ctx, 3*time.Second)
 	if dockerProjs, _ := s.ScanDockerProjects(dockerCtx, customRoots); dockerProjs != nil {
 		res.DockerProjects = dockerProjs
 	}

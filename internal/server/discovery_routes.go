@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"fikpanel/internal/cloudflare"
@@ -97,10 +98,13 @@ func (s *Server) handleSaveDiscoveryConfig(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handleDiscoveryScan menjalankan pemindaian menyeluruh terhadap infrastruktur server dengan batas waktu 10 detik
+// handleDiscoveryScan menjalankan pemindaian menyeluruh terhadap infrastruktur server dengan batas waktu 25 detik
 func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
+
+	// Bersihkan cache inspeksi agar pemindaian selalu mendapatkan kondisi proses paling mutakhir
+	discovery.InvalidateInspectorCache()
 
 	var req struct {
 		CustomRoots []string `json:"custom_roots"`
@@ -179,36 +183,66 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
 
-			// Jika status SSL masih false, periksa apakah domain diproxy oleh Cloudflare Anycast Edge
+		// Periksa Cloudflare Anycast Edge secara paralel untuk vhost yang belum memiliki sertifikat SSL fisik
+		type pendingCheck struct {
+			vhostIdx int
+			domain   string
+		}
+		var pending []pendingCheck
+		for i := range result.NginxVhosts {
 			if !result.NginxVhosts[i].SSL {
-				for _, d := range domains {
-					lowerDomain := strings.ToLower(d)
-					if cloudflare.IsDomainProxiedByCloudflare(ctx, lowerDomain) {
-						result.NginxVhosts[i].SSL = true
-						result.NginxVhosts[i].SSLIssuer = "Cloudflare Edge SSL (Flexible)"
+				domains := strings.Fields(result.NginxVhosts[i].ServerName)
+				if len(domains) > 0 {
+					pending = append(pending, pendingCheck{vhostIdx: i, domain: strings.ToLower(domains[0])})
+				}
+			}
+		}
 
-						// Jika situs sudah diadopsi dan sebelumnya masih 'none', perbarui otomatis ke mode cloudflare
-						if es, ok := siteMap[lowerDomain]; ok && es.SSLMode == "none" {
-							es.SSLMode = "cloudflare"
-							es.ForceHTTPS = 0
-							es.HSTS = 0
-							_ = s.store.UpdateSite(dbCtx, &es)
+		if len(pending) > 0 {
+			var wg sync.WaitGroup
+			type cfMatch struct {
+				vhostIdx int
+				domain   string
+			}
+			matchedChan := make(chan cfMatch, len(pending))
+			cfCtx, cancelCF := context.WithTimeout(ctx, 2500*time.Millisecond)
 
-							certDomainsJSON, _ := json.Marshal(sites.AllDomains(&es))
-							certRecord := store.Certificate{
-								SiteID:    es.ID,
-								Status:    "issued",
-								Issuer:    "Cloudflare Edge SSL (Flexible)",
-								NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
-								NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
-								Domains:   string(certDomainsJSON),
-								RenewedAt: time.Now().Unix(),
-							}
-							_ = s.store.UpsertCertificate(dbCtx, &certRecord)
-						}
-						break
+			for _, p := range pending {
+				wg.Add(1)
+				go func(item pendingCheck) {
+					defer wg.Done()
+					if cloudflare.IsDomainProxiedByCloudflare(cfCtx, item.domain) {
+						matchedChan <- cfMatch{vhostIdx: item.vhostIdx, domain: item.domain}
 					}
+				}(p)
+			}
+			wg.Wait()
+			cancelCF()
+			close(matchedChan)
+
+			for m := range matchedChan {
+				result.NginxVhosts[m.vhostIdx].SSL = true
+				result.NginxVhosts[m.vhostIdx].SSLIssuer = "Cloudflare Edge SSL (Flexible)"
+
+				if es, ok := siteMap[m.domain]; ok && es.SSLMode == "none" {
+					es.SSLMode = "cloudflare"
+					es.ForceHTTPS = 0
+					es.HSTS = 0
+					_ = s.store.UpdateSite(dbCtx, &es)
+
+					certDomainsJSON, _ := json.Marshal(sites.AllDomains(&es))
+					certRecord := store.Certificate{
+						SiteID:    es.ID,
+						Status:    "issued",
+						Issuer:    "Cloudflare Edge SSL (Flexible)",
+						NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+						NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+						Domains:   string(certDomainsJSON),
+						RenewedAt: time.Now().Unix(),
+					}
+					_ = s.store.UpsertCertificate(dbCtx, &certRecord)
 				}
 			}
 		}
