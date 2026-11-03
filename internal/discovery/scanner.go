@@ -490,6 +490,13 @@ func parseCloudflaredIngress(filePath string) []NginxVhostItem {
 			return
 		}
 
+		// Cloudflare Tunnel ingress mendukung ssh://, tcp://, rdp://, smb:// dll.
+		// Virtual host Nginx hanya valid untuk protokol web HTTP, HTTPS, dan UNIX socket.
+		lowerS := strings.ToLower(s)
+		if !strings.HasPrefix(lowerS, "http://") && !strings.HasPrefix(lowerS, "https://") && !strings.HasPrefix(lowerS, "unix:") {
+			return
+		}
+
 		port := 443
 		if u, err := url.Parse(s); err == nil && u.Port() != "" {
 			if p, err := strconv.Atoi(u.Port()); err == nil && p > 0 {

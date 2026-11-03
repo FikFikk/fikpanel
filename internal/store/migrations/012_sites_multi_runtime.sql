@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS sites_new (
   kind        TEXT NOT NULL CHECK (kind IN ('proxy','static','php','node','go','python')),
   upstream    TEXT,
   root_path   TEXT,
-  ssl_mode    TEXT NOT NULL DEFAULT 'none' CHECK (ssl_mode IN ('none','letsencrypt','custom')),
+  ssl_mode    TEXT NOT NULL DEFAULT 'none' CHECK (ssl_mode IN ('none','letsencrypt','custom','cloudflare')),
   force_https INTEGER NOT NULL DEFAULT 1,
   extra_conf  TEXT NOT NULL DEFAULT '',
   enabled     INTEGER NOT NULL DEFAULT 1,

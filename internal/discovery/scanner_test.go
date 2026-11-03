@@ -186,6 +186,10 @@ ingress:
     service: "http://127.0.0.1:3000"
   - hostname: api.fikfikk.my.id
     service: http://localhost:8080
+  - hostname: ssh.fikfikk.my.id
+    service: ssh://localhost:22
+  - hostname: db.fikfikk.my.id
+    service: tcp://localhost:3306
   - service: http_status:404
 `
 	tmpDir := t.TempDir()

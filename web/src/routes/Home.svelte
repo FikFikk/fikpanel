@@ -123,9 +123,11 @@
         body: JSON.stringify({ sites: sitesToAdopt }),
       });
       if (res && res.ok) {
-        notify(res.message || 'Situs berhasil diadopsi ke FikPanel', 'success');
+        notify(res.message || 'Situs berhasil diadopsi ke FikPanel', res.adopted_sites > 0 ? 'success' : 'info');
         showDiscoveryModal = false;
-        window.location.hash = '#/website';
+        if (res.adopted_sites > 0) {
+          window.location.hash = '#/website';
+        }
       }
     } catch (err: any) {
       notify(err?.message || 'Gagal mengadopsi situs', 'error');

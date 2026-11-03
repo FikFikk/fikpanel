@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS sites (
   kind        TEXT NOT NULL CHECK (kind IN ('proxy','static','php','node','go','python')),
   upstream    TEXT,                            -- misal: http://127.0.0.1:3000
   root_path   TEXT,                            -- direktori web root (static/php)
-  ssl_mode    TEXT NOT NULL DEFAULT 'none' CHECK (ssl_mode IN ('none','letsencrypt','custom')),
+  ssl_mode    TEXT NOT NULL DEFAULT 'none' CHECK (ssl_mode IN ('none','letsencrypt','custom','cloudflare')),
   force_https INTEGER NOT NULL DEFAULT 1,
   extra_conf  TEXT NOT NULL DEFAULT '',        -- snippet custom yang divalidasi nginx -t
   enabled     INTEGER NOT NULL DEFAULT 1,

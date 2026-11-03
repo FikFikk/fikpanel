@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -248,6 +249,11 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 
 		kind := "static"
 		if item.ProxyPass != "" {
+			lowerProxy := strings.ToLower(item.ProxyPass)
+			// Abaikan protokol non-HTTP seperti ssh:// atau tcp://
+			if strings.HasPrefix(lowerProxy, "ssh://") || strings.HasPrefix(lowerProxy, "tcp://") || strings.HasPrefix(lowerProxy, "rdp://") {
+				continue
+			}
 			kind = "proxy"
 		} else if item.HasPHP {
 			kind = "php"
@@ -282,7 +288,18 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 		}
 
 		created, err := s.store.CreateSite(r.Context(), &site)
-		if err == nil && created != nil {
+		if err != nil && site.SSLMode == "cloudflare" {
+			// Fallback aman jika database belum memperbarui constraint
+			site.SSLMode = "none"
+			created, err = s.store.CreateSite(r.Context(), &site)
+		}
+
+		if err != nil {
+			log.Printf("[discovery] Gagal mengadopsi situs %s: %v", domain, err)
+			continue
+		}
+
+		if created != nil {
 			adoptedSitesCount++
 			adoptedNames = append(adoptedNames, domain)
 
@@ -350,10 +367,15 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("Mengadopsi %d situs vhost yang ada di server ke dalam FikPanel", adoptedSitesCount), nil)
 	}
 
+	msg := fmt.Sprintf("Berhasil mengadopsi %d situs ke dalam FikPanel", adoptedSitesCount)
+	if adoptedSitesCount == 0 {
+		msg = "Tidak ada situs baru yang dapat diadopsi (semua situs yang ditemukan sudah terdaftar di FikPanel)"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":            true,
 		"adopted_sites": adoptedSitesCount,
-		"message":       fmt.Sprintf("Berhasil mengadopsi %d situs ke dalam FikPanel", adoptedSitesCount),
+		"message":       msg,
 	})
 }
