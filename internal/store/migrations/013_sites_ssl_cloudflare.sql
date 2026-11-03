@@ -56,3 +56,4 @@ SELECT
 FROM certificates_backup_013;
 
 DROP TABLE certificates_backup_013;
+

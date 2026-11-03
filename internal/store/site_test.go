@@ -44,3 +44,4 @@ func TestCreateSiteWithCloudflareSSL(t *testing.T) {
 		t.Errorf("ID situs baru bernilai 0")
 	}
 }
+
