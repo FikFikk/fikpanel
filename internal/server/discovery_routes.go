@@ -35,9 +35,16 @@ type AdoptSiteItem struct {
 	PHPVersion    string   `json:"php_version,omitempty"`
 }
 
+// AdoptDatabaseItem merepresentasikan input database hasil pemindaian yang akan didaftarkan ke FikPanel
+type AdoptDatabaseItem struct {
+	Engine string `json:"engine"`
+	Name   string `json:"name"`
+}
+
 // AdoptPayload merepresentasikan daftar resource yang dipilih pengguna untuk didaftarkan ke FikPanel
 type AdoptPayload struct {
-	Sites []AdoptSiteItem `json:"sites"`
+	Sites     []AdoptSiteItem     `json:"sites"`
+	Databases []AdoptDatabaseItem `json:"databases"`
 }
 
 // handleGetDiscoveryConfig mengambil daftar direktori kustom yang dipindai
@@ -248,6 +255,22 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sinkronkan status adopsi skema basis data dengan data yang sudah terdaftar di FikPanel
+	existingDBs, _ := s.store.ListDatabases(dbCtx, "mysql")
+	existingDBMap := make(map[string]bool)
+	for _, edb := range existingDBs {
+		existingDBMap[strings.ToLower(edb.Name)] = true
+	}
+	for i := range result.Databases {
+		var adopted []string
+		for _, dbName := range result.Databases[i].Databases {
+			if existingDBMap[strings.ToLower(dbName)] {
+				adopted = append(adopted, dbName)
+			}
+		}
+		result.Databases[i].Adopted = adopted
+	}
+
 	resp := map[string]interface{}{
 		"ok":     true,
 		"result": result,
@@ -270,6 +293,7 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	adoptedSitesCount := 0
+	adoptedDatabasesCount := 0
 	var adoptedNames []string
 
 	for _, item := range payload.Sites {
@@ -425,20 +449,59 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if adoptedSitesCount > 0 {
-		_ = s.store.RecordAudit(r.Context(), "user", "discovery.adopt", strings.Join(adoptedNames, ", "), true,
-			fmt.Sprintf("Mengadopsi %d situs vhost yang ada di server ke dalam FikPanel", adoptedSitesCount), nil)
+	// Proses adopsi basis data yang dipilih pengguna ke database SQLite FikPanel
+	for _, dbItem := range payload.Databases {
+		dbName := strings.TrimSpace(dbItem.Name)
+		if dbName == "" {
+			continue
+		}
+		engine := strings.ToLower(strings.TrimSpace(dbItem.Engine))
+		if engine == "" {
+			engine = "mysql"
+		}
+
+		// Periksa apakah database sudah terdaftar
+		existing, _ := s.store.GetDatabaseByName(r.Context(), engine, dbName)
+		if existing != nil {
+			continue
+		}
+
+		rec := store.DatabaseRecord{
+			Engine:      engine,
+			Name:        dbName,
+			Username:    dbName,
+			Password:    "",
+			Location:    "localhost",
+			Note:        "Diadopsi secara otomatis dari host server oleh FikPanel",
+		}
+		_, err := s.store.CreateDatabase(r.Context(), rec)
+		if err == nil {
+			adoptedDatabasesCount++
+			adoptedNames = append(adoptedNames, fmt.Sprintf("DB:%s", dbName))
+		}
 	}
 
-	msg := fmt.Sprintf("Berhasil mengadopsi %d situs ke dalam FikPanel", adoptedSitesCount)
-	if adoptedSitesCount == 0 {
-		msg = "Tidak ada situs baru yang dapat diadopsi (semua situs yang ditemukan sudah terdaftar di FikPanel)"
+	if adoptedSitesCount > 0 || adoptedDatabasesCount > 0 {
+		_ = s.store.RecordAudit(r.Context(), "user", "discovery.adopt", strings.Join(adoptedNames, ", "), true,
+			fmt.Sprintf("Mengadopsi %d situs dan %d database yang ada di server ke dalam FikPanel", adoptedSitesCount, adoptedDatabasesCount), nil)
+	}
+
+	var msg string
+	if adoptedSitesCount > 0 && adoptedDatabasesCount > 0 {
+		msg = fmt.Sprintf("Berhasil mengadopsi %d situs dan %d database ke dalam FikPanel", adoptedSitesCount, adoptedDatabasesCount)
+	} else if adoptedSitesCount > 0 {
+		msg = fmt.Sprintf("Berhasil mengadopsi %d situs ke dalam FikPanel", adoptedSitesCount)
+	} else if adoptedDatabasesCount > 0 {
+		msg = fmt.Sprintf("Berhasil mengadopsi %d database ke dalam FikPanel", adoptedDatabasesCount)
+	} else {
+		msg = "Tidak ada situs atau database baru yang dapat diadopsi (semua yang ditemukan sudah terdaftar di FikPanel)"
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":            true,
-		"adopted_sites": adoptedSitesCount,
-		"message":       msg,
+		"ok":                true,
+		"adopted_sites":     adoptedSitesCount,
+		"adopted_databases": adoptedDatabasesCount,
+		"message":           msg,
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -59,6 +60,7 @@ type DatabaseDiscoveredItem struct {
 	Port      int      `json:"port"`
 	Running   bool     `json:"running"`
 	Databases []string `json:"databases"`
+	Adopted   []string `json:"adopted,omitempty"`
 }
 
 type DiscoveryResult struct {
@@ -1026,6 +1028,212 @@ func DetectKubernetes(ctx context.Context) (bool, string) {
 	return false, "none"
 }
 
+// isPortListening memeriksa apakah suatu port TCP lokal sedang aktif menerima koneksi
+func isPortListening(ctx context.Context, port int) bool {
+	dialer := net.Dialer{Timeout: 150 * time.Millisecond}
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err == nil {
+		_ = conn.Close()
+		return true
+	}
+	return false
+}
+
+// isMysqlSocketAvailable memeriksa keberadaan socket berkas UNIX MySQL/MariaDB
+func isMysqlSocketAvailable() bool {
+	sockets := []string{
+		"/var/run/mysqld/mysqld.sock",
+		"/run/mysqld/mysqld.sock",
+		"/tmp/mysql.sock",
+	}
+	for _, sock := range sockets {
+		if st, err := os.Stat(sock); err == nil && (st.Mode()&os.ModeSocket != 0 || !st.IsDir()) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPostgresSocketAvailable memeriksa keberadaan socket berkas UNIX PostgreSQL
+func isPostgresSocketAvailable() bool {
+	sockets := []string{
+		"/var/run/postgresql/.s.PGSQL.5432",
+		"/run/postgresql/.s.PGSQL.5432",
+		"/tmp/.s.PGSQL.5432",
+	}
+	for _, sock := range sockets {
+		if st, err := os.Stat(sock); err == nil && (st.Mode()&os.ModeSocket != 0 || !st.IsDir()) {
+			return true
+		}
+	}
+	return false
+}
+
+// isRedisSocketAvailable memeriksa keberadaan socket berkas UNIX Redis
+func isRedisSocketAvailable() bool {
+	sockets := []string{
+		"/var/run/redis/redis-server.sock",
+		"/run/redis/redis-server.sock",
+		"/tmp/redis.sock",
+	}
+	for _, sock := range sockets {
+		if st, err := os.Stat(sock); err == nil && (st.Mode()&os.ModeSocket != 0 || !st.IsDir()) {
+			return true
+		}
+	}
+	return false
+}
+
+// queryMysqlDatabases mengekstrak daftar skema database pengguna di MySQL / MariaDB
+func queryMysqlDatabases(ctx context.Context) []string {
+	dbCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	bin := "mariadb"
+	if _, err := exec.LookPath("mariadb"); err != nil {
+		bin = "mysql"
+	}
+
+	var cmd *exec.Cmd
+	if _, err := os.Stat("/etc/mysql/debian.cnf"); err == nil {
+		cmd = exec.CommandContext(dbCtx, bin, "--defaults-file=/etc/mysql/debian.cnf", "-N", "-e", "SHOW DATABASES;")
+	} else {
+		cmd = exec.CommandContext(dbCtx, bin, "-u", "root", "-N", "-e", "SHOW DATABASES;")
+	}
+
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		// Percobaan sekunder dengan menentukan jalur socket secara eksplisit
+		for _, sock := range []string{"/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock", "/tmp/mysql.sock"} {
+			if _, errStat := os.Stat(sock); errStat == nil {
+				retryCmd := exec.CommandContext(dbCtx, bin, "-u", "root", fmt.Sprintf("--socket=%s", sock), "-N", "-e", "SHOW DATABASES;")
+				if retryOut, errRetry := retryCmd.Output(); errRetry == nil && len(retryOut) > 0 {
+					out = retryOut
+					err = nil
+					break
+				}
+			}
+		}
+	}
+
+	if err != nil || len(out) == 0 {
+		return []string{}
+	}
+
+	systemDBs := map[string]bool{
+		"information_schema": true,
+		"performance_schema": true,
+		"mysql":              true,
+		"sys":                true,
+		"database":           true,
+		"databases":          true,
+	}
+
+	var schemas []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		raw := strings.TrimSpace(scanner.Text())
+		if raw == "" || strings.HasPrefix(raw, "+") || strings.HasPrefix(raw, "|") {
+			continue
+		}
+		raw = strings.Trim(raw, "| \t\r\n`'\"")
+		lower := strings.ToLower(raw)
+		if lower != "" && !systemDBs[lower] {
+			schemas = append(schemas, raw)
+		}
+	}
+
+	if schemas == nil {
+		schemas = []string{}
+	}
+	return schemas
+}
+
+// queryPostgresDatabases mengekstrak daftar database pengguna di PostgreSQL jika psql tersedia
+func queryPostgresDatabases(ctx context.Context) []string {
+	if _, err := exec.LookPath("psql"); err != nil {
+		return []string{}
+	}
+
+	pgCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(pgCtx, "psql", "-U", "postgres", "-t", "-c", "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres');")
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return []string{}
+	}
+
+	var schemas []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		db := strings.TrimSpace(scanner.Text())
+		if db != "" && db != "postgres" && !strings.HasPrefix(db, "template") {
+			schemas = append(schemas, db)
+		}
+	}
+	if schemas == nil {
+		schemas = []string{}
+	}
+	return schemas
+}
+
+// ScanDatabases mendeteksi layanan database yang aktif di server beserta daftar skemanya
+func (s *Scanner) ScanDatabases(ctx context.Context) ([]DatabaseDiscoveredItem, error) {
+	var items []DatabaseDiscoveredItem
+
+	// 1. Deteksi MySQL / MariaDB (Port 3306 atau UNIX socket)
+	mysqlActive := isPortListening(ctx, 3306) || isMysqlSocketAvailable()
+	if mysqlActive {
+		schemas := queryMysqlDatabases(ctx)
+		items = append(items, DatabaseDiscoveredItem{
+			Engine:    "mysql",
+			Port:      3306,
+			Running:   true,
+			Databases: schemas,
+		})
+	}
+
+	// 2. Deteksi PostgreSQL (Port 5432 atau UNIX socket)
+	pgActive := isPortListening(ctx, 5432) || isPostgresSocketAvailable()
+	if pgActive {
+		pgSchemas := queryPostgresDatabases(ctx)
+		items = append(items, DatabaseDiscoveredItem{
+			Engine:    "postgresql",
+			Port:      5432,
+			Running:   true,
+			Databases: pgSchemas,
+		})
+	}
+
+	// 3. Deteksi Redis (Port 6379 atau UNIX socket)
+	redisActive := isPortListening(ctx, 6379) || isRedisSocketAvailable()
+	if redisActive {
+		items = append(items, DatabaseDiscoveredItem{
+			Engine:    "redis",
+			Port:      6379,
+			Running:   true,
+			Databases: []string{},
+		})
+	}
+
+	// 4. Deteksi MongoDB (Port 27017)
+	mongoActive := isPortListening(ctx, 27017)
+	if mongoActive {
+		items = append(items, DatabaseDiscoveredItem{
+			Engine:    "mongodb",
+			Port:      27017,
+			Running:   true,
+			Databases: []string{},
+		})
+	}
+
+	if items == nil {
+		items = []DatabaseDiscoveredItem{}
+	}
+	return items, nil
+}
+
 // ScanAll menjalankan seluruh modul deteksi secara komprehensif dengan batas waktu 15 detik
 func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*DiscoveryResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -1058,6 +1266,11 @@ func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*Discovery
 
 	if pm2Apps, _ := s.ScanPM2Apps(ctx); pm2Apps != nil {
 		res.PM2Apps = pm2Apps
+	}
+
+	// Pindai basis data eksisting di host
+	if dbs, _ := s.ScanDatabases(ctx); dbs != nil {
+		res.Databases = dbs
 	}
 
 	k8sDetected, k8sType := DetectKubernetes(ctx)

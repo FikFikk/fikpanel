@@ -100,10 +100,10 @@
   }
 
   async function adoptDiscoveredSites() {
-    if (!discoveryResult || discoveryResult.nginx_vhosts.length === 0) return;
+    if (!discoveryResult) return;
     adopting = true;
     try {
-      const sitesToAdopt = discoveryResult.nginx_vhosts.map((vh) => {
+      const sitesToAdopt = (discoveryResult.nginx_vhosts || []).map((vh) => {
         const domains = vh.server_name.split(/\s+/).filter(Boolean);
         return {
           primary_domain: domains[0] || vh.server_name,
@@ -122,19 +122,57 @@
         };
       });
 
-      const res = await apiFetch<{ ok: boolean; adopted_sites: number; message: string }>('/api/discovery/adopt', {
+      const dbsToAdopt: { engine: string; name: string }[] = [];
+      if (discoveryResult.databases) {
+        for (const eng of discoveryResult.databases) {
+          for (const dbName of eng.databases || []) {
+            if (!eng.adopted || !eng.adopted.includes(dbName)) {
+              dbsToAdopt.push({ engine: eng.engine, name: dbName });
+            }
+          }
+        }
+      }
+
+      const res = await apiFetch<{ ok: boolean; adopted_sites: number; adopted_databases?: number; message: string }>('/api/discovery/adopt', {
         method: 'POST',
-        body: JSON.stringify({ sites: sitesToAdopt }),
+        body: JSON.stringify({ sites: sitesToAdopt, databases: dbsToAdopt }),
       });
       if (res && res.ok) {
-        notify(res.message || 'Situs berhasil diadopsi ke FikPanel', res.adopted_sites > 0 ? 'success' : 'info');
+        notify(res.message || 'Infrastruktur berhasil diadopsi ke FikPanel', (res.adopted_sites > 0 || (res.adopted_databases || 0) > 0) ? 'success' : 'info');
         showDiscoveryModal = false;
         if (res.adopted_sites > 0) {
           window.location.hash = '#/website';
+        } else if ((res.adopted_databases || 0) > 0) {
+          window.location.hash = '#/databases';
         }
       }
     } catch (err: any) {
-      notify(err?.message || 'Gagal mengadopsi situs', 'error');
+      notify(err?.message || 'Gagal mengadopsi infrastruktur', 'error');
+    } finally {
+      adopting = false;
+    }
+  }
+
+  async function adoptSingleDatabase(engine: string, name: string) {
+    adopting = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; adopted_databases: number; message: string }>('/api/discovery/adopt', {
+        method: 'POST',
+        body: JSON.stringify({ sites: [], databases: [{ engine, name }] }),
+      });
+      if (res && res.ok) {
+        notify(`Database ${name} berhasil diadopsi ke FikPanel`, 'success');
+        if (discoveryResult && discoveryResult.databases) {
+          for (const d of discoveryResult.databases) {
+            if (d.engine === engine) {
+              if (!d.adopted) d.adopted = [];
+              if (!d.adopted.includes(name)) d.adopted.push(name);
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      notify(err?.message || `Gagal mengadopsi database ${name}`, 'error');
     } finally {
       adopting = false;
     }
@@ -612,6 +650,10 @@
             <span class="sum-label">PM2 Node.js</span>
             <span class="sum-val">{discoveryResult.pm2_apps.length} apps</span>
           </div>
+          <div class="summary-item">
+            <span class="sum-label">Databases Host</span>
+            <span class="sum-val">{discoveryResult.databases ? discoveryResult.databases.reduce((acc, d) => acc + (d.databases ? d.databases.length : 0), 0) : 0} db</span>
+          </div>
         </div>
 
         <!-- Virtual Hosts Nginx -->
@@ -739,17 +781,83 @@
             </div>
           {/if}
         </div>
+
+        <!-- Basis Data Host Terdeteksi -->
+        <div class="disc-section">
+          <h4>
+            <i class="ri-database-2-line"></i> Basis Data Host Terdeteksi ({discoveryResult.databases ? discoveryResult.databases.reduce((acc, d) => acc + (d.databases ? d.databases.length : 0), 0) : 0})
+          </h4>
+          {#if !discoveryResult.databases || discoveryResult.databases.length === 0 || discoveryResult.databases.every((d) => !d.databases || d.databases.length === 0)}
+            <p class="disc-empty">Tidak ada basis data MariaDB/MySQL atau engine database yang ditemukan di host.</p>
+          {:else}
+            <div class="table-wrap">
+              <table class="table table--dense">
+                <thead>
+                  <tr>
+                    <th>Engine</th>
+                    <th>Nama Database</th>
+                    <th>Port</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each discoveryResult.databases as dbItem}
+                    {#each dbItem.databases || [] as dbName}
+                      {@const isAdopted = dbItem.adopted && dbItem.adopted.includes(dbName)}
+                      <tr>
+                        <td class="font-bold">
+                          <span class="badge badge--neutral">{dbItem.engine.toUpperCase()}</span>
+                        </td>
+                        <td class="mono font-bold">{dbName}</td>
+                        <td>{dbItem.port}</td>
+                        <td>
+                          {#if isAdopted}
+                            <span class="badge badge--success">Terdaftar</span>
+                          {:else}
+                            <span class="badge badge--info">Bisa Diadopsi</span>
+                          {/if}
+                        </td>
+                        <td>
+                          <div class="disc-actions">
+                            <button
+                              class="btn btn--secondary btn--xs"
+                              onclick={() => window.open(`/phpmyadmin/index.php?route=/database/structure&db=${encodeURIComponent(dbName)}`, '_blank')}
+                              title="Buka phpMyAdmin untuk database ini"
+                            >
+                              <i class="ri-external-link-line"></i> Web GUI
+                            </button>
+                            {#if !isAdopted}
+                              <button
+                                class="btn btn--primary btn--xs"
+                                onclick={() => adoptSingleDatabase(dbItem.engine, dbName)}
+                                disabled={adopting}
+                                title="Adopsi basis data ini ke FikPanel"
+                              >
+                                <i class="ri-download-2-line"></i> Adopsi
+                              </button>
+                            {/if}
+                          </div>
+                        </td>
+                      </tr>
+                    {/each}
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        </div>
       </div>
     {/if}
 
     {#snippet footer()}
       <button class="btn btn--secondary" onclick={() => (showDiscoveryModal = false)}>Tutup</button>
-      {#if discoveryResult && discoveryResult.nginx_vhosts.some((v) => !v.is_adopted)}
+      {#if discoveryResult && (discoveryResult.nginx_vhosts.some((v) => !v.is_adopted) || (discoveryResult.databases && discoveryResult.databases.some((d) => d.databases && d.databases.some((name) => !d.adopted || !d.adopted.includes(name)))))}
         <button class="btn btn--primary" onclick={adoptDiscoveredSites} disabled={adopting}>
           {#if adopting}
             <span class="spinner"></span> Mengadopsi...
           {:else}
-            <i class="ri-download-2-line"></i> Adopsi Seluruh Situs ke FikPanel
+            <i class="ri-download-2-line"></i> Adopsi Seluruh Situs & Database ke FikPanel
           {/if}
         </button>
       {/if}

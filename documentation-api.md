@@ -1468,8 +1468,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | `custom_roots` (opsional, array of string) |
-| Response | HTTP 200 `{"ok": true, "result": {"nginx_vhosts": [...], "docker_projects": [...], "pm2_apps": [...], "kubernetes_detected": bool, "kubernetes_type": "k3s"}}` |
-| Notes | Memindai konfigurasi vhost Nginx host (`/etc/nginx/**`), aturan ingress Cloudflare Tunnel (`/etc/cloudflared/`, `~/.cloudflared/`, `/home/*/.cloudflared/`), stack docker compose (kedalaman maks 2 subfolder & melewati folder berat `actions-runner`, `.cache`, `vendor`, `node_modules`, dll.), proses PM2 multi-user (`/root/.pm2` & `/home/*/.pm2`), port listening sistem via `ss -lptn` ter-cache dalam satu putaran, verifikasi Cloudflare Anycast SSL secara paralel, dan status cluster K8s dengan batas waktu 25 detik. Mengembalikan HTTP 200 dengan flag `partial: true` bila terjadi timeout. |
+| Response | HTTP 200 `{"ok": true, "result": {"nginx_vhosts": [...], "docker_projects": [...], "pm2_apps": [...], "databases": [{"engine": "mysql", "port": 3306, "running": true, "databases": ["kostash", "fikvault"], "adopted": ["kostash"]}], "kubernetes_detected": bool, "kubernetes_type": "k3s"}}` |
+| Notes | Memindai konfigurasi vhost Nginx host (`/etc/nginx/**`), aturan ingress Cloudflare Tunnel (`/etc/cloudflared/`, `~/.cloudflared/`, `/home/*/.cloudflared/`), stack docker compose (kedalaman maks 2 subfolder & melewati folder berat `actions-runner`, `.cache`, `vendor`, `node_modules`, dll.), proses PM2 multi-user (`/root/.pm2` & `/home/*/.pm2`), port listening sistem via `ss -lptn` ter-cache dalam satu putaran, pemindaian basis data aktif host (MariaDB/MySQL, PostgreSQL, Redis, MongoDB) beserta daftar skema database pengguna via `SHOW DATABASES;`, verifikasi Cloudflare Anycast SSL secara paralel, dan status cluster K8s dengan batas waktu 25 detik. Mengembalikan HTTP 200 dengan flag `partial: true` bila terjadi timeout. |
 
 | Field | Detail |
 |---|---|
@@ -1477,9 +1477,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`, `ssl_cert_path`, `ssl_key_path`, `ssl_issuer`, `ssl_not_after`, `kind`, `framework`, `php_version`) |
-| Response | HTTP 200 `{"ok": true, "adopted_sites": 2, "message": "..."}` |
-| Notes | Mengadopsi vhost host dan Cloudflare Tunnel ingress yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli atau upstream proxy. Menginspeksi runtime dan framework proyek (Laravel, Nuxt, Hono, Next.js, Go Service, dsb.), mendukung `ssl_mode` bernilai `none`, `letsencrypt`, `custom`, dan `cloudflare`, menyalin sertifikat fisik jika ada, serta menyaring protokol non-HTTP (seperti `ssh://` atau `tcp://`). |
+| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`, `ssl_cert_path`, `ssl_key_path`, `ssl_issuer`, `ssl_not_after`, `kind`, `framework`, `php_version`), `databases` (opsional, array of object: `engine`, `name`) |
+| Response | HTTP 200 `{"ok": true, "adopted_sites": 2, "adopted_databases": 3, "message": "..."}` |
+| Notes | Mengadopsi vhost host, Cloudflare Tunnel ingress, dan skema basis data yang belum terdaftar ke dalam tabel `sites` dan `databases` SQLite dengan mempertahankan path document root asli atau upstream proxy. Menginspeksi runtime dan framework proyek (Laravel, Nuxt, Hono, Next.js, Go Service, dsb.), mendukung `ssl_mode` bernilai `none`, `letsencrypt`, `custom`, dan `cloudflare`, menyalin sertifikat fisik jika ada, menyaring protokol non-HTTP (seperti `ssh://` atau `tcp://`), serta mendaftarkan skema database host agar langsung dapat dikelola (backup, inspeksi tabel, akses SSO phpMyAdmin) dari menu Database. |
 
 ---
 

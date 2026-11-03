@@ -1039,6 +1039,7 @@ export interface DatabaseDiscoveredItem {
   port: number;
   running: boolean;
   databases: string[];
+  adopted?: string[];
 }
 
 export interface DiscoveryResult {

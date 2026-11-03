@@ -81,7 +81,7 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 		t.Errorf("POST /api/discovery/scan mengharapkan status 200, didapat %d: %s", wScan.Code, wScan.Body.String())
 	}
 
-	// 4. Uji POST /api/discovery/adopt (termasuk verifikasi adopsi situs dengan SSL)
+	// 4. Uji POST /api/discovery/adopt (termasuk verifikasi adopsi situs dengan SSL dan database)
 	adoptBody, _ := json.Marshal(map[string]interface{}{
 		"sites": []map[string]interface{}{
 			{
@@ -100,6 +100,12 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 				"ssl_issuer":     "Let's Encrypt",
 				"ssl_cert_path":  "/etc/letsencrypt/live/ssl-site.test/fullchain.pem",
 				"ssl_not_after":  time.Now().Add(60 * 24 * time.Hour).Unix(),
+			},
+		},
+		"databases": []map[string]interface{}{
+			{
+				"engine": "mysql",
+				"name":   "kostash_db",
 			},
 		},
 	})
@@ -146,6 +152,12 @@ func TestDiscoveryAndK8sEndpoints(t *testing.T) {
 	}
 	if !foundSSL {
 		t.Errorf("Situs ber-SSL yang diadopsi tidak ditemukan di daftar situs SQLite")
+	}
+
+	// Verifikasi database yang diadopsi ke SQLite
+	dbRecord, errDB := s.GetDatabaseByName(context.Background(), "mysql", "kostash_db")
+	if errDB != nil || dbRecord == nil {
+		t.Errorf("Database yang diadopsi tidak ditemukan di SQLite: %v", errDB)
 	}
 
 	// 5. Uji GET /api/k8s/status (Fallback jika k8s belum ada)

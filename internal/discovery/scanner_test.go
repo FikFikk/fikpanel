@@ -233,3 +233,14 @@ ingress:
 		t.Errorf("Port salah: got %d, want 8080", items[2].Port)
 	}
 }
+
+func TestScanDatabases(t *testing.T) {
+	scanner := NewScanner()
+	items, err := scanner.ScanDatabases(context.Background())
+	if err != nil {
+		t.Fatalf("ScanDatabases mengembalikan error: %v", err)
+	}
+	if items == nil {
+		t.Fatalf("ScanDatabases tidak boleh mengembalikan nil slice")
+	}
+}
