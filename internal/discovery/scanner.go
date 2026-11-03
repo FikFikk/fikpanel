@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -464,6 +465,207 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 	return merged, nil
 }
 
+// parseCloudflaredIngress mengekstrak aturan ingress dari berkas konfigurasi cloudflared YAML
+func parseCloudflaredIngress(filePath string) []NginxVhostItem {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var items []NginxVhostItem
+	inIngress := false
+	ingressIndent := -1
+
+	var curHost string
+	var curService string
+
+	flush := func() {
+		h := strings.Trim(strings.TrimSpace(curHost), `"'`)
+		s := strings.Trim(strings.TrimSpace(curService), `"'`)
+		curHost = ""
+		curService = ""
+
+		if h == "" || strings.HasPrefix(s, "http_status:") || h == "*" || h == "localhost" {
+			return
+		}
+
+		port := 443
+		if u, err := url.Parse(s); err == nil && u.Port() != "" {
+			if p, err := strconv.Atoi(u.Port()); err == nil && p > 0 {
+				port = p
+			}
+		}
+
+		item := NginxVhostItem{
+			ConfigFile:  filePath,
+			ServerName:  h,
+			ProxyPass:   s,
+			Port:        port,
+			SSL:         true,
+			SSLIssuer:   "Cloudflare Tunnel (Edge SSL)",
+			SSLNotAfter: time.Now().Add(3650 * 24 * time.Hour).Unix(),
+		}
+		items = append(items, item)
+	}
+
+	for _, line := range lines {
+		// Hapus komentar (#)
+		trimmedComment := line
+		if idx := strings.IndexByte(trimmedComment, '#'); idx >= 0 {
+			trimmedComment = trimmedComment[:idx]
+		}
+		trimmed := strings.TrimSpace(trimmedComment)
+		if trimmed == "" {
+			continue
+		}
+
+		// Deteksi awal blok ingress:
+		if strings.HasPrefix(trimmed, "ingress:") {
+			inIngress = true
+			ingressIndent = len(line) - len(strings.TrimLeft(line, " \t"))
+			continue
+		}
+
+		if !inIngress {
+			continue
+		}
+
+		// Hitung indentasi baris saat ini
+		curIndent := len(line) - len(strings.TrimLeft(line, " \t"))
+
+		// Jika ada kunci level atas baru dengan indentasi <= ingressIndent, blok ingress berakhir
+		if curIndent <= ingressIndent && !strings.HasPrefix(trimmed, "-") && strings.Contains(trimmed, ":") {
+			flush()
+			inIngress = false
+			continue
+		}
+
+		// Deteksi item baru dalam daftar YAML (dimulai dengan '-')
+		if strings.HasPrefix(trimmed, "-") {
+			flush()
+			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
+		}
+
+		// Parse pasangan key: value
+		if idx := strings.IndexByte(trimmed, ':'); idx > 0 {
+			key := strings.ToLower(strings.TrimSpace(trimmed[:idx]))
+			val := strings.TrimSpace(trimmed[idx+1:])
+
+			switch key {
+			case "hostname":
+				curHost = val
+			case "service":
+				curService = val
+			}
+		}
+	}
+
+	flush()
+	return items
+}
+
+// ScanCloudflareTunnelIngress memindai seluruh konfigurasi Cloudflare Tunnel (cloudflared) di server
+func (s *Scanner) ScanCloudflareTunnelIngress(ctx context.Context) ([]NginxVhostItem, error) {
+	var results []NginxVhostItem
+	seenFiles := make(map[string]bool)
+
+	// Daftar berkas dan direktori konfigurasi cloudflared standar
+	candidatePaths := []string{
+		"/etc/cloudflared/config.yml",
+		"/etc/cloudflared/config.yaml",
+		"/usr/local/etc/cloudflared/config.yml",
+		"/usr/local/etc/cloudflared/config.yaml",
+	}
+
+	// Direktori pencarian wildcard (*.yml dan *.yaml)
+	candidateDirs := []string{
+		"/etc/cloudflared",
+		"/usr/local/etc/cloudflared",
+	}
+
+	// Periksa home direktori user saat ini
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidatePaths = append(candidatePaths,
+			filepath.Join(home, ".cloudflared", "config.yml"),
+			filepath.Join(home, ".cloudflared", "config.yaml"),
+		)
+		candidateDirs = append(candidateDirs, filepath.Join(home, ".cloudflared"))
+	}
+
+	// Periksa juga /root/.cloudflared jika ada
+	candidatePaths = append(candidatePaths,
+		"/root/.cloudflared/config.yml",
+		"/root/.cloudflared/config.yaml",
+	)
+	candidateDirs = append(candidateDirs, "/root/.cloudflared")
+
+	// Pindai /home/*/.cloudflared
+	if entries, err := os.ReadDir("/home"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				userCFDir := filepath.Join("/home", e.Name(), ".cloudflared")
+				candidateDirs = append(candidateDirs, userCFDir)
+				candidatePaths = append(candidatePaths,
+					filepath.Join(userCFDir, "config.yml"),
+					filepath.Join(userCFDir, "config.yaml"),
+				)
+			}
+		}
+	}
+
+	// Pindai file spesifik
+	for _, p := range candidatePaths {
+		select {
+		case <-ctx.Done():
+			return results, ctx.Err()
+		default:
+		}
+
+		if seenFiles[p] {
+			continue
+		}
+		seenFiles[p] = true
+
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			items := parseCloudflaredIngress(p)
+			results = append(results, items...)
+		}
+	}
+
+	// Pindai seluruh file *.yml dan *.yaml di direktori kandidat
+	for _, d := range candidateDirs {
+		select {
+		case <-ctx.Done():
+			return results, ctx.Err()
+		default:
+		}
+
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := strings.ToLower(e.Name())
+			if strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml") {
+				p := filepath.Join(d, e.Name())
+				if seenFiles[p] {
+					continue
+				}
+				seenFiles[p] = true
+				items := parseCloudflaredIngress(p)
+				results = append(results, items...)
+			}
+		}
+	}
+
+	return results, nil
+}
+
 // scanComposeInPaths menelusuri direktori target untuk menemukan berkas docker-compose
 func scanComposeInPaths(ctx context.Context, roots []string) []DockerDiscoveredItem {
 	projects := []DockerDiscoveredItem{}
@@ -817,6 +1019,12 @@ func (s *Scanner) ScanAll(ctx context.Context, customRoots []string) (*Discovery
 	if vhosts, err := s.ScanNginxVhosts(ctx); err == nil && vhosts != nil {
 		res.NginxVhosts = vhosts
 	}
+
+	// Pindai aturan ingress Cloudflare Tunnel (cloudflared)
+	if cfTunnels, err := s.ScanCloudflareTunnelIngress(ctx); err == nil && len(cfTunnels) > 0 {
+		res.NginxVhosts = append(res.NginxVhosts, cfTunnels...)
+	}
+	res.NginxVhosts = mergeVhostEntries(res.NginxVhosts)
 
 	// Batasi pemindaian berkas compose maksimal 5 detik agar PM2 & K8s tetap memiliki sisa waktu
 	dockerCtx, cancelDocker := context.WithTimeout(ctx, 5*time.Second)

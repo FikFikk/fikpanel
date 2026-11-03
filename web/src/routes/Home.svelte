@@ -610,9 +610,9 @@
 
         <!-- Virtual Hosts Nginx -->
         <div class="disc-section">
-          <h4><i class="ri-global-line"></i> Virtual Host Nginx Ditemukan ({discoveryResult.nginx_vhosts.length})</h4>
+          <h4><i class="ri-global-line"></i> Virtual Host Nginx & Cloudflare Tunnel ({discoveryResult.nginx_vhosts.length})</h4>
           {#if discoveryResult.nginx_vhosts.length === 0}
-            <p class="disc-empty">Tidak ada vhost Nginx terpisah yang ditemukan di /etc/nginx/.</p>
+            <p class="disc-empty">Tidak ada vhost Nginx atau ingress Cloudflare Tunnel yang ditemukan.</p>
           {:else}
             <div class="table-wrap">
               <table class="table table--dense">

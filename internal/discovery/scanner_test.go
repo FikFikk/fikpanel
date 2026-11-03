@@ -173,3 +173,59 @@ server {
 		t.Errorf("Aliases salah: %v", items[0].Aliases)
 	}
 }
+
+func TestParseCloudflaredIngress(t *testing.T) {
+	sampleYAML := `
+tunnel: 6ff42ae2-765d-4adf-8112-31c55c1551ef
+credentials-file: /root/.cloudflared/6ff42ae2-765d-4adf-8112-31c55c1551ef.json
+
+ingress:
+  - hostname: go.fikfikk.my.id
+    service: http://localhost:5000
+  - hostname: "nuxt.fikfikk.my.id"
+    service: "http://127.0.0.1:3000"
+  - hostname: api.fikfikk.my.id
+    service: http://localhost:8080
+  - service: http_status:404
+`
+	tmpDir := t.TempDir()
+	cfgFile := filepath.Join(tmpDir, "config.yml")
+	if err := os.WriteFile(cfgFile, []byte(sampleYAML), 0o644); err != nil {
+		t.Fatalf("Gagal membuat file sementara: %v", err)
+	}
+
+	items := parseCloudflaredIngress(cfgFile)
+	if len(items) != 3 {
+		t.Fatalf("Diharapkan 3 aturan ingress, didapatkan: %d", len(items))
+	}
+
+	// Verifikasi item 1
+	if items[0].ServerName != "go.fikfikk.my.id" {
+		t.Errorf("ServerName salah: got %s, want go.fikfikk.my.id", items[0].ServerName)
+	}
+	if items[0].ProxyPass != "http://localhost:5000" {
+		t.Errorf("ProxyPass salah: got %s, want http://localhost:5000", items[0].ProxyPass)
+	}
+	if items[0].Port != 5000 {
+		t.Errorf("Port salah: got %d, want 5000", items[0].Port)
+	}
+	if !items[0].SSL {
+		t.Errorf("Diharapkan SSL bernilai true untuk Cloudflare Tunnel")
+	}
+
+	// Verifikasi item 2
+	if items[1].ServerName != "nuxt.fikfikk.my.id" {
+		t.Errorf("ServerName salah: got %s, want nuxt.fikfikk.my.id", items[1].ServerName)
+	}
+	if items[1].Port != 3000 {
+		t.Errorf("Port salah: got %d, want 3000", items[1].Port)
+	}
+
+	// Verifikasi item 3
+	if items[2].ServerName != "api.fikfikk.my.id" {
+		t.Errorf("ServerName salah: got %s, want api.fikfikk.my.id", items[2].ServerName)
+	}
+	if items[2].Port != 8080 {
+		t.Errorf("Port salah: got %d, want 8080", items[2].Port)
+	}
+}
