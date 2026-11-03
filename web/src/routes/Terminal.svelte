@@ -364,11 +364,15 @@
       currentTab.historyIndex = -1;
     } catch (err: any) {
       const now = new Date().toLocaleTimeString();
+      let errorMsg = `Error: ${err.message || 'Gagal mengeksekusi perintah'}`;
+      if (trimmed.startsWith('fikpanel update') || trimmed.includes('systemctl restart fikpanel') || trimmed.includes('restart fikpanel')) {
+        errorMsg += '\n[Info] Layanan FikPanel sedang dimuat ulang (restarting) di latar belakang. Silakan refresh halaman web ini dalam beberapa detik.';
+      }
       currentTab.history = [
         ...currentTab.history,
         {
           command: trimmed,
-          output: `Error: ${err.message || 'Gagal mengeksekusi perintah'}`,
+          output: errorMsg,
           time: now,
           ok: false,
           cwd: executedAtCwd,
@@ -1055,7 +1059,7 @@
         <!-- Banner Selamat Datang Ubuntu / Sesi -->
         <div class="terminal-welcome">
           <p class="welcome-line">
-            <span class="text-accent">fikpanel v0.3.17</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
+            <span class="text-accent">fikpanel v0.3.18</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
           </p>
           <p class="welcome-meta">
             Host: <span class="text-fg">{activeTab?.host}</span> &middot;

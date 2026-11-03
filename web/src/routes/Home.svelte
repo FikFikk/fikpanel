@@ -353,44 +353,6 @@
         <span class="stat-card__sub">Ruang kosong {formatBytes(freeDisk)}</span>
       </div>
     </div>
-
-    <!-- Kartu 5: Layanan Sistem -->
-    <div class="stat-card stat-card--metric">
-      <div class="stat-card__icon stat-card__icon--info">
-        <i class="ri-server-line"></i>
-      </div>
-      <div class="stat-card__body">
-        <div class="stat-head">
-          <span class="stat-card__label">Layanan & Website</span>
-          <span class="badge badge--success">{overview?.counts?.services_active || 0} Berjalan</span>
-        </div>
-        <div class="stat-main">
-          <span class="stat-card__value">{overview?.counts?.services_active || 0}<small>/{overview?.counts?.services_total || 0}</small></span>
-          <span class="metric-cap tabular">{overview?.counts?.sites_running || 0}/{overview?.counts?.sites_total || 0} Situs</span>
-        </div>
-        <span class="stat-card__sub">Systemd units & virtual host aktif</span>
-      </div>
-    </div>
-
-    <!-- Kartu 6: Status Keamanan & Ancaman -->
-    <div class="stat-card stat-card--metric">
-      <div class="stat-card__icon {(overview?.counts?.security_risk || 0) > 0 ? 'stat-card__icon--warning' : ''}">
-        <i class="ri-shield-check-line"></i>
-      </div>
-      <div class="stat-card__body">
-        <div class="stat-head">
-          <span class="stat-card__label">Status Ancaman</span>
-          <span class="badge {(overview?.counts?.security_risk || 0) > 0 ? 'badge--warning' : 'badge--success'}">
-            {(overview?.counts?.security_risk || 0) > 0 ? 'Waspada' : 'Proteksi Aktif'}
-          </span>
-        </div>
-        <div class="stat-main">
-          <span class="stat-card__value">{overview?.counts?.security_risk || 0}</span>
-          <span class="metric-cap tabular">Peringatan</span>
-        </div>
-        <span class="stat-card__sub">Keamanan host & WAF terpantau</span>
-      </div>
-    </div>
   </div>
 
   <!-- Baris 2: Ringkasan Infrastruktur & Aksi Cepat -->

@@ -198,12 +198,17 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Hitung layanan
-	svcs, _ := s.services.ListServices(r.Context())
-	activeSvcs := 0
-	for _, svc := range svcs {
-		if svc.ActiveState == "active" {
-			activeSvcs++
+	// Hitung layanan sistem aktual
+	_, counts, errSvc := s.services.ListServicesFiltered(r.Context(), "running", "", "")
+	activeSvcs := counts.Running
+	totalSvcs := counts.Total
+	if errSvc != nil || totalSvcs == 0 {
+		svcs, _ := s.services.ListServices(r.Context())
+		totalSvcs = len(svcs)
+		for _, svc := range svcs {
+			if svc.ActiveState == "active" {
+				activeSvcs++
+			}
 		}
 	}
 
@@ -237,7 +242,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"sites_total":     len(sites),
 			"sites_running":   runningSites,
 			"sites_stopped":   len(sites) - runningSites,
-			"services_total":  len(svcs),
+			"services_total":  totalSvcs,
 			"services_active": activeSvcs,
 			"databases_count": 1, // SQLite panel.db internal
 			"database_engine": "SQLite WAL (modernc.org)",

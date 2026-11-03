@@ -160,11 +160,12 @@ if command -v systemctl >/dev/null 2>&1; then
     echo -e "${GREEN}[✓] Biner baru siap aktif. Menjadwalkan restart layanan fikpanel...${NC}"
     echo -e "[*] Silakan muat ulang (refresh) dashboard di peramban Anda dalam 2-3 detik.\n"
     # Lepaskan eksekusi restart dari sesi terminal saat ini menggunakan systemd-run / nohup
-    # agar tidak terjadi pemutusan paksa (502 Bad Gateway) saat terminal berjalan di dalam Web Dashboard
+    # dengan jeda (sleep 4) dan menutup file descriptor agar response HTTP pada Web Dashboard
+    # selesai dikirim sebelum layanan dimuat ulang (mencegah error 502 Bad Gateway).
     if command -v systemd-run >/dev/null 2>&1; then
-        systemd-run --no-block sh -c "sleep 1 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" >/dev/null 2>&1 || (nohup sh -c "sleep 1 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" >/dev/null 2>&1 &)
+        systemd-run --no-block sh -c "sleep 4 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" >/dev/null 2>&1 || (nohup sh -c "sleep 4 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" </dev/null >/dev/null 2>&1 &)
     else
-        nohup sh -c "sleep 1 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" >/dev/null 2>&1 &
+        nohup sh -c "sleep 4 && (systemctl restart fikpanel 2>/dev/null || systemctl restart fikpanel.service 2>/dev/null || true)" </dev/null >/dev/null 2>&1 &
     fi
 else
     echo -e "• Status Layanan Daemon            : Standalone (systemctl tidak ditemukan)"
