@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -228,7 +230,7 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			adoptedSitesCount++
 			adoptedNames = append(adoptedNames, domain)
 
-			// Jika vhost memiliki SSL aktif, simpan metadata sertifikat ke database
+			// Jika vhost memiliki SSL aktif, simpan metadata sertifikat ke database & salin berkas fisik cert/key
 			if item.HasSSL {
 				issuer := item.SSLIssuer
 				if issuer == "" {
@@ -253,6 +255,24 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 					RenewedAt: time.Now().Unix(),
 				}
 				_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+
+				// Salin fisik cert & key dari path asal host ke direktori internal FikPanel
+				if s.sites != nil && item.SSLCertPath != "" && item.SSLKeyPath != "" {
+					certBytes, errC := os.ReadFile(item.SSLCertPath)
+					keyBytes, errK := os.ReadFile(item.SSLKeyPath)
+					if errC == nil && errK == nil {
+						targetCert, targetKey := s.sites.CertFiles(domain)
+						if err := os.MkdirAll(filepath.Dir(targetCert), 0o755); err == nil {
+							_ = os.WriteFile(targetCert, certBytes, 0o644)
+							_ = os.WriteFile(targetKey, keyBytes, 0o600)
+						}
+					}
+				}
+			}
+
+			// Terapkan konfigurasi vhost Nginx FikPanel langsung agar blok listen 443 ssl aktif
+			if s.sites != nil {
+				_ = s.sites.Apply(r.Context(), created, "")
 			}
 		}
 	}

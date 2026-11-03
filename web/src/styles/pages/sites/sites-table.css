@@ -222,6 +222,12 @@
       color: var(--accent);
     }
 
+    .ssl-badge.ssl-cloudflare {
+      background: var(--tint-warning);
+      border: 1px solid var(--ring-warning);
+      color: var(--warning-strong);
+    }
+
     .ssl-badge.ssl-inactive {
       background: var(--tint-warning);
       border: 1px solid var(--warning);

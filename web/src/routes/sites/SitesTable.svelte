@@ -219,7 +219,16 @@
 
             <!-- Kolom Sertifikat SSL -->
             <td class="col-ssl">
-              {#if s.ssl_status === 'issued' && s.ssl_mode !== 'none'}
+              {#if s.ssl_mode === 'cloudflare'}
+                <button
+                  class="ssl-badge ssl-cloudflare"
+                  onclick={() => onOpenSettings(s, 'ssl')}
+                  title="Cloudflare Edge SSL (Flexible) Aktif"
+                >
+                  <i class="ri-cloud-line"></i>
+                  <span>Cloudflare</span>
+                </button>
+              {:else if s.ssl_status === 'issued' && s.ssl_mode !== 'none'}
                 <button
                   class="ssl-badge ssl-active"
                   class:ssl-expiring={sslDaysLeft(s) < 15}

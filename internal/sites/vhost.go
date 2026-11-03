@@ -193,6 +193,11 @@ func phpSocket(version string) string {
 	return fmt.Sprintf("/run/php/php%s-fpm.sock", version)
 }
 
+// CertFiles mengembalikan path fullchain & privkey sertifikat situs
+func (m *Manager) CertFiles(domain string) (string, string) {
+	return m.certFiles(domain)
+}
+
 // certFiles mengembalikan path fullchain & privkey sertifikat situs
 func (m *Manager) certFiles(domain string) (string, string) {
 	dir := filepath.ToSlash(filepath.Join(m.paths.CertDir, domain))
@@ -202,7 +207,7 @@ func (m *Manager) certFiles(domain string) (string, string) {
 // Render menghasilkan konfigurasi vhost; blok 443 hanya aktif bila sertifikat sudah terbit
 func (m *Manager) Render(site *store.Site, cert *store.Certificate) (string, error) {
 	certPath, keyPath := m.certFiles(site.Domain)
-	sslReady := site.SSLMode != "none" && cert != nil && cert.Status == "issued" && m.certExists(site.Domain)
+	sslReady := site.SSLMode != "none" && site.SSLMode != "cloudflare" && cert != nil && cert.Status == "issued" && m.certExists(site.Domain)
 
 	data := vhostData{
 		Domain:      site.Domain,

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -24,7 +25,7 @@ import (
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.3.7"
+	version = "0.3.8"
 )
 
 func main() {
@@ -365,6 +366,21 @@ func runDiscover(args []string) {
 						RenewedAt: time.Now().Unix(),
 					}
 					_ = st.UpsertCertificate(ctx, &certRecord)
+
+					// Salin fisik cert & key dari path asal ke direktori sertifikat FikPanel
+					if item.SSLCertPath != "" && item.SSLKeyPath != "" {
+						certBytes, errC := os.ReadFile(item.SSLCertPath)
+						keyBytes, errK := os.ReadFile(item.SSLKeyPath)
+						if errC == nil && errK == nil {
+							paths := sites.DefaultPaths()
+							targetCert := filepath.Join(paths.CertDir, primary, "fullchain.pem")
+							targetKey := filepath.Join(paths.CertDir, primary, "privkey.pem")
+							if err := os.MkdirAll(filepath.Dir(targetCert), 0o755); err == nil {
+								_ = os.WriteFile(targetCert, certBytes, 0o644)
+								_ = os.WriteFile(targetKey, keyBytes, 0o600)
+							}
+						}
+					}
 				}
 				fmt.Printf("    ✓ Situs '%s' berhasil didaftarkan (Root: %s)\n", primary, item.RootDir)
 			}

@@ -731,6 +731,7 @@ func (s *Server) handleSiteSSL(w http.ResponseWriter, r *http.Request) {
 		HSTS       bool `json:"hsts"`
 		Issue      bool `json:"issue"`
 		SkipDNS    bool `json:"skip_dns"`
+		Cloudflare bool `json:"cloudflare"`
 	}
 	if !decodeNginxBody(w, r, &req) {
 		return
@@ -742,12 +743,54 @@ func (s *Server) handleSiteSSL(w http.ResponseWriter, r *http.Request) {
 	}
 	prev := *site
 
+	// Tangani mode Cloudflare Flexible / Edge SSL
+	if req.Cloudflare {
+		site.SSLMode = "cloudflare"
+		site.ForceHTTPS = 0
+		site.HSTS = 0
+		if err := s.store.UpdateSite(r.Context(), site); err != nil {
+			writeSiteError(w, err)
+			return
+		}
+
+		// Daftarkan metadata sertifikat virtual Cloudflare Edge SSL agar terdeteksi aktif di dashboard
+		certDomainsJSON, _ := json.Marshal(sites.AllDomains(site))
+		certRecord := store.Certificate{
+			SiteID:    site.ID,
+			Status:    "issued",
+			Issuer:    "Cloudflare Edge SSL (Flexible)",
+			NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+			NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+			Domains:   string(certDomainsJSON),
+			RenewedAt: time.Now().Unix(),
+		}
+		_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+
+		if err := s.sites.Apply(r.Context(), site, ""); err != nil {
+			_ = s.store.UpdateSite(r.Context(), &prev)
+			writeSiteError(w, err)
+			return
+		}
+		s.auditSite(r, "ssl.cloudflare", site.Domain, true, "Mengaktifkan mode Cloudflare Flexible / Edge SSL")
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "issuing": false})
+		return
+	}
+
 	site.SSLMode = "none"
 	if req.Enabled {
 		site.SSLMode = "letsencrypt"
 	}
 	site.ForceHTTPS = boolInt(req.ForceHTTPS)
 	site.HSTS = boolInt(req.HSTS && req.ForceHTTPS)
+
+	// Jika menonaktifkan SSL dari mode Cloudflare, reset status sertifikat
+	if !req.Enabled {
+		if cert, _ := s.store.GetCertificate(r.Context(), site.ID); cert != nil && strings.Contains(cert.Issuer, "Cloudflare") {
+			cert.Status = "none"
+			_ = s.store.UpsertCertificate(r.Context(), cert)
+		}
+	}
+
 	if err := s.store.UpdateSite(r.Context(), site); err != nil {
 		writeSiteError(w, err)
 		return

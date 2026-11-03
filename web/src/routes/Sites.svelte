@@ -177,9 +177,9 @@
 
     renewingAllSSL = true;
     try {
-      // Cari situs yang SSL-nya belum aktif, gagal, atau sisa masa berlakunya <= 30 hari
+      // Cari situs yang SSL-nya belum aktif, gagal, atau sisa masa berlakunya <= 30 hari (kecuali Cloudflare Edge mode)
       const needRenew = sites.filter(
-        (s) => s.ssl_status !== 'issued' || s.ssl_mode === 'none' || sslDaysLeft(s) <= 30,
+        (s) => s.ssl_mode !== 'cloudflare' && (s.ssl_status !== 'issued' || s.ssl_mode === 'none' || sslDaysLeft(s) <= 30),
       );
 
       if (needRenew.length === 0) {

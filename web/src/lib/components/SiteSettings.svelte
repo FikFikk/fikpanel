@@ -143,6 +143,7 @@
   // 7. Tab SSL
   let sslSubTab = $state<'current' | 'custom' | 'letsencrypt'>('current');
   let sslEnabled = $state(false);
+  let sslCloudflare = $state(false);
   let sslForce = $state(true);
   let sslHSTS = $state(false);
   let skipDNS = $state(false);
@@ -243,7 +244,8 @@
     }
     fUpstream = d.site.upstream || 'http://127.0.0.1:3000';
     fPHP = d.site.php_version || meta.php_versions[0] || '';
-    sslEnabled = d.site.ssl_mode !== 'none';
+    sslCloudflare = d.site.ssl_mode === 'cloudflare';
+    sslEnabled = d.site.ssl_mode !== 'none' && d.site.ssl_mode !== 'cloudflare';
     sslForce = d.site.force_https === 1;
     sslHSTS = d.site.hsts === 1;
     hotlinkDomains = d.domains.join(', ');
@@ -622,7 +624,14 @@
     try {
       const r = await apiFetch<{ issuing: boolean }>(`/api/sites/${siteId}/ssl`, {
         method: 'POST',
-        body: JSON.stringify({ enabled: sslEnabled, force_https: sslForce, hsts: sslHSTS && sslForce, issue, skip_dns: skipDNS })
+        body: JSON.stringify({
+          enabled: sslEnabled,
+          force_https: sslForce,
+          hsts: sslHSTS && sslForce,
+          issue,
+          skip_dns: skipDNS,
+          cloudflare: sslCloudflare
+        })
       });
       await load();
       onChanged();
@@ -630,13 +639,30 @@
         onNotify('Penerbitan sertifikat Let\'s Encrypt dimulai');
         schedulePoll();
       } else {
-        onNotify(sslEnabled ? 'Pengaturan SSL disimpan' : 'SSL dinonaktifkan');
+        onNotify(sslCloudflare ? 'Mode Cloudflare Flexible SSL disimpan' : (sslEnabled ? 'Pengaturan SSL disimpan' : 'SSL dinonaktifkan'));
       }
     } catch (err) {
       onNotify((err as Error).message);
     } finally {
       sslSaving = false;
     }
+  }
+
+  async function toggleCloudflareSSL() {
+    if (sslCloudflare) {
+      sslEnabled = false;
+      sslForce = false;
+      sslHSTS = false;
+    }
+    await saveSSL(false);
+  }
+
+  async function issueLetsEncryptOneClick() {
+    sslSubTab = 'letsencrypt';
+    sslCloudflare = false;
+    sslEnabled = true;
+    skipDNS = true;
+    await saveSSL(true);
   }
 
   async function switchPHP() {
@@ -1063,34 +1089,73 @@
 
         {#if sslSubTab === 'current'}
           <div class="cert-overview-card">
-            <div class="cov-item"><span>Tipe Sertifikat:</span><b>{detail.site.ssl_mode === 'custom' ? 'Custom Certificate' : 'Let\'s Encrypt TLS'}</b></div>
-            <div class="cov-item"><span>Brand / Penerbit:</span><b>{cert?.issuer || '—'}</b></div>
+            <div class="cov-item"><span>Tipe Sertifikat:</span><b>{detail.site.ssl_mode === 'custom' ? 'Custom Certificate' : detail.site.ssl_mode === 'cloudflare' ? 'Cloudflare Edge SSL (Flexible)' : certIssued ? 'Let\'s Encrypt TLS' : 'Belum Ada (None)'}</b></div>
+            <div class="cov-item"><span>Brand / Penerbit:</span><b>{detail.site.ssl_mode === 'cloudflare' ? 'Cloudflare, Inc.' : cert?.issuer || '—'}</b></div>
             <div class="cov-item"><span>Domain(s):</span><b class="mono">{certSANs.join(', ') || detail.domains.join(', ')}</b></div>
-            <div class="cov-item"><span>Masa Berlaku:</span><b class:warn={daysLeft < 30}>{fmtDate(cert?.not_after ?? 0)} ({daysLeft} hari lagi)</b></div>
+            <div class="cov-item"><span>Masa Berlaku:</span>
+              {#if detail.site.ssl_mode === 'cloudflare'}
+                <b class="text-accent">Dikelola oleh Cloudflare Edge (Aktif)</b>
+              {:else if certIssued}
+                <b class:warn={daysLeft < 30}>{fmtDate(cert?.not_after ?? 0)} ({daysLeft} hari lagi)</b>
+              {:else}
+                <b class="warn">Tidak Aktif</b>
+              {/if}
+            </div>
           </div>
+
+          {#if !certIssued && !sslCloudflare}
+            <div class="ssl-prompt-card mt">
+              <div class="ssl-prompt-info">
+                <b class="ssl-prompt-title"><i class="ri-shield-flash-line text-accent"></i> Sertifikat SSL Belum Terpasang</b>
+                <p class="ssl-prompt-desc">Situs saat ini melayani HTTP (port 80). Terbitkan Let's Encrypt atau aktifkan Cloudflare Flexible SSL di bawah.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick={issueLetsEncryptOneClick} disabled={sslSaving || jobRunning}>
+                {#if sslSaving || jobRunning}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-keyhole-line"></i>{/if}
+                Dapatkan Let's Encrypt Gratis (Issue SSL)
+              </button>
+            </div>
+          {/if}
+
           <div class="sub mt">
-            <label class="toggle-row" for="ss-force-cur">
-              <div><b>Paksa HTTPS</b><small>Redirect 301 seluruh trafik HTTP port 80 ke HTTPS port 443</small></div>
-              <input id="ss-force-cur" type="checkbox" bind:checked={sslForce} onchange={() => saveSSL(false)} /><span class="track"></span>
+            <label class="toggle-row" for="ss-cf-ssl">
+              <div><b>Cloudflare Flexible / Edge SSL</b><small>Aktifkan jika domain menggunakan Cloudflare Proxy (Orange Cloud). Origin melayani port 80 tanpa memicu redirect loop, dan dashboard menampilkan status aman</small></div>
+              <input id="ss-cf-ssl" type="checkbox" bind:checked={sslCloudflare} onchange={toggleCloudflareSSL} disabled={sslSaving || jobRunning} /><span class="track"></span>
             </label>
-            <label class="toggle-row" for="ss-hsts-cur" class:dim={!sslForce}>
-              <div><b>HSTS (HTTP Strict Transport Security)</b><small>Browser mengingat koneksi aman HTTPS selama 1 tahun</small></div>
-              <input id="ss-hsts-cur" type="checkbox" bind:checked={sslHSTS} disabled={!sslForce} onchange={() => saveSSL(false)} /><span class="track"></span>
-            </label>
+
+            {#if !sslCloudflare}
+              <label class="toggle-row" for="ss-force-cur" class:dim={!certIssued}>
+                <div><b>Paksa HTTPS</b><small>Redirect 301 seluruh trafik HTTP port 80 ke HTTPS port 443</small></div>
+                <input id="ss-force-cur" type="checkbox" bind:checked={sslForce} disabled={!certIssued || sslSaving} onchange={() => saveSSL(false)} /><span class="track"></span>
+              </label>
+              <label class="toggle-row" for="ss-hsts-cur" class:dim={!sslForce || !certIssued}>
+                <div><b>HSTS (HTTP Strict Transport Security)</b><small>Browser mengingat koneksi aman HTTPS selama 1 tahun</small></div>
+                <input id="ss-hsts-cur" type="checkbox" bind:checked={sslHSTS} disabled={!sslForce || !certIssued || sslSaving} onchange={() => saveSSL(false)} /><span class="track"></span>
+              </label>
+            {/if}
           </div>
-          <div class="dual-boxes">
-            <div class="box-col">
-              <span class="box-head">Private Key (KEY)</span>
-              <textarea class="code-editor-sm" rows="6" readonly value={deployedKey}></textarea>
+
+          {#if !sslCloudflare && certIssued}
+            <div class="dual-boxes">
+              <div class="box-col">
+                <span class="box-head">Private Key (KEY)</span>
+                <textarea class="code-editor-sm" rows="6" readonly value={deployedKey}></textarea>
+              </div>
+              <div class="box-col">
+                <span class="box-head">Certificate (CRT/PEM)</span>
+                <textarea class="code-editor-sm" rows="6" readonly value={deployedCert}></textarea>
+              </div>
             </div>
-            <div class="box-col">
-              <span class="box-head">Certificate (CRT/PEM)</span>
-              <textarea class="code-editor-sm" rows="6" readonly value={deployedCert}></textarea>
-            </div>
-          </div>
+          {/if}
+
           <div class="ss-actions">
-            {#if sslEnabled}
-              <button class="btn btn-ghost" onclick={() => { sslEnabled = false; saveSSL(false); }} disabled={sslSaving}>Nonaktifkan SSL</button>
+            {#if !certIssued && !sslCloudflare}
+              <button class="btn btn-primary" onclick={issueLetsEncryptOneClick} disabled={sslSaving || jobRunning}>
+                {#if sslSaving || jobRunning}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-flash-line"></i>{/if}
+                Dapatkan Let's Encrypt Gratis (Issue SSL)
+              </button>
+            {/if}
+            {#if sslEnabled || sslCloudflare}
+              <button class="btn btn-ghost" onclick={() => { sslEnabled = false; sslCloudflare = false; saveSSL(false); }} disabled={sslSaving || jobRunning}>Nonaktifkan SSL</button>
             {/if}
           </div>
 

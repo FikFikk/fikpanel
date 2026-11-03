@@ -134,4 +134,34 @@
   .cmp-site-settings .ladmin-user-info { display: flex; flex-direction: column; gap: 0.12rem; font-size: 0.78rem; color: var(--text); }
   .cmp-site-settings .ladmin-user-info span { font-size: 0.74rem; color: var(--text-muted); }
   .cmp-site-settings .ladmin-user-roles { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+
+  /* Kartu pemicu penerbitan SSL cepat atau opsi Cloudflare */
+  .cmp-site-settings .ssl-prompt-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-3-5);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+  }
+  .cmp-site-settings .ssl-prompt-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    flex: 1;
+    min-width: 200px;
+  }
+  .cmp-site-settings .ssl-prompt-title {
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+  .cmp-site-settings .ssl-prompt-desc {
+    margin: 0;
+    font-size: var(--fs-xxs);
+    color: var(--text-secondary);
+  }
 }
