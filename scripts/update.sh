@@ -123,41 +123,51 @@ if [ -d "$INSTALL_DIR/scripts" ]; then
     chmod +x "$INSTALL_DIR/scripts/update.sh" 2>/dev/null || true
 fi
 
-# 8. Restart Service Daemon FikPanel
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "fikpanel.service"; then
-    echo -e "[*] Me-restart layanan fikpanel.service..."
-    systemctl daemon-reload || true
-    systemctl restart fikpanel.service || true
-    sleep 2
-
-    # 9. Verifikasi Keberhasilan Update
-    if systemctl is-active --quiet fikpanel.service; then
-        NEW_VER=$("$INSTALL_DIR/bin/fikpanel" version 2>/dev/null || echo "terpasang")
-        echo -e "\n=============================================================="
-        echo -e "${GREEN}${BOLD}✓ FikPanel Berhasil Diperbarui ke ${NEW_VER}!${NC}"
-        echo -e "=============================================================="
-        echo -e "• Database dan konfigurasi website : ${GREEN}Aman 100% (Tidak Tersentuh)${NC}"
-        echo -e "• Status Layanan Daemon            : ${GREEN}Aktif & Berjalan${NC}"
-        echo -e "• Biner Cadangan                   : ${INSTALL_DIR}/bin/fikpanel.bak"
-        echo -e "==============================================================\n"
-    else
-        echo -e "\n${RED}[!] Pembaruan mengalami kendala saat menyalakan layanan.${NC}"
-        echo -e "${YELLOW}[*] Melakukan rollback ke versi sebelumnya...${NC}"
-        if [ -f "$INSTALL_DIR/bin/fikpanel.bak" ]; then
-            install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" "$INSTALL_DIR/bin/fikpanel"
-            install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" /usr/local/bin/fikpanel
-            systemctl restart fikpanel.service || true
-            echo -e "${GREEN}[✓] Berhasil dipulihkan ke versi cadangan.${NC}"
+# 8. Verifikasi Eksekusi Biner Baru
+NEW_VER=$("$INSTALL_DIR/bin/fikpanel" version 2>/dev/null || echo "")
+if [ -z "$NEW_VER" ]; then
+    echo -e "\n${RED}[!] Biner baru gagal dieksekusi.${NC}"
+    echo -e "${YELLOW}[*] Melakukan rollback ke versi sebelumnya...${NC}"
+    if [ -f "$INSTALL_DIR/bin/fikpanel.bak" ]; then
+        install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" "$INSTALL_DIR/bin/fikpanel"
+        install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" /usr/local/bin/fikpanel
+        if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "fikpanel.service"; then
+            if command -v systemd-run >/dev/null 2>&1; then
+                systemd-run --no-block systemctl restart fikpanel.service
+            else
+                nohup sh -c "sleep 1 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
+            fi
         fi
-        echo -e "Periksa detail log: journalctl -u fikpanel -n 30 --no-pager"
-        exit 1
+        echo -e "${GREEN}[✓] Berhasil dipulihkan ke versi cadangan.${NC}"
     fi
+    echo -e "Periksa detail log: journalctl -u fikpanel -n 30 --no-pager"
+    exit 1
+fi
+
+# 9. Tampilkan Ringkasan Keberhasilan Pembaruan
+echo -e "\n=============================================================="
+echo -e "${GREEN}${BOLD}✓ FikPanel Berhasil Diperbarui ke ${NEW_VER}!${NC}"
+echo -e "=============================================================="
+echo -e "• Database dan konfigurasi website : ${GREEN}Aman 100% (Tidak Tersentuh)${NC}"
+echo -e "• Biner Cadangan                   : ${INSTALL_DIR}/bin/fikpanel.bak"
+echo -e "• Lokasi Biner                     : ${INSTALL_DIR}/bin/fikpanel dan /usr/local/bin/fikpanel"
+
+# 10. Restart Service Daemon FikPanel Secara Asinkron (Mencegah Deadlock Web Terminal)
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "fikpanel.service"; then
+    echo -e "• Status Layanan Daemon            : ${CYAN}Me-restart di latar belakang...${NC}"
+    echo -e "==============================================================\n"
+    systemctl daemon-reload || true
+    if command -v systemd-run >/dev/null 2>&1; then
+        # Lepaskan proses restart dari sesi terminal/PTY saat ini agar tidak terputus saat daemon mati
+        systemd-run --no-block systemctl restart fikpanel.service
+    else
+        # Fallback background process jika systemd-run tidak tersedia
+        nohup sh -c "sleep 1 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
+    fi
+    echo -e "${GREEN}[✓] Perintah restart berhasil dikirim ke systemd secara terpisah (detached).${NC}"
+    echo -e "[*] Jika Anda memperbarui lewat Web Terminal, koneksi akan terputus sesaat selagi panel memuat biner baru."
+    echo -e "[*] Silakan muat ulang (refresh) halaman peramban Anda dalam 2-3 detik.\n"
 else
-    NEW_VER=$("$INSTALL_DIR/bin/fikpanel" version 2>/dev/null || echo "terpasang")
-    echo -e "\n=============================================================="
-    echo -e "${GREEN}${BOLD}✓ FikPanel Berhasil Dipasang (${NEW_VER})!${NC}"
-    echo -e "=============================================================="
-    echo -e "• Layanan systemd fikpanel.service tidak ditemukan (abaikan jika mode standalone)."
-    echo -e "• Lokasi Biner                     : ${INSTALL_DIR}/bin/fikpanel dan /usr/local/bin/fikpanel"
+    echo -e "• Status Layanan Daemon            : Standalone (systemd fikpanel.service tidak ditemukan)"
     echo -e "==============================================================\n"
 fi
