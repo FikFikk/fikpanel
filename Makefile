@@ -1,6 +1,6 @@
 BINARY_NAME=fikpanel
 BUILD_DIR=bin
-VERSION?=0.3.13
+VERSION?=0.3.14
 
 .PHONY: all build build-linux test clean dev
 

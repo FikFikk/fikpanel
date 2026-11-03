@@ -342,6 +342,7 @@ flowchart TD
 | `upstream` | Wajib URL `http(s)://host[:port]` jika `kind` bernilai `'proxy'`, `'node'`, `'go'`, atau `'python'` | Karakter `; { } ' "` dan spasi ditolak |
 | `root_path` | Wajib path absolut untuk kind selain `'proxy'` | Standar FikPanel: `/home/<user>/web/<domain>/public` (PHP), `/home/<user>/node/<domain>` (Node.js), `/home/<user>/go/<domain>` (Go), `/home/<user>/python/<domain>` (Python), `/home/<user>/static/<domain>/public` (Static). Direktori sistem (`/`, `/etc`, `/usr`, `/root`, dst.) ditolak |
 | `php_version` | Format `X.Y`, hanya untuk `kind='php'` | Menentukan socket `/run/php/phpX.Y-fpm.sock` |
+| `framework` | String (misal: `'Laravel'`, `'Nuxt'`, `'Next.js'`, `'Hono'`, `'Express'`, `'Go Service'`, `'Python'`, dsb.) | Metadata framework proyek hasil inspeksi manifest direktori/proses untuk label badge informatif |
 | `description` | Maks 200 karakter, opsional | Catatan bebas untuk operator |
 | `ssl_mode` | Wajib salah satu: `'none'`, `'letsencrypt'`, `'custom'`, `'cloudflare'` | Mendukung mode Let's Encrypt ACME, sertifikat manual/kustom, serta mode Cloudflare Flexible / Cloudflare Tunnel |
 | `force_https` | Boolean (0/1), default 1 | Redirect 301 ke HTTPS, aktif hanya bila sertifikat `issued` |

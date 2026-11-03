@@ -108,13 +108,16 @@
           primary_domain: domains[0] || vh.server_name,
           aliases: domains.slice(1),
           document_root: vh.root_dir,
-          has_php: vh.config_file.includes('php') || vh.port === 80 || vh.port === 443,
+          has_php: vh.kind === 'php' || vh.config_file.includes('php') || vh.port === 80 || vh.port === 443,
           proxy_pass: vh.proxy_pass,
           has_ssl: vh.ssl,
           ssl_cert_path: vh.ssl_cert_path,
           ssl_key_path: vh.ssl_key_path,
           ssl_issuer: vh.ssl_issuer,
           ssl_not_after: vh.ssl_not_after,
+          kind: vh.kind,
+          framework: vh.framework,
+          php_version: vh.php_version,
         };
       });
 
@@ -631,7 +634,14 @@
                   {#each discoveryResult.nginx_vhosts as vh}
                     <tr>
                       <td class="font-bold">{vh.server_name}</td>
-                      <td class="mono">{vh.root_dir || (vh.proxy_pass ? `Proxy: ${vh.proxy_pass}` : '-')}</td>
+                      <td class="mono">
+                        <div>{vh.root_dir || (vh.proxy_pass ? `Proxy: ${vh.proxy_pass}` : '-')}</div>
+                        {#if vh.framework}
+                          <span class="badge badge--neutral">
+                            {vh.framework}
+                          </span>
+                        {/if}
+                      </td>
                       <td>{vh.port}</td>
                       <td>
                         {#if vh.ssl}

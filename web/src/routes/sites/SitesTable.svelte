@@ -224,17 +224,17 @@
                   title="Klik untuk mengatur runtime & konfigurasi proyek ini"
                 >
                   {#if s.kind === 'php'}
-                    {s.php_version ? `PHP ${s.php_version}` : 'PHP'}
+                    {s.framework ? `PHP (${s.framework})` : (s.php_version ? `PHP ${s.php_version}` : 'PHP')}
                   {:else if s.kind === 'node'}
-                    Node.js
+                    {s.framework ? `Node.js (${s.framework})` : 'Node.js'}
                   {:else if s.kind === 'go'}
-                    Golang
+                    {s.framework ? s.framework : 'Go Service'}
                   {:else if s.kind === 'python'}
-                    Python
+                    {s.framework ? `Python (${s.framework})` : 'Python'}
                   {:else if s.kind === 'static'}
                     Static
                   {:else}
-                    Proxy
+                    {s.framework ? s.framework : 'Proxy'}
                   {/if}
                 </button>
               </div>

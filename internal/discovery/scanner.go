@@ -31,6 +31,9 @@ type NginxVhostItem struct {
 	SSLKeyPath  string   `json:"ssl_key_path,omitempty"`
 	SSLIssuer   string   `json:"ssl_issuer,omitempty"`
 	SSLNotAfter int64    `json:"ssl_not_after,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Framework   string   `json:"framework,omitempty"`
+	PHPVersion  string   `json:"php_version,omitempty"`
 }
 
 type DockerDiscoveredItem struct {
@@ -295,6 +298,13 @@ func mergeVhostEntries(items []NginxVhostItem) []NginxVhostItem {
 		}
 	}
 
+	for i := range merged {
+		rt := DetectProjectRuntime(merged[i].RootDir, merged[i].ProxyPass, merged[i].ServerName)
+		merged[i].Kind = rt.Kind
+		merged[i].Framework = rt.Framework
+		merged[i].PHPVersion = rt.PHPVersion
+	}
+
 	return merged
 }
 
@@ -504,6 +514,7 @@ func parseCloudflaredIngress(filePath string) []NginxVhostItem {
 			}
 		}
 
+		rt := DetectProjectRuntime("", s, h)
 		item := NginxVhostItem{
 			ConfigFile:  filePath,
 			ServerName:  h,
@@ -512,6 +523,9 @@ func parseCloudflaredIngress(filePath string) []NginxVhostItem {
 			SSL:         true,
 			SSLIssuer:   "Cloudflare Tunnel (Edge SSL)",
 			SSLNotAfter: time.Now().Add(3650 * 24 * time.Hour).Unix(),
+			Kind:        rt.Kind,
+			Framework:   rt.Framework,
+			PHPVersion:  rt.PHPVersion,
 		}
 		items = append(items, item)
 	}

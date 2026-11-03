@@ -65,6 +65,7 @@ type SiteInput struct {
 	Upstream       string `json:"upstream"`
 	RootPath       string `json:"root_path"`
 	PHPVersion     string `json:"php_version"`
+	Framework      string `json:"framework"`
 	Description    string `json:"description"`
 	ExtraConf      string `json:"extra_conf"`
 	AutoSSL        bool   `json:"auto_ssl"`
@@ -149,6 +150,9 @@ func (s *Server) buildSite(r *http.Request, in SiteInput, base *store.Site) (*st
 		return nil, &sites.ValidationError{Msg: "deskripsi maksimal 200 karakter"}
 	}
 	site.ExtraConf = strings.TrimSpace(in.ExtraConf)
+	if in.Framework != "" {
+		site.Framework = strings.TrimSpace(in.Framework)
+	}
 
 	site.Kind = in.Kind
 	site.Upstream, site.RootPath, site.PHPVersion = "", "", ""

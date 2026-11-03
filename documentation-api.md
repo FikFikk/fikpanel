@@ -1477,9 +1477,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`, `ssl_cert_path`, `ssl_key_path`, `ssl_issuer`, `ssl_not_after`) |
+| Request Body | `sites` (array of object: `primary_domain`, `aliases`, `document_root`, `has_php`, `proxy_pass`, `has_ssl`, `ssl_cert_path`, `ssl_key_path`, `ssl_issuer`, `ssl_not_after`, `kind`, `framework`, `php_version`) |
 | Response | HTTP 200 `{"ok": true, "adopted_sites": 2, "message": "..."}` |
-| Notes | Mengadopsi vhost host dan Cloudflare Tunnel ingress yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli atau upstream proxy. Mendukung `ssl_mode` bernilai `none`, `letsencrypt`, `custom`, dan `cloudflare`, menyalin sertifikat fisik jika ada, serta menyaring protokol non-HTTP (seperti `ssh://` atau `tcp://`). |
+| Notes | Mengadopsi vhost host dan Cloudflare Tunnel ingress yang belum terdaftar ke dalam tabel `sites` SQLite dengan mempertahankan path document root asli atau upstream proxy. Menginspeksi runtime dan framework proyek (Laravel, Nuxt, Hono, Next.js, Go Service, dsb.), mendukung `ssl_mode` bernilai `none`, `letsencrypt`, `custom`, dan `cloudflare`, menyalin sertifikat fisik jika ada, serta menyaring protokol non-HTTP (seperti `ssh://` atau `tcp://`). |
 
 ---
 

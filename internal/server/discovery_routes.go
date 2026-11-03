@@ -29,6 +29,9 @@ type AdoptSiteItem struct {
 	SSLKeyPath    string   `json:"ssl_key_path,omitempty"`
 	SSLIssuer     string   `json:"ssl_issuer,omitempty"`
 	SSLNotAfter   int64    `json:"ssl_not_after,omitempty"`
+	Kind          string   `json:"kind,omitempty"`
+	Framework     string   `json:"framework,omitempty"`
+	PHPVersion    string   `json:"php_version,omitempty"`
 }
 
 // AdoptPayload merepresentasikan daftar resource yang dipilih pengguna untuk didaftarkan ke FikPanel
@@ -247,16 +250,41 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		kind := "static"
+		// Inspeksi runtime dan framework proyek secara otomatis
+		rt := discovery.DetectProjectRuntime(item.DocumentRoot, item.ProxyPass, domain)
+
+		kind := item.Kind
+		if kind == "" {
+			kind = rt.Kind
+		}
+		if kind == "" {
+			kind = "static"
+			if item.ProxyPass != "" {
+				kind = "proxy"
+			} else if item.HasPHP {
+				kind = "php"
+			}
+		}
+
 		if item.ProxyPass != "" {
 			lowerProxy := strings.ToLower(item.ProxyPass)
 			// Abaikan protokol non-HTTP seperti ssh:// atau tcp://
 			if strings.HasPrefix(lowerProxy, "ssh://") || strings.HasPrefix(lowerProxy, "tcp://") || strings.HasPrefix(lowerProxy, "rdp://") {
 				continue
 			}
-			kind = "proxy"
-		} else if item.HasPHP {
-			kind = "php"
+		}
+
+		framework := item.Framework
+		if framework == "" {
+			framework = rt.Framework
+		}
+
+		phpVersion := item.PHPVersion
+		if phpVersion == "" {
+			phpVersion = rt.PHPVersion
+		}
+		if phpVersion == "" {
+			phpVersion = "8.3"
 		}
 
 		sslMode := "none"
@@ -280,7 +308,8 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			Kind:        kind,
 			Upstream:    item.ProxyPass,
 			RootPath:    item.DocumentRoot,
-			PHPVersion:  "8.3",
+			PHPVersion:  phpVersion,
+			Framework:   framework,
 			SSLMode:     sslMode,
 			ForceHTTPS:  0,
 			Enabled:     1,

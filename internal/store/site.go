@@ -27,6 +27,7 @@ type Site struct {
 	ExtraConf   string `json:"extra_conf"`
 	Enabled     int    `json:"enabled"`
 	UpdatedAt   int64  `json:"updated_at"`
+	Framework   string `json:"framework,omitempty"`
 
 	// Ringkasan sertifikat (hasil LEFT JOIN, hanya-baca)
 	SSLStatus  string `json:"ssl_status"`
@@ -59,14 +60,14 @@ type Certificate struct {
 
 const siteColumns = `s.id, s.domain, s.aliases, s.kind, COALESCE(s.upstream, ''), COALESCE(s.root_path, ''),
 	s.ssl_mode, s.force_https, s.hsts, s.php_version, s.description, s.extra_conf, s.enabled, s.updated_at,
-	COALESCE(c.status, 'none'), COALESCE(c.not_after, 0)`
+	COALESCE(s.framework, ''), COALESCE(c.status, 'none'), COALESCE(c.not_after, 0)`
 
 // scanSite memetakan satu baris hasil query ke struct Site
 func scanSite(sc interface{ Scan(...any) error }) (Site, error) {
 	var it Site
 	err := sc.Scan(&it.ID, &it.Domain, &it.Aliases, &it.Kind, &it.Upstream, &it.RootPath,
 		&it.SSLMode, &it.ForceHTTPS, &it.HSTS, &it.PHPVersion, &it.Description, &it.ExtraConf,
-		&it.Enabled, &it.UpdatedAt, &it.SSLStatus, &it.SSLExpires)
+		&it.Enabled, &it.UpdatedAt, &it.Framework, &it.SSLStatus, &it.SSLExpires)
 	return it, err
 }
 
@@ -123,10 +124,10 @@ func (s *Store) CreateSite(ctx context.Context, site *Site) (*Site, error) {
 	now := time.Now().Unix()
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO sites (domain, aliases, kind, upstream, root_path, ssl_mode, force_https, hsts,
-		                   php_version, description, extra_conf, enabled, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   php_version, description, extra_conf, enabled, updated_at, framework)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		site.Domain, site.Aliases, site.Kind, site.Upstream, site.RootPath, site.SSLMode, site.ForceHTTPS,
-		site.HSTS, site.PHPVersion, site.Description, site.ExtraConf, site.Enabled, now)
+		site.HSTS, site.PHPVersion, site.Description, site.ExtraConf, site.Enabled, now, site.Framework)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menyimpan situs: %w", err)
 	}
@@ -146,10 +147,10 @@ func (s *Store) CreateSite(ctx context.Context, site *Site) (*Site, error) {
 func (s *Store) UpdateSite(ctx context.Context, site *Site) error {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE sites SET domain = ?, aliases = ?, kind = ?, upstream = ?, root_path = ?, ssl_mode = ?,
-		       force_https = ?, hsts = ?, php_version = ?, description = ?, extra_conf = ?, updated_at = ?
+		       force_https = ?, hsts = ?, php_version = ?, description = ?, extra_conf = ?, updated_at = ?, framework = ?
 		WHERE id = ?`,
 		site.Domain, site.Aliases, site.Kind, site.Upstream, site.RootPath, site.SSLMode,
-		site.ForceHTTPS, site.HSTS, site.PHPVersion, site.Description, site.ExtraConf, time.Now().Unix(), site.ID)
+		site.ForceHTTPS, site.HSTS, site.PHPVersion, site.Description, site.ExtraConf, time.Now().Unix(), site.Framework, site.ID)
 	if err != nil {
 		return fmt.Errorf("gagal memperbarui situs: %w", err)
 	}

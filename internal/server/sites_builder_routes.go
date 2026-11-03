@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"fikpanel/internal/database"
+	"fikpanel/internal/discovery"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 )
@@ -2211,6 +2212,29 @@ func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
 	hasCICD, cicdProvider := inspectProjectCICDMeta(projectDir)
 	site.HasCICD = hasCICD
 	site.CICDProvider = cicdProvider
+
+	// Deteksi atau lengkapi metadata framework dan runtime cerdas
+	rt := discovery.DetectProjectRuntime(site.RootPath, site.Upstream, site.Domain)
+	needDBUpdate := false
+	if site.Framework == "" && rt.Framework != "" {
+		site.Framework = rt.Framework
+		needDBUpdate = true
+	}
+	// Perbaiki situs yang sebelumnya keliru diklasifikasikan sebagai static padahal aplikasi PHP/Laravel
+	if site.Kind == "static" && rt.Kind == "php" {
+		site.Kind = "php"
+		site.Framework = rt.Framework
+		if site.PHPVersion == "" {
+			site.PHPVersion = rt.PHPVersion
+		}
+		needDBUpdate = true
+		if s.sites != nil {
+			_ = s.sites.Apply(context.Background(), site, "")
+		}
+	}
+	if needDBUpdate && site.ID > 0 {
+		_ = s.store.UpdateSite(context.Background(), site)
+	}
 
 	if hasGit {
 		gitCredSyncedOnce.Do(func() {
