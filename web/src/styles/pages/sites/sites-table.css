@@ -10,11 +10,13 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-md);
-      overflow: visible;
+      overflow-x: auto;
+      overflow-y: visible;
     }
 
     .sites-table {
       width: 100%;
+      min-width: 1060px;
       border-collapse: collapse;
       font-size: var(--text-xs);
     }
@@ -284,10 +286,27 @@
     }
 
     /* Kolom operasi & menu dropdown More */
+    .col-ops {
+      width: 180px;
+      min-width: 180px;
+      text-align: right;
+    }
+
+    .sites-table th.col-ops {
+      text-align: right;
+      padding-right: var(--sp-4-5);
+    }
+
+    .sites-table td.col-ops {
+      padding-right: var(--sp-4-5);
+    }
+
     .ops-wrap {
       display: inline-flex;
       align-items: center;
+      justify-content: flex-end;
       gap: var(--sp-1-5);
+      width: 100%;
     }
 
     .table-footer {

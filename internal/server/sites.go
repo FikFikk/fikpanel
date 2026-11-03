@@ -11,8 +11,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"fikpanel/internal/cloudflare"
 	"fikpanel/internal/database"
 	"fikpanel/internal/nginx"
 	"fikpanel/internal/sites"
@@ -204,6 +206,39 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []store.Site{}
 	}
+
+	// Auto-deteksi dan sinkronisasi Cloudflare Anycast SSL secara paralel jika situs masih 'none'
+	var wg sync.WaitGroup
+	for i := range list {
+		if list[i].SSLMode == "none" || list[i].SSLStatus == "" || list[i].SSLStatus == "none" {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				if cloudflare.IsDomainProxiedByCloudflare(r.Context(), list[idx].Domain) {
+					list[idx].SSLMode = "cloudflare"
+					list[idx].SSLStatus = "issued"
+					list[idx].SSLExpires = time.Now().Add(3650 * 24 * time.Hour).Unix()
+					list[idx].ForceHTTPS = 0
+					list[idx].HSTS = 0
+
+					_ = s.store.UpdateSite(r.Context(), &list[idx])
+					certDomainsJSON, _ := json.Marshal(sites.AllDomains(&list[idx]))
+					certRecord := store.Certificate{
+						SiteID:    list[idx].ID,
+						Status:    "issued",
+						Issuer:    "Cloudflare Edge SSL (Flexible)",
+						NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+						NotAfter:  list[idx].SSLExpires,
+						Domains:   string(certDomainsJSON),
+						RenewedAt: time.Now().Unix(),
+					}
+					_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+				}
+			}(i)
+		}
+	}
+	wg.Wait()
+
 	for i := range list {
 		s.enrichSiteRuntimeMeta(&list[i])
 	}
@@ -306,6 +341,26 @@ func (s *Server) handleGetSite(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+
+	// Auto-upgrade status situs ke Cloudflare jika domain terdeteksi Anycast Cloudflare
+	if site.SSLMode == "none" && cloudflare.IsDomainProxiedByCloudflare(r.Context(), site.Domain) {
+		site.SSLMode = "cloudflare"
+		site.ForceHTTPS = 0
+		site.HSTS = 0
+		_ = s.store.UpdateSite(r.Context(), site)
+		certDomainsJSON, _ := json.Marshal(sites.AllDomains(site))
+		certRecord := store.Certificate{
+			SiteID:    site.ID,
+			Status:    "issued",
+			Issuer:    "Cloudflare Edge SSL (Flexible)",
+			NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+			NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+			Domains:   string(certDomainsJSON),
+			RenewedAt: time.Now().Unix(),
+		}
+		_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+	}
+
 	s.enrichSiteRuntimeMeta(site)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
@@ -583,6 +638,26 @@ func (s *Server) handleSiteVhost(w http.ResponseWriter, r *http.Request) {
 		writeSiteError(w, err)
 		return
 	}
+
+	// Auto-upgrade status situs ke Cloudflare jika domain terdeteksi Anycast Cloudflare
+	if site.SSLMode == "none" && cloudflare.IsDomainProxiedByCloudflare(r.Context(), site.Domain) {
+		site.SSLMode = "cloudflare"
+		site.ForceHTTPS = 0
+		site.HSTS = 0
+		_ = s.store.UpdateSite(r.Context(), site)
+		certDomainsJSON, _ := json.Marshal(sites.AllDomains(site))
+		certRecord := store.Certificate{
+			SiteID:    site.ID,
+			Status:    "issued",
+			Issuer:    "Cloudflare Edge SSL (Flexible)",
+			NotBefore: time.Now().Add(-24 * time.Hour).Unix(),
+			NotAfter:  time.Now().Add(3650 * 24 * time.Hour).Unix(),
+			Domains:   string(certDomainsJSON),
+			RenewedAt: time.Now().Unix(),
+		}
+		_ = s.store.UpsertCertificate(r.Context(), &certRecord)
+	}
+
 	s.enrichSiteRuntimeMeta(site)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
