@@ -94,6 +94,11 @@ func NewScanner() *Scanner {
 	return &Scanner{}
 }
 
+// InspectCertificate menganalisis berkas sertifikat TLS dan mengekstrak issuer, notAfter, dan domain SAN
+func InspectCertificate(certPath string) (issuer string, notAfter int64, domains []string) {
+	return inspectCertificate(certPath)
+}
+
 // inspectCertificate menganalisis berkas sertifikat TLS dan mengekstrak issuer, notAfter, dan domain SAN
 func inspectCertificate(certPath string) (issuer string, notAfter int64, domains []string) {
 	cleanPath := filepath.ToSlash(certPath)
@@ -430,7 +435,33 @@ func (s *Scanner) ScanNginxVhosts(ctx context.Context) ([]NginxVhostItem, error)
 		}
 	}
 
-	return mergeVhostEntries(results), nil
+	merged := mergeVhostEntries(results)
+
+	// Deteksi berkas sertifikat SSL fisik dari lokasi umum jika vhost Nginx tidak mencantumkan ssl_certificate secara eksplisit
+	for i := range merged {
+		if !merged[i].SSL {
+			domains := strings.Fields(merged[i].ServerName)
+			for _, d := range domains {
+				d = strings.ToLower(strings.TrimSpace(d))
+				if d == "" || d == "_" || d == "localhost" {
+					continue
+				}
+				leCert := filepath.Join("/etc/letsencrypt/live", d, "fullchain.pem")
+				leKey := filepath.Join("/etc/letsencrypt/live", d, "privkey.pem")
+				if _, errC := os.Stat(leCert); errC == nil {
+					if _, errK := os.Stat(leKey); errK == nil {
+						merged[i].SSL = true
+						merged[i].SSLCertPath = leCert
+						merged[i].SSLKeyPath = leKey
+						merged[i].SSLIssuer, merged[i].SSLNotAfter, _ = inspectCertificate(leCert)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return merged, nil
 }
 
 // scanComposeInPaths menelusuri direktori target untuk menemukan berkas docker-compose

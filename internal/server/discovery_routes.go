@@ -140,18 +140,36 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 	dbCtx, cancelDB := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelDB()
 
-	// Bandingkan dengan situs yang sudah ada di database untuk menandai status adopsi
+	// Bandingkan dengan situs yang sudah ada di database untuk menandai status adopsi & sinkronisasi status SSL
 	existingSites, err := s.store.ListSites(dbCtx)
 	if err == nil {
-		registeredDomains := make(map[string]bool)
+		siteMap := make(map[string]store.Site)
 		for _, es := range existingSites {
-			registeredDomains[strings.ToLower(es.Domain)] = true
+			siteMap[strings.ToLower(es.Domain)] = es
 		}
 		for i := range result.NginxVhosts {
 			domains := strings.Fields(result.NginxVhosts[i].ServerName)
 			for _, d := range domains {
-				if registeredDomains[strings.ToLower(d)] {
+				lowerDomain := strings.ToLower(d)
+				if es, ok := siteMap[lowerDomain]; ok {
 					result.NginxVhosts[i].IsAdopted = true
+
+					// Sinkronkan status SSL dari konfigurasi situs yang terdaftar di FikPanel
+					if es.SSLMode == "cloudflare" {
+						result.NginxVhosts[i].SSL = true
+						result.NginxVhosts[i].SSLIssuer = "Cloudflare Edge SSL (Flexible)"
+					} else if es.SSLMode != "none" {
+						result.NginxVhosts[i].SSL = true
+					}
+
+					// Ambil detail sertifikat yang tersimpan di FikPanel bila ada
+					if cert, _ := s.store.GetCertificate(dbCtx, es.ID); cert != nil && cert.Status == "issued" {
+						result.NginxVhosts[i].SSL = true
+						if result.NginxVhosts[i].SSLIssuer == "" {
+							result.NginxVhosts[i].SSLIssuer = cert.Issuer
+						}
+						result.NginxVhosts[i].SSLNotAfter = cert.NotAfter
+					}
 					break
 				}
 			}

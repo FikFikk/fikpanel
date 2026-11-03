@@ -631,7 +631,17 @@
                       <td class="font-bold">{vh.server_name}</td>
                       <td class="mono">{vh.root_dir || (vh.proxy_pass ? `Proxy: ${vh.proxy_pass}` : '-')}</td>
                       <td>{vh.port}</td>
-                      <td>{vh.ssl ? 'Ya' : 'Tidak'}</td>
+                      <td>
+                        {#if vh.ssl}
+                          {#if vh.ssl_issuer && vh.ssl_issuer.includes('Cloudflare')}
+                            <span class="badge badge--warning">Cloudflare</span>
+                          {:else}
+                            <span class="badge badge--success">Ya</span>
+                          {/if}
+                        {:else}
+                          <span class="badge badge--neutral">Tidak</span>
+                        {/if}
+                      </td>
                       <td>
                         {#if vh.is_adopted}
                           <span class="badge badge--success">Terdaftar</span>
