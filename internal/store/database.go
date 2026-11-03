@@ -123,6 +123,12 @@ func (s *Store) UpdateDatabasePassword(ctx context.Context, engine, name, newPas
 	return nil
 }
 
+// UpdateDatabaseSize memperbarui estimasi ukuran byte database di penyimpanan SQLite
+func (s *Store) UpdateDatabaseSize(ctx context.Context, engine, name string, sizeBytes int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE databases SET size_bytes = ? WHERE engine = ? AND name = ?`, sizeBytes, engine, name)
+	return err
+}
+
 // GetDatabaseCount menghitung jumlah database pada engine tertentu
 func (s *Store) GetDatabaseCount(ctx context.Context, engine string) (int, error) {
 	var count int

@@ -69,7 +69,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.3.16"
+		return "0.3.17"
 	}
 	return s.version
 }
@@ -355,6 +355,8 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/databases/{engine}/list", s.AuthMiddleware(http.HandlerFunc(s.handleListDatabases)))
 	s.mux.Handle("POST /api/databases/{engine}/create", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDatabase)))
 	s.mux.Handle("DELETE /api/databases/{engine}/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDatabase)))
+	s.mux.Handle("PUT /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
+	s.mux.Handle("POST /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
 	s.mux.Handle("POST /api/databases/{engine}/service", s.AuthMiddleware(http.HandlerFunc(s.handleEngineService)))
 	s.mux.Handle("POST /api/databases/{engine}/switch-version", s.AuthMiddleware(http.HandlerFunc(s.handleEngineSwitchVersion)))
 	s.mux.Handle("GET /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineGetConfig)))

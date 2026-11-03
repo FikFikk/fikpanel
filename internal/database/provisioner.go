@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var validIdentifier = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
@@ -133,7 +135,9 @@ func UpdateUserPassword(ctx context.Context, engine, username, newPassword strin
 	case "mysql":
 		escapedPass := strings.ReplaceAll(newPassword, "'", "''")
 		queries := []string{
+			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';", username, escapedPass),
 			fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s';", username, escapedPass),
+			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'127.0.0.1' IDENTIFIED BY '%s';", username, escapedPass),
 			fmt.Sprintf("ALTER USER '%s'@'127.0.0.1' IDENTIFIED BY '%s';", username, escapedPass),
 			fmt.Sprintf("ALTER USER IF EXISTS '%s'@'%%' IDENTIFIED BY '%s';", username, escapedPass),
 			"FLUSH PRIVILEGES;",
@@ -144,5 +148,88 @@ func UpdateUserPassword(ctx context.Context, engine, username, newPassword strin
 
 	default:
 		return nil
+	}
+}
+
+// GetDatabaseSizes menghitung ukuran riil masing-masing basis data dalam satuan byte
+func GetDatabaseSizes(ctx context.Context, engine string) (map[string]int64, error) {
+	sizes := make(map[string]int64)
+	if runtime.GOOS != "linux" {
+		return sizes, nil
+	}
+
+	switch strings.ToLower(engine) {
+	case "mysql":
+		dbCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		bin := "mariadb"
+		if _, err := exec.LookPath("mariadb"); err != nil {
+			bin = "mysql"
+		}
+
+		query := "SELECT table_schema, COALESCE(SUM(data_length + index_length), 0) FROM information_schema.TABLES GROUP BY table_schema;"
+		var cmd *exec.Cmd
+		if _, err := os.Stat("/etc/mysql/debian.cnf"); err == nil {
+			cmd = exec.CommandContext(dbCtx, bin, "--defaults-file=/etc/mysql/debian.cnf", "-N", "-e", query)
+		} else {
+			cmd = exec.CommandContext(dbCtx, bin, "-u", "root", "-N", "-e", query)
+		}
+
+		out, err := cmd.Output()
+		if err != nil || len(out) == 0 {
+			// Percobaan cadangan via UNIX socket lokal
+			for _, sock := range []string{"/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock", "/tmp/mysql.sock"} {
+				if _, errStat := os.Stat(sock); errStat == nil {
+					retryCmd := exec.CommandContext(dbCtx, bin, "-u", "root", fmt.Sprintf("--socket=%s", sock), "-N", "-e", query)
+					if retryOut, errRetry := retryCmd.Output(); errRetry == nil && len(retryOut) > 0 {
+						out = retryOut
+						err = nil
+						break
+					}
+				}
+			}
+		}
+
+		if err != nil || len(out) == 0 {
+			return sizes, nil
+		}
+
+		scanner := bufio.NewScanner(strings.NewReader(string(out)))
+		for scanner.Scan() {
+			fields := strings.Fields(scanner.Text())
+			if len(fields) >= 2 {
+				dbName := fields[0]
+				var sz int64
+				if _, parseErr := fmt.Sscanf(fields[1], "%d", &sz); parseErr == nil {
+					sizes[dbName] = sz
+				}
+			}
+		}
+		return sizes, nil
+
+	case "postgresql", "postgres":
+		dbCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(dbCtx, "psql", "-U", "postgres", "-t", "-A", "-F", "\t", "-c", "SELECT datname, pg_database_size(datname) FROM pg_database;")
+		out, err := cmd.Output()
+		if err == nil && len(out) > 0 {
+			scanner := bufio.NewScanner(strings.NewReader(string(out)))
+			for scanner.Scan() {
+				fields := strings.Split(scanner.Text(), "\t")
+				if len(fields) >= 2 {
+					dbName := strings.TrimSpace(fields[0])
+					var sz int64
+					if _, parseErr := fmt.Sscanf(strings.TrimSpace(fields[1]), "%d", &sz); parseErr == nil {
+						sizes[dbName] = sz
+					}
+				}
+			}
+		}
+		return sizes, nil
+
+	default:
+		return sizes, nil
 	}
 }

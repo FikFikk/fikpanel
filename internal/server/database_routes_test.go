@@ -90,6 +90,27 @@ func TestDatabaseRoutes(t *testing.T) {
 		t.Fatalf("diharapkan status 201 saat membuat db, didapat %d: %s", wCreate.Code, wCreate.Body.String())
 	}
 
+	// 3b. Uji PUT /api/databases/mysql/{name}/password
+	pwPayload := map[string]string{
+		"password": "NewSecretPassword456!",
+	}
+	pwBytes, _ := json.Marshal(pwPayload)
+	reqPw := httptest.NewRequest(http.MethodPut, "/api/databases/mysql/sql_unit_test/password", bytes.NewReader(pwBytes))
+	reqPw.SetPathValue("engine", "mysql")
+	reqPw.SetPathValue("name", "sql_unit_test")
+	wPw := httptest.NewRecorder()
+	srv.handleUpdateDatabasePassword(wPw, reqPw)
+
+	if wPw.Code != http.StatusOK {
+		t.Fatalf("diharapkan status 200 saat update password, didapat %d: %s", wPw.Code, wPw.Body.String())
+	}
+
+	// Pastikan password di store telah terbarui
+	rec, err := st.GetDatabaseByName(reqPw.Context(), "mysql", "sql_unit_test")
+	if err != nil || rec.Password != "NewSecretPassword456!" {
+		t.Fatalf("password di store tidak cocok setelah diperbarui: %v, rec: %+v", err, rec)
+	}
+
 	// 4. Uji DELETE /api/databases/mysql/{name}
 	reqDelete := httptest.NewRequest(http.MethodDelete, "/api/databases/mysql/sql_unit_test", nil)
 	reqDelete.SetPathValue("engine", "mysql")

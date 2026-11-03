@@ -739,7 +739,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | `search` (string, opsional) |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"databases": [{"name": "app_db", "user": "app_user", "size_bytes": 10485760, "backup_count": 2, "location": "localhost", "note": "Production DB"}]}` |
-| Notes | Menghasilkan daftar database aktif dari engine terkait. Menolak jika engine belum terpasang dengan HTTP 412 Precondition Failed. |
+| Notes | Menghasilkan daftar database aktif dari engine terkait. Menghitung ukuran riil database secara dinamis langsung dari host engine (`information_schema.TABLES` untuk MySQL/MariaDB dan `pg_database_size` untuk PostgreSQL) serta menyinkronkan nilai `size_bytes` ke SQLite panel. Menolak jika engine belum terpasang dengan HTTP 412 Precondition Failed. |
 
 | Field | Detail |
 |---|---|
@@ -750,6 +750,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Request Body | `name` (string, wajib), `username` (string, wajib), `password` (string, wajib), `access_host` (string, default `localhost`), `note` (string, opsional) |
 | Response | HTTP 201 `{"ok": true, "database": "app_db", "user": "app_user"}` |
 | Notes | Membuat database, akun user, dan memberikan hak akses grant secara otomatis. Dicatat ke audit log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/databases/:engine/:name/password` (atau `POST`) |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `password` (string, wajib) |
+| Response | HTTP 200 `{"ok": true, "message": "Kata sandi database kostash berhasil diperbarui"}` |
+| Notes | Memperbarui kata sandi pengguna database di engine fisik host (`CREATE USER IF NOT EXISTS` dan `ALTER USER` untuk scope `localhost` dan `127.0.0.1` pada MySQL/MariaDB) serta memperbarui catatan vault di SQLite FikPanel. Mengizinkan login SSO phpMyAdmin secara instan tanpa kendala autentikasi soket lokal. |
 
 | Field | Detail |
 |---|---|

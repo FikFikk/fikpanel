@@ -94,6 +94,17 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Kalkulasi ukuran aktual database secara dinamis dari host engine
+	sizes, errSizes := database.GetDatabaseSizes(r.Context(), engine)
+	if errSizes == nil && len(sizes) > 0 {
+		for i := range list {
+			if sz, ok := sizes[list[i].Name]; ok && sz > 0 {
+				list[i].SizeBytes = sz
+				_ = s.store.UpdateDatabaseSize(r.Context(), engine, list[i].Name, sz)
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"databases": list,
@@ -195,6 +206,65 @@ func (s *Server) handleDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
 		"message": fmt.Sprintf("Database %s berhasil dihapus", name),
+	})
+}
+
+// UpdateDatabasePasswordRequest merepresentasikan muatan permintaan pembaruan kata sandi
+type UpdateDatabasePasswordRequest struct {
+	Password string `json:"password"`
+}
+
+// handleUpdateDatabasePassword memperbarui kata sandi pengguna database di host engine dan SQLite
+func (s *Server) handleUpdateDatabasePassword(w http.ResponseWriter, r *http.Request) {
+	engine := strings.ToLower(r.PathValue("engine"))
+	name := strings.TrimSpace(r.PathValue("name"))
+	if engine == "" || name == "" {
+		http.Error(w, `{"error":"parameter engine dan nama database wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req UpdateDatabasePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	newPassword := strings.TrimSpace(req.Password)
+	if newPassword == "" {
+		http.Error(w, `{"error":"kata sandi baru tidak boleh kosong"}`, http.StatusBadRequest)
+		return
+	}
+
+	dbRecord, err := s.store.GetDatabaseByName(r.Context(), engine, name)
+	if err != nil {
+		http.Error(w, `{"error":"database tidak ditemukan"}`, http.StatusNotFound)
+		return
+	}
+
+	username := strings.TrimSpace(dbRecord.Username)
+	if username == "" {
+		username = name
+	}
+
+	// Perbarui kata sandi di engine database fisik (MySQL/MariaDB)
+	if err := database.UpdateUserPassword(r.Context(), engine, username, newPassword); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal memperbarui kata sandi di server: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	// Perbarui catatan kata sandi di SQLite store FikPanel
+	if err := s.store.UpdateDatabasePassword(r.Context(), engine, name, newPassword); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gagal menyimpan kata sandi ke panel: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "database.update_password", fmt.Sprintf("%s:%s", engine, name), true,
+		fmt.Sprintf("Memperbarui kata sandi pengguna database %s (%s)", name, engine), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": fmt.Sprintf("Kata sandi database %s berhasil diperbarui", name),
 	})
 }
 

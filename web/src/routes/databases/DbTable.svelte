@@ -14,6 +14,7 @@
     onTogglePassword: (id: number) => void;
     onCopyText: (text: string, label: string) => void;
     onOpenQuotaModal: (db: DatabaseItem) => void;
+    onOpenPasswordModal: (db: DatabaseItem) => void;
     onLaunchWebGui: (db: DatabaseItem) => void;
     onDeleteDb: (db: DatabaseItem) => void;
   }
@@ -26,6 +27,7 @@
     onTogglePassword,
     onCopyText,
     onOpenQuotaModal,
+    onOpenPasswordModal,
     onLaunchWebGui,
     onDeleteDb
   }: Props = $props();
@@ -68,25 +70,36 @@
               </td>
               <td class="col-mono">{db.username}</td>
               <td class="col-mono col-pass">
-                {#if visiblePasswords[db.id]}
-                  <span>{db.password}</span>
+                {#if db.password}
+                  {#if visiblePasswords[db.id]}
+                    <span>{db.password}</span>
+                  {:else}
+                    <span>••••••••••••</span>
+                  {/if}
+                  <button
+                    class="btn-icon"
+                    onclick={() => onTogglePassword(db.id)}
+                    title={visiblePasswords[db.id] ? 'Sembunyikan' : 'Lihat'}
+                  >
+                    <i class={visiblePasswords[db.id] ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                  </button>
+                  <button
+                    class="btn-icon"
+                    onclick={() => onCopyText(db.password, 'Password')}
+                    title="Salin password"
+                  >
+                    <i class="ri-file-copy-line" aria-hidden="true"></i>
+                  </button>
                 {:else}
-                  <span>••••••••••••</span>
+                  <span class="text-muted">(Belum disetel)</span>
+                  <button
+                    class="btn-icon"
+                    onclick={() => onOpenPasswordModal(db)}
+                    title="Atur kata sandi sekarang"
+                  >
+                    <i class="ri-key-line" aria-hidden="true"></i>
+                  </button>
                 {/if}
-                <button
-                  class="btn-icon"
-                  onclick={() => onTogglePassword(db.id)}
-                  title={visiblePasswords[db.id] ? 'Sembunyikan' : 'Lihat'}
-                >
-                  <i class={visiblePasswords[db.id] ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-                </button>
-                <button
-                  class="btn-icon"
-                  onclick={() => onCopyText(db.password, 'Password')}
-                  title="Salin password"
-                >
-                  <i class="ri-file-copy-line" aria-hidden="true"></i>
-                </button>
               </td>
               <td>{formatBytes(db.size_bytes)}</td>
               <td>
@@ -105,6 +118,13 @@
                   title="Atur kuota kapasitas database"
                 >
                   Kuota
+                </button>
+                <button
+                  class="action-link"
+                  onclick={() => onOpenPasswordModal(db)}
+                  title="Ubah atau atur kata sandi pengguna database ini"
+                >
+                  Sandi
                 </button>
                 <button
                   class="action-link"

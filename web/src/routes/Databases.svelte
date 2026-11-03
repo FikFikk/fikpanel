@@ -16,6 +16,7 @@
   import WebGuiModal from './databases/WebGuiModal.svelte';
   import QuotaModal from './databases/QuotaModal.svelte';
   import RootPasswordModal from './databases/RootPasswordModal.svelte';
+  import UserPasswordModal from './databases/UserPasswordModal.svelte';
   import TasksDrawer from './databases/TasksDrawer.svelte';
   import '../styles/pages/databases/shared.css';
 
@@ -37,6 +38,10 @@
   let showPmaInstallModal = $state(false);
   let showAddModal = $state(false);
   let showRootPassModal = $state(false);
+  let showUserPassModal = $state(false);
+  let selectedUserPassDb = $state<DatabaseItem | null>(null);
+  let userPassValue = $state('');
+  let savingUserPass = $state(false);
   let showTasksDrawer = $state(false);
   let showEngineManager = $state(false);
   let showWebGuiModal = $state(false);
@@ -565,6 +570,42 @@
     showQuotaModal = false;
   }
 
+  // Buka modal ubah password pengguna database
+  function openUserPasswordModal(db: DatabaseItem) {
+    selectedUserPassDb = db;
+    userPassValue = db.password || '';
+    showUserPassModal = true;
+  }
+
+  // Buat kata sandi acak kuat untuk pengguna database
+  function generateUserPassword() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=';
+    let pass = '';
+    for (let i = 0; i < 16; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    userPassValue = pass;
+  }
+
+  // Simpan kata sandi baru pengguna database
+  async function submitUserPassword() {
+    if (!selectedUserPassDb || !userPassValue.trim()) return;
+    savingUserPass = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; message: string }>(`/api/databases/${activeEngine}/${encodeURIComponent(selectedUserPassDb.name)}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password: userPassValue.trim() }),
+      });
+      notify(res.message || 'Password database berhasil diperbarui', 'success');
+      showUserPassModal = false;
+      await fetchDatabases(activeEngine);
+    } catch (e: any) {
+      notify(e.message || 'Gagal memperbarui password database', 'error');
+    } finally {
+      savingUserPass = false;
+    }
+  }
+
   // Buka modal Web GUI dengan pemeriksaan status backend
   async function openWebGuiModal(db: DatabaseItem | string = '') {
     if (typeof db === 'object' && db !== null) {
@@ -936,6 +977,7 @@
       onTogglePassword={(id) => (visiblePasswords[id] = !visiblePasswords[id])}
       onCopyText={copyText}
       onOpenQuotaModal={openQuotaModal}
+      onOpenPasswordModal={openUserPasswordModal}
       onLaunchWebGui={launchWebGui}
       onDeleteDb={deleteDb}
     />
@@ -1054,6 +1096,17 @@
       notify('Password root berhasil diperbarui', 'success');
       showRootPassModal = false;
     }}
+  />
+
+  <!-- Modal Ubah Password Pengguna Database -->
+  <UserPasswordModal
+    open={showUserPassModal && Boolean(selectedUserPassDb)}
+    db={selectedUserPassDb}
+    bind:newPassword={userPassValue}
+    saving={savingUserPass}
+    onGeneratePassword={generateUserPassword}
+    onClose={() => (showUserPassModal = false)}
+    onSubmit={submitUserPassword}
   />
 
   <!-- Drawer / Modal Messages Box & Real-Time Log Execution (ala aaPanel) -->
