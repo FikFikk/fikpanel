@@ -299,8 +299,8 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Eksekusi Lokal di node fikpanel saat ini
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	// 2. Eksekusi Lokal di node fikpanel saat ini (alokasikan waktu hingga 10 menit untuk unduhan paket/update/build)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 
 	baseCwd := strings.TrimSpace(req.Cwd)

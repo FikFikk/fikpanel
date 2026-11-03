@@ -133,9 +133,9 @@ if [ -z "$NEW_VER" ]; then
         install -m 755 "$INSTALL_DIR/bin/fikpanel.bak" /usr/local/bin/fikpanel
         if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q "fikpanel.service"; then
             if command -v systemd-run >/dev/null 2>&1; then
-                systemd-run --no-block systemctl restart fikpanel.service
+                systemd-run --no-block sh -c "sleep 2 && systemctl restart fikpanel.service"
             else
-                nohup sh -c "sleep 1 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
+                nohup sh -c "sleep 2 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
             fi
         fi
         echo -e "${GREEN}[✓] Berhasil dipulihkan ke versi cadangan.${NC}"
@@ -158,11 +158,12 @@ if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null
     echo -e "==============================================================\n"
     systemctl daemon-reload || true
     if command -v systemd-run >/dev/null 2>&1; then
-        # Lepaskan proses restart dari sesi terminal/PTY saat ini agar tidak terputus saat daemon mati
-        systemd-run --no-block systemctl restart fikpanel.service
+        # Berikan jeda 2 detik agar skrip selesai, output terbaca utuh oleh handler terminal,
+        # dan respons HTTP sukses sempat dikirim ke browser sebelum daemon dimatikan.
+        systemd-run --no-block sh -c "sleep 2 && systemctl restart fikpanel.service"
     else
         # Fallback background process jika systemd-run tidak tersedia
-        nohup sh -c "sleep 1 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
+        nohup sh -c "sleep 2 && systemctl restart fikpanel.service" >/dev/null 2>&1 &
     fi
     echo -e "${GREEN}[✓] Perintah restart berhasil dikirim ke systemd secara terpisah (detached).${NC}"
     echo -e "[*] Jika Anda memperbarui lewat Web Terminal, koneksi akan terputus sesaat selagi panel memuat biner baru."
