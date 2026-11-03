@@ -101,8 +101,8 @@
 | Headers | Tidak ada |
 | Query Params | `mock_nginx` (string, opsional, `0` untuk simulasi belum terpasang) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"sites": [...], "web_server": {"name": "nginx", "installed": true, "version": "1.24.0", "running": true}}` |
-| Notes | Mengembalikan seluruh virtual host terkelola beserta status ketersediaan dan runtime Nginx web server. |
+| Response | HTTP 200 `{"sites": [{"id": 1, "domain": "example.com", "kind": "static", "root_path": "/var/www/site", "ssl_mode": "letsencrypt", "has_git": true, "git_branch": "main", "git_repo": "user/repo", "git_commit": "abc1234", "has_cicd": true, "cicd_provider": "github-actions"}], "web_server": {"name": "nginx", "installed": true, "version": "1.24.0", "running": true}}` |
+| Notes | Mengembalikan seluruh virtual host terkelola beserta status ketersediaan, runtime Nginx web server, metadata Git, serta deteksi otomatis alur kerja CI/CD (GitHub Actions / Self-Hosted Action Runner / GitLab CI). |
 
 | Field | Detail |
 |---|---|

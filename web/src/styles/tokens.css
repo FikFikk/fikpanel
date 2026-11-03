@@ -92,6 +92,7 @@
     --ring-info: color-mix(in srgb, var(--info) 35%, transparent);
     --ring-warning: color-mix(in srgb, var(--warning) 35%, transparent);
     --ring-danger: color-mix(in srgb, var(--danger) 35%, transparent);
+    --ring-violet: color-mix(in srgb, var(--violet) 35%, transparent);
 
     /* ── Tipografi ──────────────────────────────────────────────────────────── */
     --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;

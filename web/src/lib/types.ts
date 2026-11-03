@@ -38,6 +38,8 @@ export interface Site {
   git_branch?: string;
   git_repo?: string;
   git_commit?: string;
+  has_cicd?: boolean;
+  cicd_provider?: string;
 }
 
 export interface DomainCheck {

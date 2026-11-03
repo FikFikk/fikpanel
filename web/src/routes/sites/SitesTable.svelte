@@ -109,21 +109,49 @@
                   <i class="ri-folder-2-line"></i>
                   <span>{s.kind === 'proxy' ? s.upstream : (s.root_path || '/var/www/html')}</span>
                 </div>
-                {#if s.has_git}
+                {#if s.has_git || s.has_cicd}
                   <div class="site-git-meta mono">
-                    <button
-                      type="button"
-                      class="git-meta-pill"
-                      onclick={() => onOpenGitPullModal(s)}
-                      title="Proyek terhubung ke Git ({s.git_repo || 'origin'} • branch {s.git_branch || 'main'}). Klik untuk Git Pull & Auto-Deploy."
-                    >
-                      <i class="ri-git-branch-line"></i>
-                      <span>{s.git_repo || 'git'}</span>
-                      <span class="git-branch-tag">{s.git_branch || 'main'}</span>
-                      {#if s.git_commit}
-                        <span class="git-commit-hash">#{s.git_commit}</span>
-                      {/if}
-                    </button>
+                    {#if s.has_git}
+                      <button
+                        type="button"
+                        class="git-meta-pill"
+                        onclick={() => onOpenGitPullModal(s)}
+                        title="Proyek terhubung ke Git ({s.git_repo || 'origin'} • branch {s.git_branch || 'main'}). Klik untuk Git Pull & Auto-Deploy."
+                      >
+                        <i class="ri-git-branch-line"></i>
+                        <span>{s.git_repo || 'git'}</span>
+                        <span class="git-branch-tag">{s.git_branch || 'main'}</span>
+                        {#if s.git_commit}
+                          <span class="git-commit-hash">#{s.git_commit}</span>
+                        {/if}
+                      </button>
+                    {/if}
+                    {#if s.has_cicd}
+                      <span
+                        class="cicd-pill {s.cicd_provider || 'github-actions'}"
+                        title={s.cicd_provider === 'actions-runner'
+                          ? 'Dideploy / dijalankan melalui GitHub Actions Self-Hosted Runner di server'
+                          : (s.cicd_provider === 'github-actions'
+                            ? 'Pipeline CI/CD GitHub Actions terdeteksi (.github/workflows)'
+                            : (s.cicd_provider === 'gitlab-ci'
+                              ? 'Pipeline GitLab CI terdeteksi (.gitlab-ci.yml)'
+                              : `Pipeline CI/CD: ${s.cicd_provider}`))}
+                      >
+                        {#if s.cicd_provider === 'actions-runner'}
+                          <i class="ri-cpu-line"></i>
+                          <span>Action Runner</span>
+                        {:else if s.cicd_provider === 'github-actions'}
+                          <i class="ri-github-fill"></i>
+                          <span>GitHub Actions</span>
+                        {:else if s.cicd_provider === 'gitlab-ci'}
+                          <i class="ri-gitlab-line"></i>
+                          <span>GitLab CI</span>
+                        {:else}
+                          <i class="ri-rocket-2-line"></i>
+                          <span>CI/CD</span>
+                        {/if}
+                      </span>
+                    {/if}
                   </div>
                 {/if}
                 {#if s.description}

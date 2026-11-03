@@ -320,8 +320,12 @@
       font-size: var(--text-xs);
     }
 
-    /* Pill Git & Tombol Git Pull */
+    /* Pill Git, CI/CD, & Tombol Git Pull */
     .site-git-meta {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-1-5);
       margin-top: 2px;
     }
 
@@ -358,6 +362,41 @@
     .git-commit-hash {
       color: var(--text-subtle);
       font-size: var(--text-2xs);
+    }
+
+    .cicd-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 2px var(--sp-2);
+      border-radius: var(--radius-full);
+      font-family: inherit;
+      font-size: var(--text-2xs);
+      font-weight: 600;
+      line-height: 1.2;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .cicd-pill.github-actions {
+      background: var(--tint-violet);
+      border: 1px solid var(--ring-violet);
+      color: var(--violet);
+    }
+
+    .cicd-pill.actions-runner {
+      background: var(--tint-info);
+      border: 1px solid var(--ring-info);
+      color: var(--info);
+    }
+
+    .cicd-pill.gitlab-ci {
+      background: var(--tint-warning);
+      border: 1px solid var(--ring-warning);
+      color: var(--warning);
+    }
+
+    .cicd-pill i {
+      font-size: var(--text-xs);
     }
 
     .btn-op-git {

@@ -32,13 +32,15 @@ type Site struct {
 	SSLStatus  string `json:"ssl_status"`
 	SSLExpires int64  `json:"ssl_expires"`
 
-	// Metadata runtime, log akses nyata, dan repositori Git (diperkaya saat query API)
+	// Metadata runtime, log akses nyata, repositori Git, dan pipeline CI/CD (diperkaya saat query API)
 	RequestCount int64  `json:"request_count"`
 	BackupCount  int    `json:"backup_count"`
 	HasGit       bool   `json:"has_git"`
 	GitBranch    string `json:"git_branch,omitempty"`
 	GitRepo      string `json:"git_repo,omitempty"`
 	GitCommit    string `json:"git_commit,omitempty"`
+	HasCICD      bool   `json:"has_cicd"`
+	CICDProvider string `json:"cicd_provider,omitempty"`
 }
 
 // Certificate merepresentasikan metadata sertifikat TLS milik sebuah situs

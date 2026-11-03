@@ -1438,18 +1438,118 @@ type LaravelAdminUserItem struct {
 	Roles []string `json:"roles"`
 }
 
+// findGitRootDir mencari direktori akar proyek yang memuat folder .git dengan menelusuri ke atas (maksimal 4 level direktori induk)
+func findGitRootDir(startDir string) string {
+	cur := filepath.Clean(strings.TrimSpace(startDir))
+	if cur == "" || cur == "." || cur == "/" {
+		return ""
+	}
+
+	for i := 0; i < 5; i++ {
+		gitPath := filepath.Join(cur, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			return cur
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur || parent == "/" || parent == "." {
+			break
+		}
+		cur = parent
+	}
+	return ""
+}
+
+// candidateProjectDirsForDomain mencari direktori proyek potensial berdasarkan nama domain dan subdomain
+func candidateProjectDirsForDomain(domain string) []string {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return nil
+	}
+	parts := strings.Split(domain, ".")
+	sub := parts[0] // contoh: "tools", "kostash", "wa", "vault", "qr", "porto"
+
+	var candidates []string
+
+	// Jalur langsung di /var/www
+	candidates = append(candidates,
+		filepath.Join("/var/www", domain),
+		filepath.Join("/var/www", sub),
+	)
+
+	// Cari di /home/*/(projects|apps|web|node)/*
+	if entries, err := os.ReadDir("/home"); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			userHome := filepath.Join("/home", e.Name())
+			subfolders := []string{"projects/web", "projects/node", "projects", "apps", "web", "node"}
+			for _, sf := range subfolders {
+				candidates = append(candidates,
+					filepath.Join(userHome, sf, sub),
+					filepath.Join(userHome, sf, domain),
+				)
+			}
+			// Cek workspace actions-runner jika ada
+			runnerWork := filepath.Join(userHome, "actions-runner", "_work")
+			if repoEntries, err := os.ReadDir(runnerWork); err == nil {
+				for _, re := range repoEntries {
+					if re.IsDir() {
+						candidates = append(candidates,
+							filepath.Join(runnerWork, re.Name(), sub),
+							filepath.Join(runnerWork, re.Name(), re.Name()),
+						)
+					}
+				}
+			}
+		}
+	}
+
+	return candidates
+}
+
 // resolveProjectDir menentukan direktori induk proyek dari RootPath situs
 func resolveProjectDir(rootPath string) string {
 	dir := strings.TrimSpace(rootPath)
+	if dir == "" {
+		return ""
+	}
+	// Telusuri hierarki direktori untuk menemukan root repositori Git jika ada
+	if gitRoot := findGitRootDir(dir); gitRoot != "" {
+		return gitRoot
+	}
 	if filepath.Base(dir) == "public" {
-		return filepath.Dir(dir)
+		parent := filepath.Dir(dir)
+		if gitRoot := findGitRootDir(parent); gitRoot != "" {
+			return gitRoot
+		}
+		return parent
 	}
 	return dir
 }
 
+// resolveSiteProjectDir menentukan direktori root proyek untuk situs baik statis/PHP maupun proxy
+func resolveSiteProjectDir(site *store.Site) string {
+	if site == nil {
+		return ""
+	}
+	projectDir := resolveProjectDir(site.RootPath)
+	if projectDir == "" && site.Kind == "proxy" {
+		for _, cand := range candidateProjectDirsForDomain(site.Domain) {
+			if st, err := os.Stat(cand); err == nil && st.IsDir() {
+				if gitRoot := findGitRootDir(cand); gitRoot != "" {
+					return gitRoot
+				}
+				return cand
+			}
+		}
+	}
+	return projectDir
+}
+
 // provisionLaravelSuperAdmin membuat atau memperbarui akun di tabel users serta memberikan role super_admin & admin (Spatie Permission / Filament Shield)
 func (s *Server) provisionLaravelSuperAdmin(ctx context.Context, site *store.Site, adminName, adminEmail, adminPass string) error {
-	projectDir := resolveProjectDir(site.RootPath)
+	projectDir := resolveSiteProjectDir(site)
 	if projectDir == "" {
 		return fmt.Errorf("direktori proyek kosong")
 	}
@@ -1650,7 +1750,7 @@ func (s *Server) handleGetSiteLaravelAdmin(w http.ResponseWriter, r *http.Reques
 		writeSiteError(w, err)
 		return
 	}
-	projectDir := resolveProjectDir(site.RootPath)
+	projectDir := resolveSiteProjectDir(site)
 	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":          true,
@@ -1697,7 +1797,7 @@ func (s *Server) handleSaveSiteLaravelAdmin(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.auditSite(r, "site.laravel.admin", site.Domain, true, fmt.Sprintf("Super Admin dibuat/diperbarui: %s", email))
-	projectDir := resolveProjectDir(site.RootPath)
+	projectDir := resolveSiteProjectDir(site)
 	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":          true,
@@ -2030,19 +2130,88 @@ func (s *Server) syncGitGlobalCredentials(ctx context.Context, projectDir string
 	_ = exec.CommandContext(ctx, "git", "config", "--global", "credential.helper", "store --file="+credFile).Run()
 }
 
-// enrichSiteRuntimeMeta memperkaya objek Site dengan jumlah request log Nginx nyata, jumlah backup, dan metadata Git
+// inspectProjectCICDMeta mendeteksi apakah proyek menggunakan pipeline CI/CD (GitHub Actions, Action Runner, GitLab CI, dll.)
+func inspectProjectCICDMeta(projectDir string) (hasCICD bool, provider string) {
+	if strings.TrimSpace(projectDir) == "" {
+		return false, ""
+	}
+
+	cleanDir := filepath.Clean(projectDir)
+
+	// 1. Deteksi Self-Hosted Action Runner dari path direktori atau berkas .runner pada direktori induk
+	lowerPath := strings.ToLower(filepath.ToSlash(cleanDir))
+	if strings.Contains(lowerPath, "actions-runner") || strings.Contains(lowerPath, "/_work/") {
+		return true, "actions-runner"
+	}
+
+	// Periksa apakah terdapat file .runner di folder induk (hingga 4 level ke atas)
+	cur := cleanDir
+	for i := 0; i < 4; i++ {
+		runnerCfg := filepath.Join(cur, ".runner")
+		if st, err := os.Stat(runnerCfg); err == nil && !st.IsDir() {
+			return true, "actions-runner"
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur || parent == "/" || parent == "." {
+			break
+		}
+		cur = parent
+	}
+
+	// 2. Deteksi GitHub Actions workflows (.github/workflows/*.yml atau *.yaml)
+	workflowsDir := filepath.Join(cleanDir, ".github", "workflows")
+	if entries, err := os.ReadDir(workflowsDir); err == nil && len(entries) > 0 {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := strings.ToLower(e.Name())
+			if strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml") {
+				return true, "github-actions"
+			}
+		}
+	}
+
+	// 3. Deteksi committer / commit message dari GitHub Actions bot jika git tersedia
+	gitLogsHead := filepath.Join(cleanDir, ".git", "logs", "HEAD")
+	if data, err := os.ReadFile(gitLogsHead); err == nil {
+		lowerLogs := strings.ToLower(string(data))
+		if strings.Contains(lowerLogs, "github-actions") || strings.Contains(lowerLogs, "github-actions[bot]") {
+			return true, "github-actions"
+		}
+	}
+
+	// 4. Deteksi GitLab CI (.gitlab-ci.yml)
+	if st, err := os.Stat(filepath.Join(cleanDir, ".gitlab-ci.yml")); err == nil && !st.IsDir() {
+		return true, "gitlab-ci"
+	}
+
+	// 5. Deteksi Jenkinsfile
+	if st, err := os.Stat(filepath.Join(cleanDir, "Jenkinsfile")); err == nil && !st.IsDir() {
+		return true, "jenkins"
+	}
+
+	return false, ""
+}
+
+// enrichSiteRuntimeMeta memperkaya objek Site dengan jumlah request log Nginx nyata, jumlah backup, metadata Git, dan pipeline CI/CD
 func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
 	if site == nil {
 		return
 	}
 	site.RequestCount = countDomainAccessLogRequests(site.Domain)
 	site.BackupCount = countDomainBackups(site.Domain)
-	projectDir := resolveProjectDir(site.RootPath)
+	projectDir := resolveSiteProjectDir(site)
 	hasGit, branch, repoSlug, shortCommit := inspectProjectGitMeta(projectDir)
 	site.HasGit = hasGit
 	site.GitBranch = branch
 	site.GitRepo = repoSlug
 	site.GitCommit = shortCommit
+
+	hasCICD, cicdProvider := inspectProjectCICDMeta(projectDir)
+	site.HasCICD = hasCICD
+	site.CICDProvider = cicdProvider
+
 	if hasGit {
 		gitCredSyncedOnce.Do(func() {
 			go s.syncGitGlobalCredentials(context.Background(), projectDir)
@@ -2086,7 +2255,7 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 		clearCache = *req.ClearCache
 	}
 
-	projectDir := resolveProjectDir(site.RootPath)
+	projectDir := resolveSiteProjectDir(site)
 	hasGit, branch, repoSlug, oldCommit := inspectProjectGitMeta(projectDir)
 	if !hasGit {
 		writeJSON(w, http.StatusBadRequest, map[string]string{

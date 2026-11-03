@@ -79,6 +79,22 @@
           <span class="git-sum-lbl">Commit Saat Ini</span>
           <strong>#{gitPullTarget.git_commit || 'HEAD'}</strong>
         </div>
+        {#if gitPullTarget.has_cicd}
+          <div class="git-sum-item">
+            <span class="git-sum-lbl">Pipeline CI/CD</span>
+            <strong class="git-branch-highlight">
+              {#if gitPullTarget.cicd_provider === 'actions-runner'}
+                <i class="ri-cpu-line"></i> Action Runner
+              {:else if gitPullTarget.cicd_provider === 'github-actions'}
+                <i class="ri-github-fill"></i> GitHub Actions
+              {:else if gitPullTarget.cicd_provider === 'gitlab-ci'}
+                <i class="ri-gitlab-line"></i> GitLab CI
+              {:else}
+                <i class="ri-rocket-2-line"></i> {gitPullTarget.cicd_provider || 'CI/CD'}
+              {/if}
+            </strong>
+          </div>
+        {/if}
       </div>
 
       <!-- Konfirmasi & Editor Perintah Dinamis Git Pull -->
