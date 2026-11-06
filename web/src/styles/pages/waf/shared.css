@@ -756,6 +756,12 @@
       color: var(--info);
       border: 1px solid var(--ring-info);
     }
+
+    .waf-config-preview {
+      max-height: 340px;
+      overflow: auto;
+      white-space: pre;
+    }
   }
 
   @keyframes pg-waf-pulseGlow {

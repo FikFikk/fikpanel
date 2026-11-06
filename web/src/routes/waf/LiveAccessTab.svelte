@@ -75,7 +75,8 @@
           </thead>
           <tbody>
             {#each overview.top_visitors as vis}
-              <tr class="{vis.threats > 0 ? 'row-threat-highlight' : ''}">
+              {@const threatCnt = vis.threats ?? vis.threat_count ?? 0}
+              <tr class="{threatCnt > 0 ? 'row-threat-highlight' : ''}">
                 <td>
                   <button
                     type="button"
@@ -98,11 +99,11 @@
                   <div class="text-xs font-semibold">{vis.device}</div>
                   <div class="text-2xs text-subtle">{vis.os} · {vis.browser}</div>
                 </td>
-                <td class="mono font-bold text-accent">{vis.requests.toLocaleString()} req</td>
-                <td class="mono text-xs">{formatBytes(vis.bytes_sent)}</td>
+                <td class="mono font-bold text-accent">{(vis.requests ?? vis.count ?? 0).toLocaleString()} req</td>
+                <td class="mono text-xs">{formatBytes(vis.bytes_sent ?? vis.bytes_total ?? 0)}</td>
                 <td>
-                  {#if vis.threats > 0}
-                    <span class="badge-danger-soft">{vis.threats} serangan/probe</span>
+                  {#if threatCnt > 0}
+                    <span class="badge-danger-soft">{threatCnt} serangan/probe</span>
                   {:else}
                     <span class="badge-normal-traffic">Bersih (0 ancaman)</span>
                   {/if}
@@ -126,7 +127,7 @@
                   <button
                     class="btn-icon-xs text-danger"
                     title="Blokir IP ke Blacklist"
-                    onclick={() => onQuickBlockIP(vis.ip, `Visitor Activity (${vis.threats} threats)`)}
+                    onclick={() => onQuickBlockIP(vis.ip, `Visitor Activity (${threatCnt} threats)`)}
                   >
                     <i class="ri-shield-cross-line"></i>
                   </button>
@@ -234,7 +235,7 @@
           {:else}
             {#each filteredAccessLogs as log}
               <tr class="{log.is_threat ? 'row-threat-highlight' : ''}">
-                <td class="mono text-xs text-muted nowrap">{formatDateTime(log.timestamp)}</td>
+                <td class="mono text-xs text-muted nowrap">{formatDateTime(log.timestamp || log.created_at)}</td>
                 <td>
                   <span class="http-status-badge s{Math.floor(log.status_code / 100)}xx">{log.status_code}</span>
                 </td>

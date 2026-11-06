@@ -228,20 +228,116 @@ func (s *Server) handleListWAFAccessLogs(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// handleToggleWAFGlobal mengaktifkan atau menonaktifkan proteksi WAF global secara dinamis
+func (s *Server) handleToggleWAFGlobal(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	st, err := s.waf.SetGlobalEnabled(r.Context(), req.Enabled)
+	if err != nil {
+		http.Error(w, `{"error":"gagal mengubah status Global WAF"}`, http.StatusInternalServerError)
+		return
+	}
+
+	stateStr := "dinonaktifkan"
+	if req.Enabled {
+		stateStr = "diaktifkan"
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.global_toggle", stateStr, true, "Global WAF "+stateStr, nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":                 true,
+		"waf_global_enabled": req.Enabled,
+		"enforcement":        st,
+		"message":            "Status Global WAF berhasil " + stateStr,
+	})
+}
+
+// handleGetWAFEnforcement mengembalikan status sinkronisasi dan pratinjau konfigurasi WAF Nginx aktif
+func (s *Server) handleGetWAFEnforcement(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	st, err := s.waf.GetEnforcementStatus(r.Context())
+	if err != nil && st == nil {
+		http.Error(w, `{"error":"gagal membaca status konfigurasi WAF"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          true,
+		"enforcement": st,
+	})
+}
+
+// handleSyncWAFEnforcement memaksa penulisan ulang dan validasi aturan WAF ke konfigurasi Nginx
+func (s *Server) handleSyncWAFEnforcement(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	st, _ := s.waf.SyncNginxWAFConfig(r.Context())
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.sync_nginx", "waf-rules.conf", true, "Menyinkronkan aturan WAF ke Nginx", nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          true,
+		"enforcement": st,
+		"message":     "Aturan WAF berhasil disinkronkan ke konfigurasi Nginx",
+	})
+}
+
+// handleClearWAFEvents membersihkan seluruh riwayat insiden serangan WAF
+func (s *Server) handleClearWAFEvents(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.waf.ClearEvents(r.Context()); err != nil {
+		http.Error(w, `{"error":"gagal membersihkan riwayat insiden WAF"}`, http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.events_clear", "waf_events", true, "Membersihkan seluruh riwayat insiden WAF", nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": "Seluruh riwayat insiden serangan WAF berhasil dibersihkan",
+	})
+}
+
 // handleWAFMapTile melayani proxy dan caching lokal tile peta dunia CartoDB Dark Matter
 func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
-	z := r.PathValue("z")
-	x := r.PathValue("x")
-	y := r.PathValue("y")
+	z := strings.TrimSpace(r.PathValue("z"))
+	x := strings.TrimSpace(r.PathValue("x"))
+	y := strings.TrimSuffix(strings.TrimSpace(r.PathValue("y")), ".png")
 
-	if z == "" || x == "" || y == "" {
+	zNum, errZ := strconv.Atoi(z)
+	xNum, errX := strconv.Atoi(x)
+	yNum, errY := strconv.Atoi(y)
+	if errZ != nil || errX != nil || errY != nil || zNum < 0 || zNum > 20 || xNum < 0 || yNum < 0 {
 		http.Error(w, `{"error":"parameter koordinat tile tidak valid"}`, http.StatusBadRequest)
 		return
 	}
 
-	y = strings.TrimSuffix(y, ".png")
-	cacheKey := fmt.Sprintf("%s/%s/%s", z, x, y)
-
+	cacheKey := fmt.Sprintf("%d/%d/%d", zNum, xNum, yNum)
 	// 1. Cek cache memori lokal terlebih dahulu
 	wafTileCacheMu.RLock()
 	cachedData, exists := wafTileCache[cacheKey]
@@ -264,7 +360,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"gagal membuat request tile upstream"}`, http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/0.3.18; +https://fikpanel.net)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/0.3.19; +https://fikpanel.net)")
 
 	resp, err := wafTileClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -272,7 +368,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		osmURL := fmt.Sprintf("https://tile.openstreetmap.org/%s/%s/%s.png", z, x, y)
 		fallbackReq, _ := http.NewRequestWithContext(r.Context(), "GET", osmURL, nil)
 		if fallbackReq != nil {
-			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/0.3.18 (Admin panel map proxy)")
+			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/0.3.19 (Admin panel map proxy)")
 			resp, err = wafTileClient.Do(fallbackReq)
 		}
 	}

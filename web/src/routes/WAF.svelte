@@ -9,12 +9,14 @@
     WAFRule,
     WAFEvent,
     WAFAccessLog,
+    WAFEnforcementStatus,
     CloudflareConfig,
     CloudflareZone,
     CloudflareDNSRecord,
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import Modal from '../lib/components/ui/Modal.svelte';
   import OverviewTab from './waf/OverviewTab.svelte';
   import LiveAccessTab from './waf/LiveAccessTab.svelte';
   import SiteProtectionTab from './waf/SiteProtectionTab.svelte';
@@ -109,7 +111,10 @@
   // Site Edit Modal State
   let editingSite = $state<WAFSite | null>(null);
   let showSiteModal = $state(false);
-
+  let showEnforcementModal = $state(false);
+  let enforcementStatus = $state<WAFEnforcementStatus | null>(null);
+  let syncingWAF = $state(false);
+  let togglingGlobalWAF = $state(false);
   // Filtered Sites
   let filteredSites = $derived(
     sites.filter((s) => !siteSearch.trim() || s.site_name.toLowerCase().includes(siteSearch.toLowerCase()))
@@ -135,6 +140,89 @@
       if (!silent) notify(err.message || 'Gagal memuat metrik WAF', 'error');
     } finally {
       if (!silent) loadingOverview = false;
+    }
+  }
+
+  // Toggle saklar Global WAF (Aktif / Nonaktif) secara dinamis
+  async function toggleGlobalWAF() {
+    const current = overview?.waf_global_enabled ?? true;
+    const nextState = !current;
+    try {
+      togglingGlobalWAF = true;
+      const res = await apiFetch<{
+        ok: boolean;
+        waf_global_enabled: boolean;
+        enforcement?: WAFEnforcementStatus;
+        message?: string;
+      }>('/api/waf/global', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: nextState }),
+      });
+      if (overview) {
+        overview.waf_global_enabled = res?.waf_global_enabled ?? nextState;
+        if (res?.enforcement) overview.enforcement = res.enforcement;
+      }
+      if (res?.enforcement) enforcementStatus = res.enforcement;
+      notify(res?.message || `Mesin Global WAF ${nextState ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengubah status Global WAF', 'error');
+    } finally {
+      togglingGlobalWAF = false;
+    }
+  }
+
+  // Buka modal transparansi konfigurasi Nginx WAF
+  async function openEnforcementInspector() {
+    showEnforcementModal = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; enforcement: WAFEnforcementStatus }>('/api/waf/enforcement');
+      if (res?.enforcement) {
+        enforcementStatus = res.enforcement;
+        if (overview) overview.enforcement = res.enforcement;
+      }
+    } catch (err: any) {
+      notify(err.message || 'Gagal memuat status konfigurasi WAF Nginx', 'error');
+    }
+  }
+
+  // Paksa sinkronisasi ulang aturan WAF ke berkas konfigurasi Nginx
+  async function syncWAFNginxNow() {
+    try {
+      syncingWAF = true;
+      const res = await apiFetch<{ ok: boolean; enforcement: WAFEnforcementStatus; message?: string }>('/api/waf/sync', {
+        method: 'POST',
+      });
+      if (res?.enforcement) {
+        enforcementStatus = res.enforcement;
+        if (overview) overview.enforcement = res.enforcement;
+      }
+      notify(res?.message || 'Konfigurasi WAF berhasil disinkronkan ke Nginx', 'success');
+    } catch (err: any) {
+      notify(err.message || 'Gagal menyinkronkan konfigurasi WAF', 'error');
+    } finally {
+      syncingWAF = false;
+    }
+  }
+
+  // Bersihkan seluruh riwayat insiden serangan WAF
+  async function handleClearEvents() {
+    const ok = await confirmDialog({
+      title: 'Bersihkan Riwayat Insiden WAF',
+      message: 'Seluruh rekaman insiden serangan pada Attack Map akan dihapus. Lanjutkan?',
+      confirmLabel: 'Bersihkan Semua',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await apiFetch('/api/waf/events', { method: 'DELETE' });
+      events = [];
+      selectedEvent = null;
+      await loadOverview(true);
+      await loadSites();
+      refreshAttackMapFn?.();
+      notify('Seluruh riwayat insiden WAF berhasil dibersihkan', 'success');
+    } catch (err: any) {
+      notify(err.message || 'Gagal membersihkan riwayat insiden WAF', 'error');
     }
   }
 
@@ -550,9 +638,13 @@
     }
   }
 
-  // Koordinat server host Edge (Default Singapore AWS: 1.3521, 103.8198)
-  const hostServerLocation = { lat: 1.3521, lng: 103.8198, name: 'FikPanel Origin Host (AWS Singapore)' };
-
+  // Koordinat & identitas server host Origin secara dinamis dari backend
+  let hostServerLocation = $derived({
+    lat: overview?.host_location?.latitude ?? -6.2088,
+    lng: overview?.host_location?.longitude ?? 106.8456,
+    ip: overview?.host_location?.ip || serverIP || '127.0.0.1',
+    name: overview?.host_location?.label || 'FikPanel Origin Host',
+  });
   // Filter daftar event serangan untuk Attack Map
   let filteredEvents = $derived(
     events.filter((ev) => {
@@ -821,7 +913,7 @@
         iconAnchor: [12, 12],
       });
       L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 1000 })
-        .bindTooltip('FikPanel Origin Host (AWS Singapore)', { direction: 'top', className: 'dark-map-tooltip' })
+        .bindTooltip(hostServerLocation.name, { direction: 'top', className: 'dark-map-tooltip' })
         .addTo(layersGroup);
 
       // Titik serangan & laser arc (ambil dari overview.recent_events atau fallback ke events)
@@ -933,7 +1025,7 @@
         iconAnchor: [18, 18],
       });
       L.marker([hostServerLocation.lat, hostServerLocation.lng], { icon: serverIcon, zIndexOffset: 2000 })
-        .bindTooltip('FikPanel Protected Host (IP 54.254.187.53 - Singapore)', { direction: 'top', className: 'dark-map-tooltip' })
+        .bindTooltip(`${hostServerLocation.name} (IP ${hostServerLocation.ip})`, { direction: 'top', className: 'dark-map-tooltip' })
         .addTo(layersGroup);
 
       // Render tiap serangan terfilter
@@ -1071,9 +1163,24 @@
         <span class="pulse-dot {autoRefresh ? 'live' : ''}"></span>
         {autoRefresh ? 'Live Stream (6d)' : 'Live Dijeda'}
       </button>
-      <span class="badge-status-glow">
-        <span class="dot-glow"></span> Proteksi Mesin Aktif
-      </span>
+      <button
+        type="button"
+        class="badge-status-glow"
+        onclick={toggleGlobalWAF}
+        disabled={togglingGlobalWAF}
+        title="Klik untuk mengaktifkan / menonaktifkan Global WAF"
+      >
+        <span class="dot-glow"></span>
+        {overview?.waf_global_enabled === false ? 'Global WAF Nonaktif (Klik Aktifkan)' : 'Proteksi Mesin Aktif'}
+      </button>
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm"
+        onclick={openEnforcementInspector}
+        title="Lihat konfigurasi Nginx WAF yang diterapkan secara langsung"
+      >
+        <i class="ri-file-code-line"></i> Aturan Nginx
+      </button>
       <button class="btn btn-secondary btn-sm" onclick={() => { loadOverview(); loadAccessLogs(); loadEvents(); }} disabled={loadingOverview}>
         <i class="ri-refresh-line {loadingOverview ? 'spin' : ''}"></i> Segarkan
       </button>
@@ -1149,6 +1256,7 @@
       }}
       onOpenLiveAccess={() => { activeTab = 'live_access'; loadAccessLogs(); }}
       onSelectAccessLog={(log) => (selectedAccessLog = log)}
+      onOpenEnforcementModal={openEnforcementInspector}
     />
 
   <!-- TAB 1B: LIVE HTTP ACCESS & VISITOR OBSERVATORY -->
@@ -1182,7 +1290,7 @@
       onLoadSites={loadSites}
       onUpdateSite={(site) => apiFetch(`/api/waf/sites/${encodeURIComponent(site.site_name)}`, { method: 'POST', body: JSON.stringify(site) })}
       onToggleSiteStatus={toggleSiteStatus}
-      onOpenSiteLog={() => { activeTab = 'attack_map'; loadEvents(); }}
+      onOpenSiteLog={(domain) => { activeTab = 'live_access'; accessDomainFilter = domain; loadAccessLogs(); }}
       onEditSite={(site) => { editingSite = { ...site }; showSiteModal = true; }}
     />
 
@@ -1204,6 +1312,7 @@
       onResetMapView={resetMapView}
       onFlyToCountry={flyToCountry}
       onQuickBlockIP={quickBlockIP}
+      onClearEvents={handleClearEvents}
     />
 
   <!-- TAB 4: BLACK / WHITE LIST (Screenshot 5) -->
@@ -1312,4 +1421,57 @@
     onQuickBlockPath={quickBlockPath}
     onQuickBlockIP={quickBlockIP}
   />
+
+  <!-- Modal Transparansi & Konfigurasi Aktif Nginx WAF -->
+  {#if showEnforcementModal}
+    {@const enf = enforcementStatus || overview?.enforcement}
+    <Modal
+      open={showEnforcementModal}
+      title="Transparansi Penegakan Aturan WAF Nginx"
+      subtitle={enf?.config_path ? `Berkas Aktif: ${enf.config_path}` : 'Sinkronisasi langsung aturan Black/White List & Signature OWASP ke Nginx'}
+      size="xl"
+      onclose={() => (showEnforcementModal = false)}
+    >
+      <div class="stack-gap">
+        <div class="drawer-info-grid">
+          <div class="info-row">
+            <span class="info-lbl">Status Mesin Global WAF:</span>
+            <span class="info-val font-bold {overview?.waf_global_enabled === false ? 'text-danger' : 'text-success'}">
+              {overview?.waf_global_enabled === false ? 'DINONAKTIFKAN (Pass-Through)' : 'AKTIF (Enforcing)'}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Lokasi Origin Server:</span>
+            <span class="info-val mono">{hostServerLocation.name}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Aturan Aktif & Situs Terproteksi:</span>
+            <span class="info-val mono">
+              {enf?.active_rules_count ?? overview?.total_rules_count ?? 0} Aturan · {enf?.protected_sites_count ?? sites.length} Situs Aktif
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Sinkronisasi Terakhir:</span>
+            <span class="info-val mono text-xs">{enf?.last_synced_at ? formatDateTime(enf.last_synced_at) : '-'}</span>
+          </div>
+        </div>
+        {#if enf?.last_sync_error}
+          <div class="rule-box text-xs text-danger">{enf.last_sync_error}</div>
+        {/if}
+        <div class="info-col mt-3">
+          <span class="info-lbl">Isi Konfigurasi Nginx WAF (`waf-rules.conf`):</span>
+          <pre class="payload-box waf-config-preview mono text-xs">{enf?.config_preview || '# Memuat konfigurasi...'}</pre>
+        </div>
+      </div>
+      {#snippet footer()}
+        <button type="button" class="btn btn-secondary btn-sm" onclick={toggleGlobalWAF} disabled={togglingGlobalWAF}>
+          <i class="ri-shut-down-line"></i> {overview?.waf_global_enabled === false ? 'Aktifkan Global WAF' : 'Matikan Global WAF'}
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick={syncWAFNginxNow} disabled={syncingWAF}>
+          <i class="ri-refresh-line {syncingWAF ? 'spin' : ''}"></i> {syncingWAF ? 'Menyinkronkan...' : 'Sinkronkan Ulang ke Nginx'}
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => (showEnforcementModal = false)}>Tutup</button>
+      {/snippet}
+    </Modal>
+  {/if}
 </div>

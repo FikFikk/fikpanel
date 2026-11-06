@@ -29,7 +29,7 @@
     <Modal
       open={!!selectedAccessLog}
       title={`Inspeksi Forensik Paket HTTP #${selectedAccessLog.id}`}
-      subtitle={`${formatDateTime(selectedAccessLog.timestamp)} · ${selectedAccessLog.is_threat ? `Ancaman Terdeteksi: ${selectedAccessLog.attack_type}` : 'Lalu Lintas Pengunjung Normal'}`}
+      subtitle={`${formatDateTime(selectedAccessLog.timestamp || selectedAccessLog.created_at)} · ${selectedAccessLog.is_threat ? `Ancaman Terdeteksi: ${selectedAccessLog.attack_type}` : 'Lalu Lintas Pengunjung Normal'}`}
       size="xl"
       onclose={() => (selectedAccessLog = null)}
     >

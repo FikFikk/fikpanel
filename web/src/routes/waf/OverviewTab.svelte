@@ -16,6 +16,7 @@
     onFilterAccessByPath: (path: string) => void;
     onOpenLiveAccess: () => void;
     onSelectAccessLog: (log: WAFAccessLog) => void;
+    onOpenEnforcementModal?: () => void;
   }
 
   let {
@@ -31,6 +32,7 @@
     onFilterAccessByPath,
     onOpenLiveAccess,
     onSelectAccessLog,
+    onOpenEnforcementModal,
   }: Props = $props();
 </script>
 
@@ -104,6 +106,11 @@
           <span class="status-pill s5xx">
             <span class="dot"></span> 5xx Server Error: <strong>{sb.s5xx.toLocaleString()}</strong> ({((sb.s5xx / totalSt) * 100).toFixed(1)}%)
           </span>
+          {#if onOpenEnforcementModal}
+            <button type="button" class="btn btn-secondary btn-sm" onclick={onOpenEnforcementModal}>
+              <i class="ri-file-shield-2-line text-accent"></i> Lihat Aturan Nginx WAF ({overview?.enforcement?.active_rules_count ?? overview?.total_rules_count ?? 0})
+            </button>
+          {/if}
         </div>
       </div>
       <div class="status-progress-bar">
@@ -243,7 +250,7 @@
                   <span class="rank-val text-accent">{tr.requests.toLocaleString()} req</span>
                 </div>
                 <div class="rank-rich-meta mono text-2xs">
-                  <span><i class="ri-hard-drive-2-line"></i> {formatBytes(tr.bytes_sent || 0)}</span>
+                  <span><i class="ri-hard-drive-2-line"></i> {formatBytes(tr.bytes_sent ?? tr.bandwidth_bytes ?? 0)}</span>
                   {#if tr.status_2xx !== undefined}
                     <span class="text-success">2xx:{tr.status_2xx}</span>
                     <span class="text-warning">4xx:{tr.status_4xx || 0}</span>
@@ -286,12 +293,13 @@
                   <span class="rank-val badge-soft">{vp.count}x</span>
                 </div>
                 <div class="rank-rich-meta mono text-2xs">
-                  <span class="text-subtle">{vp.domain || 'default'}</span>
-                  {#if vp.last_status}
-                    <span class="status-mini s{Math.floor(vp.last_status / 100)}xx">HTTP {vp.last_status}</span>
+                  <span class="text-subtle">{vp.domain || vp.site_name || 'default'}</span>
+                  {#if vp.last_status || vp.status_code}
+                    {@const stCode = vp.last_status || vp.status_code || 200}
+                    <span class="status-mini s{Math.floor(stCode / 100)}xx">HTTP {stCode}</span>
                   {/if}
-                  {#if vp.bytes_sent}
-                    <span>{formatBytes(vp.bytes_sent)}</span>
+                  {#if vp.bytes_sent || vp.bytes_total}
+                    <span>{formatBytes(vp.bytes_sent ?? vp.bytes_total ?? 0)}</span>
                   {/if}
                   {#if vp.is_threat}
                     <span class="text-danger font-bold">PROBED</span>
@@ -342,7 +350,7 @@
         <tbody>
           {#each (overview?.recent_access_logs || accessLogs).slice(0, 12) as log}
             <tr class="{log.is_threat ? 'row-threat-highlight' : ''}">
-              <td class="mono text-xs text-muted nowrap">{formatTime(log.timestamp)}</td>
+              <td class="mono text-xs text-muted nowrap">{formatTime(log.timestamp || log.created_at)}</td>
               <td>
                 <span class="http-status-badge s{Math.floor(log.status_code / 100)}xx">{log.status_code}</span>
               </td>

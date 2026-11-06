@@ -1,8 +1,11 @@
 package waf
 
 import (
+	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -45,24 +48,28 @@ var (
 // ResolveGeoLocation mencari lokasi geografis detail (Negara, Provinsi, Kota, ISP, Lat/Lng) dari alamat IP
 func ResolveGeoLocation(ip string) *GeoLocation {
 	cleanIP := strings.TrimSpace(ip)
-	if cleanIP == "" {
-		return &GeoLocation{Country: "Unknown", CountryCode: "XX"}
+	if h, _, err := net.SplitHostPort(cleanIP); err == nil && h != "" {
+		cleanIP = h
+	}
+	parsedIP := net.ParseIP(cleanIP)
+	if cleanIP == "" || parsedIP == nil {
+		return &GeoLocation{Country: "Unknown", CountryCode: "XX", Region: "-", City: "-", ISP: "Unresolved"}
 	}
 
-	// Tangani IP loopback / jaringan lokal
-	if cleanIP == "127.0.0.1" || cleanIP == "::1" || strings.HasPrefix(cleanIP, "192.168.") || strings.HasPrefix(cleanIP, "10.") || strings.HasPrefix(cleanIP, "172.16.") || strings.HasPrefix(cleanIP, "172.17.") || strings.HasPrefix(cleanIP, "172.18.") || strings.HasPrefix(cleanIP, "172.19.") || strings.HasPrefix(cleanIP, "172.20.") || strings.HasPrefix(cleanIP, "172.21.") || strings.HasPrefix(cleanIP, "172.22.") || strings.HasPrefix(cleanIP, "172.23.") || strings.HasPrefix(cleanIP, "172.24.") || strings.HasPrefix(cleanIP, "172.25.") || strings.HasPrefix(cleanIP, "172.26.") || strings.HasPrefix(cleanIP, "172.27.") || strings.HasPrefix(cleanIP, "172.28.") || strings.HasPrefix(cleanIP, "172.29.") || strings.HasPrefix(cleanIP, "172.30.") || strings.HasPrefix(cleanIP, "172.31.") {
+	// Tangani IP loopback / jaringan privat / link-local secara presisi
+	if parsedIP.IsLoopback() || parsedIP.IsPrivate() || parsedIP.IsLinkLocalUnicast() || parsedIP.IsLinkLocalMulticast() {
 		return &GeoLocation{
-			Country:     "Localhost / Internal",
-			CountryCode: "ID",
-			Region:      "Private Network",
-			City:        "Internal Node",
-			ISP:         "FikPanel Loopback",
-			Latitude:    -6.2088,
-			Longitude:   106.8456,
+			Country:     "Local / Private Network",
+			CountryCode: "LO",
+			Region:      "Internal Network",
+			City:        "Local Node",
+			ISP:         "Private / Loopback Interface",
+			Latitude:    0,
+			Longitude:   0,
 		}
 	}
 
-	// Cek cache memori
+	// Cek cache memori (maks 4096 entri agar memori terjaga)
 	geoCacheMutex.RLock()
 	cached, ok := geoCache[cleanIP]
 	geoCacheMutex.RUnlock()
@@ -70,55 +77,33 @@ func ResolveGeoLocation(ip string) *GeoLocation {
 		return cached
 	}
 
-	// Lookup online via ip-api.com (gratis, tanpa token, akurat hingga level kota & ISP)
-	geo := lookupOnlineGeoIP(cleanIP)
+	// Lookup online via ip-api.com dengan IP yang sudah tervalidasi net.ParseIP
+	geo := lookupOnlineGeoIP(parsedIP.String())
 	if geo != nil {
 		geoCacheMutex.Lock()
+		if len(geoCache) > 4096 {
+			geoCache = make(map[string]*GeoLocation)
+		}
 		geoCache[cleanIP] = geo
 		geoCacheMutex.Unlock()
 		return geo
 	}
 
-	// Fallback offline deterministik berdasarkan oktet pertama IP bila API publik terkena rate-limit
-	fallbackCoords := []struct {
-		Country     string
-		CountryCode string
-		Region      string
-		City        string
-		ISP         string
-		Lat         float64
-		Lng         float64
-	}{
-		{"United States", "US", "Virginia", "Ashburn", "Amazon Data Services", 39.0438, -77.4874},
-		{"Germany", "DE", "Hesse", "Frankfurt am Main", "Hetzner Online GmbH", 50.1109, 8.6821},
-		{"Netherlands", "NL", "North Holland", "Amsterdam", "DigitalOcean Europe", 52.3676, 4.9041},
-		{"United Kingdom", "GB", "England", "London", "Linode UK Transit", 51.5074, -0.1278},
-		{"France", "FR", "Ile-de-France", "Paris", "OVH SAS Network", 48.8566, 2.3522},
-		{"Russia", "RU", "Moscow", "Moscow", "Selectel Backbone", 55.7558, 37.6173},
-		{"China", "CN", "Beijing", "Beijing", "ChinaNet Backbone", 39.9042, 116.4074},
-		{"India", "IN", "Maharashtra", "Mumbai", "Reliance Jio Infocomm", 19.0760, 72.8777},
-		{"Japan", "JP", "Tokyo", "Tokyo", "NTT Communications", 35.6762, 139.6503},
-		{"Brazil", "BR", "Sao Paulo", "Sao Paulo", "Claro NXT Telecom", -23.5505, -46.6333},
-	}
-	idx := 0
-	for i := 0; i < len(cleanIP); i++ {
-		idx = (idx*31 + int(cleanIP[i])) % len(fallbackCoords)
-	}
-	fb := fallbackCoords[idx]
+	// Transparan: jangan memalsukan negara/ISP jika layanan GeoIP publik sedang tidak terjangkau
 	return &GeoLocation{
-		Country:     fb.Country,
-		CountryCode: fb.CountryCode,
-		Region:      fb.Region,
-		City:        fb.City,
-		ISP:         fb.ISP,
-		Latitude:    fb.Lat,
-		Longitude:   fb.Lng,
+		Country:     "Unresolved Network",
+		CountryCode: "XX",
+		Region:      "-",
+		City:        "Unresolved",
+		ISP:         "Unverified ASN",
+		Latitude:    0,
+		Longitude:   0,
 	}
 }
 
 // lookupOnlineGeoIP melakukan request HTTP ke endpoint GeoIP publik
 func lookupOnlineGeoIP(ip string) *GeoLocation {
-	resp, err := httpClient.Get("http://ip-api.com/json/" + ip + "?fields=status,country,countryCode,regionName,city,lat,lon,isp,org")
+	resp, err := httpClient.Get("http://ip-api.com/json/" + url.PathEscape(ip) + "?fields=status,country,countryCode,regionName,city,lat,lon,isp,org")
 	if err != nil {
 		return nil
 	}
@@ -249,13 +234,180 @@ func ParseUserAgent(ua string) ClientTelemetry {
 
 // Regex pencocokan payload serangan umum
 var (
-	reSQLi     = regexp.MustCompile(`(?i)(union\s+select|select\s+.*\s+from|'\s*or\s*['\d]=['\d]|sleep\(|benchmark\(|information_schema|load_file\()`)
-	reXSS      = regexp.MustCompile(`(?i)(<script|javascript:|onerror\s*=|onload\s*=|alert\(|<img\s+src=)`)
-	reLFI      = regexp.MustCompile(`(?i)(\.\./|\.\.\\|/etc/passwd|/etc/shadow|/win\.ini|boot\.ini)`)
-	reSensFile = regexp.MustCompile(`(?i)(/\.env|/\.git|/\.svn|/\.vscode|sftp\.json|/actuator|/health/liveliness|/trace\.axd|/@vite|wp-config\.php|id_rsa|database\.sql|\.bak|\.old|/phpmyadmin|/xmlrpc\.php|/eval-stdin\.php|/vendor/phpunit)`)
-	reRCE      = regexp.MustCompile(`(?i)(eval\(|\$\{jndi:|cmd\.exe|/bin/sh|/bin/bash|powershell|base64_decode|system\()`)
+	reSQLi        = regexp.MustCompile(`(?i)(union\s+select|select\s+.*\s+from|'\s*or\s*['\d]=['\d]|sleep\(|benchmark\(|information_schema|load_file\()`)
+	reXSS         = regexp.MustCompile(`(?i)(<script|javascript:|onerror\s*=|onload\s*=|alert\(|<img\s+src=)`)
+	reLFI         = regexp.MustCompile(`(?i)(\.\./|\.\.\\|/etc/passwd|/etc/shadow|/win\.ini|boot\.ini)`)
+	reSensFile    = regexp.MustCompile(`(?i)(/\.env|/\.git|/\.svn|/\.vscode|sftp\.json|/actuator|/health/liveliness|/trace\.axd|/@vite|wp-config\.php|id_rsa|database\.sql|\.bak|\.old|/phpmyadmin|/xmlrpc\.php|/eval-stdin\.php|/vendor/phpunit)`)
+	reRCE         = regexp.MustCompile(`(?i)(eval\(|\$\{jndi:|cmd\.exe|/bin/sh|/bin/bash|powershell|base64_decode|system\()`)
+	reFakeSpider  = regexp.MustCompile(`(?i)(semrushbot|ahrefsbot|mj12bot|dotbot|petalbot|bytespider|megaindex|blexbot|sogou)`)
+	reScraperTool = regexp.MustCompile(`(?i)(httrack|scrapy|wget/|python-urllib|libwww-perl|go-http-client|pycurl|mechanize|colly)`)
 )
 
+// MatchIPRule memeriksa apakah clientIP cocok dengan aturan IP tunggal, CIDR, atau rentang StartIP-EndIP
+func MatchIPRule(clientIP, startIP, endIP string) bool {
+	cIP := net.ParseIP(strings.TrimSpace(clientIP))
+	if cIP == nil {
+		return false
+	}
+	sRaw := strings.TrimSpace(startIP)
+	eRaw := strings.TrimSpace(endIP)
+	if sRaw == "" {
+		return false
+	}
+
+	// Dukungan notasi CIDR (mis. 203.0.113.0/24 atau 2001:db8::/32)
+	if strings.Contains(sRaw, "/") {
+		if _, ipNet, err := net.ParseCIDR(sRaw); err == nil && ipNet != nil {
+			return ipNet.Contains(cIP)
+		}
+	}
+
+	sIP := net.ParseIP(sRaw)
+	if sIP == nil {
+		return false
+	}
+	if eRaw == "" || eRaw == sRaw {
+		return cIP.Equal(sIP)
+	}
+
+	eIP := net.ParseIP(eRaw)
+	if eIP == nil {
+		return cIP.Equal(sIP)
+	}
+
+	// Normalisasi ke ukuran byte yang sama (IPv4 4-byte atau IPv6 16-byte)
+	if c4, s4, e4 := cIP.To4(), sIP.To4(), eIP.To4(); c4 != nil && s4 != nil && e4 != nil {
+		return bytes.Compare(c4, s4) >= 0 && bytes.Compare(c4, e4) <= 0
+	}
+	c16, s16, e16 := cIP.To16(), sIP.To16(), eIP.To16()
+	if c16 != nil && s16 != nil && e16 != nil {
+		return bytes.Compare(c16, s16) >= 0 && bytes.Compare(c16, e16) <= 0
+	}
+	return false
+}
+
+// matchPattern memeriksa pencocokan substring case-insensitive atau ekspresi reguler sederhana
+func matchPattern(value, pattern string) bool {
+	pat := strings.TrimSpace(pattern)
+	if pat == "" || value == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(value), strings.ToLower(pat))
+}
+
+// ClassifyThreatWithRules mengevaluasi permintaan terhadap saklar Global WAF, konfigurasi per-situs, aturan Black/White List, dan signature OWASP
+func ClassifyThreatWithRules(clientIP, method, path, ua string, statusCode int, globalEnabled bool, siteCfg *WAFSite, rules []WAFRule) ThreatAssessment {
+	// 1. Jika WAF Global dimatikan atau proteksi situs ini dinonaktifkan, izinkan semua lalu lintas secara transparan
+	if !globalEnabled {
+		return ThreatAssessment{
+			IsSuspicious: false,
+			AttackType:   "Normal Traffic",
+			Action:       "allow",
+			RuleName:     "Global WAF Dinonaktifkan",
+		}
+	}
+	if siteCfg != nil && !siteCfg.Status {
+		return ThreatAssessment{
+			IsSuspicious: false,
+			AttackType:   "Normal Traffic",
+			Action:       "allow",
+			RuleName:     "Proteksi WAF Situs Dinonaktifkan",
+		}
+	}
+
+	// 2. Prioritas Tertinggi: Evaluasi Whitelist (IP -> URL -> UA)
+	for _, r := range rules {
+		switch r.RuleType {
+		case "ip_whitelist":
+			if MatchIPRule(clientIP, r.StartIP, r.EndIP) {
+				return ThreatAssessment{
+					IsSuspicious: false,
+					AttackType:   "Whitelisted Traffic",
+					Action:       "allow",
+					RuleName:     "IP Whitelist: " + r.StartIP,
+				}
+			}
+		case "url_whitelist":
+			if matchPattern(path, r.Pattern) {
+				return ThreatAssessment{
+					IsSuspicious: false,
+					AttackType:   "Whitelisted Traffic",
+					Action:       "allow",
+					RuleName:     "URL Whitelist: " + r.Pattern,
+				}
+			}
+		case "ua_whitelist":
+			if matchPattern(ua, r.Pattern) {
+				return ThreatAssessment{
+					IsSuspicious: false,
+					AttackType:   "Whitelisted Traffic",
+					Action:       "allow",
+					RuleName:     "UA Whitelist: " + r.Pattern,
+				}
+			}
+		}
+	}
+
+	// 3. Prioritas Kedua: Evaluasi Blacklist (IP -> URL -> UA)
+	for _, r := range rules {
+		switch r.RuleType {
+		case "ip_blacklist":
+			if MatchIPRule(clientIP, r.StartIP, r.EndIP) {
+				label := r.StartIP
+				if r.EndIP != "" {
+					label += "-" + r.EndIP
+				}
+				return ThreatAssessment{
+					IsSuspicious: true,
+					AttackType:   "Blocked IP (Blacklist)",
+					Action:       "block",
+					RuleName:     "Aturan IP Blacklist (" + label + ")",
+				}
+			}
+		case "url_blacklist":
+			if matchPattern(path, r.Pattern) {
+				return ThreatAssessment{
+					IsSuspicious: true,
+					AttackType:   "Blocked URL Rule",
+					Action:       "block",
+					RuleName:     "Aturan URL Blacklist (" + r.Pattern + ")",
+				}
+			}
+		case "ua_blacklist":
+			if matchPattern(ua, r.Pattern) {
+				return ThreatAssessment{
+					IsSuspicious: true,
+					AttackType:   "Bad Bot",
+					Action:       "block",
+					RuleName:     "Aturan UA Blacklist (" + r.Pattern + ")",
+				}
+			}
+		}
+	}
+
+	// 4. Evaluasi Proteksi Spesifik Situs (Fake Spider & Crawl Protection)
+	if siteCfg != nil {
+		if siteCfg.FakeSpider && reFakeSpider.MatchString(ua) {
+			return ThreatAssessment{
+				IsSuspicious: true,
+				AttackType:   "Bad Bot",
+				Action:       "block",
+				RuleName:     "Proteksi Fake Spider & Bad Crawler Situs",
+			}
+		}
+		if siteCfg.CrawlProtection && reScraperTool.MatchString(ua) {
+			return ThreatAssessment{
+				IsSuspicious: true,
+				AttackType:   "Bad Bot",
+				Action:       "block",
+				RuleName:     "Crawl Protection (Anti-Scraping) Situs",
+			}
+		}
+	}
+
+	// 5. Evaluasi Signature OWASP Bawaan
+	return ClassifyThreat(method, path, ua, statusCode)
+}
 // ClassifyThreat menganalisis URI, User-Agent, status code, dan payload untuk menentukan kategori serangan
 func ClassifyThreat(method, path, ua string, statusCode int) ThreatAssessment {
 	p := strings.TrimSpace(path)

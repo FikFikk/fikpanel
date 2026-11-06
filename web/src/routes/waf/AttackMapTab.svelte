@@ -19,6 +19,7 @@
     onResetMapView: () => void;
     onFlyToCountry: (lat: number, lng: number) => void;
     onQuickBlockIP: (ip: string, reason?: string) => void;
+    onClearEvents?: () => void;
   }
 
   let {
@@ -37,6 +38,7 @@
     onResetMapView,
     onFlyToCountry,
     onQuickBlockIP,
+    onClearEvents,
   }: Props = $props();
 </script>
 
@@ -70,6 +72,11 @@
       <button class="btn btn-secondary btn-sm" onclick={onLoadEvents} disabled={loadingEvents}>
         <i class="ri-refresh-line {loadingEvents ? 'spin' : ''}"></i> Segarkan
       </button>
+      {#if onClearEvents && events.length > 0}
+        <button class="btn btn-secondary btn-sm text-danger" onclick={onClearEvents} title="Bersihkan seluruh riwayat insiden serangan">
+          <i class="ri-delete-bin-line"></i> Bersihkan Log
+        </button>
+      {/if}
     </div>
   </div>
 

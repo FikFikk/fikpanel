@@ -1059,7 +1059,7 @@
         <!-- Banner Selamat Datang Ubuntu / Sesi -->
         <div class="terminal-welcome">
           <p class="welcome-line">
-            <span class="text-accent">fikpanel v0.3.18</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
+            <span class="text-accent">fikpanel v0.3.19</span> (SSH PTY Console Bridge &middot; {activeTab?.name})
           </p>
           <p class="welcome-meta">
             Host: <span class="text-fg">{activeTab?.host}</span> &middot;

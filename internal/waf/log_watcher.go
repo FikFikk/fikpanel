@@ -45,6 +45,7 @@ type WAFAccessLog struct {
 	Action      string  `json:"action"`
 	RuleName    string  `json:"rule_name"`
 	CreatedAt   int64   `json:"created_at"`
+	Timestamp   int64   `json:"timestamp"`
 }
 
 // LogAggregates menyimpan agregasi statistik trafik riil hasil pemindaian seluruh berkas log Nginx
@@ -57,6 +58,8 @@ type LogAggregates struct {
 	Status3xx            int64
 	Status4xx            int64
 	Status5xx            int64
+	Recent60sRequests    int64
+	RealtimeQPS          float64
 	DomainStats          map[string]*DomainTrafficStat
 	PageStats            map[string]*VisitedPageItem
 	VisitorStats         map[string]*VisitorItem
@@ -75,14 +78,15 @@ type DomainTrafficStat struct {
 
 // LogWatcher memindai log akses Nginx secara berkala untuk mendeteksi ancaman dan telemetri akses detail
 type LogWatcher struct {
-	db           *sql.DB
-	fileOffsets  map[string]int64
-	mu           sync.Mutex
-	accessMu     sync.RWMutex
-	recentAccess []WAFAccessLog
-	seqID        int64
-	logDir       string
-	stopChan     chan struct{}
+	db             *sql.DB
+	fileOffsets    map[string]int64
+	mu             sync.Mutex
+	accessMu       sync.RWMutex
+	recentAccess   []WAFAccessLog
+	seqID          int64
+	logDir         string
+	stopChan       chan struct{}
+	policyProvider func() (bool, map[string]WAFSite, []WAFRule)
 }
 
 // Format log Nginx kombinasi standar (mendukung request HTTP normal maupun payload biner mentah tanpa spasi):
@@ -101,6 +105,30 @@ func NewLogWatcher(db *sql.DB, logDir string) *LogWatcher {
 		logDir:       logDir,
 		stopChan:     make(chan struct{}),
 	}
+}
+
+// SetPolicyProvider mendaftarkan callback penyedia aturan dan opsi situs WAF aktif
+func (w *LogWatcher) SetPolicyProvider(fn func() (bool, map[string]WAFSite, []WAFRule)) {
+	w.accessMu.Lock()
+	w.policyProvider = fn
+	w.accessMu.Unlock()
+}
+
+// evaluateThreat mengevaluasi request menggunakan aturan WAF dinamis jika tersedia
+func (w *LogWatcher) evaluateThreat(siteName, clientIP, method, rawPath, userAgent string, statusCode int) ThreatAssessment {
+	w.accessMu.RLock()
+	fn := w.policyProvider
+	w.accessMu.RUnlock()
+	if fn != nil {
+		globalEnabled, siteMap, rules := fn()
+		var siteCfg *WAFSite
+		if sc, ok := siteMap[siteName]; ok {
+			copySite := sc
+			siteCfg = &copySite
+		}
+		return ClassifyThreatWithRules(clientIP, method, rawPath, userAgent, statusCode, globalEnabled, siteCfg, rules)
+	}
+	return ClassifyThreat(method, rawPath, userAgent, statusCode)
 }
 
 // Start menjalankan pemindaian berkala di latar belakang
@@ -319,7 +347,7 @@ func (w *LogWatcher) parseAndRecordLine(ctx context.Context, line, siteName stri
 	}
 
 	// Evaluasi apakah permintaan ini mencurigakan atau merupakan serangan
-	threat := ClassifyThreat(method, rawPath, userAgent, statusCode)
+	threat := w.evaluateThreat(siteName, clientIP, method, rawPath, userAgent, statusCode)
 	geo := ResolveGeoLocation(clientIP)
 	deviceInfo := ParseUserAgent(userAgent)
 
@@ -349,6 +377,7 @@ func (w *LogWatcher) parseAndRecordLine(ctx context.Context, line, siteName stri
 		Action:      threat.Action,
 		RuleName:    threat.RuleName,
 		CreatedAt:   timestamp,
+		Timestamp:   timestamp,
 	}
 
 	w.appendAccessLog(entry)
@@ -436,7 +465,7 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 	now := time.Now()
 	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	startOfYesterday := startOfToday - 86400
-
+	recentWindowStart := now.Unix() - 60
 	processReader := func(r io.Reader, siteName string, parseDetailed bool) {
 		scanner := bufio.NewScanner(r)
 		buf := make([]byte, 0, 64*1024)
@@ -476,6 +505,9 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 			} else if ts >= startOfYesterday {
 				agg.YesterdayRequests++
 			}
+			if ts >= recentWindowStart {
+				agg.Recent60sRequests++
+			}
 
 			agg.TotalBandwidthBytes += bytesSent
 			dStat.BandwidthBytes += bytesSent
@@ -495,7 +527,7 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 				dStat.Status5xx++
 			}
 
-			threat := ClassifyThreat(method, rawPath, userAgent, statusCode)
+			threat := w.evaluateThreat(siteName, clientIP, method, rawPath, userAgent, statusCode)
 			if threat.IsSuspicious {
 				dStat.Threats++
 			}
@@ -517,15 +549,19 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 				if !ok {
 					pStat = &VisitedPageItem{
 						SiteName:   siteName,
+						Domain:     siteName,
 						Path:       cleanPath,
 						Method:     method,
 						StatusCode: statusCode,
+						LastStatus: statusCode,
 						IsThreat:   threat.IsSuspicious,
 					}
 					agg.PageStats[pageKey] = pStat
 				}
 				pStat.Count++
 				pStat.BytesTotal += bytesSent
+				pStat.BytesSent = pStat.BytesTotal
+				pStat.LastStatus = statusCode
 				if threat.IsSuspicious {
 					pStat.IsThreat = true
 				}
@@ -549,9 +585,12 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 				agg.VisitorStats[clientIP] = vStat
 			}
 			vStat.Count++
+			vStat.Requests = vStat.Count
 			vStat.BytesTotal += bytesSent
+			vStat.BytesSent = vStat.BytesTotal
 			if threat.IsSuspicious {
 				vStat.ThreatCount++
+				vStat.Threats = vStat.ThreatCount
 			}
 			if ts >= vStat.LastSeen {
 				vStat.LastSeen = ts
@@ -592,6 +631,9 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 		}
 	}
 
+	if agg.Recent60sRequests > 0 {
+		agg.RealtimeQPS = float64(agg.Recent60sRequests) / 60.0
+	}
 	return agg
 }
 

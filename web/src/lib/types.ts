@@ -1087,7 +1087,7 @@ export interface WAFEvent {
   id: number;
   site_name: string;
   client_ip: string;
-  country: string;padahal 
+  country: string;
   country_code: string;
   region?: string;
   city?: string;
@@ -1210,6 +1210,30 @@ export interface WAFOverview {
   recent_access_logs?: WAFAccessLog[];
   total_rules_count: number;
   waf_global_enabled: boolean;
+  host_location?: WAFHostLocation;
+  enforcement?: WAFEnforcementStatus;
+}
+
+export interface WAFHostLocation {
+  ip: string;
+  country: string;
+  country_code: string;
+  city: string;
+  isp: string;
+  latitude: number;
+  longitude: number;
+  label: string;
+}
+
+export interface WAFEnforcementStatus {
+  global_enabled: boolean;
+  nginx_enforced: boolean;
+  config_path: string;
+  active_rules_count: number;
+  protected_sites_count: number;
+  last_synced_at: number;
+  last_sync_error?: string;
+  config_preview?: string;
 }
 
 // ── Cloudflare Integration ──────────────────────────────────────────────────

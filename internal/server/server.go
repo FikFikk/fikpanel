@@ -69,7 +69,7 @@ func (s *Server) SetVersion(v string) {
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.3.18"
+		return "0.3.19"
 	}
 	return s.version
 }
@@ -465,14 +465,18 @@ func (s *Server) registerRoutes() {
 
 	// Web Application Firewall (WAF) Terpadu & Attack Map
 	s.mux.Handle("GET /api/waf/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFOverview)))
+	s.mux.Handle("POST /api/waf/global", s.AuthMiddleware(http.HandlerFunc(s.handleToggleWAFGlobal)))
+	s.mux.Handle("GET /api/waf/enforcement", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFEnforcement)))
+	s.mux.Handle("POST /api/waf/sync", s.AuthMiddleware(http.HandlerFunc(s.handleSyncWAFEnforcement)))
 	s.mux.Handle("GET /api/waf/sites", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFSites)))
 	s.mux.Handle("POST /api/waf/sites/{domain}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWAFSite)))
 	s.mux.Handle("GET /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFRules)))
 	s.mux.Handle("POST /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddWAFRule)))
 	s.mux.Handle("DELETE /api/waf/rules/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWAFRule)))
 	s.mux.Handle("GET /api/waf/events", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFEvents)))
+	s.mux.Handle("DELETE /api/waf/events", s.AuthMiddleware(http.HandlerFunc(s.handleClearWAFEvents)))
 	s.mux.Handle("GET /api/waf/access-logs", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFAccessLogs)))
-	s.mux.Handle("GET /api/waf/tiles/{z}/{x}/{y}", http.HandlerFunc(s.handleWAFMapTile))
+	s.mux.Handle("GET /api/waf/tiles/{z}/{x}/{y}", s.AuthMiddleware(http.HandlerFunc(s.handleWAFMapTile)))
 
 	// Integrasi Cloudflare API v4 & DNS Pointing
 	s.mux.Handle("GET /api/cloudflare/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetCloudflareConfig)))

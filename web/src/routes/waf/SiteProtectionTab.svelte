@@ -10,7 +10,7 @@
     onLoadSites: () => void;
     onUpdateSite: (site: WAFSite) => void;
     onToggleSiteStatus: (site: WAFSite) => void;
-    onOpenSiteLog: () => void;
+    onOpenSiteLog: (domain: string) => void;
     onEditSite: (site: WAFSite) => void;
   }
 
@@ -119,7 +119,7 @@
               <td class="text-right actions-cell">
                 <button
                   class="btn-link"
-                  onclick={onOpenSiteLog}
+                  onclick={() => onOpenSiteLog(site.site_name)}
                 >
                   Log
                 </button>
