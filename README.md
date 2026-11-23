@@ -129,10 +129,12 @@ cd ..
 ```bash
 go run ./cmd/fikpanel serve --dev --port 1405
 ```
-> Server akan berjalan di `http://127.0.0.1:1405`.
+> Server akan berjalan di `http://127.0.0.1:1405` (mode `--dev` memakai HTTP biasa).
 > Pada mode `--dev`, akun pengujian lokal dibuat otomatis:
 > - **Username**: `root`
 > - **Password**: *(kosongkan / tekan Masuk)*
+>
+> **Jangan pernah memakai `--dev` di server publik.** Tanpa `--dev` (mode produksi), FikPanel membuat akun `root` dengan kata sandi acak saat start pertama, mengganti kata sandi kosong yang tersisa dari instalasi lama, dan melayani HTTPS.
 
 ### 4. Build Single Binary Produksi
 ```bash
@@ -191,7 +193,18 @@ curl -sSL https://panel.fikfikk.my.id/install.sh | sudo bash
 > - Installer secara otomatis melakukan **pre-deteksi software** pada host server.
 > - Jika server sudah memiliki proyek berjalan (Nginx, MySQL, PHP, Docker), konfigurasi dan database yang ada **TIDAK AKAN DITIMPA** (fitur *smart-skip*).
 > - Komponen FikPanel mandiri dan menggunakan database embedded SQLite. Software website seperti MySQL, PHP, Docker, dan Fail2ban bersifat opsional dan dapat dipasang belakangan dengan 1-klik dari Web Panel.
-> - Akses Web Panel setelah instalasi: **`http://IP_SERVER:1405`** (atau `https://IP_SERVER:1405`).
+> - Akses Web Panel setelah instalasi: **`https://IP_SERVER:1405`**. Alamat `http://` otomatis dialihkan ke HTTPS.
+
+### Login Pertama & Keamanan Akun
+- Installer menampilkan **username `root` dan kata sandi acak 20 karakter** di akhir instalasi. Kata sandi yang sama tersimpan di `/opt/fikpanel/data/admin-credentials.txt` (izin `0600`, hanya root): `sudo cat /opt/fikpanel/data/admin-credentials.txt`.
+- Ganti kata sandi di menu **Pengaturan** setelah login (minimal 8 karakter). Berkas kredensial di atas otomatis dihapus dan sesi login di perangkat lain dikeluarkan.
+- Lupa kata sandi: `sudo fikpanel reset-password` (kata sandi baru acak ditampilkan sekali, semua sesi akun tersebut dikeluarkan). Opsi: `--user <nama>`, `--password <sandi>`.
+- **Server lama (≤ v0.3.19)** yang akun `root`-nya masih tanpa kata sandi: saat diperbarui, kata sandi kosong diganti otomatis dengan kata sandi acak (lihat berkas kredensial di atas) dan semua sesi lama dicabut.
+
+### HTTPS Panel
+- Panel melayani HTTPS di port `1405` dengan sertifikat **self-signed** yang dibuat otomatis (`/opt/fikpanel/data/tls/panel.crt` + `panel.key`, diperbarui otomatis sebelum kedaluwarsa). Browser menampilkan peringatan sertifikat saat pertama dibuka; sidik jari SHA-256 sertifikat tercatat di `journalctl -u fikpanel`.
+- Sertifikat sendiri (misalnya Let's Encrypt untuk `panel.domain-anda.com`) cukup ditimpa ke dua berkas tersebut; dimuat ulang otomatis dalam ±30 detik tanpa restart, dan tidak pernah ditimpa FikPanel.
+- HTTP biasa dari `127.0.0.1` tetap dilayani (reverse proxy Nginx / Cloudflare Tunnel di host yang sama). Untuk mematikan TLS sepenuhnya, tambahkan `--tls=off` pada `ExecStart` di `fikpanel.service`.
 
 ---
 
@@ -269,7 +282,8 @@ Perintah yang Tersedia:
                   Opsi:
                     --port <nomor>   Port server HTTP/HTTPS (default: 1405)
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
-                    --dev            Mode development dengan auto-seed akun root
+                    --tls <mode>     auto (default, HTTPS self-signed / sertifikat di <data>/tls) atau off
+                    --dev            Pengembangan lokal: akun root tanpa sandi (JANGAN di server publik)
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
@@ -278,8 +292,9 @@ Perintah yang Tersedia:
   update          Perbarui FikPanel secara aman (checksum, backup, restart, health check, rollback)
   auto-update     Kelola pembaruan otomatis terjadwal: enable | disable | status
   doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
-  reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
-  init            Inisialisasi kredensial awal administrator
+  reset-password  Reset kata sandi admin (acak bila --password kosong) & keluarkan semua sesinya
+                  Opsi: --user <nama>  --password <sandi>  --db <path>
+  init            Buat akun administrator baru (kata sandi acak bila --password kosong)
   version, -v     Menampilkan informasi versi biner FikPanel
   help, -h        Menampilkan panduan bantuan perintah ini
 

@@ -39,6 +39,8 @@
     }
   }
 
+  const resetCommand = 'sudo fikpanel reset-password';
+
   function onKey(e: KeyboardEvent) {
     capsLock = e.getModifierState?.('CapsLock') ?? false;
   }
@@ -105,6 +107,8 @@
 
       {#if isDev}
         <p class="login__hint">Mode dev: akun <code>root</code> dengan kata sandi kosong</p>
+      {:else if error}
+        <p class="login__hint">Lupa kata sandi? Reset lewat SSH di server: <code>{resetCommand}</code></p>
       {/if}
     </form>
   </section>

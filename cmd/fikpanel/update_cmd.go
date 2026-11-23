@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"fikpanel/internal/credentials"
 	"fikpanel/internal/updater"
 )
 
@@ -452,4 +453,23 @@ func runPostUpdate(_ []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("[post-update] %s\n", msg)
+	printSecurityNotices(paths.DBPath)
+}
+
+// printSecurityNotices memberi tahu admin tentang perubahan keamanan yang baru diterapkan oleh
+// layanan versi baru (kata sandi kosong yang diganti, HTTPS yang baru diaktifkan).
+func printSecurityNotices(dbPath string) {
+	recent := func(p string) bool {
+		fi, err := os.Stat(p)
+		return err == nil && time.Since(fi.ModTime()) < 15*time.Minute
+	}
+	credPath := credentials.PathFor(dbPath)
+	if data, err := os.ReadFile(credPath); err == nil && recent(credPath) && strings.Contains(string(data), "diganti otomatis") {
+		fmt.Println("[post-update] PENTING: akun admin yang sebelumnya TANPA kata sandi kini memakai kata sandi acak.")
+		fmt.Printf("[post-update]   Lihat kata sandinya: sudo cat %s  (atau reset: sudo fikpanel reset-password)\n", credPath)
+	}
+	if cert := filepath.Join(filepath.Dir(credPath), "tls", "panel.crt"); recent(cert) {
+		fmt.Println("[post-update] Panel kini melayani HTTPS (sertifikat self-signed). Buka https://<IP-server>:1405;")
+		fmt.Println("[post-update]   browser akan menampilkan peringatan sertifikat sekali. Alamat http:// otomatis dialihkan.")
+	}
 }

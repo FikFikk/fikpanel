@@ -62,9 +62,9 @@
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `old_password` (string, wajib), `new_password` (string, wajib, min 4 karakter) |
-| Response | HTTP 200 `{"ok": true, "message": "Kata sandi berhasil diperbarui"}` |
-| Notes | Memverifikasi kecocokan kata sandi saat ini (`old_password`), mengenkripsi kata sandi baru menggunakan algoritma Argon2id (19 MiB RAM cost, 2 iterasi), menyimpan hash ke SQLite `users`, serta mencatat riwayat audit log. Sesi login berikutnya dengan kata sandi lama/kosong akan ditolak HTTP 401 Unauthorized. |
+| Request Body | `old_password` (string, wajib), `new_password` (string, wajib, min 8 karakter) |
+| Response | HTTP 200 `{"ok": true, "message": "Kata sandi berhasil diperbarui; 1 sesi login lain telah dikeluarkan"}`; HTTP 400 `{"error": "kata sandi minimal 8 karakter"}` |
+| Notes | Memverifikasi kecocokan kata sandi saat ini (`old_password`), mengenkripsi kata sandi baru menggunakan algoritma Argon2id (19 MiB RAM cost, 2 iterasi), menyimpan hash ke SQLite `users`, serta mencatat riwayat audit log. Seluruh sesi login lain milik akun tersebut dicabut (sesi yang dipakai untuk mengganti kata sandi dipertahankan) dan berkas `admin-credentials.txt` dihapus. Login berikutnya dengan kata sandi lama/kosong ditolak HTTP 401 Unauthorized. |
 
 ---
 
