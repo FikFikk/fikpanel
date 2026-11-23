@@ -162,6 +162,45 @@ func TestSettingsSuiteEndToEnd(t *testing.T) {
 		t.Fatalf("Login dengan kode pemulihan gagal: %d %s", wRec.Code, wRec.Body.String())
 	}
 
+	// Regenerasi kode pemulihan 2FA harus menerbitkan 8 kode baru setelah verifikasi kata sandi
+	reqRegen := httptest.NewRequest("POST", "/api/auth/2fa/recovery-regenerate", bytes.NewReader([]byte(`{"password":"Rahasia123!"}`)))
+	reqRegen.Header.Set("Content-Type", "application/json")
+	reqRegen.Header.Set("X-Panel-Request", "1")
+	reqRegen.AddCookie(cookie)
+	wRegen := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wRegen, reqRegen)
+	if wRegen.Code != http.StatusOK || !bytes.Contains(wRegen.Body.Bytes(), []byte(`"recovery_remaining":8`)) {
+		t.Fatalf("Regenerasi kode pemulihan gagal: %d %s", wRegen.Code, wRegen.Body.String())
+	}
+
+	// Uji daftar akun panel & ganti kata sandi akun lain oleh administrator
+	otherUser, err := st.EnsureDevUser("admin", "AdminAwal12345!")
+	if err != nil {
+		t.Fatalf("Gagal membuat akun kedua: %v", err)
+	}
+	reqUsers := httptest.NewRequest("GET", "/api/auth/users", nil)
+	reqUsers.AddCookie(cookie)
+	wUsers := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wUsers, reqUsers)
+	if wUsers.Code != http.StatusOK || !bytes.Contains(wUsers.Body.Bytes(), []byte(`"admin"`)) {
+		t.Fatalf("Daftar akun panel harus berisi admin: %d %s", wUsers.Code, wUsers.Body.String())
+	}
+
+	pwOtherBody, _ := json.Marshal(map[string]any{
+		"old_password":   "Rahasia123!",
+		"new_password":   "AdminBaruSuperAman99!",
+		"target_user_id": otherUser.ID,
+	})
+	reqPwOther := httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(pwOtherBody))
+	reqPwOther.Header.Set("Content-Type", "application/json")
+	reqPwOther.Header.Set("X-Panel-Request", "1")
+	reqPwOther.AddCookie(cookie)
+	wPwOther := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wPwOther, reqPwOther)
+	if wPwOther.Code != http.StatusOK || !bytes.Contains(wPwOther.Body.Bytes(), []byte(`"target_username":"admin"`)) {
+		t.Fatalf("Reset sandi akun lain oleh admin gagal: %d %s", wPwOther.Code, wPwOther.Body.String())
+	}
+
 	// Daftar sesi aktif harus berisi minimal 2 sesi & revoke-others menyisakan 1 sesi
 	reqSess := httptest.NewRequest("GET", "/api/auth/sessions", nil)
 	reqSess.AddCookie(cookie)

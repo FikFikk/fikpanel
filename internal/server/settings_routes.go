@@ -536,6 +536,125 @@ func (s *Server) handleDisable2FA(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleRegenerate2FARecovery menerbitkan 8 kode pemulihan baru (menggantikan kode lama) setelah verifikasi sandi/OTP
+func (s *Server) handleRegenerate2FARecovery(w http.ResponseWriter, r *http.Request) {
+	user := GetUserFromContext(r.Context())
+	if user == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	var req struct {
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
+		return
+	}
+
+	dbUser, err := s.store.GetUserByID(r.Context(), user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pengguna tidak ditemukan"})
+		return
+	}
+	if len(dbUser.TotpSecret) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "2FA belum diaktifkan pada akun ini"})
+		return
+	}
+
+	verified := false
+	if req.Password != "" {
+		if ok, _ := auth.VerifyPassword(req.Password, dbUser.PasswordHash); ok {
+			verified = true
+		}
+	}
+	if !verified && req.Code != "" {
+		if s.verifyUserTOTPOrRecovery(r.Context(), dbUser, req.Code) {
+			verified = true
+		}
+	}
+	if !verified {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kata sandi atau kode 2FA tidak valid"})
+		return
+	}
+
+	plainCodes, hashes, err := auth.GenerateRecoveryCodes(8)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal membuat kode pemulihan baru"})
+		return
+	}
+	if err := s.saveRecoveryHashes(r.Context(), user.ID, hashes); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal menyimpan kode pemulihan baru"})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "auth.2fa_recovery_regen", user.Username, true, "Membuat ulang 8 kode pemulihan 2FA", &user.ID)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":                 true,
+		"recovery_codes":     plainCodes,
+		"recovery_remaining": len(plainCodes),
+		"message":            "8 kode pemulihan baru berhasil dibuat; kode lama tidak lagi berlaku.",
+	})
+}
+
+// handleListPanelUsers mengembalikan daftar akun panel (admin melihat semua akun, non-admin hanya melihat akunnya sendiri)
+func (s *Server) handleListPanelUsers(w http.ResponseWriter, r *http.Request) {
+	user := GetUserFromContext(r.Context())
+	if user == nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	type panelUserView struct {
+		ID          int64  `json:"id"`
+		Username    string `json:"username"`
+		Role        string `json:"role"`
+		TOTPEnabled bool   `json:"totp_enabled"`
+		LastLoginAt int64  `json:"last_login_at"`
+		IsCurrent   bool   `json:"is_current"`
+	}
+
+	var rows []store.User
+	if user.Role == "admin" {
+		list, err := s.store.ListUsers(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal membaca daftar akun"})
+			return
+		}
+		rows = list
+	} else {
+		dbUser, err := s.store.GetUserByID(r.Context(), user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "pengguna tidak ditemukan"})
+			return
+		}
+		rows = []store.User{*dbUser}
+	}
+
+	out := make([]panelUserView, 0, len(rows))
+	for _, u := range rows {
+		var lastLogin int64
+		if u.LastLoginAt.Valid {
+			lastLogin = u.LastLoginAt.Int64
+		}
+		out = append(out, panelUserView{
+			ID:          u.ID,
+			Username:    u.Username,
+			Role:        u.Role,
+			TOTPEnabled: len(u.TotpSecret) > 0,
+			LastLoginAt: lastLogin,
+			IsCurrent:   u.ID == user.ID,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":           true,
+		"current_user": user.Username,
+		"current_id":   user.ID,
+		"users":        out,
+	})
+}
+
 // handleListActiveSessions mengembalikan daftar seluruh perangkat yang sedang masuk pada akun admin aktif
 func (s *Server) handleListActiveSessions(w http.ResponseWriter, r *http.Request) {
 	user := GetUserFromContext(r.Context())

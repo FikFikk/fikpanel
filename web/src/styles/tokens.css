@@ -93,11 +93,13 @@
 
     /* ── Tint transparan siap pakai (latar badge, alert, highlight) ─────────── */
     --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
+    --tint-success: color-mix(in srgb, var(--success) 14%, transparent);
     --tint-info: color-mix(in srgb, var(--info) 12%, transparent);
     --tint-warning: color-mix(in srgb, var(--warning) 12%, transparent);
     --tint-danger: color-mix(in srgb, var(--danger) 12%, transparent);
     --tint-violet: color-mix(in srgb, var(--violet) 12%, transparent);
     --ring-accent: color-mix(in srgb, var(--accent) 35%, transparent);
+    --ring-success: color-mix(in srgb, var(--success) 35%, transparent);
     --ring-info: color-mix(in srgb, var(--info) 35%, transparent);
     --ring-warning: color-mix(in srgb, var(--warning) 35%, transparent);
     --ring-danger: color-mix(in srgb, var(--danger) 35%, transparent);

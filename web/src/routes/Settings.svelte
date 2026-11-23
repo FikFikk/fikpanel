@@ -17,6 +17,7 @@
   } from '../lib/stores/theme.svelte';
   import { dateLocale, i18nState, setLocale, t, type Locale } from '../lib/stores/i18n.svelte';
   import type { AuditLog, OverviewData, SystemWebhook } from '../lib/types';
+  import Modal from '../lib/components/ui/Modal.svelte';
   import '../styles/pages/settings.css';
 
   interface Props {
@@ -83,7 +84,21 @@
     { id: 'slate', label: 'Slate', swatchClass: 'swatch--slate' },
   ];
 
-  // ── Tab B: Kata Sandi, 2FA TOTP, Sesi Aktif, & Audit Log ──
+  // ── Tab B: Kata Sandi, Multi-Akun, 2FA TOTP, Sesi Aktif, & Audit Log ──
+  interface PanelUserItem {
+    id: number;
+    username: string;
+    role: string;
+    totp_enabled: boolean;
+    last_login_at: number;
+    is_current: boolean;
+  }
+  let panelUsers = $state<PanelUserItem[]>([]);
+  let currentUserId = $state(0);
+  let currentUsername = $state('');
+  let targetUserId = $state(0);
+  let isChangingOtherUser = $derived(targetUserId > 0 && currentUserId > 0 && targetUserId !== currentUserId);
+
   let oldPassword = $state('');
   let newPassword = $state('');
   let confirmPassword = $state('');
@@ -92,11 +107,13 @@
 
   let totpEnabled = $state(false);
   let totpRecoveryRemaining = $state(0);
+  let totpRecoveryPct = $derived(Math.min(100, Math.round((totpRecoveryRemaining / 8) * 100)));
   let totpSetupSecret = $state('');
   let totpQrDataUrl = $state('');
   let totpVerifyCode = $state('');
   let totpRecoveryCodes = $state<string[]>([]);
-  let totpDisableSecret = $state('');
+  let totpModalMode = $state<null | 'disable' | 'regen'>(null);
+  let totpModalSecret = $state('');
   let totpBusy = $state(false);
 
   interface ActiveSession {
@@ -256,15 +273,24 @@
   async function loadSecurityData() {
     loadingSessions = true;
     try {
-      const [twofa, sess, aud] = await Promise.all([
+      const [twofa, sess, aud, usr] = await Promise.all([
         apiFetch<{ enabled: boolean; recovery_remaining: number }>('/api/auth/2fa/status'),
         apiFetch<{ sessions: ActiveSession[] }>('/api/auth/sessions'),
         apiFetch<{ logs: AuditLog[] }>('/api/audit'),
+        apiFetch<{ current_user: string; current_id: number; users: PanelUserItem[] }>('/api/auth/users'),
       ]);
       totpEnabled = Boolean(twofa?.enabled);
       totpRecoveryRemaining = twofa?.recovery_remaining || 0;
       activeSessions = sess?.sessions || [];
       auditLogs = (aud?.logs || []).slice(0, 20);
+      if (usr) {
+        panelUsers = usr.users || [];
+        currentUserId = usr.current_id || 0;
+        currentUsername = usr.current_user || '';
+        if (targetUserId === 0 && currentUserId > 0) {
+          targetUserId = currentUserId;
+        }
+      }
     } catch {
       // Abaikan kegagalan sebagian data keamanan
     } finally {
@@ -394,7 +420,11 @@
     try {
       const res = await apiFetch<{ ok: boolean; message: string }>('/api/auth/password', {
         method: 'POST',
-        body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+        body: JSON.stringify({
+          old_password: oldPassword,
+          new_password: newPassword,
+          target_user_id: targetUserId || undefined,
+        }),
       });
       onNotify(res.message || 'Kata sandi berhasil diperbarui', 'success');
       oldPassword = '';
@@ -446,35 +476,59 @@
     }
   }
 
-  async function handleDisable2FA() {
-    if (!totpDisableSecret.trim()) {
-      onNotify('Masukkan kata sandi saat ini atau kode OTP 6 digit untuk menonaktifkan 2FA', 'warning');
+  function openTotpModal(mode: 'disable' | 'regen') {
+    totpModalSecret = '';
+    totpModalMode = mode;
+  }
+
+  function closeTotpModal() {
+    if (totpBusy) return;
+    totpModalMode = null;
+    totpModalSecret = '';
+  }
+
+  async function submitTotpModal(e: Event) {
+    e.preventDefault();
+    const secret = totpModalSecret.trim();
+    if (!secret) {
+      onNotify(t('settings.security.totp_verify_placeholder'), 'warning');
       return;
     }
-    const ok = await confirmDialog({
-      title: 'Nonaktifkan 2FA Authenticator?',
-      message: 'Akun administrator tidak lagi meminta kode 6 digit saat login.',
-      confirmText: 'Nonaktifkan 2FA',
-      tone: 'danger',
-    });
-    if (!ok) return;
+
+    const isSixDigits = /^\d{6}$/.test(secret);
+    const body = isSixDigits ? { code: secret } : { password: secret };
+    const mode = totpModalMode;
 
     totpBusy = true;
     try {
-      const isSixDigits = /^\d{6}$/.test(totpDisableSecret.trim());
-      const body = isSixDigits ? { code: totpDisableSecret.trim() } : { password: totpDisableSecret };
-      const res = await apiFetch<{ ok: boolean; message: string }>('/api/auth/2fa/disable', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      totpEnabled = false;
-      totpRecoveryCodes = [];
-      totpRecoveryRemaining = 0;
-      totpDisableSecret = '';
-      onNotify(res.message || '2FA dinonaktifkan', 'success');
+      if (mode === 'disable') {
+        const res = await apiFetch<{ ok: boolean; message: string }>('/api/auth/2fa/disable', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        totpEnabled = false;
+        totpRecoveryCodes = [];
+        totpRecoveryRemaining = 0;
+        totpModalMode = null;
+        totpModalSecret = '';
+        onNotify(res.message || '2FA dinonaktifkan', 'success');
+      } else if (mode === 'regen') {
+        const res = await apiFetch<{ ok: boolean; recovery_codes: string[]; recovery_remaining: number; message: string }>(
+          '/api/auth/2fa/recovery-regenerate',
+          {
+            method: 'POST',
+            body: JSON.stringify(body),
+          },
+        );
+        totpRecoveryCodes = res.recovery_codes || [];
+        totpRecoveryRemaining = res.recovery_remaining ?? totpRecoveryCodes.length;
+        totpModalMode = null;
+        totpModalSecret = '';
+        onNotify(res.message || 'Kode pemulihan baru dibuat', 'success');
+      }
       await loadSecurityData();
     } catch (err: any) {
-      onNotify(err?.message || 'Gagal menonaktifkan 2FA', 'error');
+      onNotify(err?.message || 'Verifikasi 2FA gagal', 'error');
     } finally {
       totpBusy = false;
     }
@@ -1054,7 +1108,7 @@
                 <label class="field__label" for="pref-env">{t('settings.appearance.env_badge')}</label>
                 <select
                   id="pref-env"
-                  class="select"
+                  class="input"
                   value={prefs.env_badge}
                   onchange={(e) => previewAppearancePatch({ env_badge: (e.target as HTMLSelectElement).value as EnvBadge })}
                 >
@@ -1101,27 +1155,48 @@
       <!-- ═══ TAB 2: KEAMANAN AKUN, 2FA & SESI AKTIF (B) ═══ -->
       {:else if activeTab === 'security'}
         <div class="two-col-cards">
-          <!-- Ubah Kata Sandi dengan Indikator Kekuatan -->
+          <!-- Ubah Kata Sandi dengan Indikator Kekuatan & Dukungan Multi-Akun Adaptif -->
           <div class="card">
             <div class="card__head">
               <h3 class="card__title">
                 <i class="ri-lock-password-line" aria-hidden="true"></i> {t('settings.security.pass_title')}
               </h3>
-              <button
-                type="button"
-                class="btn btn--ghost btn--icon btn--sm"
-                onclick={() => (showPassFields = !showPassFields)}
-                aria-label={showPassFields ? t('login.hide_password') : t('login.show_password')}
-                title={showPassFields ? t('login.hide_password') : t('login.show_password')}
-              >
-                <i class={showPassFields ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
-              </button>
+              <div class="row-actions">
+                {#if currentUsername}
+                  <span class="account-pill mono">
+                    <i class="ri-user-3-line" aria-hidden="true"></i> {currentUsername}
+                  </span>
+                {/if}
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--icon btn--sm"
+                  onclick={() => (showPassFields = !showPassFields)}
+                  aria-label={showPassFields ? t('login.hide_password') : t('login.show_password')}
+                  title={showPassFields ? t('login.hide_password') : t('login.show_password')}
+                >
+                  <i class={showPassFields ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                </button>
+              </div>
             </div>
-            <div class="card__body">
+            <div class="card__body stack">
               <p class="panel-desc">{t('settings.security.pass_desc')}</p>
               <form class="pass-form" onsubmit={handlePasswordChange}>
+                {#if panelUsers.length > 1}
+                  <div class="field">
+                    <label for="pass-target-user" class="field__label">{t('settings.security.target_user')}</label>
+                    <select id="pass-target-user" class="input" bind:value={targetUserId}>
+                      {#each panelUsers as u (u.id)}
+                        <option value={u.id}>
+                          {u.username} · {u.role}{u.is_current ? ` ${t('settings.security.target_self')}` : ''}
+                        </option>
+                      {/each}
+                    </select>
+                  </div>
+                {/if}
                 <div class="field">
-                  <label for="old-pass" class="field__label">{t('settings.security.old_pass')}</label>
+                  <label for="old-pass" class="field__label">
+                    {isChangingOtherUser ? t('settings.security.admin_pass_verify') : t('settings.security.old_pass')}
+                  </label>
                   <input id="old-pass" type={showPassFields ? 'text' : 'password'} class="input" bind:value={oldPassword} autocomplete="current-password" />
                 </div>
                 <div class="field">
@@ -1140,7 +1215,7 @@
                   <label for="conf-pass" class="field__label">{t('settings.security.conf_pass')}</label>
                   <input id="conf-pass" type={showPassFields ? 'text' : 'password'} class="input" bind:value={confirmPassword} required minlength="8" autocomplete="new-password" />
                 </div>
-                <div>
+                <div class="card-foot-actions">
                   <button type="submit" class="btn btn--primary" disabled={updatingPass}>
                     {updatingPass ? t('common.saving') : t('settings.security.pass_btn')}
                   </button>
@@ -1156,23 +1231,37 @@
                 <i class="ri-smartphone-line" aria-hidden="true"></i> {t('settings.security.totp_title')}
               </h3>
               <span class="badge" class:badge--success={totpEnabled} class:badge--neutral={!totpEnabled}>
+                {#if totpEnabled}<span class="dot dot--success" aria-hidden="true"></span>{/if}
                 {totpEnabled ? t('common.enabled') : t('common.disabled')}
               </span>
             </div>
             <div class="card__body stack">
-              <p class="panel-desc">{t('settings.security.totp_desc')}</p>
+              {#if !totpEnabled}
+                <p class="panel-desc">{t('settings.security.totp_desc')}</p>
+              {/if}
 
               {#if totpRecoveryCodes.length > 0}
                 <div class="recovery-box">
                   <div class="recovery-box__head">
                     <strong>{t('settings.security.totp_recovery_title')}</strong>
-                    <button
-                      type="button"
-                      class="btn btn--secondary btn--sm"
-                      onclick={() => copyQuick(totpRecoveryCodes.join('\n'), 'Kode pemulihan disalin')}
-                    >
-                      <i class="ri-file-copy-line" aria-hidden="true"></i> {t('common.copy')}
-                    </button>
+                    <div class="row-actions">
+                      <button
+                        type="button"
+                        class="btn btn--secondary btn--sm"
+                        onclick={() => copyQuick(totpRecoveryCodes.join('\n'), t('common.copied'))}
+                      >
+                        <i class="ri-file-copy-line" aria-hidden="true"></i> {t('common.copy')}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon btn--sm"
+                        onclick={() => (totpRecoveryCodes = [])}
+                        aria-label={t('common.close')}
+                        title={t('common.close')}
+                      >
+                        <i class="ri-close-line" aria-hidden="true"></i>
+                      </button>
+                    </div>
                   </div>
                   <p class="panel-desc">{t('settings.security.totp_recovery_desc')}</p>
                   <div class="recovery-grid mono">
@@ -1184,7 +1273,7 @@
               {/if}
 
               {#if !totpEnabled && !totpSetupSecret}
-                <div>
+                <div class="card-foot-actions">
                   <button type="button" class="btn btn--primary" onclick={start2FASetup} disabled={totpBusy}>
                     <i class="ri-qr-code-line" aria-hidden="true"></i> {t('settings.security.totp_start')}
                   </button>
@@ -1234,23 +1323,51 @@
                   </div>
                 </div>
               {:else if totpEnabled}
-                <div class="totp-active-meta">
-                  <span class="badge badge--info">{t('settings.security.totp_remaining', { count: totpRecoveryRemaining })}</span>
-                </div>
-                <div class="field">
-                  <label for="totp-disable-in" class="field__label">{t('settings.security.old_pass')} / OTP</label>
-                  <div class="inline-action-row">
-                    <input
-                      id="totp-disable-in"
-                      type="password"
-                      class="input"
-                      bind:value={totpDisableSecret}
-                      placeholder="Password / 6-digit OTP"
-                    />
-                    <button type="button" class="btn btn--danger btn--sm" onclick={handleDisable2FA} disabled={totpBusy}>
-                      {t('settings.security.totp_disable_btn')}
-                    </button>
+                <!-- Status Banner Hijau Terlindungi -->
+                <div class="totp-protected-banner">
+                  <span class="totp-protected-banner__icon" aria-hidden="true">
+                    <i class="ri-shield-check-fill"></i>
+                  </span>
+                  <div class="totp-protected-banner__body">
+                    <span class="totp-protected-banner__title">{t('settings.security.totp_protected_title')}</span>
+                    <span class="totp-protected-banner__desc">{t('settings.security.totp_protected_desc')}</span>
                   </div>
+                </div>
+
+                <!-- Ringkasan Konfigurasi 2FA Aktif -->
+                <div class="info-list">
+                  <div class="info-row">
+                    <span class="info-label">{t('settings.security.totp_method')}</span>
+                    <span class="info-val">Authenticator App (RFC 6238)</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">{t('settings.security.totp_account')}</span>
+                    <span class="mono info-val">{currentUsername || 'admin'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">{t('settings.security.totp_recovery_codes')}</span>
+                    <div class="totp-recovery-inline">
+                      <div class="recovery-meter" aria-hidden="true">
+                        <div
+                          class="recovery-meter__bar"
+                          class:recovery-meter__bar--warn={totpRecoveryRemaining > 0 && totpRecoveryRemaining <= 3}
+                          class:recovery-meter__bar--danger={totpRecoveryRemaining === 0}
+                          style={`--rem-pct: ${totpRecoveryPct}%`}
+                        ></div>
+                      </div>
+                      <span class="mono info-val">{t('settings.security.totp_recovery_count', { count: totpRecoveryRemaining })}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tombol Aksi Rapi (Membuka Modal Popup Konfirmasi) -->
+                <div class="card-foot-actions">
+                  <button type="button" class="btn btn--secondary btn--sm" onclick={() => openTotpModal('regen')} disabled={totpBusy}>
+                    <i class="ri-key-2-line" aria-hidden="true"></i> {t('settings.security.totp_regen_btn')}
+                  </button>
+                  <button type="button" class="btn btn--danger btn--sm" onclick={() => openTotpModal('disable')} disabled={totpBusy}>
+                    <i class="ri-shield-cross-line" aria-hidden="true"></i> {t('settings.security.totp_disable_btn')}
+                  </button>
                 </div>
               {/if}
             </div>
@@ -1437,7 +1554,7 @@
 
             <div class="field max-w-280">
               <label for="pref-session-hrs" class="field__label">{t('settings.network.session_hours')}</label>
-              <select id="pref-session-hrs" class="select" bind:value={prefs.session_hours}>
+              <select id="pref-session-hrs" class="input" bind:value={prefs.session_hours}>
                 <option value={6}>{t('settings.network.session_6h')}</option>
                 <option value={12}>{t('settings.network.session_12h')}</option>
                 <option value={24}>{t('settings.network.session_24h')}</option>
@@ -1519,7 +1636,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.4.2'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.4.3'}</span>
                 </div>
               </div>
             </div>
@@ -1548,7 +1665,7 @@
               <div class="field">
                 <label for="sys-tz" class="field__label">Timezone ({sysInfo?.tz_abbr || 'UTC'})</label>
                 <div class="inline-action-row">
-                  <select id="sys-tz" class="select mono" bind:value={timezoneInput}>
+                  <select id="sys-tz" class="input mono" bind:value={timezoneInput}>
                     {#if timezoneInput && !timezones.includes(timezoneInput)}
                       <option value={timezoneInput}>{timezoneInput}</option>
                     {/if}
@@ -1683,7 +1800,7 @@
                   </div>
                   <div class="field">
                     <label for="hk-ch" class="field__label">{t('settings.webhooks.channel')}</label>
-                    <select id="hk-ch" class="select" bind:value={hookChannel}>
+                    <select id="hk-ch" class="input" bind:value={hookChannel}>
                       <option value="telegram">Telegram Bot</option>
                       <option value="discord">Discord Channel (Embed)</option>
                       <option value="generic">Custom Webhook (JSON POST)</option>
@@ -1884,4 +2001,59 @@
       {/if}
     </div>
   </div>
+
+  <!-- Modal Konfirmasi Verifikasi Aksi 2FA (Nonaktifkan / Buat Ulang Kode Pemulihan) -->
+  <Modal
+    open={totpModalMode !== null}
+    size="sm"
+    title={totpModalMode === 'disable'
+      ? t('settings.security.totp_disable_modal_title')
+      : t('settings.security.totp_regen_title')}
+    onclose={closeTotpModal}
+  >
+    <form id="totp-modal-form" class="modal-form-stack" onsubmit={submitTotpModal}>
+      <div class="alert" class:alert--danger={totpModalMode === 'disable'} class:alert--warning={totpModalMode === 'regen'}>
+        <i class={totpModalMode === 'disable' ? 'ri-shield-cross-line' : 'ri-key-2-line'} aria-hidden="true"></i>
+        <span>
+          {totpModalMode === 'disable'
+            ? t('settings.security.totp_disable_modal_desc')
+            : t('settings.security.totp_regen_desc')}
+        </span>
+      </div>
+
+      <div class="field">
+        <label for="totp-modal-secret" class="field__label">{t('settings.security.totp_verify_label')}</label>
+        <input
+          id="totp-modal-secret"
+          type="password"
+          class="input"
+          bind:value={totpModalSecret}
+          placeholder={t('settings.security.totp_verify_placeholder')}
+          autocomplete="one-time-code"
+          data-autofocus
+          required
+        />
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={closeTotpModal} disabled={totpBusy}>
+        {t('common.cancel')}
+      </button>
+      <button
+        type="submit"
+        form="totp-modal-form"
+        class={totpModalMode === 'disable' ? 'btn btn--danger' : 'btn btn--primary'}
+        disabled={totpBusy || !totpModalSecret.trim()}
+      >
+        {#if totpBusy}
+          <span class="spinner spinner--sm"></span> {t('common.saving')}
+        {:else if totpModalMode === 'disable'}
+          {t('settings.security.totp_disable_btn')}
+        {:else}
+          {t('settings.security.totp_regen_btn')}
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
 </div>

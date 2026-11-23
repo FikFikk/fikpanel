@@ -157,11 +157,12 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 // UpdatePasswordRequest merepresentasikan payload perubahan kata sandi
 type UpdatePasswordRequest struct {
-	OldPassword string `json:"old_password"`
-	NewPassword string `json:"new_password"`
+	OldPassword  string `json:"old_password"`
+	NewPassword  string `json:"new_password"`
+	TargetUserID int64  `json:"target_user_id,omitempty"`
 }
 
-// handleUpdatePassword memproses perubahan kata sandi administrator dengan verifikasi kata sandi lama
+// handleUpdatePassword memproses perubahan kata sandi akun sendiri maupun reset akun lain oleh administrator
 func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	user := GetUserFromContext(r.Context())
 	if user == nil {
@@ -181,18 +182,35 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ambil data user terkini dari database untuk memverifikasi kata sandi lama
-	dbUser, err := s.store.GetUserByID(r.Context(), user.ID)
+	// Selalu verifikasi kata sandi akun yang sedang login sebagai otorisasi mutasi
+	dbCaller, err := s.store.GetUserByID(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, `{"error":"pengguna tidak ditemukan"}`, http.StatusNotFound)
 		return
 	}
 
-	valid, err := auth.VerifyPassword(req.OldPassword, dbUser.PasswordHash)
+	valid, err := auth.VerifyPassword(req.OldPassword, dbCaller.PasswordHash)
 	if err != nil || !valid {
 		_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_fail", user.Username, false, "Kata sandi saat ini tidak cocok", &user.ID)
 		http.Error(w, `{"error":"kata sandi saat ini tidak sesuai"}`, http.StatusBadRequest)
 		return
+	}
+
+	// Tentukan akun target (default: akun sendiri; admin boleh mengatur ulang akun lain)
+	targetUser := dbCaller
+	isSelf := true
+	if req.TargetUserID > 0 && req.TargetUserID != user.ID {
+		if user.Role != "admin" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya administrator yang dapat mengubah kata sandi akun lain"})
+			return
+		}
+		other, err := s.store.GetUserByID(r.Context(), req.TargetUserID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "akun target tidak ditemukan"})
+			return
+		}
+		targetUser = other
+		isSelf = false
 	}
 
 	// Buat hash Argon2id baru
@@ -202,28 +220,36 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sesi lain (perangkat lain atau sesi yang mungkin dicuri) dicabut; sesi saat ini dipertahankan.
-	currentToken := ""
-	if cookie, err := r.Cookie("panel_session"); err == nil {
-		currentToken = cookie.Value
+	// Untuk akun sendiri: pertahankan sesi browser saat ini dan cabut sesi lain.
+	// Untuk akun target lain: cabut seluruh sesi aktif milik akun target tersebut.
+	keepToken := ""
+	if isSelf {
+		if cookie, err := r.Cookie("panel_session"); err == nil {
+			keepToken = cookie.Value
+		}
 	}
-	revoked, err := s.store.SetPasswordAndRevokeSessions(r.Context(), user.ID, newHash, currentToken)
+	revoked, err := s.store.SetPasswordAndRevokeSessions(r.Context(), targetUser.ID, newHash, keepToken)
 	if err != nil {
 		http.Error(w, `{"error":"gagal menyimpan kata sandi baru ke database"}`, http.StatusInternalServerError)
 		return
 	}
 	if s.credentialsFile != "" {
-		credentials.Forget(s.credentialsFile, user.Username)
+		credentials.Forget(s.credentialsFile, targetUser.Username)
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_success", user.Username, true,
-		fmt.Sprintf("Kata sandi administrator diperbarui; %d sesi lain dicabut", revoked), &user.ID)
+	auditAction := "auth.password_change_success"
+	auditDetail := fmt.Sprintf("Kata sandi akun %s diperbarui; %d sesi dicabut", targetUser.Username, revoked)
+	if !isSelf {
+		auditAction = "auth.password_change_other"
+		auditDetail = fmt.Sprintf("Admin %s memperbarui kata sandi akun %s; %d sesi dicabut", user.Username, targetUser.Username, revoked)
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", auditAction, targetUser.Username, true, auditDetail, &user.ID)
 
-	msg := "Kata sandi berhasil diperbarui"
+	msg := fmt.Sprintf("Kata sandi akun %s berhasil diperbarui", targetUser.Username)
 	if revoked > 0 {
-		msg = fmt.Sprintf("Kata sandi berhasil diperbarui; %d sesi login lain telah dikeluarkan", revoked)
+		msg = fmt.Sprintf("Kata sandi akun %s berhasil diperbarui; %d sesi login dikeluarkan", targetUser.Username, revoked)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg, "target_username": targetUser.Username})
 }
 
 // handleOverview menyajikan ringkasan sistem, hardware, dan status modul panel (mirip aaPanel)

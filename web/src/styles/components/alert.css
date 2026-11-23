@@ -24,7 +24,7 @@
     color: var(--alert-tone);
   }
   .alert--info    { --alert-tone: var(--info); }
-  .alert--success { --alert-tone: var(--accent); }
+  .alert--success { --alert-tone: var(--success); }
   .alert--warning { --alert-tone: var(--warning); }
   .alert--danger  { --alert-tone: var(--danger); }
 }

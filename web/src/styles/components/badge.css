@@ -18,12 +18,12 @@
     font-weight: var(--weight-semibold);
     white-space: nowrap;
   }
-  .badge--neutral { --badge-fg: var(--text-muted);    --badge-bg: var(--bg-active); }
-  .badge--success { --badge-fg: var(--accent-strong); --badge-bg: var(--tint-accent); }
-  .badge--info    { --badge-fg: var(--info);          --badge-bg: var(--tint-info); }
-  .badge--warning { --badge-fg: var(--warning-strong);--badge-bg: var(--tint-warning); }
-  .badge--danger  { --badge-fg: var(--danger-strong); --badge-bg: var(--tint-danger); }
-  .badge--violet  { --badge-fg: var(--violet);        --badge-bg: var(--tint-violet); }
+  .badge--neutral { --badge-fg: var(--text-muted);     --badge-bg: var(--bg-active); }
+  .badge--success { --badge-fg: var(--success-strong); --badge-bg: var(--tint-success); }
+  .badge--info    { --badge-fg: var(--info);           --badge-bg: var(--tint-info); }
+  .badge--warning { --badge-fg: var(--warning-strong); --badge-bg: var(--tint-warning); }
+  .badge--danger  { --badge-fg: var(--danger-strong);  --badge-bg: var(--tint-danger); }
+  .badge--violet  { --badge-fg: var(--violet);         --badge-bg: var(--tint-violet); }
   .badge--pill    { border-radius: var(--radius-full); }
 
   /* Titik indikator status: <span class="dot dot--success"></span> */
@@ -35,7 +35,7 @@
     background: var(--text-subtle);
     flex-shrink: 0;
   }
-  .dot--success { background: var(--accent); box-shadow: 0 0 0 3px var(--tint-accent); }
+  .dot--success { background: var(--success); box-shadow: 0 0 0 3px var(--tint-success); }
   .dot--info    { background: var(--info); box-shadow: 0 0 0 3px var(--tint-info); }
   .dot--warning { background: var(--warning); box-shadow: 0 0 0 3px var(--tint-warning); }
   .dot--danger  { background: var(--danger); box-shadow: 0 0 0 3px var(--tint-danger); }

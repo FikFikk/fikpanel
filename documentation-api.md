@@ -62,9 +62,19 @@
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `old_password` (string, wajib), `new_password` (string, wajib, min 8 karakter) |
-| Response | HTTP 200 `{"ok": true, "message": "Kata sandi berhasil diperbarui; 1 sesi login lain telah dikeluarkan"}`; HTTP 400 `{"error": "kata sandi minimal 8 karakter"}` |
-| Notes | Memverifikasi kecocokan kata sandi saat ini (`old_password`), mengenkripsi kata sandi baru menggunakan algoritma Argon2id (19 MiB RAM cost, 2 iterasi), menyimpan hash ke SQLite `users`, serta mencatat riwayat audit log. Seluruh sesi login lain milik akun tersebut dicabut (sesi yang dipakai untuk mengganti kata sandi dipertahankan) dan berkas `admin-credentials.txt` dihapus. Login berikutnya dengan kata sandi lama/kosong ditolak HTTP 401 Unauthorized. |
+| Request Body | `old_password` (string, wajib — kata sandi akun yang sedang login), `new_password` (string, wajib, min 8 karakter), `target_user_id` (int64, opsional — khusus role `admin` untuk memperbarui sandi akun lain seperti `root`/`admin`) |
+| Response | HTTP 200 `{"ok": true, "message": "Kata sandi akun admin berhasil diperbarui; ...", "target_username": "admin"}`; HTTP 400 / HTTP 403 |
+| Notes | Selalu memverifikasi `old_password` terhadap akun yang sedang login, mengenkripsi sandi baru dengan Argon2id (19 MiB), mencabut sesi lain akun target (untuk akun sendiri sesi browser saat ini dipertahankan), menghapus entri `admin-credentials.txt`, serta mencatat audit `auth.password_change_success` / `auth.password_change_other`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/auth/users` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "current_user": "admin", "current_id": 1, "users": [{"id": 1, "username": "admin", "role": "admin", "totp_enabled": true, "last_login_at": 179..., "is_current": true}]}` |
+| Notes | Admin menerima daftar seluruh akun panel untuk pemilihan target ganti sandi adaptif; non-admin hanya melihat akunnya sendiri. |
 
 ---
 
@@ -3005,8 +3015,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | `password` (string, opsional) atau `code` (string OTP 6 digit, opsional — salah satu wajib valid) |
-| Response | HTTP 200 `{"ok": true, "message": "..."}`; HTTP 401 verifikasi gagal |
-| Notes | Menghapus `totp_secret` dan seluruh hash kode pemulihan, serta mencatat audit `auth.2fa_disabled`. |
+| Response | HTTP 200 `{"ok": true, "message": "..."}`; HTTP 400 verifikasi gagal |
+| Notes | Menghapus `totp_secret` dan seluruh hash kode pemulihan, serta mencatat audit `auth.2fa_disable`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/2fa/recovery-regenerate` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `password` (string, opsional) atau `code` (string OTP 6 digit, opsional — salah satu wajib valid) |
+| Response | HTTP 200 `{"ok": true, "recovery_codes": ["XXXX-XXXX", ...], "recovery_remaining": 8, "message": "..."}` |
+| Notes | Menerbitkan 8 kode pemulihan 2FA baru (menggantikan dan membatalkan seluruh kode lama) dan mencatat audit `auth.2fa_recovery_regen`. |
 
 | Field | Detail |
 |---|---|
@@ -3075,7 +3095,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.4.2", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.4.3", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |

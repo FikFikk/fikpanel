@@ -127,7 +127,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.4.2"
+		return "0.4.3"
 	}
 	return s.version
 }
@@ -204,11 +204,13 @@ func (s *Server) registerRoutes() {
 
 	// Endpoint terproteksi autentikasi sesi
 	s.mux.Handle("GET /api/auth/me", s.AuthMiddleware(http.HandlerFunc(s.handleMe)))
+	s.mux.Handle("GET /api/auth/users", s.AuthMiddleware(http.HandlerFunc(s.handleListPanelUsers)))
 	s.mux.Handle("POST /api/auth/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePassword)))
 	s.mux.Handle("GET /api/auth/2fa/status", s.AuthMiddleware(http.HandlerFunc(s.handleGet2FAStatus)))
 	s.mux.Handle("POST /api/auth/2fa/setup", s.AuthMiddleware(http.HandlerFunc(s.handleSetup2FA)))
 	s.mux.Handle("POST /api/auth/2fa/enable", s.AuthMiddleware(http.HandlerFunc(s.handleEnable2FA)))
 	s.mux.Handle("POST /api/auth/2fa/disable", s.AuthMiddleware(http.HandlerFunc(s.handleDisable2FA)))
+	s.mux.Handle("POST /api/auth/2fa/recovery-regenerate", s.AuthMiddleware(http.HandlerFunc(s.handleRegenerate2FARecovery)))
 	s.mux.Handle("GET /api/auth/sessions", s.AuthMiddleware(http.HandlerFunc(s.handleListActiveSessions)))
 	s.mux.Handle("DELETE /api/auth/sessions/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeSession)))
 	s.mux.Handle("POST /api/auth/sessions/revoke-others", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeOtherSessions)))

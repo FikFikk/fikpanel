@@ -409,6 +409,94 @@
       text-align: center;
     }
 
+    /* Banner status 2FA aktif yang rapi dan informatif */
+    .totp-protected-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--tint-success);
+      border: 1px solid var(--ring-success);
+      border-radius: var(--radius-md);
+    }
+
+    .totp-protected-banner__icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--ring-success);
+      color: var(--success-strong);
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+
+    .totp-protected-banner__body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .totp-protected-banner__title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--success-strong);
+    }
+
+    .totp-protected-banner__desc {
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      line-height: var(--leading-normal);
+    }
+
+    .totp-recovery-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .recovery-meter {
+      width: 68px;
+      height: 6px;
+      border-radius: var(--radius-full);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+    }
+
+    .recovery-meter__bar {
+      height: 100%;
+      width: var(--rem-pct, 0%);
+      border-radius: var(--radius-full);
+      background: var(--success);
+      transition: width var(--duration-base) ease;
+    }
+
+    .recovery-meter__bar--warn { background: var(--warning); }
+    .recovery-meter__bar--danger { background: var(--danger); }
+
+    .account-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px var(--space-2);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-2xs);
+      color: var(--text-secondary);
+    }
+
+    .modal-form-stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
     /* Item list (sesi aktif, webhook, auto-update) */
     .item-stack {
       display: flex;
