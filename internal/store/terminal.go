@@ -227,3 +227,81 @@ func (s *Store) DeleteTerminalCommand(ctx context.Context, id int64) error {
 	}
 	return nil
 }
+
+// TerminalKnownHost merepresentasikan sidik jari host key SSH yang telah dipercaya (TOFU)
+type TerminalKnownHost struct {
+	HostPort    string `json:"host_port"`
+	KeyType     string `json:"key_type"`
+	Fingerprint string `json:"fingerprint"`
+	PublicKey   string `json:"public_key"`
+	FirstSeen   int64  `json:"first_seen"`
+	LastSeen    int64  `json:"last_seen"`
+}
+
+// GetKnownHost mengambil catatan host key SSH berdasarkan pasangan host:port
+func (s *Store) GetKnownHost(ctx context.Context, hostPort string) (*TerminalKnownHost, error) {
+	query := `SELECT host_port, key_type, fingerprint, public_key, first_seen, last_seen
+	          FROM terminal_known_hosts WHERE host_port = ?`
+	var kh TerminalKnownHost
+	err := s.db.QueryRowContext(ctx, query, hostPort).Scan(
+		&kh.HostPort, &kh.KeyType, &kh.Fingerprint, &kh.PublicKey, &kh.FirstSeen, &kh.LastSeen,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get known host: %w", err)
+	}
+	return &kh, nil
+}
+
+// UpsertKnownHost menyimpan atau memperbarui sidik jari host key SSH yang dipercaya
+func (s *Store) UpsertKnownHost(ctx context.Context, kh *TerminalKnownHost) error {
+	now := time.Now().Unix()
+	if kh.FirstSeen == 0 {
+		kh.FirstSeen = now
+	}
+	kh.LastSeen = now
+	query := `INSERT INTO terminal_known_hosts (host_port, key_type, fingerprint, public_key, first_seen, last_seen)
+	          VALUES (?, ?, ?, ?, ?, ?)
+	          ON CONFLICT(host_port) DO UPDATE SET
+	            key_type = excluded.key_type,
+	            fingerprint = excluded.fingerprint,
+	            public_key = excluded.public_key,
+	            last_seen = excluded.last_seen`
+	_, err := s.db.ExecContext(ctx, query,
+		kh.HostPort, kh.KeyType, kh.Fingerprint, kh.PublicKey, kh.FirstSeen, kh.LastSeen,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert known host: %w", err)
+	}
+	return nil
+}
+
+// DeleteKnownHost menghapus host key SSH tersimpan agar dapat dipercaya ulang (mis. setelah rebuild VPS)
+func (s *Store) DeleteKnownHost(ctx context.Context, hostPort string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM terminal_known_hosts WHERE host_port = ?`, hostPort)
+	if err != nil {
+		return fmt.Errorf("delete known host: %w", err)
+	}
+	return nil
+}
+
+// ListKnownHosts mengembalikan seluruh host key SSH yang tersimpan di database
+func (s *Store) ListKnownHosts(ctx context.Context) ([]TerminalKnownHost, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT host_port, key_type, fingerprint, public_key, first_seen, last_seen FROM terminal_known_hosts ORDER BY last_seen DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list known hosts: %w", err)
+	}
+	defer rows.Close()
+
+	var list []TerminalKnownHost
+	for rows.Next() {
+		var kh TerminalKnownHost
+		if err := rows.Scan(&kh.HostPort, &kh.KeyType, &kh.Fingerprint, &kh.PublicKey, &kh.FirstSeen, &kh.LastSeen); err != nil {
+			return nil, err
+		}
+		list = append(list, kh)
+	}
+	return list, nil
+}

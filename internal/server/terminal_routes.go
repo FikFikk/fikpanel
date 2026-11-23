@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -16,7 +17,7 @@ import (
 	"time"
 
 	"fikpanel/internal/store"
-	"golang.org/x/crypto/ssh"
+	"fikpanel/internal/terminal"
 )
 
 const (
@@ -36,6 +37,7 @@ type TerminalCompleteRequest struct {
 	Command  string `json:"command"`
 	Cwd      string `json:"cwd,omitempty"`
 	ServerID int64  `json:"server_id,omitempty"`
+	InitOnly bool   `json:"init_only,omitempty"` // Hanya inisialisasi cwd & metadata sesi tanpa memindai isi direktori
 }
 
 // TerminalCompletionItem merepresentasikan satu kandidat file/folder hasil Tab completion
@@ -55,18 +57,62 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+// resolveLocalDefaultCwd menentukan direktori awal sesi lokal (prioritas $HOME layaknya login SSH)
+func resolveLocalDefaultCwd() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return home
+	}
+	if u, err := user.Current(); err == nil && strings.TrimSpace(u.HomeDir) != "" {
+		return u.HomeDir
+	}
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat("/root"); err == nil && info.IsDir() {
+			return "/root"
+		}
+	}
+	if wd, err := os.Getwd(); err == nil && strings.TrimSpace(wd) != "" {
+		return wd
+	}
+	return "/"
+}
+
+// formatPromptCwd meringkas path direktori kerja terhadap $HOME menjadi notasi '~' seperti prompt SSH
+func formatPromptCwd(absPath, homeDir string) string {
+	p := strings.TrimSpace(absPath)
+	if p == "" || p == "~" {
+		return "~"
+	}
+	h := strings.TrimSpace(homeDir)
+	if h == "" {
+		return p
+	}
+	cleanP := strings.TrimRight(p, "/\\")
+	cleanH := strings.TrimRight(h, "/\\")
+	if cleanH == "" {
+		return p
+	}
+	if cleanP == cleanH {
+		return "~"
+	}
+	if strings.HasPrefix(p, cleanH+"/") {
+		return "~" + p[len(cleanH):]
+	}
+	if strings.HasPrefix(p, cleanH+"\\") {
+		return "~" + strings.ReplaceAll(p[len(cleanH):], "\\", "/")
+	}
+	return p
+}
+
 // buildStatefulBashCommand membungkus perintah agar berpindah ke cwd terlebih dahulu dan mencetak pwd akhir
 func buildStatefulBashCommand(cwd, cmdClean string) string {
 	var sb strings.Builder
 	trimmedCwd := strings.TrimSpace(cwd)
-	if trimmedCwd != "" && trimmedCwd != "~" {
-		if strings.HasPrefix(trimmedCwd, "~/") {
-			sb.WriteString("cd ~ && cd " + shellSingleQuote(trimmedCwd[2:]) + " 2>/dev/null\n")
-		} else {
-			sb.WriteString("cd " + shellSingleQuote(trimmedCwd) + " 2>/dev/null\n")
-		}
-	} else if trimmedCwd == "~" {
+	if trimmedCwd == "" || trimmedCwd == "~" {
 		sb.WriteString("cd ~ 2>/dev/null\n")
+	} else if strings.HasPrefix(trimmedCwd, "~/") {
+		sb.WriteString("cd ~ && cd " + shellSingleQuote(trimmedCwd[2:]) + " 2>/dev/null\n")
+	} else {
+		sb.WriteString("cd " + shellSingleQuote(trimmedCwd) + " 2>/dev/null\n")
 	}
 
 	// Tangani otomatis php artisan make:filament-user atau pembuatan User via tinker agar tidak gagal NonInteractive & langsung diberi role super_admin
@@ -125,7 +171,7 @@ fi
 `)
 	}
 
-	sb.WriteString("printf \"\\n" + pwdSentinelStart + "%s" + pwdSentinelEnd + "\\n\" \"$(pwd)\"\nexit $__FIK_EC\n")
+	sb.WriteString("printf \"\\n" + pwdSentinelStart + "%s\\t%s" + pwdSentinelEnd + "\\n\" \"$(pwd)\" \"$HOME\"\nexit $__FIK_EC\n")
 	return sb.String()
 }
 
@@ -144,7 +190,15 @@ func extractAndStripPwdSentinel(rawStdout, fallbackCwd string) (string, string) 
 
 	extracted := strings.TrimSpace(rawStdout[startIdx+len(pwdSentinelStart) : endIdx])
 	if extracted != "" {
-		resolvedCwd = extracted
+		parts := strings.SplitN(extracted, "\t", 2)
+		pwdVal := strings.TrimSpace(parts[0])
+		homeVal := ""
+		if len(parts) == 2 {
+			homeVal = strings.TrimSpace(parts[1])
+		}
+		if pwdVal != "" {
+			resolvedCwd = formatPromptCwd(pwdVal, homeVal)
+		}
 	}
 
 	// Bersihkan baris sentinel beserta newline pembuka/penutupnya
@@ -172,46 +226,16 @@ type ServerTestRequest struct {
 	Passphrase string `json:"passphrase,omitempty"`
 }
 
-// dialSSH membuka koneksi SSH terenkripsi ke host remote
-func dialSSH(host string, port int, username, authType, password, privateKey, passphrase string, timeout time.Duration) (*ssh.Client, error) {
-	if port <= 0 {
-		port = 22
+// getDecryptedTerminalServer mengambil data server SSH dan mendekripsi kredensialnya untuk dipakai koneksi
+func (s *Server) getDecryptedTerminalServer(ctx context.Context, id int64) (*store.TerminalServer, error) {
+	srv, err := s.store.GetTerminalServer(ctx, id)
+	if err != nil || srv == nil {
+		return nil, err
 	}
-	if username == "" {
-		username = "root"
+	if err := s.termSecrets.DecryptServerCredentials(ctx, srv); err != nil {
+		return nil, err
 	}
-
-	var authMethods []ssh.AuthMethod
-	if authType == "key" {
-		var signer ssh.Signer
-		var err error
-		keyBytes := []byte(strings.TrimSpace(privateKey))
-		if strings.TrimSpace(passphrase) != "" {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
-		} else {
-			signer, err = ssh.ParsePrivateKey(keyBytes)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("kunci privat SSH tidak valid: %w", err)
-		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
-	} else {
-		authMethods = append(authMethods, ssh.Password(password))
-	}
-
-	config := &ssh.ClientConfig{
-		User:            username,
-		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         timeout,
-	}
-
-	addr := fmt.Sprintf("%s:%d", host, port)
-	client, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		return nil, fmt.Errorf("koneksi SSH ke %s gagal: %w", addr, err)
-	}
-	return client, nil
+	return srv, nil
 }
 
 // handleTerminalExec mengeksekusi perintah di server lokal atau server SSH remote
@@ -228,30 +252,41 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Eksekusi Remote melalui SSH jika ServerID diberikan
+	// 1. Eksekusi Remote melalui SSH Pool + TOFU jika ServerID diberikan
 	if req.ServerID > 0 {
-		srv, err := s.store.GetTerminalServer(r.Context(), req.ServerID)
+		srv, err := s.getDecryptedTerminalServer(r.Context(), req.ServerID)
 		if err != nil || srv == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server remote tidak ditemukan"})
 			return
 		}
 
-		client, err := dialSSH(srv.Host, srv.Port, srv.Username, srv.AuthType, srv.Password, srv.PrivateKey, srv.Passphrase, 15*time.Second)
+		client, fp, err := s.sshPool.Acquire(terminal.SSHConfig{
+			ServerID:   srv.ID,
+			Host:       srv.Host,
+			Port:       srv.Port,
+			Username:   srv.Username,
+			AuthType:   srv.AuthType,
+			Password:   srv.Password,
+			PrivateKey: srv.PrivateKey,
+			Passphrase: srv.Passphrase,
+		}, 15*time.Second)
 		if err != nil {
+			_, isMismatch := terminal.IsHostKeyMismatch(err)
 			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"ok":          false,
-				"command":     cmdClean,
-				"output":      fmt.Sprintf("Gagal terhubung ke remote server [%s:%d]: %v", srv.Host, srv.Port, err),
-				"server_id":   srv.ID,
-				"server_name": srv.Name,
-				"cwd":         req.Cwd,
+				"ok":                false,
+				"command":           cmdClean,
+				"output":            fmt.Sprintf("Gagal terhubung ke remote server [%s:%d]: %v", srv.Host, srv.Port, err),
+				"server_id":         srv.ID,
+				"server_name":       srv.Name,
+				"cwd":               req.Cwd,
+				"host_key_mismatch": isMismatch,
 			})
 			return
 		}
-		defer client.Close()
 
 		session, err := client.NewSession()
 		if err != nil {
+			s.sshPool.InvalidateServer(srv.ID)
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"ok":          false,
 				"command":     cmdClean,
@@ -295,6 +330,7 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 			"server_name": srv.Name,
 			"prompt_user": srv.Username,
 			"prompt_host": srv.Host,
+			"fingerprint": fp,
 		})
 		return
 	}
@@ -303,22 +339,30 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 
+	localHome := resolveLocalDefaultCwd()
 	baseCwd := strings.TrimSpace(req.Cwd)
 	if baseCwd == "" {
-		if wd, wdErr := os.Getwd(); wdErr == nil {
-			baseCwd = wd
-		}
+		baseCwd = "~"
 	}
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
+		execDir := baseCwd
+		if execDir == "~" {
+			execDir = localHome
+		} else if strings.HasPrefix(execDir, "~/") {
+			execDir = filepath.Join(localHome, execDir[2:])
+		}
 		cmd = exec.CommandContext(ctx, "cmd", "/c", cmdClean)
-		if baseCwd != "" && baseCwd != "~" {
-			cmd.Dir = baseCwd
+		if execDir != "" {
+			cmd.Dir = execDir
 		}
 	} else {
 		wrappedLocalCmd := buildStatefulBashCommand(baseCwd, cmdClean)
 		cmd = exec.CommandContext(ctx, "bash", "-c", wrappedLocalCmd)
+		if os.Getenv("HOME") == "" && localHome != "" {
+			cmd.Env = append(os.Environ(), "HOME="+localHome)
+		}
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -327,6 +371,7 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 
 	err := cmd.Run()
 	output, resolvedCwd := extractAndStripPwdSentinel(stdout.String(), baseCwd)
+	resolvedCwd = formatPromptCwd(resolvedCwd, localHome)
 	if stderr.Len() > 0 {
 		if len(output) > 0 {
 			output += "\n"
@@ -451,14 +496,23 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 	resolvedCwd := strings.TrimSpace(req.Cwd)
 
 	if req.ServerID > 0 {
-		// Auto-complete pada server SSH remote
-		srv, err := s.store.GetTerminalServer(r.Context(), req.ServerID)
+		// Auto-complete pada server SSH remote melalui SSHPool (instan tanpa dial ulang)
+		srv, err := s.getDecryptedTerminalServer(r.Context(), req.ServerID)
 		if err != nil || srv == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server remote tidak ditemukan"})
 			return
 		}
 
-		client, err := dialSSH(srv.Host, srv.Port, srv.Username, srv.AuthType, srv.Password, srv.PrivateKey, srv.Passphrase, 6*time.Second)
+		client, _, err := s.sshPool.Acquire(terminal.SSHConfig{
+			ServerID:   srv.ID,
+			Host:       srv.Host,
+			Port:       srv.Port,
+			Username:   srv.Username,
+			AuthType:   srv.AuthType,
+			Password:   srv.Password,
+			PrivateKey: srv.PrivateKey,
+			Passphrase: srv.Passphrase,
+		}, 6*time.Second)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"ok":                false,
@@ -468,10 +522,10 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 			})
 			return
 		}
-		defer client.Close()
 
 		session, err := client.NewSession()
 		if err != nil {
+			s.sshPool.InvalidateServer(srv.ID)
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"ok":                false,
 				"matches":           []TerminalCompletionItem{},
@@ -483,29 +537,37 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 		defer session.Close()
 
 		var script strings.Builder
-		if resolvedCwd != "" && resolvedCwd != "~" {
-			if strings.HasPrefix(resolvedCwd, "~/") {
-				script.WriteString("cd ~ && cd " + shellSingleQuote(resolvedCwd[2:]) + " 2>/dev/null\n")
-			} else {
-				script.WriteString("cd " + shellSingleQuote(resolvedCwd) + " 2>/dev/null\n")
-			}
+		if resolvedCwd == "" || resolvedCwd == "~" {
+			script.WriteString("cd ~ 2>/dev/null\n")
+		} else if strings.HasPrefix(resolvedCwd, "~/") {
+			script.WriteString("cd ~ && cd " + shellSingleQuote(resolvedCwd[2:]) + " 2>/dev/null\n")
+		} else {
+			script.WriteString("cd " + shellSingleQuote(resolvedCwd) + " 2>/dev/null\n")
 		}
-		script.WriteString("pwd\n")
-		if rawDirPrefix != "" {
-			if rawDirPrefix == "~/" {
-				script.WriteString("cd ~ 2>/dev/null || exit 0\n")
-			} else if strings.HasPrefix(rawDirPrefix, "~/") {
-				script.WriteString("cd ~ && cd " + shellSingleQuote(rawDirPrefix[2:]) + " 2>/dev/null || exit 0\n")
-			} else {
-				script.WriteString("cd " + shellSingleQuote(rawDirPrefix) + " 2>/dev/null || exit 0\n")
+		script.WriteString("printf '%s\\t%s\\n' \"$(pwd)\" \"$HOME\"\n")
+		if !req.InitOnly {
+			if rawDirPrefix != "" {
+				if rawDirPrefix == "~/" {
+					script.WriteString("cd ~ 2>/dev/null || exit 0\n")
+				} else if strings.HasPrefix(rawDirPrefix, "~/") {
+					script.WriteString("cd ~ && cd " + shellSingleQuote(rawDirPrefix[2:]) + " 2>/dev/null || exit 0\n")
+				} else {
+					script.WriteString("cd " + shellSingleQuote(rawDirPrefix) + " 2>/dev/null || exit 0\n")
+				}
 			}
+			script.WriteString("find -L . -maxdepth 1 -mindepth 1 -printf '%f\\t%y\\t%M\\t%s\\t%Tb %Td %TH:%TM\\n' 2>/dev/null\n")
 		}
-		script.WriteString("find -L . -maxdepth 1 -mindepth 1 -printf '%f\\t%y\\t%M\\t%s\\t%Tb %Td %TH:%TM\\n' 2>/dev/null\n")
 
 		out, _ := session.Output("bash -c " + shellSingleQuote(script.String()))
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(lines) > 0 && strings.HasPrefix(lines[0], "/") {
-			resolvedCwd = strings.TrimSpace(lines[0])
+			headerParts := strings.SplitN(lines[0], "\t", 2)
+			remotePwd := strings.TrimSpace(headerParts[0])
+			remoteHome := ""
+			if len(headerParts) == 2 {
+				remoteHome = strings.TrimSpace(headerParts[1])
+			}
+			resolvedCwd = formatPromptCwd(remotePwd, remoteHome)
 			lines = lines[1:]
 		}
 		for _, line := range lines {
@@ -527,58 +589,58 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 			})
 		}
 	} else {
-		// Auto-complete pada server lokal
-		homeDir, _ := os.UserHomeDir()
-		if resolvedCwd == "" {
-			if wd, err := os.Getwd(); err == nil {
-				resolvedCwd = wd
-			}
-		} else if resolvedCwd == "~" {
+		// Auto-complete pada server lokal (default ke $HOME seperti sesi SSH)
+		homeDir := resolveLocalDefaultCwd()
+		if resolvedCwd == "" || resolvedCwd == "~" {
 			resolvedCwd = homeDir
 		} else if strings.HasPrefix(resolvedCwd, "~/") {
 			resolvedCwd = filepath.Join(homeDir, resolvedCwd[2:])
 		}
 
-		searchDir := resolvedCwd
-		if rawDirPrefix != "" {
-			if rawDirPrefix == "~/" {
-				searchDir = homeDir
-			} else if strings.HasPrefix(rawDirPrefix, "~/") {
-				searchDir = filepath.Join(homeDir, rawDirPrefix[2:])
-			} else if strings.HasPrefix(rawDirPrefix, "/") || filepath.IsAbs(rawDirPrefix) {
-				searchDir = filepath.Clean(rawDirPrefix)
-			} else {
-				searchDir = filepath.Join(resolvedCwd, rawDirPrefix)
+		if !req.InitOnly {
+			searchDir := resolvedCwd
+			if rawDirPrefix != "" {
+				if rawDirPrefix == "~/" {
+					searchDir = homeDir
+				} else if strings.HasPrefix(rawDirPrefix, "~/") {
+					searchDir = filepath.Join(homeDir, rawDirPrefix[2:])
+				} else if strings.HasPrefix(rawDirPrefix, "/") || filepath.IsAbs(rawDirPrefix) {
+					searchDir = filepath.Clean(rawDirPrefix)
+				} else {
+					searchDir = filepath.Join(resolvedCwd, rawDirPrefix)
+				}
+			}
+
+			entries, err := os.ReadDir(searchDir)
+			if err == nil {
+				for _, entry := range entries {
+					name := entry.Name()
+					info, infoErr := os.Stat(filepath.Join(searchDir, name))
+					if infoErr != nil {
+						info, infoErr = entry.Info()
+					}
+					isDir := entry.IsDir()
+					var mode os.FileMode = 0644
+					var size int64
+					modTime := time.Now().Format("Jan 02 15:04")
+					if infoErr == nil && info != nil {
+						isDir = info.IsDir()
+						mode = info.Mode()
+						size = info.Size()
+						modTime = info.ModTime().Format("Jan 02 15:04")
+					}
+					rawList = append(rawList, rawCandidate{
+						name:    name,
+						isDir:   isDir,
+						mode:    formatLsMode(mode, isDir),
+						size:    size,
+						modTime: modTime,
+					})
+				}
 			}
 		}
 
-		entries, err := os.ReadDir(searchDir)
-		if err == nil {
-			for _, entry := range entries {
-				name := entry.Name()
-				info, infoErr := os.Stat(filepath.Join(searchDir, name))
-				if infoErr != nil {
-					info, infoErr = entry.Info()
-				}
-				isDir := entry.IsDir()
-				var mode os.FileMode = 0644
-				var size int64
-				modTime := time.Now().Format("Jan 02 15:04")
-				if infoErr == nil && info != nil {
-					isDir = info.IsDir()
-					mode = info.Mode()
-					size = info.Size()
-					modTime = info.ModTime().Format("Jan 02 15:04")
-				}
-				rawList = append(rawList, rawCandidate{
-					name:    name,
-					isDir:   isDir,
-					mode:    formatLsMode(mode, isDir),
-					size:    size,
-					modTime: modTime,
-				})
-			}
-		}
+		resolvedCwd = formatPromptCwd(resolvedCwd, homeDir)
 	}
 
 	// Filter kandidat berdasarkan prefix & dirsOnly
@@ -652,6 +714,7 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":                true,
 		"cwd":               resolvedCwd,
+		"panel_version":     s.Version(),
 		"prefix":            filePrefix,
 		"common_prefix":     commonPrefix,
 		"completed_command": completedCommand,
@@ -660,7 +723,7 @@ func (s *Server) handleTerminalComplete(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleListTerminalServers mengembalikan seluruh server SSH remote yang terdaftar
+// handleListTerminalServers mengembalikan seluruh server SSH remote yang terdaftar beserta status host key TOFU
 func (s *Server) handleListTerminalServers(w http.ResponseWriter, r *http.Request) {
 	servers, err := s.store.ListTerminalServers(r.Context())
 	if err != nil {
@@ -668,42 +731,55 @@ func (s *Server) handleListTerminalServers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	knownHosts, _ := s.store.ListKnownHosts(r.Context())
+	fpByHostPort := make(map[string]string, len(knownHosts))
+	for _, kh := range knownHosts {
+		fpByHostPort[kh.HostPort] = kh.Fingerprint
+	}
+
 	// Mask kredensial sensitif untuk respons API
 	type SanitizedServer struct {
-		ID          int64  `json:"id"`
-		Name        string `json:"name"`
-		Host        string `json:"host"`
-		Port        int    `json:"port"`
-		Username    string `json:"username"`
-		AuthType    string `json:"auth_type"`
-		HasPassword bool   `json:"has_password"`
-		HasKey      bool   `json:"has_key"`
-		Remarks     string `json:"remarks"`
-		CreatedAt   int64  `json:"created_at"`
-		UpdatedAt   int64  `json:"updated_at"`
+		ID                 int64  `json:"id"`
+		Name               string `json:"name"`
+		Host               string `json:"host"`
+		Port               int    `json:"port"`
+		Username           string `json:"username"`
+		AuthType           string `json:"auth_type"`
+		HasPassword        bool   `json:"has_password"`
+		HasKey             bool   `json:"has_key"`
+		HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"`
+		Remarks            string `json:"remarks"`
+		CreatedAt          int64  `json:"created_at"`
+		UpdatedAt          int64  `json:"updated_at"`
 	}
 
 	sanitized := make([]SanitizedServer, 0, len(servers))
 	for _, srv := range servers {
+		port := srv.Port
+		if port <= 0 {
+			port = 22
+		}
+		hp := fmt.Sprintf("%s:%d", strings.TrimSpace(srv.Host), port)
 		sanitized = append(sanitized, SanitizedServer{
-			ID:          srv.ID,
-			Name:        srv.Name,
-			Host:        srv.Host,
-			Port:        srv.Port,
-			Username:    srv.Username,
-			AuthType:    srv.AuthType,
-			HasPassword: srv.Password != "",
-			HasKey:      srv.PrivateKey != "",
-			Remarks:     srv.Remarks,
-			CreatedAt:   srv.CreatedAt,
-			UpdatedAt:   srv.UpdatedAt,
+			ID:                 srv.ID,
+			Name:               srv.Name,
+			Host:               srv.Host,
+			Port:               srv.Port,
+			Username:           srv.Username,
+			AuthType:           srv.AuthType,
+			HasPassword:        srv.Password != "",
+			HasKey:             srv.PrivateKey != "",
+			HostKeyFingerprint: fpByHostPort[hp],
+			Remarks:            srv.Remarks,
+			CreatedAt:          srv.CreatedAt,
+			UpdatedAt:          srv.UpdatedAt,
 		})
 	}
 
 	writeJSON(w, http.StatusOK, sanitized)
 }
 
-// handleCreateTerminalServer menambahkan konfigurasi server remote baru
+// handleCreateTerminalServer menambahkan konfigurasi server remote baru dengan enkripsi kredensial AES-256-GCM
 func (s *Server) handleCreateTerminalServer(w http.ResponseWriter, r *http.Request) {
 	var srv store.TerminalServer
 	if err := json.NewDecoder(r.Body).Decode(&srv); err != nil {
@@ -729,6 +805,12 @@ func (s *Server) handleCreateTerminalServer(w http.ResponseWriter, r *http.Reque
 		srv.Name = srv.Host
 	}
 
+	// Enkripsi password, private key, dan passphrase sebelum ditulis ke SQLite
+	if err := s.termSecrets.EncryptServerCredentials(r.Context(), &srv); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal mengenkripsi kredensial server"})
+		return
+	}
+
 	id, err := s.store.CreateTerminalServer(r.Context(), &srv)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -741,7 +823,7 @@ func (s *Server) handleCreateTerminalServer(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleUpdateTerminalServer memperbarui konfigurasi server remote
+// handleUpdateTerminalServer memperbarui konfigurasi server remote dan menginvalidasi koneksi pool lama
 func (s *Server) handleUpdateTerminalServer(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -779,7 +861,7 @@ func (s *Server) handleUpdateTerminalServer(w http.ResponseWriter, r *http.Reque
 	if req.AuthType == "" {
 		req.AuthType = existing.AuthType
 	}
-	// Jika password atau kunci kosong pada payload update, pertahankan nilai sebelumnya
+	// Jika password atau kunci kosong pada payload update, pertahankan nilai terenkripsi sebelumnya
 	if req.Password == "" && req.AuthType == existing.AuthType {
 		req.Password = existing.Password
 	}
@@ -788,10 +870,16 @@ func (s *Server) handleUpdateTerminalServer(w http.ResponseWriter, r *http.Reque
 		req.Passphrase = existing.Passphrase
 	}
 
+	if err := s.termSecrets.EncryptServerCredentials(r.Context(), &req); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal mengenkripsi kredensial server"})
+		return
+	}
+
 	if err := s.store.UpdateTerminalServer(r.Context(), &req); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	s.sshPool.InvalidateServer(id)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok": true,
@@ -799,7 +887,7 @@ func (s *Server) handleUpdateTerminalServer(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleDeleteTerminalServer menghapus konfigurasi server remote
+// handleDeleteTerminalServer menghapus konfigurasi server remote beserta koneksi pool aktifnya
 func (s *Server) handleDeleteTerminalServer(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -808,6 +896,7 @@ func (s *Server) handleDeleteTerminalServer(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	s.sshPool.InvalidateServer(id)
 	if err := s.store.DeleteTerminalServer(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -819,7 +908,7 @@ func (s *Server) handleDeleteTerminalServer(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// handleTestTerminalServer menguji konektivitas SSH secara langsung dan mengukur latensi
+// handleTestTerminalServer menguji konektivitas SSH secara langsung, memverifikasi TOFU host key, dan mengukur latensi
 func (s *Server) handleTestTerminalServer(w http.ResponseWriter, r *http.Request) {
 	var req ServerTestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -835,9 +924,9 @@ func (s *Server) handleTestTerminalServer(w http.ResponseWriter, r *http.Request
 	privateKey := req.PrivateKey
 	passphrase := req.Passphrase
 
-	// Jika ServerID diberikan, muat data dari database
+	// Jika ServerID diberikan, muat dan dekripsi data dari database
 	if req.ServerID > 0 {
-		srv, err := s.store.GetTerminalServer(r.Context(), req.ServerID)
+		srv, err := s.getDecryptedTerminalServer(r.Context(), req.ServerID)
 		if err != nil || srv == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "server tidak ditemukan"})
 			return
@@ -866,14 +955,25 @@ func (s *Server) handleTestTerminalServer(w http.ResponseWriter, r *http.Request
 	}
 
 	start := time.Now()
-	client, err := dialSSH(host, port, username, authType, password, privateKey, passphrase, 6*time.Second)
+	client, fp, err := s.sshPool.DialFresh(terminal.SSHConfig{
+		ServerID:   req.ServerID,
+		Host:       host,
+		Port:       port,
+		Username:   username,
+		AuthType:   authType,
+		Password:   password,
+		PrivateKey: privateKey,
+		Passphrase: passphrase,
+	}, 6*time.Second)
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
+		_, isMismatch := terminal.IsHostKeyMismatch(err)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"ok":         false,
-			"latency_ms": latency,
-			"error":      fmt.Sprintf("Gagal terhubung: %v", err),
+			"ok":                false,
+			"latency_ms":        latency,
+			"host_key_mismatch": isMismatch,
+			"error":             fmt.Sprintf("Gagal terhubung: %v", err),
 		})
 		return
 	}
@@ -894,10 +994,11 @@ func (s *Server) handleTestTerminalServer(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":         true,
-		"latency_ms": latency,
-		"banner":     banner,
-		"message":    fmt.Sprintf("Koneksi berhasil (%d ms)", latency),
+		"ok":          true,
+		"latency_ms":  latency,
+		"banner":      banner,
+		"fingerprint": fp,
+		"message":     fmt.Sprintf("Koneksi berhasil (%d ms)", latency),
 	})
 }
 

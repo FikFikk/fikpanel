@@ -2,16 +2,19 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/services"
 	"fikpanel/internal/store"
+	"fikpanel/internal/terminal"
 )
 
 func TestTerminalRoutes(t *testing.T) {
@@ -75,6 +78,40 @@ func TestTerminalRoutes(t *testing.T) {
 	if wExec.Code != http.StatusOK {
 		t.Fatalf("Eksekusi perintah terminal gagal: status code %d, body %s", wExec.Code, wExec.Body.String())
 	}
+	var execResp map[string]interface{}
+	if err := json.Unmarshal(wExec.Body.Bytes(), &execResp); err != nil {
+		t.Fatalf("Gagal unmarshal respons exec terminal: %v", err)
+	}
+	if execResp["cwd"] != "~" {
+		t.Errorf("CWD awal sesi lokal harus '~', got %v", execResp["cwd"])
+	}
+
+	// 1b. Uji init_only pada endpoint complete agar mengembalikan cwd '~' dan versi panel
+	initBody, _ := json.Marshal(map[string]interface{}{
+		"command":   "",
+		"cwd":       "~",
+		"init_only": true,
+	})
+	reqInit := httptest.NewRequest("POST", "/api/terminal/complete", bytes.NewReader(initBody))
+	reqInit.Header.Set("Content-Type", "application/json")
+	reqInit.Header.Set("X-Panel-Request", "1")
+	reqInit.AddCookie(sessionCookie)
+	wInit := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wInit, reqInit)
+
+	if wInit.Code != http.StatusOK {
+		t.Fatalf("Inisialisasi sesi terminal gagal: status code %d, body %s", wInit.Code, wInit.Body.String())
+	}
+	var initResp map[string]interface{}
+	if err := json.Unmarshal(wInit.Body.Bytes(), &initResp); err != nil {
+		t.Fatalf("Gagal unmarshal respons init terminal: %v", err)
+	}
+	if initResp["cwd"] != "~" {
+		t.Errorf("CWD hasil inisialisasi sesi harus '~', got %v", initResp["cwd"])
+	}
+	if initResp["panel_version"] == "" || initResp["panel_version"] == nil {
+		t.Errorf("panel_version harus terisi pada respons init terminal")
+	}
 
 	// 2. Uji tambah server remote
 	srvBody, _ := json.Marshal(map[string]interface{}{
@@ -95,6 +132,45 @@ func TestTerminalRoutes(t *testing.T) {
 
 	if wSrv.Code != http.StatusCreated {
 		t.Fatalf("Tambah server terminal gagal: status code %d, body %s", wSrv.Code, wSrv.Body.String())
+	}
+
+	// 2b. Verifikasi password tersimpan terenkripsi AES-256-GCM di SQLite (tidak plaintext)
+	rawServers, err := s.ListTerminalServers(context.Background())
+	if err != nil || len(rawServers) != 1 {
+		t.Fatalf("Gagal membaca server mentah dari database: %v", err)
+	}
+	if !terminal.IsEncrypted(rawServers[0].Password) || rawServers[0].Password == "ssh-pass-123" {
+		t.Errorf("Password server di SQLite wajib terenkripsi enc:v1:, got %q", rawServers[0].Password)
+	}
+
+	// 2c. Uji streaming SSE endpoint (/api/terminal/exec/stream)
+	streamBody, _ := json.Marshal(map[string]interface{}{
+		"command": "echo sse_stream_ok",
+		"cwd":     "~",
+	})
+	reqStream := httptest.NewRequest("POST", "/api/terminal/exec/stream", bytes.NewReader(streamBody))
+	reqStream.Header.Set("Content-Type", "application/json")
+	reqStream.Header.Set("X-Panel-Request", "1")
+	reqStream.AddCookie(sessionCookie)
+	wStream := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wStream, reqStream)
+
+	if wStream.Code != http.StatusOK {
+		t.Fatalf("Stream eksekusi terminal gagal: status code %d, body %s", wStream.Code, wStream.Body.String())
+	}
+	ssePayload := wStream.Body.String()
+	if !strings.Contains(ssePayload, "sse_stream_ok") || !strings.Contains(ssePayload, "event: done") {
+		t.Errorf("Payload SSE tidak mengandung output dan event done: %s", ssePayload)
+	}
+
+	// 2d. Uji reset host key TOFU endpoint
+	reqResetHK := httptest.NewRequest("DELETE", "/api/terminal/servers/1/host-key", nil)
+	reqResetHK.Header.Set("X-Panel-Request", "1")
+	reqResetHK.AddCookie(sessionCookie)
+	wResetHK := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wResetHK, reqResetHK)
+	if wResetHK.Code != http.StatusOK {
+		t.Fatalf("Reset host key SSH gagal: status code %d, body %s", wResetHK.Code, wResetHK.Body.String())
 	}
 
 	// 3. Uji list server remote (pastikan password tidak bocor dalam list)
@@ -148,5 +224,38 @@ func TestTerminalRoutes(t *testing.T) {
 
 	if wAddCmd.Code != http.StatusCreated {
 		t.Fatalf("Tambah perintah terminal gagal: status code %d", wAddCmd.Code)
+	}
+}
+
+func TestTerminalPromptCwdFormatting(t *testing.T) {
+	// Pastikan path di dalam $HOME diringkas menjadi '~' layaknya prompt SSH Linux/AWS
+	cases := []struct {
+		absPath string
+		homeDir string
+		want    string
+	}{
+		{"/root", "/root", "~"},
+		{"/root/projects", "/root", "~/projects"},
+		{"/root-backup", "/root", "/root-backup"},
+		{"/var/www/html", "/root", "/var/www/html"},
+		{"/home/ubuntu", "/home/ubuntu", "~"},
+		{"/home/ubuntu/app", "/home/ubuntu", "~/app"},
+		{"", "/root", "~"},
+		{"/var/lib/fikpanel", "/", "/var/lib/fikpanel"},
+	}
+
+	for _, tc := range cases {
+		if got := formatPromptCwd(tc.absPath, tc.homeDir); got != tc.want {
+			t.Errorf("formatPromptCwd(%q, %q) = %q, want %q", tc.absPath, tc.homeDir, got, tc.want)
+		}
+	}
+
+	raw := "hello world\n" + pwdSentinelStart + "/root/app\t/root" + pwdSentinelEnd + "\n"
+	clean, cwd := extractAndStripPwdSentinel(raw, "~")
+	if clean != "hello world" {
+		t.Errorf("Output bersih tidak sesuai: got %q, want %q", clean, "hello world")
+	}
+	if cwd != "~/app" {
+		t.Errorf("CWD hasil ekstraksi sentinel tidak sesuai: got %q, want %q", cwd, "~/app")
 	}
 }

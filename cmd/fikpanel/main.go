@@ -27,7 +27,7 @@ import (
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.3.19"
+	version = "0.4.1"
 )
 
 func main() {

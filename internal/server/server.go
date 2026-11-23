@@ -31,33 +31,36 @@ import (
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 	"fikpanel/internal/system"
+	"fikpanel/internal/terminal"
 	"fikpanel/internal/waf"
 	"fikpanel/web"
 )
 
 // Server mengelola siklus hidup HTTP router dan middleware unprivileged
 type Server struct {
-	mux      *http.ServeMux
-	server   *http.Server
-	store    *store.Store
-	metrics  *metrics.Hub
-	services *services.Manager
-	nginx    *nginx.Manager
-	sites    *sites.Manager
-	ai       *ai.Client
-	tasks    *database.TaskManager
-	cronMgr  *cron.Manager
-	firewall *security.Manager
-	pm2      *node.Manager
-	phpMgr   *php.Manager
-	systemMgr *system.Manager
-	appStore *appstore.Manager
+	mux              *http.ServeMux
+	server           *http.Server
+	store            *store.Store
+	metrics          *metrics.Hub
+	services         *services.Manager
+	nginx            *nginx.Manager
+	sites            *sites.Manager
+	ai               *ai.Client
+	tasks            *database.TaskManager
+	cronMgr          *cron.Manager
+	firewall         *security.Manager
+	pm2              *node.Manager
+	phpMgr           *php.Manager
+	systemMgr        *system.Manager
+	appStore         *appstore.Manager
 	discoveryScanner *discovery.Scanner
 	k8sClient        *k8s.Client
 	waf              *waf.Manager
 	cloudflare       *cloudflare.Client
-	limiter  *RateLimiter
-	version  string
+	termSecrets      *terminal.SecretBox
+	sshPool          *terminal.SSHPool
+	limiter          *RateLimiter
+	version          string
 
 	// devMode mengaktifkan proxy Vite HMR & aset dari disk lokal (hanya untuk pengembangan).
 	devMode bool
@@ -118,7 +121,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.3.19"
+		return "0.4.1"
 	}
 	return s.version
 }
@@ -128,26 +131,31 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	mux := http.NewServeMux()
 
 	srv := &Server{
-		mux:      mux,
-		store:    s,
-		metrics:  m,
-		services: svc,
-		nginx:    nginx.NewManager(nginx.DefaultPaths(), s, s),
-		tasks:    database.NewTaskManager(s),
-		cronMgr:  cron.NewManager(s),
-		firewall: security.NewManager(),
-		pm2:      node.NewManager(),
-		phpMgr:   php.NewManager(),
-		systemMgr: system.NewManager(),
-		appStore:  appstore.NewManager(),
+		mux:              mux,
+		store:            s,
+		metrics:          m,
+		services:         svc,
+		nginx:            nginx.NewManager(nginx.DefaultPaths(), s, s),
+		tasks:            database.NewTaskManager(s),
+		cronMgr:          cron.NewManager(s),
+		firewall:         security.NewManager(),
+		pm2:              node.NewManager(),
+		phpMgr:           php.NewManager(),
+		systemMgr:        system.NewManager(),
+		appStore:         appstore.NewManager(),
 		discoveryScanner: discovery.NewScanner(),
 		k8sClient:        k8s.NewClient(),
 		waf:              waf.NewManager(s),
 		cloudflare:       cloudflare.NewClient(s),
-		limiter:  NewRateLimiter(),
+		termSecrets:      terminal.NewSecretBox(s),
+		sshPool:          terminal.NewSSHPool(s, 5*time.Minute),
+		limiter:          NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
 	srv.cronMgr.Start(srv.bgCtx)
+	srv.sshPool.StartJanitor(srv.bgCtx)
+	// Migrasikan kredensial SSH plaintext lawas ke AES-256-GCM secara transparan di awal
+	_ = srv.termSecrets.MigratePlaintextServers(srv.bgCtx)
 	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
 	srv.ai = ai.NewClient(s, m, srv.nginx)
 
@@ -240,13 +248,16 @@ func (s *Server) registerRoutes() {
 	// Audit Log Keamanan
 	s.mux.Handle("GET /api/audit", s.AuthMiddleware(http.HandlerFunc(s.handleListAudit)))
 
-	// Terminal Web Aman & Remote SSH Manager
+	// Terminal Web Aman (PTY WebSocket, SSE Streaming, Auto-complete) & Remote SSH Manager
+	s.mux.Handle("GET /api/terminal/ws", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalWS)))
 	s.mux.Handle("POST /api/terminal/exec", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExec)))
+	s.mux.Handle("POST /api/terminal/exec/stream", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalExecStream)))
 	s.mux.Handle("POST /api/terminal/complete", s.AuthMiddleware(http.HandlerFunc(s.handleTerminalComplete)))
 	s.mux.Handle("GET /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleListTerminalServers)))
 	s.mux.Handle("POST /api/terminal/servers", s.AuthMiddleware(http.HandlerFunc(s.handleCreateTerminalServer)))
 	s.mux.Handle("PUT /api/terminal/servers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateTerminalServer)))
 	s.mux.Handle("DELETE /api/terminal/servers/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteTerminalServer)))
+	s.mux.Handle("DELETE /api/terminal/servers/{id}/host-key", s.AuthMiddleware(http.HandlerFunc(s.handleResetTerminalHostKey)))
 	s.mux.Handle("POST /api/terminal/servers/test", s.AuthMiddleware(http.HandlerFunc(s.handleTestTerminalServer)))
 	s.mux.Handle("GET /api/terminal/commands", s.AuthMiddleware(http.HandlerFunc(s.handleListTerminalCommands)))
 	s.mux.Handle("POST /api/terminal/commands", s.AuthMiddleware(http.HandlerFunc(s.handleCreateTerminalCommand)))
@@ -472,7 +483,6 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/system/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetTask)))
 	s.mux.Handle("GET /api/system/tasks/{id}/stream", s.AuthMiddleware(http.HandlerFunc(s.handleStreamTask)))
 
-
 	// Nginx Manager (layanan, config, versi, beban, optimasi, log error)
 	nginxRoutes := map[string]http.HandlerFunc{
 		"GET /api/software/nginx/status":           s.handleNginxStatus,
@@ -564,9 +574,9 @@ func (s *Server) registerRoutes() {
 			}
 		}
 
-		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
+		// Terapkan Content Security Policy ketat pada mode produksi/statis (izinkan ws/wss same-origin untuk PTY terminal)
 		setCSP := func() {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' ws: wss: https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 			if !strings.HasPrefix(r.URL.Path, "/assets/") {
 				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 				w.Header().Set("Pragma", "no-cache")

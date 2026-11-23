@@ -371,17 +371,17 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 
 ---
 
-### 1.5 Terminal Web & AI Copilot
+### 1.5 Terminal Web Interaktif (WebSocket PTY)
 
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `GET /api/terminal/ws` |
-| Auth Required | Yes (Cookie `panel_session`) |
-| Headers | `Upgrade: websocket` |
-| Query Params | Tidak ada |
-| Request Body | Stream byte I/O PTY dan pesan JSON resize `{ "cols": 80, "rows": 24 }` |
-| Response | HTTP 101 Switching Protocols |
-| Notes | Membutuhkan sudo mode aktif jika membuka shell root. Maksimal 3 sesi simultan per user. Idle timeout 15 menit. |
+| Auth Required | Yes (Cookie `panel_session`) + Validasi Same-Origin `Origin == Host` |
+| Headers | `Upgrade: websocket`, `Connection: Upgrade` |
+| Query Params | `server_id` (int64, opsional, `0` = node lokal, `>0` = remote SSH), `cols` (int, default `120`), `rows` (int, default `32`) |
+| Request Body | Frame biner raw PTY I/O (ketikan, paste, `Ctrl+C` `\x03`) dan frame teks JSON kontrol `{"type": "resize", "cols": 120, "rows": 32}` / `{"type": "input", "data": "..."}` / `{"type": "ping"}` |
+| Response | HTTP 101 Switching Protocols; frame biner output PTY + frame JSON kontrol `meta`, `exit`, `error` (`host_key_mismatch`) |
+| Notes | Membuka Linux PTY asli (`creack/pty`, langsung di `$HOME` / `~`) atau remote SSH PTY melalui `SSHPool` dengan verifikasi host key TOFU. Keepalive ping setiap 25 detik dan pembersihan process group otomatis saat koneksi terputus. |
 
 ### 1.7 AI Copilot & Manajemen Provider LLM
 
@@ -2156,9 +2156,19 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `command` (string, wajib), `server_id` (int64, opsional: 0/kosong = server lokal) |
-| Response | HTTP 200 `{"ok": true, "command": "uptime", "output": "...", "server_id": 0, "server_name": "Local server", "prompt_user": "root", "prompt_host": "fikpanel"}` |
-| Notes | Menjalankan perintah pada server lokal (`bash -c` / `cmd /c`) atau pada server SSH remote jika `server_id > 0`. Timeout 15 detik, pembatasan buffer 64KB, mendukung prompt username/host dinamis. |
+| Request Body | `command` (string, wajib), `cwd` (string, opsional, default `~`), `server_id` (int64, opsional: `0`/kosong = server lokal) |
+| Response | HTTP 200 `{"ok": true, "command": "uptime", "output": "...", "cwd": "~", "server_id": 0, "server_name": "Local server", "prompt_user": "root", "prompt_host": "fikpanel"}` |
+| Notes | Menjalankan perintah pada server lokal (default `$HOME` / `~`, timeout 10 menit) atau pada server SSH remote melalui `SSHPool` + verifikasi TOFU. Path di dalam `$HOME` otomatis diringkas ke notasi `~`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/terminal/exec/stream` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `Accept: text/event-stream`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `command` (string, wajib), `cwd` (string, opsional, default `~`), `server_id` (int64, opsional) |
+| Response | HTTP 200 SSE stream: `event: chunk` (`{"stream": "stdout"|"stderr", "text": "..."}`), `event: done` (`{"ok", "exit_code", "cwd", "duration_ms", "prompt_user", "prompt_host", "aborted"}`), `event: error` |
+| Notes | Mengalirkan output perintah secara real-time hingga 512KB tanpa terkena WriteTimeout HTTP. Memutus koneksi (AbortSignal / `Ctrl+C`) langsung menghentikan process group lokal atau mengirim `SIGINT` ke sesi remote SSH. |
 
 | Field | Detail |
 |---|---|
@@ -2167,8 +2177,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `[{"id": 1, "name": "AWS Node", "host": "10.0.0.1", "port": 22, "username": "ubuntu", "auth_type": "password", "has_password": true, "has_key": false, "remarks": "Production"}]` |
-| Notes | Mengambil daftar seluruh remote server yang tersimpan; kredensial sensitif disensor (`has_password`, `has_key`). |
+| Response | HTTP 200 `[{"id": 1, "name": "AWS Node", "host": "10.0.0.1", "port": 22, "username": "ubuntu", "auth_type": "password", "has_password": true, "has_key": false, "host_key_fingerprint": "SHA256:...", "remarks": "Production"}]` |
+| Notes | Mengambil daftar seluruh remote server beserta status sidik jari host key TOFU; kredensial sensitif disensor (`has_password`, `has_key`). |
 
 | Field | Detail |
 |---|---|
@@ -2178,7 +2188,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `name` (string), `host` (string, wajib), `port` (int), `username` (string), `auth_type` (`password`\|`key`), `password` (string), `private_key` (string), `passphrase` (string), `remarks` (string) |
 | Response | HTTP 201 `{"ok": true, "id": 1}` |
-| Notes | Menyimpan konfigurasi remote server baru ke dalam database SQLite. |
+| Notes | Menyimpan konfigurasi remote server baru ke SQLite dengan enkripsi kredensial at-rest **AES-256-GCM** (`enc:v1:`). |
 
 | Field | Detail |
 |---|---|
@@ -2188,7 +2198,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `name`, `host`, `port`, `username`, `auth_type`, `password`, `private_key`, `passphrase`, `remarks` |
 | Response | HTTP 200 `{"ok": true, "id": 1}` |
-| Notes | Memperbarui konfigurasi remote server. Jika password/key kosong pada request update, sistem mempertahankan kredensial yang tersimpan sebelumnya. |
+| Notes | Memperbarui konfigurasi remote server (tetap terenkripsi AES-256-GCM) dan menginvalidasi koneksi lama di `SSHPool`. Jika password/key kosong, kredensial tersimpan sebelumnya dipertahankan. |
 
 | Field | Detail |
 |---|---|
@@ -2198,7 +2208,17 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"ok": true, "id": 1}` |
-| Notes | Menghapus konfigurasi server remote dari database panel. |
+| Notes | Menutup koneksi aktif di `SSHPool` dan menghapus konfigurasi server remote dari database panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/terminal/servers/{id}/host-key` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "host_port": "10.0.0.1:22", "message": "..."}` |
+| Notes | Menghapus sidik jari host key TOFU dari tabel `terminal_known_hosts` dan menginvalidasi pool SSH agar server dapat diverifikasi ulang setelah rebuild VPS. |
 
 | Field | Detail |
 |---|---|
@@ -2207,8 +2227,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | `server_id` (opsional jika menguji server tersimpan) ATAU `host`, `port`, `username`, `auth_type`, `password`, `private_key`, `passphrase` |
-| Response | HTTP 200 `{"ok": true, "latency_ms": 32, "banner": "Linux 6.8.0-45-generic", "message": "Koneksi berhasil (32 ms)"}` |
-| Notes | Menguji konektivitas SSH live dengan timeout 6 detik, mengukur latensi roundtrip (ms), dan mengambil banner sistem remote. |
+| Response | HTTP 200 `{"ok": true, "latency_ms": 32, "banner": "Linux 6.8.0-45-generic", "fingerprint": "SHA256:...", "message": "Koneksi berhasil (32 ms)"}` |
+| Notes | Menguji konektivitas SSH live dengan timeout 6 detik dan validasi host key TOFU; mengembalikan `host_key_mismatch: true` apabila kunci server berubah. |
 
 | Field | Detail |
 |---|---|
@@ -2696,9 +2716,9 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `command` (string, baris perintah yang sedang diketik), `cwd` (string, opsional, direktori kerja tab saat ini), `server_id` (int64, opsional, `0` untuk node lokal atau ID server SSH remote) |
-| Response | HTTP 200 `{"ok": true, "cwd": "/opt/fikpanel", "prefix": "da", "common_prefix": "data", "completed_command": "cd data/", "dirs_only": true, "matches": [{"name": "data", "display": "data/", "replacement": "cd data/", "is_dir": true, "mode": "drwxr-xr-x", "size": 4096, "mod_time": "Oct 28 05:02", "detail": "drwxr-xr-x  2 root root     4096 Oct 28 05:02 data/"}]}` |
-| Notes | Menangani auto-complete `Tab` 1x (ekspansi otomatis kandidat tunggal atau Longest Common Prefix) dan `Tab 2x` (daftar format `ls -la`). Bila perintah awal adalah `cd`, `pushd`, atau `rmdir`, hasil otomatis difilter hanya untuk direktori (`dirs_only=true`). |
+| Request Body | `command` (string, baris perintah yang sedang diketik), `cwd` (string, opsional, default `~`), `server_id` (int64, opsional, `0` untuk node lokal atau ID server SSH remote), `init_only` (bool, opsional, hanya mengambil `cwd` & `panel_version` tanpa scan file) |
+| Response | HTTP 200 `{"ok": true, "cwd": "~", "panel_version": "0.4.1", "prefix": "da", "common_prefix": "data", "completed_command": "cd data/", "dirs_only": true, "matches": [...]}` |
+| Notes | Menangani inisialisasi sesi ringan (`init_only=true`) serta auto-complete `Tab` 1x (LCP) dan `Tab 2x` (`ls -la`) menggunakan `SSHPool` untuk remote node. Default direktori kerja selalu `$HOME` (`~`). |
 
 ---
 

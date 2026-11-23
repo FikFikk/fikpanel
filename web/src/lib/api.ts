@@ -168,3 +168,100 @@ export async function apiFetchText(endpoint: string, options: ApiOptions = {}): 
 
   return res.text();
 }
+
+export interface SSEStreamHandlers {
+  onEvent: (eventName: string, data: any) => void;
+}
+
+/** Mengalirkan respons Server-Sent Events (SSE) dari endpoint POST dengan proteksi CSRF dan pembatalan AbortSignal. */
+export async function apiStreamSSE(
+  endpoint: string,
+  body: unknown,
+  handlers: SSEStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!endpoint.startsWith('/')) {
+    throw new ApiError('Endpoint API harus berupa path relatif', 0);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        'X-Panel-Request': '1',
+      },
+      body: JSON.stringify(body),
+      signal,
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw err;
+    throw new ApiError('Tidak dapat terhubung ke server panel', 0);
+  }
+
+  if (!res.ok) {
+    let errMsg = `Permintaan stream gagal (HTTP ${res.status})`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === 'string') errMsg = data.error;
+    } catch {
+      // Abaikan bila respons error bukan JSON
+    }
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: errMsg }));
+    }
+    throw new ApiError(errMsg, res.status);
+  }
+
+  if (!res.body) {
+    throw new ApiError('Stream respons tidak tersedia pada browser ini', 0);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sepIdx = buffer.indexOf('\n\n');
+      while (sepIdx !== -1) {
+        const block = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+        dispatchSSEBlock(block, handlers);
+        sepIdx = buffer.indexOf('\n\n');
+      }
+    }
+    if (buffer.trim()) {
+      dispatchSSEBlock(buffer, handlers);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function dispatchSSEBlock(block: string, handlers: SSEStreamHandlers) {
+  let eventName = 'message';
+  const dataLines: string[] = [];
+  for (const rawLine of block.split(/\r?\n/)) {
+    if (rawLine.startsWith('event:')) {
+      eventName = rawLine.slice(6).trim();
+    } else if (rawLine.startsWith('data:')) {
+      dataLines.push(rawLine.slice(5).trimStart());
+    }
+  }
+  if (dataLines.length === 0) return;
+  const rawData = dataLines.join('\n');
+  try {
+    handlers.onEvent(eventName, JSON.parse(rawData));
+  } catch {
+    handlers.onEvent(eventName, { text: rawData });
+  }
+}

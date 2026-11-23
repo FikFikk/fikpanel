@@ -1297,6 +1297,7 @@ export interface TerminalServer {
   auth_type: 'password' | 'key';
   has_password?: boolean;
   has_key?: boolean;
+  host_key_fingerprint?: string;
   password?: string;
   private_key?: string;
   passphrase?: string;
@@ -1330,8 +1331,13 @@ export interface TerminalHistoryItem {
   time: string;
   ok?: boolean;
   cwd?: string;
+  exitCode?: number;
+  durationMs?: number;
+  streaming?: boolean;
   isCompletionList?: boolean;
 }
+
+export type TerminalMode = 'pty' | 'console';
 
 export interface TerminalTab {
   id: string;
@@ -1340,9 +1346,13 @@ export interface TerminalTab {
   host: string;
   username: string;
   cwd?: string;
+  mode: TerminalMode;
   connected: boolean;
+  ptyStatus?: 'connecting' | 'connected' | 'disconnected' | 'error';
+  fingerprint?: string;
   history: TerminalHistoryItem[];
   commandInput: string;
+  draftInput?: string;
   historyIndex: number;
   executing: boolean;
 }
