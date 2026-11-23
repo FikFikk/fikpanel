@@ -53,6 +53,7 @@
   let checking = $state(true);
   let authenticated = $state(false);
   let currentUser = $state('');
+  let passkeysAvailable = $state(false);
 
   // State navigasi & command palette
   let currentRoute = $state(routeFromHash(window.location.hash));
@@ -79,8 +80,22 @@
   });
 
   function onHashChange() {
-    currentRoute = routeFromHash(window.location.hash);
-    menuOpen = false;
+    const nextRoute = routeFromHash(window.location.hash);
+    if (nextRoute === currentRoute) {
+      menuOpen = false;
+      return;
+    }
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const startVT = (document as Document & { startViewTransition?: (cb: () => void) => void }).startViewTransition;
+    if (typeof startVT === 'function' && !reducedMotion) {
+      startVT.call(document, () => {
+        currentRoute = nextRoute;
+        menuOpen = false;
+      });
+    } else {
+      currentRoute = nextRoute;
+      menuOpen = false;
+    }
   }
 
   // Aliran metrik realtime (Server-Sent Events); browser menyambung ulang otomatis bila putus
@@ -200,9 +215,10 @@
 
   onMount(() => {
     // Sinkronkan preferensi tampilan, branding, dan bahasa dari server sebelum/sesudah login
-    apiFetch<Partial<PanelAppearance> & { language?: Locale }>('/api/settings/public')
+    apiFetch<Partial<PanelAppearance> & { language?: Locale; passkeys_available?: boolean }>('/api/settings/public')
       .then((pub) => {
         if (!pub) return;
+        passkeysAvailable = Boolean(pub.passkeys_available);
         applyAppearance({
           theme_mode: pub.theme_mode,
           accent_preset: pub.accent_preset,
@@ -248,7 +264,7 @@
     <span class="sr-only">Memeriksa sesi…</span>
   </div>
 {:else if !authenticated}
-  <Login onSuccess={(u) => { enterPanel(u); notify(`Selamat datang, ${u}`, 'success'); }} />
+  <Login {passkeysAvailable} onSuccess={(u) => { enterPanel(u); notify(`Selamat datang, ${u}`, 'success'); }} />
 {:else}
   <a href="#main-content" class="skip-link">Lewati ke konten</a>
   <div class="app-shell">
@@ -302,8 +318,12 @@
     <CommandPalette
       open={paletteOpen}
       current={currentRoute}
+      {services}
       onClose={() => (paletteOpen = false)}
       onSelect={() => (menuOpen = false)}
+      onSvcAction={handleSvcAction}
+      onRefresh={loadInitialData}
+      onLogout={handleLogout}
     />
   </div>
 {/if}

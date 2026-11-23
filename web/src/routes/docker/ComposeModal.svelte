@@ -2,6 +2,7 @@
   // Subkomponen modal editor stack Docker Compose
   import '../../styles/pages/docker/compose-modal.css';
   import Modal from '../../lib/components/ui/Modal.svelte';
+  import CodeMirrorEditor from '../../lib/components/ui/CodeMirrorEditor.svelte';
 
   interface ComposeForm {
     name: string;
@@ -50,14 +51,14 @@
     </div>
 
     <div class="field">
-      <label class="field__label" for="compose-yaml">Konfigurasi docker-compose.yml *</label>
-      <textarea
-        id="compose-yaml"
-        class="input font-mono text-xs"
-        rows="12"
+      <span class="field__label">Konfigurasi docker-compose.yml *</span>
+      <CodeMirrorEditor
         bind:value={composeForm.yaml}
-        required
-      ></textarea>
+        lang="yaml"
+        minHeight="280px"
+        maxHeight="52vh"
+        onSave={onSubmitComposeUp}
+      />
     </div>
   </form>
 

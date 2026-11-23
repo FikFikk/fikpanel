@@ -18,6 +18,12 @@
   import { dateLocale, i18nState, setLocale, t, type Locale } from '../lib/stores/i18n.svelte';
   import type { AuditLog, OverviewData, SystemWebhook } from '../lib/types';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import {
+    getWebAuthnEnvironment,
+    registerPasskeyFlow,
+    suggestPasskeyDeviceName,
+    type PasskeyItem,
+  } from '../lib/utils/webauthn';
   import '../styles/pages/settings.css';
 
   interface Props {
@@ -127,6 +133,13 @@
   let activeSessions = $state<ActiveSession[]>([]);
   let loadingSessions = $state(false);
   let auditLogs = $state<AuditLog[]>([]);
+
+  // State Passkeys / WebAuthn
+  const webauthnEnv = getWebAuthnEnvironment();
+  let passkeys = $state<PasskeyItem[]>([]);
+  let showPasskeyModal = $state(false);
+  let passkeyNameInput = $state('');
+  let passkeyBusy = $state(false);
 
   // Indikator kekuatan kata sandi live
   let passwordStrength = $derived.by(() => {
@@ -273,16 +286,18 @@
   async function loadSecurityData() {
     loadingSessions = true;
     try {
-      const [twofa, sess, aud, usr] = await Promise.all([
+      const [twofa, sess, aud, usr, pks] = await Promise.all([
         apiFetch<{ enabled: boolean; recovery_remaining: number }>('/api/auth/2fa/status'),
         apiFetch<{ sessions: ActiveSession[] }>('/api/auth/sessions'),
         apiFetch<{ logs: AuditLog[] }>('/api/audit'),
         apiFetch<{ current_user: string; current_id: number; users: PanelUserItem[] }>('/api/auth/users'),
+        apiFetch<{ passkeys: PasskeyItem[] }>('/api/auth/passkeys'),
       ]);
       totpEnabled = Boolean(twofa?.enabled);
       totpRecoveryRemaining = twofa?.recovery_remaining || 0;
       activeSessions = sess?.sessions || [];
       auditLogs = (aud?.logs || []).slice(0, 20);
+      passkeys = pks?.passkeys || [];
       if (usr) {
         panelUsers = usr.users || [];
         currentUserId = usr.current_id || 0;
@@ -565,6 +580,46 @@
       await loadSecurityData();
     } catch (err: any) {
       onNotify(err?.message || 'Gagal mengeluarkan sesi lain', 'error');
+    }
+  }
+
+  // ── Aksi Tab B (Passkeys / WebAuthn) ──
+  function openPasskeyRegisterModal() {
+    passkeyNameInput = suggestPasskeyDeviceName();
+    showPasskeyModal = true;
+  }
+
+  async function handleRegisterPasskey(e: Event) {
+    e.preventDefault();
+    if (passkeyBusy) return;
+    passkeyBusy = true;
+    try {
+      const res = await registerPasskeyFlow(passkeyNameInput);
+      showPasskeyModal = false;
+      passkeyNameInput = '';
+      onNotify(res.message || 'Passkey berhasil didaftarkan', 'success');
+      await loadSecurityData();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal mendaftarkan Passkey', 'error');
+    } finally {
+      passkeyBusy = false;
+    }
+  }
+
+  async function handleDeletePasskey(pk: PasskeyItem) {
+    const ok = await confirmDialog({
+      title: 'Hapus Perangkat Passkey?',
+      message: `Perangkat "${pk.name}" tidak lagi bisa digunakan untuk login tanpa kata sandi.`,
+      confirmText: t('common.delete'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const res = await apiFetch<{ message: string }>(`/api/auth/passkeys/${pk.id}`, { method: 'DELETE' });
+      onNotify(res.message || 'Passkey dihapus', 'success');
+      await loadSecurityData();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal menghapus Passkey', 'error');
     }
   }
 
@@ -1374,6 +1429,72 @@
           </div>
         </div>
 
+        <!-- Kartu Passkeys / Login Tanpa Kata Sandi (WebAuthn FIDO2) -->
+        <div class="card">
+          <div class="card__head">
+            <h3 class="card__title">
+              <i class="ri-fingerprint-line" aria-hidden="true"></i> {t('settings.security.passkey_title')}
+            </h3>
+            <button
+              type="button"
+              class="btn btn--primary btn--sm"
+              onclick={openPasskeyRegisterModal}
+              disabled={!webauthnEnv.validOrigin || passkeyBusy}
+            >
+              {t('settings.security.passkey_add_btn')}
+            </button>
+          </div>
+          <div class="card__body stack">
+            <p class="panel-desc">{t('settings.security.passkey_desc')}</p>
+
+            {#if webauthnEnv.reason === 'raw_ip'}
+              <div class="alert alert--warning">
+                <i class="ri-error-warning-line" aria-hidden="true"></i>
+                <span>{t('settings.security.passkey_raw_ip_warn')}</span>
+              </div>
+            {:else if webauthnEnv.reason === 'insecure'}
+              <div class="alert alert--warning">
+                <i class="ri-lock-unlock-line" aria-hidden="true"></i>
+                <span>{t('settings.security.passkey_insecure_warn')}</span>
+              </div>
+            {/if}
+
+            <div class="item-stack">
+              {#if passkeys.length === 0}
+                <div class="text-subtle">{t('settings.security.passkey_empty')}</div>
+              {:else}
+                {#each passkeys as pk (pk.id)}
+                  <div class="list-row-item">
+                    <div class="list-row-item__main">
+                      <div class="list-row-item__title">
+                        <i class="ri-key-2-line" aria-hidden="true"></i>
+                        <strong>{pk.name}</strong>
+                        {#if pk.transports}
+                          {#each pk.transports.split(',').filter(Boolean) as tr}
+                            <span class="badge badge--info">{tr}</span>
+                          {/each}
+                        {/if}
+                      </div>
+                      <div class="list-row-item__sub">
+                        {formatUnix(pk.created_at)} &middot; {t('settings.security.passkey_last_used')} {pk.last_used_at ? formatUnix(pk.last_used_at) : t('settings.security.passkey_never_used')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn--danger btn--icon btn--sm"
+                      onclick={() => handleDeletePasskey(pk)}
+                      aria-label={`${t('common.delete')} ${pk.name}`}
+                      title={`${t('common.delete')} ${pk.name}`}
+                    >
+                      <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        </div>
+
         <!-- Daftar Sesi Perangkat Aktif -->
         <div class="card">
           <div class="card__head">
@@ -1636,7 +1757,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.4.3'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.5.0'}</span>
                 </div>
               </div>
             </div>
@@ -2052,6 +2173,47 @@
           {t('settings.security.totp_disable_btn')}
         {:else}
           {t('settings.security.totp_regen_btn')}
+        {/if}
+      </button>
+    {/snippet}
+  </Modal>
+
+  <!-- Modal Pendaftaran Passkey / WebAuthn Baru -->
+  <Modal
+    open={showPasskeyModal}
+    size="sm"
+    title={t('settings.security.passkey_modal_title')}
+    onclose={() => { if (!passkeyBusy) showPasskeyModal = false; }}
+  >
+    <form id="passkey-register-form" class="modal-form-stack" onsubmit={handleRegisterPasskey}>
+      <div class="alert alert--info">
+        <i class="ri-fingerprint-line" aria-hidden="true"></i>
+        <span>{t('settings.security.passkey_modal_desc')}</span>
+      </div>
+      <div class="field">
+        <label for="passkey-name-in" class="field__label">{t('settings.security.passkey_name_label')}</label>
+        <input
+          id="passkey-name-in"
+          type="text"
+          class="input"
+          maxlength="60"
+          bind:value={passkeyNameInput}
+          placeholder={t('settings.security.passkey_name_placeholder')}
+          data-autofocus
+          required
+        />
+      </div>
+    </form>
+
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (showPasskeyModal = false)} disabled={passkeyBusy}>
+        {t('common.cancel')}
+      </button>
+      <button type="submit" form="passkey-register-form" class="btn btn--primary" disabled={passkeyBusy || !passkeyNameInput.trim()}>
+        {#if passkeyBusy}
+          <span class="spinner spinner--sm"></span> {t('common.loading')}
+        {:else}
+          <i class="ri-fingerprint-line" aria-hidden="true"></i> {t('settings.security.passkey_register_btn')}
         {/if}
       </button>
     {/snippet}

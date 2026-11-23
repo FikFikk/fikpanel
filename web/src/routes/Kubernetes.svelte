@@ -12,6 +12,7 @@
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import CodeMirrorEditor from '../lib/components/ui/CodeMirrorEditor.svelte';
   import '../styles/pages/kubernetes.css';
 
   // State utama cluster
@@ -642,12 +643,14 @@ spec:
         </p>
 
         <div>
-          <textarea
-            class="input input--mono"
+          <CodeMirrorEditor
             bind:value={yamlContent}
-            rows="18"
+            lang="yaml"
+            minHeight="340px"
+            maxHeight="58vh"
             placeholder="Ketik atau tempel konfigurasi YAML di sini..."
-          ></textarea>
+            onSave={applyManifest}
+          />
         </div>
 
         <div class="manifest-actions">

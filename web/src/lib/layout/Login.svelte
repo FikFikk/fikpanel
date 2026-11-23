@@ -2,12 +2,14 @@
   import { apiFetch } from '../api';
   import { appearanceState } from '../stores/theme.svelte';
   import { i18nState, setLocale, t } from '../stores/i18n.svelte';
+  import { getWebAuthnEnvironment, loginWithPasskeyFlow } from '../utils/webauthn';
 
   interface Props {
+    passkeysAvailable?: boolean;
     onSuccess: (username: string) => void;
   }
 
-  let { onSuccess }: Props = $props();
+  let { passkeysAvailable = false, onSuccess }: Props = $props();
 
   let username = $state('root');
   let password = $state('');
@@ -17,6 +19,10 @@
   let capsLock = $state(false);
   let error = $state('');
   let submitting = $state(false);
+  let passkeyBusy = $state(false);
+
+  const webauthnEnv = getWebAuthnEnvironment();
+  let canUsePasskey = $derived(passkeysAvailable && webauthnEnv.supported && webauthnEnv.validOrigin);
 
   // Hint akun default hanya tampil saat pengembangan, tidak pernah di build produksi
   const isDev = import.meta.env.DEV;
@@ -69,6 +75,25 @@
 
   function onKey(e: KeyboardEvent) {
     capsLock = e.getModifierState?.('CapsLock') ?? false;
+  }
+
+  async function submitPasskey() {
+    if (passkeyBusy || submitting) return;
+    error = '';
+    passkeyBusy = true;
+    try {
+      const res = await loginWithPasskeyFlow();
+      if (res.ok && res.user) {
+        password = '';
+        totpCode = '';
+        requireTotp = false;
+        onSuccess(res.user.username);
+      }
+    } catch (err) {
+      error = (err as Error).message || 'Verifikasi Passkey gagal';
+    } finally {
+      passkeyBusy = false;
+    }
   }
 </script>
 
@@ -185,9 +210,28 @@
           {/if}
         </div>
 
-        <button type="submit" class="btn btn--primary btn--lg btn--block" disabled={submitting || !username.trim()} id="login-submit">
+        <button type="submit" class="btn btn--primary btn--lg btn--block" disabled={submitting || passkeyBusy || !username.trim()} id="login-submit">
           {#if submitting}<span class="spinner" aria-hidden="true"></span> {t('login.verifying')}{:else}{t('login.submit')}{/if}
         </button>
+
+        {#if canUsePasskey}
+          <div class="login__divider" aria-hidden="true">
+            <span>{t('login.or')}</span>
+          </div>
+          <button
+            type="button"
+            class="btn btn--secondary btn--lg btn--block"
+            onclick={submitPasskey}
+            disabled={passkeyBusy || submitting}
+          >
+            {#if passkeyBusy}
+              <span class="spinner" aria-hidden="true"></span> {t('login.verifying')}
+            {:else}
+              <i class="ri-fingerprint-line" aria-hidden="true"></i> {t('login.passkey_btn')}
+            {/if}
+          </button>
+          <p class="login__hint">{t('login.passkey_hint')}</p>
+        {/if}
 
         {#if isDev}
           <p class="login__hint">{t('login.dev_hint')}</p>

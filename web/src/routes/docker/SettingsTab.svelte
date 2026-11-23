@@ -2,6 +2,7 @@
   // Subkomponen tab Settings beserta modal konfigurasi daemon pada halaman Docker Management Suite
   import '../../styles/pages/docker/settings.css';
   import Modal from '../../lib/components/ui/Modal.svelte';
+  import CodeMirrorEditor from '../../lib/components/ui/CodeMirrorEditor.svelte';
   import type {
     DockerStatus,
     DockerSystemInfo,
@@ -395,11 +396,13 @@
     size="lg"
     onclose={() => (showConfigModal = false)}
   >
-    <textarea
-      class="json-editor-textarea font-mono text-xs"
-      rows="16"
+    <CodeMirrorEditor
       bind:value={rawJsonConfig}
-    ></textarea>
+      lang="json"
+      minHeight="340px"
+      maxHeight="58vh"
+      onSave={onSaveRawJsonConfig}
+    />
 
     {#snippet footer()}
       <button class="btn btn--secondary" onclick={() => (showConfigModal = false)}>

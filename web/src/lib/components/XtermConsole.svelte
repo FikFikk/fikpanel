@@ -4,6 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { SearchAddon } from '@xterm/addon-search';
   import { WebLinksAddon } from '@xterm/addon-web-links';
+  import { WebglAddon } from '@xterm/addon-webgl';
   import { copyText, openExternal, readToken } from '../utils/browser';
   import { toast } from '../stores/toast.svelte';
 
@@ -43,6 +44,7 @@
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
   let searchAddon: SearchAddon | null = null;
+  let webglAddon: WebglAddon | null = null;
   let ws: WebSocket | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let themeObserver: MutationObserver | null = null;
@@ -235,6 +237,24 @@
     instance.loadAddon(linksInstance);
     instance.open(hostEl);
 
+    // Aktifkan akselerasi GPU WebGL untuk rendering 60 FPS; fallback otomatis ke renderer DOM bila tidak didukung
+    try {
+      const gl = new WebglAddon();
+      gl.onContextLoss(() => {
+        try {
+          gl.dispose();
+        } catch {
+          // Abaikan error saat melepas konteks WebGL yang hilang
+        }
+        webglAddon = null;
+      });
+      instance.loadAddon(gl);
+      webglAddon = gl;
+    } catch {
+      // Browser/GPU tidak mendukung WebGL2 — tetap memakai renderer bawaan xterm.js
+      webglAddon = null;
+    }
+
     term = instance;
     fitAddon = fitInstance;
     searchAddon = searchInstance;
@@ -336,6 +356,12 @@
         }
         ws = null;
       }
+      try {
+        webglAddon?.dispose();
+      } catch {
+        // Abaikan error pelepasan addon WebGL saat unmount
+      }
+      webglAddon = null;
       instance.dispose();
       term = null;
       fitAddon = null;

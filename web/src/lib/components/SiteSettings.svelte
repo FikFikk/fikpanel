@@ -4,6 +4,7 @@
   import { copyText as copyToClipboard } from '../utils/browser';
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
+  import CodeMirrorEditor from './ui/CodeMirrorEditor.svelte';
   import type { DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
   import '../../styles/pages/components/site-settings.css';
 
@@ -977,7 +978,13 @@
           </div>
           <button class="btn btn-secondary btn-xs btn-mini" onclick={() => copyText(rewriteContent, 'Aturan Rewrite')}><i class="ri-file-copy-line"></i> Salin</button>
         </div>
-        <textarea class="code-editor" rows="10" spellcheck="false" bind:value={rewriteContent}></textarea>
+        <CodeMirrorEditor
+          bind:value={rewriteContent}
+          lang="nginx"
+          minHeight="220px"
+          maxHeight="42vh"
+          onSave={saveRewrite}
+        />
         <p class="hint-text">• Pilih template routing yang sesuai dengan proyek Anda atau tulis direktif lokasi Nginx kustom. Sintaks diuji otomatis saat disimpan.</p>
         <div class="ss-actions">
           <button class="btn btn-primary" onclick={saveRewrite} disabled={rewriteSaving}>
@@ -1070,7 +1077,13 @@
             <button class="btn btn-secondary btn-xs btn-mini" onclick={() => copyText(vhost, 'Vhost Nginx')} disabled={!vhost}><i class="ri-file-copy-line"></i> Salin</button>
           </div>
         </div>
-        <textarea class="code-editor" rows="14" spellcheck="false" bind:value={vhost}></textarea>
+        <CodeMirrorEditor
+          bind:value={vhost}
+          lang="nginx"
+          minHeight="320px"
+          maxHeight="52vh"
+          onSave={saveRawVhost}
+        />
         <div class="ss-actions">
           <button class="btn btn-primary" onclick={saveRawVhost} disabled={vhostSaving || vhostLoading}>
             {#if vhostSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-check-line"></i>{/if} Simpan & Terapkan Vhost

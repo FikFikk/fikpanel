@@ -1357,4 +1357,43 @@ export interface TerminalTab {
   executing: boolean;
 }
 
+// ── Uptime & SSL Monitor ──────────────────────────────────────────────────
+export interface UptimeCheck {
+  id: number;
+  monitor_id: number;
+  status: 'up' | 'down' | string;
+  status_code: number;
+  latency_ms: number;
+  ssl_days: number;
+  error_msg?: string;
+  checked_at: number;
+}
+
+export interface UptimeMonitor {
+  id: number;
+  name: string;
+  target: string;
+  monitor_type: 'http' | 'tcp';
+  interval_sec: number;
+  timeout_sec: number;
+  expected_status: number;
+  keyword: string;
+  notify_webhook: boolean;
+  public_visible: boolean;
+  enabled: boolean;
+  last_status: 'up' | 'down' | 'pending' | string;
+  last_code: number;
+  last_latency_ms: number;
+  last_error: string;
+  ssl_days_remaining: number;
+  ssl_issuer: string;
+  last_checked_at: number;
+  last_notified_at: number;
+  created_at: number;
+  uptime_24h_pct: number;
+  avg_latency_ms: number;
+  recent_checks: UptimeCheck[];
+}
+
+
 

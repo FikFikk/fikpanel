@@ -3,6 +3,8 @@
    * Subkomponen Editor Berkas Teks Modern (FikPanel Code Studio) untuk Halaman Files.
    */
   import type { FileItem } from '../../lib/types';
+  import CodeMirrorEditor from '../../lib/components/ui/CodeMirrorEditor.svelte';
+  import { promptDialog } from '../../lib/stores/confirm.svelte';
   import '../../styles/pages/files/code-editor.css';
 
   interface Props {
@@ -68,6 +70,26 @@
     onKeydown,
     onUpdateCursor
   }: Props = $props();
+
+  let cmRef = $state<ReturnType<typeof CodeMirrorEditor> | undefined>(undefined);
+  let liveCursor = $state<{ line: number; col: number }>({ line: 1, col: 1 });
+
+  async function handleCmJumpLine() {
+    const targetStr = await promptDialog({
+      title: 'Lompat ke Baris',
+      label: `Nomor baris (1 - ${editorLineCount}):`,
+      value: String(liveCursor.line),
+      inputType: 'number',
+      min: 1,
+      max: editorLineCount,
+      confirmText: 'Lompat',
+    });
+    if (!targetStr) return;
+    const n = parseInt(targetStr, 10);
+    if (!isNaN(n) && n >= 1) {
+      cmRef?.gotoLine(n);
+    }
+  }
 </script>
 
 <div
@@ -78,7 +100,7 @@
     if (e.target === e.currentTarget) onClose();
   }}
   onkeydown={(e) => {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape' && !(e.target as HTMLElement)?.closest?.('.cm-search')) onClose();
   }}
   tabindex="-1"
 >
@@ -153,8 +175,8 @@
         </button>
 
         <button
-          class="studio-btn {editorShowSearch ? 'active' : ''}"
-          onclick={() => (editorShowSearch = !editorShowSearch)}
+          class="studio-btn"
+          onclick={() => cmRef?.openSearch()}
           title="Cari & Ganti Teks (Ctrl+F)"
         >
           <i class="ri-search-line"></i>
@@ -163,7 +185,7 @@
 
         <button
           class="studio-btn"
-          onclick={onJumpLine}
+          onclick={handleCmJumpLine}
           title="Lompat ke Baris (Ctrl+G)"
         >
           <i class="ri-arrow-right-up-line"></i>
@@ -280,36 +302,18 @@
       </div>
     {/if}
 
-    <!-- Workspace: Gutter Nomor Baris + Textarea Editor -->
+    <!-- Workspace CodeMirror 6 (Syntax Highlighting, Folding, Search & Replace, Multi-Cursor) -->
     <div class="studio-body">
-      <div class="studio-gutter mono" bind:this={editorGutterEl}>
-        {#each editorLines as lineNum}
-          <div
-            class="gutter-line {editorCursorPos.line === lineNum
-              ? 'active-line'
-              : ''}"
-          >
-            {lineNum}
-          </div>
-        {/each}
-      </div>
-
-      <div class="studio-canvas">
-        <textarea
-          class="studio-textarea mono"
-          bind:this={editorTextareaEl}
-          bind:value={editorContent}
-          style="font-size: {editorFontSize}px; white-space: {editorWordWrap
-            ? 'pre-wrap'
-            : 'pre'};"
-          spellcheck="false"
-          onscroll={onScroll}
-          onkeydown={onKeydown}
-          onclick={onUpdateCursor}
-          onkeyup={onUpdateCursor}
-          onselect={onUpdateCursor}
-        ></textarea>
-      </div>
+      <CodeMirrorEditor
+        bind:this={cmRef}
+        bind:value={editorContent}
+        filename={editorTarget.path || editorTarget.name}
+        fontSize={editorFontSize}
+        wordWrap={editorWordWrap}
+        fill={true}
+        {onSave}
+        onCursorChange={(pos) => (liveCursor = pos)}
+      />
     </div>
 
     <!-- Status Bar Bawah Studio -->
@@ -327,7 +331,7 @@
 
       <div class="sb-right">
         <span class="sb-item cursor-pos"
-          >Ln {editorCursorPos.line}, Col {editorCursorPos.col}</span
+          >Ln {liveCursor.line}, Col {liveCursor.col}</span
         >
         <span class="sb-divider">|</span>
         <span class="sb-item">LF</span>

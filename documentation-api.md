@@ -3030,6 +3030,46 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 | Field | Detail |
 |---|---|
+| Method + Endpoint | `GET /api/auth/passkeys` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "passkeys": [{"id": 1, "name": "Windows · Chrome", "transports": "internal,hybrid", "created_at": 179..., "last_used_at": 179...}]}` |
+| Notes | Mengembalikan daftar perangkat Passkey/WebAuthn terdaftar milik pengguna aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/passkey/register/begin`, `POST /api/auth/passkey/register/finish` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `begin`: kosong; `finish`: `session_id` (string), `name` (string label perangkat), `credential` (objek attestation WebAuthn JSON) |
+| Response | `begin`: HTTP 200 `{"ok": true, "session_id": "...", "publicKey": {...}}`; `finish`: HTTP 200 `{"ok": true, "passkey": {...}, "message": "..."}` |
+| Notes | Mewajibkan akses domain HTTPS atau `localhost` (menolak IP mentah HTTP 400). Menyimpan kredensial ke tabel `user_passkeys` dan mencatat audit `auth.passkey_register`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/auth/passkeys/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Passkey berhasil dihapus"}` |
+| Notes | Menghapus satu Passkey milik pengguna aktif dan mencatat audit `auth.passkey_delete`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/passkey/login/begin`, `POST /api/auth/passkey/login/finish` |
+| Auth Required | No (Publik — dilindungi rate limiter) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `begin`: kosong; `finish`: `session_id` (string), `credential` (objek assertion WebAuthn JSON) |
+| Response | `begin`: HTTP 200 `{"ok": true, "session_id": "...", "publicKey": {...}}`; `finish`: HTTP 200 `{"ok": true, "user": {...}}` + Cookie `panel_session` |
+| Notes | Login discoverable tanpa kata sandi/2FA (mendukung Windows Hello PIN, QR HP hybrid, Touch ID/Face ID, USB key). Menolak `CloneWarning`, memperbarui sign counter, dan mencatat audit `auth.passkey_login_success`. |
+
+| Field | Detail |
+|---|---|
 | Method + Endpoint | `GET /api/auth/sessions` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | Tidak ada |
@@ -3095,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.4.3", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.5.0", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3140,10 +3180,95 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.19 Uptime & SSL Monitor serta Public Status Page
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/uptime/monitors` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "monitors": [{... , "uptime_24h_pct": 100, "avg_latency_ms": 42, "ssl_days_remaining": 68, "recent_checks": [...]}], "status_url": "/status"}` |
+| Notes | Mengembalikan seluruh monitor uptime terdaftar beserta 30 titik heartbeat kronologis terakhir dan statistik uptime 24 jam. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/uptime/monitors` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `target` (string URL atau `host:port`, wajib), `monitor_type` (`http` / `tcp`), `interval_sec` (30–3600, default 60), `timeout_sec` (2–30, default 10), `expected_status` (0 = 2xx–3xx atau kode HTTP spesifik), `keyword` (string, opsional), `notify_webhook` (bool), `public_visible` (bool), `enabled` (bool) |
+| Response | HTTP 201 `{"ok": true, "monitor": {...}, "message": "..."}` |
+| Notes | Menambahkan target baru ke SQLite dan langsung menjalankan pemeriksaan perdana secara asinkron jika `enabled: true`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/uptime/monitors/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Field konfigurasi monitor (`name`, `target`, `monitor_type`, `interval_sec`, `timeout_sec`, `expected_status`, `keyword`, `notify_webhook`, `public_visible`, `enabled`) |
+| Response | HTTP 200 `{"ok": true, "monitor": {...}, "message": "..."}` |
+| Notes | Memperbarui konfigurasi atau menjeda/mengaktifkan kembali monitor tanpa menghapus histori heartbeat. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/uptime/monitors/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Monitor dihapus"}` |
+| Notes | Menghapus monitor beserta seluruh histori pemeriksaan (`ON DELETE CASCADE`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/uptime/monitors/{id}/check` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "outcome": {"Status": "up", "Code": 200, "LatencyMs": 15, "SSLDays": 72}, "monitor": {...}}` |
+| Notes | Menjalankan pemeriksaan probe HTTP/TCP/SSL secara langsung dan mencatat hasilnya ke SQLite serta memicu webhook bila terjadi perubahan status. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/uptime/import-sites` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "added": 3, "message": "3 situs berhasil ditambahkan ke Uptime Monitor"}` |
+| Notes | Mengimpor 1-klik seluruh situs aktif di tabel `sites` FikPanel yang belum terdaftar di Uptime Monitor (otomatis mendeteksi skema `https://` vs `http://`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/status/public` |
+| Auth Required | No (Publik — dikecualikan dari IP Allowlist) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "brand_name": "FikPanel", "overall_status": "operational", "overall_uptime_pct": 100, "down_count": 0, "total_count": 3, "updated_at": 179..., "monitors": [...]}` |
+| Notes | Feed JSON publik untuk monitor berstatus `enabled = 1` dan `public_visible = 1` tanpa mengekspos target internal/error sensitif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /status` |
+| Auth Required | No (Publik — dikecualikan dari IP Allowlist) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `text/html; charset=utf-8` (halaman HTML mandiri bertema gelap dengan meta auto-refresh 30 detik dan strip 30-heartbeat) |
+| Notes | Halaman status publik mandiri bergaya statuspage yang menampilkan nama brand white-label panel, status agregat (`operational`/`degraded`/`outage`), sisa SSL, dan riwayat heartbeat. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |
 |---|---|---|---|
+| `srv.StartUptimeProber` | Setiap 15 detik (background ticker, maks 6 probe konkuren) | Mengevaluasi monitor Uptime & SSL yang sudah jatuh tempo berdasarkan `interval_sec`, memeriksa status HTTP/keyword/TLS peer cert/TCP port, dan menyiarkan alert Webhook (`DOWN`/`RECOVERED`/`SSL EXPIRING`) | Mencatat hasil ke `uptime_checks`, memperbarui ringkasan `uptime_monitors`, dan memangkas histori pemeriksaan > 7 hari |
 | `waf.LogWatcher.Start` | Setiap 4 detik (background daemon) | Memindai byte baru pada seluruh access log Nginx (`/var/log/nginx/*.access.log`), mendeteksi probe keamanan, mengekstrak telemetri client (IP, User-Agent, Device, OS, Browser), mengklasifikasikan jenis ancaman, dan melengkapi koordinat geolokasi (Country, City, ISP, Lat/Long) | Mengisi dan memperbarui entri pada tabel `waf_events`; melakukan deduplikasi event dari IP dan path yang sama dalam jeda 15 detik |
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
 | `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |

@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../../styles/pages/phpmanager/fpm-config-tab.css';
+  import CodeMirrorEditor from '../../lib/components/ui/CodeMirrorEditor.svelte';
 
   // Antarmuka properti untuk tab editor konfigurasi pool FPM www.conf
   interface Props {
@@ -38,13 +39,12 @@
         <span>Membaca berkas pool www.conf...</span>
       </div>
     {:else}
-      <textarea
-        class="editor-textarea mono p-4"
+      <CodeMirrorEditor
         bind:value={rawFpmContent}
-        onkeydown={onHandleEditorKeydown}
-        spellcheck="false"
-        wrap="off"
-      ></textarea>
+        lang="ini"
+        fill={true}
+        onSave={onSubmitRawFpm}
+      />
     {/if}
   </div>
 

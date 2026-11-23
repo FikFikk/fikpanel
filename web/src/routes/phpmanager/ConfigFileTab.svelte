@@ -1,5 +1,6 @@
 <script lang="ts">
   import '../../styles/pages/phpmanager/config-file-tab.css';
+  import CodeMirrorEditor from '../../lib/components/ui/CodeMirrorEditor.svelte';
 
   // Antarmuka properti untuk tab editor konfigurasi berkas php.ini
   interface Props {
@@ -89,21 +90,13 @@
         <span>Membaca berkas php.ini...</span>
       </div>
     {:else}
-      <div class="editor-gutter mono" id="editor-gutter">
-        {#each rawIniLineNumbers as num}
-          <div class="gutter-num">{num}</div>
-        {/each}
-      </div>
-      <textarea
-        bind:this={rawIniTextarea}
-        class="editor-textarea mono"
+      <CodeMirrorEditor
         bind:value={rawIniContent}
-        onkeydown={onHandleEditorKeydown}
-        onscroll={onEditorScroll}
-        spellcheck="false"
-        wrap="off"
+        lang="ini"
+        fill={true}
         placeholder="[PHP] ..."
-      ></textarea>
+        onSave={onSubmitRawIni}
+      />
     {/if}
   </div>
 

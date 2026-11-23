@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import ManagerModal from './ManagerModal.svelte';
+  import CodeMirrorEditor from './ui/CodeMirrorEditor.svelte';
   import { apiFetch, formatBytes } from '../api';
   import { confirmDialog } from '../stores/confirm.svelte';
   import '../../styles/pages/components/nginx-manager.css';
@@ -534,16 +535,12 @@
           <div class="loading"><i class="ri-loader-4-line spin"></i> Memuat konfigurasi...</div>
         {:else}
           <div class="editor" class:dirty={confDirty}>
-            <div class="gutter" bind:this={gutterEl} aria-hidden="true">
-              {#each { length: confLineCount } as _, i}<div>{i + 1}</div>{/each}
-            </div>
-            <textarea
-              id="ngx-conf-editor"
-              spellcheck="false"
+            <CodeMirrorEditor
               bind:value={confContent}
-              onkeydown={onEditorKey}
-              onscroll={syncGutter}
-            ></textarea>
+              lang="nginx"
+              fill={true}
+              onSave={saveConfig}
+            />
           </div>
           {#if confError}
             <pre class="err-box"><i class="ri-close-circle-line"></i> {confError}</pre>

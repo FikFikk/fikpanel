@@ -12,7 +12,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -127,7 +126,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.4.3"
+		return "0.5.0"
 	}
 	return s.version
 }
@@ -167,8 +166,9 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 
 	srv.registerRoutes()
 
-	// Mulai pencatat monitoring persisten di background
+	// Mulai pencatat monitoring persisten dan prober Uptime & SSL di background
 	srv.StartMonitoringRecorder(srv.bgCtx)
+	srv.StartUptimeProber(srv.bgCtx)
 
 	// Terapkan rantai middleware keamanan (termasuk IP Allowlist bila diaktifkan)
 	handler := srv.SecurityHeadersMiddleware(srv.IPAllowlistMiddleware(srv.CSRFMiddleware(srv.mux)))
@@ -200,7 +200,12 @@ func (s *Server) registerRoutes() {
 	// Endpoint autentikasi publik & preferensi tampilan publik (untuk menyelaraskan tema/bahasa halaman Login)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("POST /api/auth/passkey/login/begin", s.handlePasskeyLoginBegin)
+	s.mux.HandleFunc("POST /api/auth/passkey/login/finish", s.handlePasskeyLoginFinish)
 	s.mux.HandleFunc("GET /api/settings/public", s.handleGetPublicSettings)
+	// Halaman status publik mandiri & feed JSON (tanpa autentikasi)
+	s.mux.HandleFunc("GET /api/status/public", s.handlePublicStatusJSON)
+	s.mux.HandleFunc("GET /status", s.handlePublicStatusHTML)
 
 	// Endpoint terproteksi autentikasi sesi
 	s.mux.Handle("GET /api/auth/me", s.AuthMiddleware(http.HandlerFunc(s.handleMe)))
@@ -211,6 +216,10 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/auth/2fa/enable", s.AuthMiddleware(http.HandlerFunc(s.handleEnable2FA)))
 	s.mux.Handle("POST /api/auth/2fa/disable", s.AuthMiddleware(http.HandlerFunc(s.handleDisable2FA)))
 	s.mux.Handle("POST /api/auth/2fa/recovery-regenerate", s.AuthMiddleware(http.HandlerFunc(s.handleRegenerate2FARecovery)))
+	s.mux.Handle("GET /api/auth/passkeys", s.AuthMiddleware(http.HandlerFunc(s.handleListPasskeys)))
+	s.mux.Handle("POST /api/auth/passkey/register/begin", s.AuthMiddleware(http.HandlerFunc(s.handlePasskeyRegisterBegin)))
+	s.mux.Handle("POST /api/auth/passkey/register/finish", s.AuthMiddleware(http.HandlerFunc(s.handlePasskeyRegisterFinish)))
+	s.mux.Handle("DELETE /api/auth/passkeys/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeletePasskey)))
 	s.mux.Handle("GET /api/auth/sessions", s.AuthMiddleware(http.HandlerFunc(s.handleListActiveSessions)))
 	s.mux.Handle("DELETE /api/auth/sessions/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeSession)))
 	s.mux.Handle("POST /api/auth/sessions/revoke-others", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeOtherSessions)))
@@ -412,6 +421,14 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleGetMonitorHistory)))
 	s.mux.Handle("DELETE /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleClearMonitorHistory)))
 
+	// Uptime & SSL Monitor Terintegrasi
+	s.mux.Handle("GET /api/uptime/monitors", s.AuthMiddleware(http.HandlerFunc(s.handleListUptimeMonitors)))
+	s.mux.Handle("POST /api/uptime/monitors", s.AuthMiddleware(http.HandlerFunc(s.handleCreateUptimeMonitor)))
+	s.mux.Handle("PUT /api/uptime/monitors/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateUptimeMonitor)))
+	s.mux.Handle("DELETE /api/uptime/monitors/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteUptimeMonitor)))
+	s.mux.Handle("POST /api/uptime/monitors/{id}/check", s.AuthMiddleware(http.HandlerFunc(s.handleCheckUptimeMonitorNow)))
+	s.mux.Handle("POST /api/uptime/import-sites", s.AuthMiddleware(http.HandlerFunc(s.handleImportSitesToUptime)))
+
 	// AI Copilot & Manajemen Provider LLM
 	s.mux.Handle("GET /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleListAIProviders)))
 	s.mux.Handle("POST /api/ai/providers", s.AuthMiddleware(http.HandlerFunc(s.handleCreateAIProvider)))
@@ -584,18 +601,14 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/cloudflare/zones/{id}/purge-cache", s.AuthMiddleware(http.HandlerFunc(s.handlePurgeCloudflareCache)))
 	s.mux.Handle("POST /api/cloudflare/zones/{id}/dev-mode", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCloudflareDevMode)))
 
-	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS)
+	// Penyajian aset frontend dinamis (Vite HMR proxy -> Local Disk -> Embedded FS dengan Brotli/Gzip)
 	viteURL, _ := url.Parse("http://127.0.0.1:5173")
 	viteProxy := httputil.NewSingleHostReverseProxy(viteURL)
 
 	localDistDir := "web/dist"
-	localFileServer := http.FileServer(http.Dir(localDistDir))
+	localDistFS := os.DirFS(localDistDir)
 
 	distSub, _ := fs.Sub(web.DistFS, "dist")
-	var embedFileServer http.Handler
-	if distSub != nil {
-		embedFileServer = http.FileServer(http.FS(distSub))
-	}
 
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// 1. Mode dev saja: cek apakah Vite Dev Server aktif di port 5173 (HMR otomatis saat file disimpan)
@@ -611,48 +624,19 @@ func (s *Server) registerRoutes() {
 		// Terapkan Content Security Policy ketat pada mode produksi/statis (izinkan ws/wss same-origin untuk PTY terminal)
 		setCSP := func() {
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com https://services.arcgisonline.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' ws: wss: https://services.arcgisonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
-			if !strings.HasPrefix(r.URL.Path, "/assets/") {
-				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-				w.Header().Set("Pragma", "no-cache")
-				w.Header().Set("Expires", "0")
-			}
-		}
-
-		// Jika browser memuat chunk JS lama yang hash-nya sudah diganti setelah update binary (mis. /assets/Terminal-old.js),
-		// kembalikan modul ES yang otomatis me-reload halaman agar tab browser langsung memuat bundle terbaru tanpa error.
-		serveStaleChunkReload := func() {
-			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("window.location.reload();\nexport default {};\n"))
 		}
 
 		// 2. Mode dev saja: jika Vite tidak aktif, sajikan dari disk lokal (refresh membaca build terbaru tanpa restart Go)
 		if stat, err := os.Stat(localDistDir); s.devMode && err == nil && stat.IsDir() {
-			if strings.HasPrefix(r.URL.Path, "/assets/") && strings.HasSuffix(r.URL.Path, ".js") {
-				if _, err := os.Stat(localDistDir + r.URL.Path); err != nil {
-					setCSP()
-					serveStaleChunkReload()
-					return
-				}
-			}
 			setCSP()
-			localFileServer.ServeHTTP(w, r)
+			serveStaticWithCompression(w, r, localDistFS)
 			return
 		}
 
-		// 3. Fallback biner produksi (disematkan via embed.FS)
-		if embedFileServer != nil {
-			if strings.HasPrefix(r.URL.Path, "/assets/") && strings.HasSuffix(r.URL.Path, ".js") {
-				relPath := strings.TrimPrefix(r.URL.Path, "/")
-				if _, err := fs.Stat(distSub, relPath); err != nil {
-					setCSP()
-					serveStaleChunkReload()
-					return
-				}
-			}
+		// 3. Fallback biner produksi (disematkan via embed.FS + dukungan pre-compressed Brotli & Gzip)
+		if distSub != nil {
 			setCSP()
-			embedFileServer.ServeHTTP(w, r)
+			serveStaticWithCompression(w, r, distSub)
 			return
 		}
 

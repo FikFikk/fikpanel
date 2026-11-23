@@ -1,0 +1,220 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   CODE EDITOR (CodeMirror 6) — terhubung penuh ke design tokens (gelap/terang/palet)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  .cm-host {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: var(--cm-min-h, 240px);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+  }
+
+  .cm-host:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--tint-accent);
+  }
+
+  .cm-host--fill {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    border-radius: 0;
+    border: none;
+  }
+
+  .cm-host--fill:focus-within {
+    box-shadow: none;
+  }
+
+  .cm-host .cm-editor {
+    height: 100%;
+    min-height: var(--cm-min-h, 240px);
+    max-height: var(--cm-max-h, none);
+    background: var(--bg-inset);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--cm-font-size, 13px);
+    line-height: 1.6;
+  }
+
+  .cm-host--fill .cm-editor {
+    min-height: 0;
+    max-height: none;
+  }
+
+  .cm-host .cm-scroller {
+    overflow: auto;
+    font-family: var(--font-mono);
+  }
+
+  .cm-host .cm-content {
+    padding: var(--space-3) 0;
+    caret-color: var(--accent);
+  }
+
+  .cm-host .cm-line {
+    padding: 0 var(--space-3);
+  }
+
+  /* Gutter nomor baris & lipatan kode */
+  .cm-host .cm-gutters {
+    background: var(--bg-surface);
+    color: var(--text-subtle);
+    border-right: 1px solid var(--border-subtle);
+    user-select: none;
+  }
+
+  .cm-host .cm-lineNumbers .cm-gutterElement {
+    padding: 0 var(--space-3) 0 var(--space-2);
+    min-width: 3ch;
+  }
+
+  .cm-host .cm-foldGutter .cm-gutterElement {
+    padding: 0 4px;
+    color: var(--text-subtle);
+  }
+
+  .cm-host .cm-activeLineGutter {
+    background: var(--bg-hover);
+    color: var(--accent-strong);
+    font-weight: var(--weight-semibold);
+  }
+
+  .cm-host .cm-activeLine {
+    background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  }
+
+  .cm-host .cm-cursor,
+  .cm-host .cm-dropCursor {
+    border-left: 2px solid var(--accent);
+  }
+
+  .cm-host .cm-selectionBackground,
+  .cm-host .cm-content ::selection {
+    background: color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+
+  .cm-host.cm-focused .cm-selectionBackground {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .cm-host .cm-selectionMatch {
+    background: var(--tint-info);
+    border-radius: 2px;
+  }
+
+  .cm-host .cm-matchingBracket,
+  .cm-host .cm-nonmatchingBracket {
+    background: var(--tint-accent);
+    outline: 1px solid var(--ring-accent);
+    border-radius: 2px;
+  }
+
+  /* Panel Pencarian & Ganti bawaan CodeMirror (Ctrl+F / Ctrl+H) */
+  .cm-host .cm-panels {
+    background: var(--bg-raised);
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .cm-host .cm-panels-top {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cm-host .cm-panels-bottom {
+    border-top: 1px solid var(--border);
+  }
+
+  .cm-host .cm-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+  }
+
+  .cm-host .cm-textfield {
+    height: var(--control-sm);
+    padding: 0 var(--space-2);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .cm-host .cm-textfield:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--tint-accent);
+  }
+
+  .cm-host .cm-button {
+    height: var(--control-sm);
+    padding: 0 var(--space-2);
+    background: var(--bg-surface);
+    background-image: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+  }
+
+  .cm-host .cm-button:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  .cm-host .cm-search label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+  }
+
+  .cm-host .cm-panel.cm-search [name='close'] {
+    color: var(--text-muted);
+    top: 6px;
+    right: 8px;
+  }
+
+  .cm-host .cm-searchMatch {
+    background: var(--tint-warning);
+    outline: 1px solid var(--ring-warning);
+    border-radius: 2px;
+  }
+
+  .cm-host .cm-searchMatch-selected {
+    background: var(--tint-accent);
+    outline: 1px solid var(--accent);
+  }
+
+  /* Tooltip autocomplete CodeMirror */
+  .cm-host .cm-tooltip {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    color: var(--text);
+  }
+
+  .cm-host .cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: var(--tint-accent);
+    color: var(--accent-strong);
+  }
+}

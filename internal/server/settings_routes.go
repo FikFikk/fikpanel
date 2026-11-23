@@ -244,17 +244,18 @@ func (s *Server) savePanelPreferences(ctx context.Context, prefs PanelPreference
 func (s *Server) handleGetPublicSettings(w http.ResponseWriter, r *http.Request) {
 	p := s.loadPanelPreferences(r.Context())
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":            true,
-		"theme_mode":    p.ThemeMode,
-		"accent_preset": p.AccentPreset,
-		"accent_custom": p.AccentCustom,
-		"surface_style": p.SurfaceStyle,
-		"density":       p.Density,
-		"radius_style":  p.RadiusStyle,
-		"brand_name":    p.BrandName,
-		"env_badge":     p.EnvBadge,
-		"language":      p.Language,
-		"version":       s.Version(),
+		"ok":                 true,
+		"theme_mode":         p.ThemeMode,
+		"accent_preset":      p.AccentPreset,
+		"accent_custom":      p.AccentCustom,
+		"surface_style":      p.SurfaceStyle,
+		"density":            p.Density,
+		"radius_style":       p.RadiusStyle,
+		"brand_name":         p.BrandName,
+		"env_badge":          p.EnvBadge,
+		"language":           p.Language,
+		"version":            s.Version(),
+		"passkeys_available": s.store.CountAllPasskeys(r.Context()) > 0,
 	})
 }
 
