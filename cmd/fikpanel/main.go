@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -21,6 +19,7 @@ import (
 	"fikpanel/internal/services"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
+	"fikpanel/internal/updater"
 )
 
 var (
@@ -60,6 +59,10 @@ func main() {
 		runDiscover(os.Args[2:])
 	case "update":
 		runUpdate(os.Args[2:])
+	case "auto-update", "autoupdate":
+		runAutoUpdate(os.Args[2:])
+	case "post-update":
+		runPostUpdate(os.Args[2:])
 	case "renew-ssl", "ssl-renew":
 		runRenewSSL(os.Args[2:])
 	default:
@@ -88,10 +91,13 @@ Perintah yang Tersedia:
                     --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
                     --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
   versions        Daftar seluruh versi rilis FikPanel yang tersedia di GitHub Releases
-  update          Perbarui biner FikPanel (opsi: --check, atau tentukan <versi>)
+  update          Perbarui FikPanel secara aman (checksum, backup, restart, health check, rollback)
                   Opsi / Parameter:
-                    --check, -c      Hanya cek ketersediaan rilis baru tanpa memasang
                     <versi>          Target versi spesifik untuk upgrade/downgrade (misal: v0.3.1)
+                    --check, -c      Hanya cek ketersediaan rilis baru tanpa memasang
+                    --status, -s     Tampilkan hasil pembaruan terakhir beserta log-nya
+                    --force          Pasang ulang walaupun versi target sudah terpasang
+  auto-update     Kelola pembaruan otomatis terjadwal: enable | disable | status
   renew-ssl       Pindai seluruh domain dan perpanjang sertifikat SSL yang < 30 hari
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
@@ -107,6 +113,8 @@ Contoh Penggunaan:
   fikpanel update --check
   fikpanel update
   fikpanel update v0.3.1
+  fikpanel update --status
+  fikpanel auto-update status
   fikpanel reset-password --user root
 `, version)
 }
@@ -501,35 +509,6 @@ func runVersions(args []string) {
 	fmt.Println()
 }
 
-// compareVersions membandingkan dua format versi semver (misal: "0.3.4" vs "0.3.3")
-// Mengembalikan 1 jika v1 > v2, -1 jika v1 < v2, dan 0 jika sama
-func compareVersions(v1, v2 string) int {
-	v1 = strings.TrimPrefix(strings.TrimSpace(v1), "v")
-	v2 = strings.TrimPrefix(strings.TrimSpace(v2), "v")
-	parts1 := strings.Split(v1, ".")
-	parts2 := strings.Split(v2, ".")
-	maxLen := len(parts1)
-	if len(parts2) > maxLen {
-		maxLen = len(parts2)
-	}
-	for i := 0; i < maxLen; i++ {
-		var n1, n2 int
-		if i < len(parts1) {
-			fmt.Sscanf(parts1[i], "%d", &n1)
-		}
-		if i < len(parts2) {
-			fmt.Sscanf(parts2[i], "%d", &n2)
-		}
-		if n1 > n2 {
-			return 1
-		}
-		if n1 < n2 {
-			return -1
-		}
-	}
-	return 0
-}
-
 // runUpdateCheck memeriksa apakah rilis baru tersedia di GitHub Releases tanpa mengunduh
 func runUpdateCheck() {
 	fmt.Println("[*] Memeriksa ketersediaan pembaruan FikPanel...")
@@ -552,7 +531,7 @@ func runUpdateCheck() {
 		return
 	}
 
-	if compareVersions(version, latest.TagName) >= 0 {
+	if updater.CompareVersions(version, latest.TagName) >= 0 {
 		fmt.Printf("[✓] FikPanel sudah berada di versi terbaru (v%s).\n    Tidak ada pembaruan yang diperlukan.\n", version)
 		return
 	}
@@ -562,67 +541,6 @@ func runUpdateCheck() {
 	fmt.Printf("    Tautan rilis  : %s\n\n", latest.HTMLURL)
 	fmt.Println("Jalankan perintah berikut untuk memperbarui secara otomatis:")
 	fmt.Println("  fikpanel update")
-}
-
-// runUpdate menangani pembaruan otomatis biner fikpanel
-func runUpdate(args []string) {
-	fmt.Println("==========================================================")
-	fmt.Println("             FikPanel Self-Update Utility                 ")
-	fmt.Println("==========================================================")
-
-	// Periksa opsi pengecekan atau panduan
-	for _, arg := range args {
-		if arg == "--check" || arg == "-c" {
-			runUpdateCheck()
-			return
-		}
-		if arg == "--help" || arg == "-h" {
-			fmt.Printf(`Penggunaan:
-  fikpanel update             Perbarui ke rilis terbaru dan restart service otomatis
-  fikpanel update --check     Cek ketersediaan pembaruan tanpa memasang
-  fikpanel update <versi>     Pasang target versi spesifik (contoh: v0.3.1 atau 0.3.1)
-`)
-			return
-		}
-	}
-
-	if runtime.GOOS != "linux" {
-		fmt.Printf("Pembaruan biner otomatis dioptimalkan untuk lingkungan Linux (produksi).\nVersi lokal saat ini: v%s\n", version)
-		return
-	}
-
-	targetVer := "latest"
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
-			targetVer = strings.TrimSpace(arg)
-			break
-		}
-	}
-
-	// Utamakan eksekusi skrip updater live dari GitHub agar selalu membawa perbaikan instalasi terbaru
-	scriptCmd := fmt.Sprintf("curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | bash -s -- %s", targetVer)
-	cmd := exec.Command("bash", "-c", scriptCmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
-		// Fallback ke skrip lokal jika unduhan live mengalami kendala
-		localScript := "/opt/fikpanel/scripts/update.sh"
-		if _, statErr := os.Stat(localScript); statErr == nil {
-			fmt.Fprintf(os.Stderr, "[*] Gagal mengunduh skrip online, beralih ke skrip lokal (%s)...\n", localScript)
-			fallbackCmd := exec.Command("bash", localScript, targetVer)
-			fallbackCmd.Stdout = os.Stdout
-			fallbackCmd.Stderr = os.Stderr
-			fallbackCmd.Stdin = os.Stdin
-			if fbErr := fallbackCmd.Run(); fbErr != nil {
-				fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", fbErr)
-				os.Exit(1)
-			}
-			return
-		}
-		fmt.Fprintf(os.Stderr, "Pembaruan gagal: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 // runRenewSSL memindai seluruh domain dan memperpanjang sertifikat SSL yang sisa masa aktifnya < 30 hari

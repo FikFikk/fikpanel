@@ -119,11 +119,11 @@ jobs:
           curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/install.sh | sudo bash
           \`\`\`
 
-          ### 🔄 Pembaruan Tanpa Downtime (Server Sudah Terpasang)
+          ### 🔄 Pembaruan (Server Sudah Terpasang)
           \`\`\`bash
           sudo fikpanel update
           \`\`\`
-          *Konfigurasi website, virtual host Nginx, dan database pengguna dijamin aman 100% tanpa downtime.*
+          *Server dengan auto-update aktif memasang rilis ini otomatis dalam ±1,5 jam. Website tetap berjalan; hanya panel yang di-restart beberapa detik. Checksum diverifikasi, biner + database dicadangkan, dan rollback otomatis bila versi baru gagal health check.*
 
           ---
 

@@ -533,6 +533,13 @@ else
     echo -e "${YELLOW}[!] Peringatan: Layanan FikPanel belum aktif. Periksa log: journalctl -u fikpanel -n 20 --no-pager${NC}"
 fi
 
+# 8b. Aktifkan auto-update terjadwal (cek rilis stabil setiap jam; checksum, health check & rollback otomatis)
+FIKPANEL_HELP=$("$INSTALL_DIR/bin/fikpanel" help 2>/dev/null || true)
+if grep -q 'auto-update' <<<"$FIKPANEL_HELP"; then
+    "$INSTALL_DIR/bin/fikpanel" auto-update enable \
+        || echo -e "${YELLOW}[!] Auto-update belum aktif. Aktifkan nanti: sudo fikpanel auto-update enable${NC}"
+fi
+
 # 9. Pindai dan Adopsi Otomatis Seluruh Infrastruktur Host (Nginx, Docker Compose, PM2, K8s)
 echo -e "\n[*] Menjalankan Host Infrastructure Auto-Discovery & Reverse Adoption..."
 if [ -x "$INSTALL_DIR/bin/fikpanel" ]; then

@@ -82,6 +82,12 @@ if [ "$AUTO_CONFIRM" = false ]; then
     fi
 fi
 
+echo -e "\n[*] Menonaktifkan timer auto-update FikPanel..."
+for unit in fikpanel-autoupdate.timer fikpanel-autoupdate.service fikpanel-updater.service; do
+    systemctl disable --now "$unit" 2>/dev/null || systemctl stop "$unit" 2>/dev/null || true
+done
+rm -f /etc/systemd/system/fikpanel-autoupdate.timer /etc/systemd/system/fikpanel-autoupdate.service
+
 echo -e "\n[*] Menghentikan layanan daemon FikPanel..."
 if systemctl is-active --quiet fikpanel.service 2>/dev/null; then
     systemctl stop fikpanel.service || true
