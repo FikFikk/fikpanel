@@ -17,7 +17,8 @@ var migrationFS embed.FS
 
 // Store merepresentasikan koneksi database terkelola untuk fikpanel
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 }
 
 // Open menginisialisasi koneksi SQLite dengan konfigurasi WAL dan PRAGMA keamanan
@@ -43,7 +44,7 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("gagal verifikasi koneksi database: %w", err)
 	}
 
-	s := &Store{db: db}
+	s := &Store{db: db, dbPath: dbPath}
 	if err := s.migrate(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("gagal menjalankan migrasi database: %w", err)
@@ -55,6 +56,21 @@ func Open(dbPath string) (*Store, error) {
 // DB mengembalikan objek *sql.DB untuk operasi query
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+// Path mengembalikan lokasi berkas SQLite yang sedang dibuka
+func (s *Store) Path() string {
+	return s.dbPath
+}
+
+// VacuumBackup membuat salinan snapshot SQLite yang konsisten tanpa mengunci penulisan menggunakan VACUUM INTO
+func (s *Store) VacuumBackup(ctx context.Context, dstPath string) error {
+	escaped := strings.ReplaceAll(dstPath, "'", "''")
+	_, err := s.db.ExecContext(ctx, fmt.Sprintf("VACUUM INTO '%s'", escaped))
+	if err != nil {
+		return fmt.Errorf("gagal membuat snapshot database: %w", err)
+	}
+	return nil
 }
 
 // Close menutup koneksi database SQLite

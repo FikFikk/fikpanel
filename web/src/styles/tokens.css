@@ -82,6 +82,15 @@
     --chart-5: #f43f5e;
     --chart-6: #06b6d4;
 
+    /* ── Swatch tetap untuk pemilih palet warna di Appearance Studio ────────── */
+    --swatch-lava: #ff5a2b;
+    --swatch-ocean: #0ea5e9;
+    --swatch-emerald: #10b981;
+    --swatch-violet: #8b5cf6;
+    --swatch-crimson: #f43f5e;
+    --swatch-amber: #f59e0b;
+    --swatch-slate: #64748b;
+
     /* ── Tint transparan siap pakai (latar badge, alert, highlight) ─────────── */
     --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
     --tint-info: color-mix(in srgb, var(--info) 12%, transparent);
@@ -288,5 +297,151 @@
       --shadow-modal: 0 24px 64px -12px rgb(15 23 42 / 0.22);
       --shadow-accent: 0 6px 18px -6px color-mix(in srgb, var(--accent) 45%, transparent);
     }
+  }
+
+  /* ── Variasi Permukaan Mode Gelap (Surface Style) ───────────────────────── */
+  :root[data-surface="midnight"]:not([data-theme="light"]) {
+    --bg-app: #060a14;
+    --bg-inset: #090f1d;
+    --bg-surface: #0d1526;
+    --bg-raised: #131e36;
+    --bg-hover: #192642;
+    --bg-active: #223254;
+    --border-subtle: #15213a;
+    --border: #1e2f50;
+    --border-strong: #2f4570;
+  }
+
+  :root[data-surface="carbon"]:not([data-theme="light"]) {
+    --bg-app: #0b0b0d;
+    --bg-inset: #101013;
+    --bg-surface: #151519;
+    --bg-raised: #1b1b21;
+    --bg-hover: #222229;
+    --bg-active: #2a2a33;
+    --border-subtle: #1f1f26;
+    --border: #2a2a33;
+    --border-strong: #3d3d4a;
+  }
+
+  /* ── Preset Palet Warna Aksen (Dark & Light) ────────────────────────────── */
+  :root[data-accent="ocean"] {
+    --accent: #0ea5e9;
+    --accent-strong: #38bdf8;
+    --accent-hover: #0284c7;
+    --text-on-accent: #08121a;
+    --chart-1: #0ea5e9;
+  }
+  :root[data-theme="light"][data-accent="ocean"] {
+    --accent: #0284c7;
+    --accent-strong: #0369a1;
+    --accent-hover: #0369a1;
+    --text-on-accent: #ffffff;
+    --chart-1: #0284c7;
+  }
+
+  :root[data-accent="emerald"] {
+    --accent: #10b981;
+    --accent-strong: #34d399;
+    --accent-hover: #059669;
+    --text-on-accent: #051912;
+    --chart-1: #10b981;
+  }
+  :root[data-theme="light"][data-accent="emerald"] {
+    --accent: #059669;
+    --accent-strong: #047857;
+    --accent-hover: #047857;
+    --text-on-accent: #ffffff;
+    --chart-1: #059669;
+  }
+
+  :root[data-accent="violet"] {
+    --accent: #8b5cf6;
+    --accent-strong: #a78bfa;
+    --accent-hover: #7c3aed;
+    --text-on-accent: #ffffff;
+    --chart-1: #8b5cf6;
+  }
+  :root[data-theme="light"][data-accent="violet"] {
+    --accent: #6d28d9;
+    --accent-strong: #5b21b6;
+    --accent-hover: #5b21b6;
+    --text-on-accent: #ffffff;
+    --chart-1: #6d28d9;
+  }
+
+  :root[data-accent="crimson"] {
+    --accent: #f43f5e;
+    --accent-strong: #fb7185;
+    --accent-hover: #e11d48;
+    --text-on-accent: #ffffff;
+    --chart-1: #f43f5e;
+  }
+  :root[data-theme="light"][data-accent="crimson"] {
+    --accent: #be123c;
+    --accent-strong: #9f1239;
+    --accent-hover: #9f1239;
+    --text-on-accent: #ffffff;
+    --chart-1: #be123c;
+  }
+
+  :root[data-accent="amber"] {
+    --accent: #f59e0b;
+    --accent-strong: #fbbf24;
+    --accent-hover: #d97706;
+    --text-on-accent: #1a1204;
+    --chart-1: #f59e0b;
+  }
+  :root[data-theme="light"][data-accent="amber"] {
+    --accent: #b45309;
+    --accent-strong: #92400e;
+    --accent-hover: #92400e;
+    --text-on-accent: #ffffff;
+    --chart-1: #b45309;
+  }
+
+  :root[data-accent="slate"] {
+    --accent: #94a3b8;
+    --accent-strong: #cbd5e1;
+    --accent-hover: #64748b;
+    --text-on-accent: #0f172a;
+    --chart-1: #94a3b8;
+  }
+  :root[data-theme="light"][data-accent="slate"] {
+    --accent: #334155;
+    --accent-strong: #1e293b;
+    --accent-hover: #1e293b;
+    --text-on-accent: #ffffff;
+    --chart-1: #334155;
+  }
+
+  /* ── Kerapatan Antarmuka (Compact Mode) ─────────────────────────────────── */
+  :root[data-density="compact"] {
+    --control-sm: 24px;
+    --control-md: 30px;
+    --control-lg: 36px;
+    --topbar-height: 48px;
+    --space-4: 0.85rem;
+    --space-5: 1.05rem;
+    --space-6: 1.25rem;
+  }
+
+  /* ── Gaya Sudut (Border Radius) ─────────────────────────────────────────── */
+  :root[data-radius="sharp"] {
+    --radius-xs: 2px;
+    --radius-sm: 3px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+    --radius-xl: 8px;
+    --radius-2xl: 10px;
+  }
+
+  :root[data-radius="rounded"] {
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
   }
 }

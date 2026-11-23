@@ -3,6 +3,7 @@
   import Modal from '../lib/components/ui/Modal.svelte';
   import { formatBytes, apiFetch } from '../lib/api';
   import { notify } from '../lib/stores/toast.svelte';
+  import { t } from '../lib/stores/i18n.svelte';
   import type { MetricPoint, OverviewData, Service, DiscoveryResult } from '../lib/types';
   import '../styles/pages/home.css';
 
@@ -56,9 +57,9 @@
   }
 
   function metricStatusText(pct: number, warnAt = 80): string {
-    if (pct >= 92) return 'Kritis';
-    if (pct >= warnAt) return 'Waspada';
-    return 'Normal';
+    if (pct >= 92) return t('home.status_crit');
+    if (pct >= warnAt) return t('home.status_warn');
+    return t('home.status_normal');
   }
 
   // State Host Discovery & Adoption
@@ -221,8 +222,8 @@
           ></div>
         </div>
         <span class="stat-card__sub">
-          Kapasitas {overview?.system?.cpu_cores || 4} vCPU &middot; Uptime {overview?.system?.uptime_sec
-            ? `${Math.floor(overview.system.uptime_sec / 3600)}j ${Math.floor((overview.system.uptime_sec % 3600) / 60)}m`
+          {t('home.capacity_vcpu', { cores: overview?.system?.cpu_cores || 4 })} &middot; Uptime {overview?.system?.uptime_sec
+            ? `${Math.floor(overview.system.uptime_sec / 3600)}h ${Math.floor((overview.system.uptime_sec % 3600) / 60)}m`
             : '—'}
         </span>
       </div>
@@ -266,7 +267,7 @@
             style="--w: {Math.min(Math.max(currentMetric.cpu, 0), 100)}%;"
           ></div>
         </div>
-        <span class="stat-card__sub">Alokasi prosesor &middot; {overview?.system?.cpu_cores || 4} Cores</span>
+        <span class="stat-card__sub">{t('home.cpu_alloc')} &middot; {overview?.system?.cpu_cores || 4} Cores</span>
       </div>
     </div>
 
@@ -308,7 +309,7 @@
             style="--w: {Math.min(Math.max(ramPercent, 0), 100)}%;"
           ></div>
         </div>
-        <span class="stat-card__sub">Tersedia {formatBytes(freeRAM)}</span>
+        <span class="stat-card__sub">{t('home.ram_avail', { val: formatBytes(freeRAM) })}</span>
       </div>
     </div>
 
@@ -350,7 +351,7 @@
             style="--w: {Math.min(Math.max(diskPercent, 0), 100)}%;"
           ></div>
         </div>
-        <span class="stat-card__sub">Ruang kosong {formatBytes(freeDisk)}</span>
+        <span class="stat-card__sub">{t('home.disk_free', { val: formatBytes(freeDisk) })}</span>
       </div>
     </div>
   </div>
@@ -359,26 +360,26 @@
   <div class="card bento-panel">
     <div class="panel-header-row">
       <div class="header-left">
-        <h3 class="panel-heading">Ringkasan Infrastruktur</h3>
+        <h3 class="panel-heading">{t('home.infra_title')}</h3>
       </div>
 
       <!-- Tombol Aksi Cepat -->
       <div class="quick-actions">
         <button class="btn btn--sm btn--secondary" onclick={openDiscoveryModal}>
           <i class="ri-radar-line"></i>
-          <span>Pindai Host Server</span>
+          <span>{t('home.action_scan')}</span>
         </button>
         <a href="#/website" class="btn btn--sm btn--primary">
           <i class="ri-add-line"></i>
-          <span>Tambah Situs</span>
+          <span>{t('home.action_add_site')}</span>
         </a>
         <a href="#/services" class="btn btn--sm btn--secondary">
           <i class="ri-server-line"></i>
-          <span>Kelola Service</span>
+          <span>{t('home.action_services')}</span>
         </a>
         <a href="#/terminal" class="btn btn--sm btn--secondary">
           <i class="ri-terminal-line"></i>
-          <span>Buka Terminal</span>
+          <span>{t('home.action_terminal')}</span>
         </a>
       </div>
     </div>
@@ -394,9 +395,9 @@
           <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
-          <div class="subcard-title">Website</div>
+          <div class="subcard-title">{t('nav.item.website')}</div>
           <div class="subcard-stats">
-            <span class="stat-highlight">{overview?.counts?.sites_running || 0} Aktif</span>
+            <span class="stat-highlight">{t('home.sub_active', { count: overview?.counts?.sites_running || 0 })}</span>
             <span class="stat-sep">&middot;</span>
             <span class="stat-muted">{overview?.counts?.sites_total || 0} Total</span>
           </div>
@@ -414,7 +415,7 @@
         <div class="subcard-body">
           <div class="subcard-title">Services (Systemd)</div>
           <div class="subcard-stats">
-            <span class="stat-highlight">{overview?.counts?.services_active || 0} Berjalan</span>
+            <span class="stat-highlight">{t('home.sub_running', { count: overview?.counts?.services_active || 0 })}</span>
             <span class="stat-sep">&middot;</span>
             <span class="stat-muted">{overview?.counts?.services_total || 0} Total</span>
           </div>
@@ -448,11 +449,11 @@
           <span class="subcard-arrow"><i class="ri-arrow-right-up-line"></i></span>
         </div>
         <div class="subcard-body">
-          <div class="subcard-title">Keamanan & WAF</div>
+          <div class="subcard-title">{t('home.sub_security')}</div>
           <div class="subcard-stats">
-            <span class="stat-highlight">Proteksi Aktif</span>
+            <span class="stat-highlight">{t('home.sub_protected')}</span>
             <span class="stat-sep">&middot;</span>
-            <span class="stat-muted">{overview?.counts?.security_risk || 0} Peringatan</span>
+            <span class="stat-muted">{t('home.sub_alerts', { count: overview?.counts?.security_risk || 0 })}</span>
           </div>
         </div>
       </a>
@@ -463,17 +464,17 @@
   <div class="card bento-panel">
     <div class="panel-header-row">
       <div>
-        <h3 class="panel-heading">Beban CPU & Memori</h3>
-        <p class="panel-subtext">Riwayat penggunaan sumber daya sistem 60 detik terakhir</p>
+        <h3 class="panel-heading">{t('home.chart_title')}</h3>
+        <p class="panel-subtext">{t('home.chart_sub')}</p>
       </div>
 
       <!-- Indikator Trafik Jaringan Bersih -->
       <div class="traffic-pills">
-        <div class="traffic-pill" title="Lalu lintas jaringan masuk (Inbound)">
+        <div class="traffic-pill" title="Inbound">
           <i class="ri-arrow-down-line icon-in"></i>
           <span>{formatBytes(currentMetric.net_in)}/s</span>
         </div>
-        <div class="traffic-pill" title="Lalu lintas jaringan keluar (Outbound)">
+        <div class="traffic-pill" title="Outbound">
           <i class="ri-arrow-up-line icon-out"></i>
           <span>{formatBytes(currentMetric.net_out)}/s</span>
         </div>
@@ -493,11 +494,11 @@
   <div class="card bento-panel">
     <div class="panel-header-row">
       <div>
-        <h3 class="panel-heading">Layanan Sistem Utama</h3>
-        <p class="panel-subtext">Systemd units terdaftar dalam allowlist yang dapat dikontrol</p>
+        <h3 class="panel-heading">{t('home.services_title')}</h3>
+        <p class="panel-subtext">{t('home.services_sub')}</p>
       </div>
       <a href="#/services" class="link-manage">
-        <span>Kelola Semua Service</span>
+        <span>{t('home.services_manage')}</span>
         <i class="ri-arrow-right-line"></i>
       </a>
     </div>
@@ -505,8 +506,8 @@
     {#if services.length === 0}
       <div class="state state--empty">
         <i class="ri-server-line"></i>
-        <div class="state__title">Belum Ada Layanan Terdaftar</div>
-        <div class="state__desc">Tidak ada systemd unit yang dapat ditampilkan pada daftar layanan utama saat ini.</div>
+        <div class="state__title">{t('home.services_empty_title')}</div>
+        <div class="state__desc">{t('home.services_empty_desc')}</div>
       </div>
     {:else}
       <div class="table-wrap">
@@ -517,7 +518,7 @@
               <th>Label</th>
               <th>Status</th>
               <th>Memory</th>
-              <th class="text-right">Aksi</th>
+              <th class="text-right">{t('home.col_action')}</th>
             </tr>
           </thead>
           <tbody>

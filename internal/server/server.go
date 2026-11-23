@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"fikpanel/internal/ai"
@@ -61,6 +62,11 @@ type Server struct {
 	sshPool          *terminal.SSHPool
 	limiter          *RateLimiter
 	version          string
+
+	// Cache preferensi panel di memori untuk pemeriksaan IP allowlist & durasi sesi cepat
+	prefsMu     sync.RWMutex
+	prefsCache  PanelPreferences
+	prefsLoaded bool
 
 	// devMode mengaktifkan proxy Vite HMR & aset dari disk lokal (hanya untuk pengembangan).
 	devMode bool
@@ -121,7 +127,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.4.1"
+		return "0.4.2"
 	}
 	return s.version
 }
@@ -164,8 +170,8 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	// Mulai pencatat monitoring persisten di background
 	srv.StartMonitoringRecorder(srv.bgCtx)
 
-	// Terapkan rantai middleware keamanan
-	handler := srv.SecurityHeadersMiddleware(srv.CSRFMiddleware(srv.mux))
+	// Terapkan rantai middleware keamanan (termasuk IP Allowlist bila diaktifkan)
+	handler := srv.SecurityHeadersMiddleware(srv.IPAllowlistMiddleware(srv.CSRFMiddleware(srv.mux)))
 
 	srv.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
@@ -191,13 +197,39 @@ func (s *Server) registerRoutes() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Endpoint autentikasi publik
+	// Endpoint autentikasi publik & preferensi tampilan publik (untuk menyelaraskan tema/bahasa halaman Login)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("GET /api/settings/public", s.handleGetPublicSettings)
 
 	// Endpoint terproteksi autentikasi sesi
 	s.mux.Handle("GET /api/auth/me", s.AuthMiddleware(http.HandlerFunc(s.handleMe)))
 	s.mux.Handle("POST /api/auth/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePassword)))
+	s.mux.Handle("GET /api/auth/2fa/status", s.AuthMiddleware(http.HandlerFunc(s.handleGet2FAStatus)))
+	s.mux.Handle("POST /api/auth/2fa/setup", s.AuthMiddleware(http.HandlerFunc(s.handleSetup2FA)))
+	s.mux.Handle("POST /api/auth/2fa/enable", s.AuthMiddleware(http.HandlerFunc(s.handleEnable2FA)))
+	s.mux.Handle("POST /api/auth/2fa/disable", s.AuthMiddleware(http.HandlerFunc(s.handleDisable2FA)))
+	s.mux.Handle("GET /api/auth/sessions", s.AuthMiddleware(http.HandlerFunc(s.handleListActiveSessions)))
+	s.mux.Handle("DELETE /api/auth/sessions/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeSession)))
+	s.mux.Handle("POST /api/auth/sessions/revoke-others", s.AuthMiddleware(http.HandlerFunc(s.handleRevokeOtherSessions)))
+	s.mux.Handle("GET /api/settings/preferences", s.AuthMiddleware(http.HandlerFunc(s.handleGetPanelPreferences)))
+	s.mux.Handle("PUT /api/settings/preferences", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePanelPreferences)))
+	s.mux.Handle("GET /api/settings/tls", s.AuthMiddleware(http.HandlerFunc(s.handleGetPanelTLS)))
+	s.mux.Handle("POST /api/settings/tls/custom", s.AuthMiddleware(http.HandlerFunc(s.handleInstallCustomPanelTLS)))
+	s.mux.Handle("POST /api/settings/tls/self-signed", s.AuthMiddleware(http.HandlerFunc(s.handleResetSelfSignedTLS)))
+	s.mux.Handle("GET /api/settings/system", s.AuthMiddleware(http.HandlerFunc(s.handleGetSettingsSystem)))
+	s.mux.Handle("POST /api/settings/system/hostname", s.AuthMiddleware(http.HandlerFunc(s.handleSetHostname)))
+	s.mux.Handle("POST /api/settings/system/timezone", s.AuthMiddleware(http.HandlerFunc(s.handleSetTimezone)))
+	s.mux.Handle("POST /api/settings/system/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartPanel)))
+	s.mux.Handle("GET /api/settings/updater/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetUpdaterStatus)))
+	s.mux.Handle("GET /api/settings/updater/check", s.AuthMiddleware(http.HandlerFunc(s.handleCheckUpdaterRelease)))
+	s.mux.Handle("POST /api/settings/updater/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunUpdater)))
+	s.mux.Handle("POST /api/settings/updater/autoupdate", s.AuthMiddleware(http.HandlerFunc(s.handleToggleAutoUpdate)))
+	s.mux.Handle("GET /api/settings/backup/db", s.AuthMiddleware(http.HandlerFunc(s.handleDownloadDBBackup)))
+	s.mux.Handle("GET /api/settings/config/export", s.AuthMiddleware(http.HandlerFunc(s.handleExportPanelConfig)))
+	s.mux.Handle("POST /api/settings/config/import", s.AuthMiddleware(http.HandlerFunc(s.handleImportPanelConfig)))
+	s.mux.Handle("PUT /api/webhooks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWebhook)))
+	s.mux.Handle("POST /api/webhooks/{id}/test", s.AuthMiddleware(http.HandlerFunc(s.handleTestWebhook)))
 	s.mux.Handle("GET /api/metrics/live", s.AuthMiddleware(http.HandlerFunc(s.metrics.ServeHTTP)))
 	s.mux.Handle("GET /api/overview", s.AuthMiddleware(http.HandlerFunc(s.handleOverview)))
 

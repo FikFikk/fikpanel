@@ -3,7 +3,8 @@
   import type { OverviewData } from '../types';
   import { copyText } from '../utils/browser';
   import { notify } from '../stores/toast.svelte';
-  import { cycleTheme, themeState } from '../stores/theme.svelte';
+  import { appearanceState, cycleTheme, themeState } from '../stores/theme.svelte';
+  import { dateLocale, i18nState, t, toggleLocale } from '../stores/i18n.svelte';
 
   interface Props {
     overview: OverviewData | null;
@@ -27,7 +28,7 @@
   async function copyIP() {
     try {
       await copyText(ip);
-      notify('Alamat IP disalin', 'success');
+      notify(t('shell.ip_copied'), 'success');
     } catch (err) {
       notify(`Gagal menyalin IP: ${(err as Error).message}`, 'error');
     }
@@ -59,11 +60,11 @@
   }
 
   function formatTime(d: Date): string {
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return d.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   }
 
   function formatDate(d: Date): string {
-    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   // Status dropdown menu pengguna
@@ -80,10 +81,20 @@
 
   let themeLabel = $derived(
     themeState.mode === 'light'
-      ? 'Tema: Terang (klik untuk Otomatis)'
+      ? t('shell.theme.light')
       : themeState.mode === 'auto'
-        ? 'Tema: Otomatis (klik untuk Gelap)'
-        : 'Tema: Gelap (klik untuk Terang)'
+        ? t('shell.theme.auto')
+        : t('shell.theme.dark')
+  );
+
+  let envBadgeLabel = $derived(
+    appearanceState.env_badge === 'production'
+      ? t('shell.env.production')
+      : appearanceState.env_badge === 'staging'
+        ? t('shell.env.staging')
+        : appearanceState.env_badge === 'development'
+          ? t('shell.env.development')
+          : ''
   );
 
   onMount(() => {
@@ -127,7 +138,7 @@
     </button>
 
     <div class="topbar__ip">
-      <button type="button" class="topbar__ip-value" onclick={copyIP} title="Salin alamat IP server">
+      <button type="button" class="topbar__ip-value" onclick={copyIP} title={t('shell.copy_ip')}>
         <span class="dot dot--success" aria-hidden="true"></span>
         <span class="mono tabular">{maskIP ? '•••.•••.•••.•••' : ip}</span>
         <i class="ri-file-copy-line" aria-hidden="true"></i>
@@ -136,13 +147,24 @@
         type="button"
         class="topbar__ip-mask"
         onclick={() => (maskIP = !maskIP)}
-        aria-label={maskIP ? 'Tampilkan IP' : 'Sembunyikan IP'}
+        aria-label={maskIP ? t('shell.show_ip') : t('shell.hide_ip')}
         aria-pressed={maskIP}
-        title={maskIP ? 'Tampilkan IP' : 'Sembunyikan IP untuk tangkapan layar'}
+        title={maskIP ? t('shell.show_ip') : t('shell.hide_ip')}
       >
         <i class={maskIP ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
       </button>
     </div>
+
+    {#if envBadgeLabel}
+      <span
+        class="topbar__env-badge"
+        class:topbar__env-badge--prod={appearanceState.env_badge === 'production'}
+        class:topbar__env-badge--staging={appearanceState.env_badge === 'staging'}
+        class:topbar__env-badge--dev={appearanceState.env_badge === 'development'}
+      >
+        {envBadgeLabel}
+      </span>
+    {/if}
 
     <span class="badge topbar__os">
       <i class="ri-computer-line" aria-hidden="true"></i>
@@ -150,27 +172,27 @@
     </span>
   </div>
 
-  <!-- Sisi Kanan: Command Palette, Live Global Clock Pill, Tema, & Menu Akun Admin -->
+  <!-- Sisi Kanan: Command Palette, Live Global Clock Pill, Bahasa, Tema, & Menu Akun Admin -->
   <div class="topbar__right">
     {#if onOpenPalette}
       <button
         type="button"
         class="topbar__palette-btn"
         onclick={onOpenPalette}
-        aria-label="Buka pencarian cepat (Ctrl+K)"
-        title="Pencarian cepat (Ctrl+K)"
+        aria-label={t('shell.search_menu')}
+        title={`${t('shell.search_menu')} (Ctrl+K)`}
       >
         <i class="ri-search-line" aria-hidden="true"></i>
-        <span class="topbar__palette-label">Cari…</span>
+        <span class="topbar__palette-label">{t('shell.search_short')}</span>
         <kbd>Ctrl K</kbd>
       </button>
     {/if}
 
     <!-- Live Global Server & Client Clock -->
-    <div class="topbar__time-pill" title="Jam Server host (UTC) dan jam lokal Anda yang selalu tersinkronisasi">
+    <div class="topbar__time-pill">
       <div class="topbar__time-item">
         <i class="ri-server-line topbar__time-icon" aria-hidden="true"></i>
-        <span class="topbar__time-label">Server:</span>
+        <span class="topbar__time-label">{t('shell.server_clock')}</span>
         <span class="mono tabular topbar__time-val">{formatDate(serverNow)}, {formatTime(serverNow)}</span>
         <span class="topbar__tz-badge">{serverTzName}</span>
       </div>
@@ -179,11 +201,22 @@
 
       <div class="topbar__time-item topbar__client-time">
         <i class="ri-user-location-line topbar__time-icon" aria-hidden="true"></i>
-        <span class="topbar__time-label">Anda:</span>
+        <span class="topbar__time-label">{t('shell.client_clock')}</span>
         <span class="mono tabular topbar__time-val">{formatTime(clientNow)}</span>
         <span class="topbar__tz-badge topbar__tz-badge--highlight">{getClientTimezoneLabel()}</span>
       </div>
     </div>
+
+    <!-- Switcher Cepat Bahasa ID / EN -->
+    <button
+      type="button"
+      class="topbar__lang-btn mono"
+      onclick={toggleLocale}
+      title={i18nState.lang === 'id' ? 'Switch language to English' : 'Ganti bahasa ke Bahasa Indonesia'}
+      aria-label="Toggle language"
+    >
+      {i18nState.lang.toUpperCase()}
+    </button>
 
     <!-- Toggle Tema (Dark / Light / Auto) -->
     <button
@@ -204,7 +237,7 @@
         onclick={() => (userMenuOpen = !userMenuOpen)}
         aria-expanded={userMenuOpen}
         aria-haspopup="menu"
-        title="Menu akun panel aktif"
+        title={user}
       >
         <i class="ri-user-3-line" aria-hidden="true"></i>
         <span>{user}</span>
@@ -212,9 +245,9 @@
       </button>
 
       {#if userMenuOpen}
-        <div class="topbar__user-menu" role="menu" aria-label="Menu akun pengguna">
+        <div class="topbar__user-menu" role="menu" aria-label={t('shell.signed_in_as')}>
           <div class="topbar__user-info">
-            <span class="topbar__user-role">Masuk sebagai</span>
+            <span class="topbar__user-role">{t('shell.signed_in_as')}</span>
             <strong class="mono">{user}</strong>
           </div>
           {#if onLogout}
@@ -228,7 +261,7 @@
               }}
             >
               <i class="ri-logout-box-r-line" aria-hidden="true"></i>
-              <span>Keluar</span>
+              <span>{t('shell.logout')}</span>
             </button>
           {/if}
         </div>

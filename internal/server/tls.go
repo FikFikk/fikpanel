@@ -123,6 +123,111 @@ func (m *certManager) Describe() string {
 	return fmt.Sprintf("%s, %s, berlaku hingga %s", kind, m.certPath, m.notAfter.Format("2006-01-02"))
 }
 
+// TLSStatusInfo merangkum metadata sertifikat HTTPS panel aktif untuk antarmuka Settings
+type TLSStatusInfo struct {
+	Enabled       bool     `json:"enabled"`
+	SelfSigned    bool     `json:"self_signed"`
+	Persistent    bool     `json:"persistent"`
+	Subject       string   `json:"subject"`
+	Issuer        string   `json:"issuer"`
+	DNSNames      []string `json:"dns_names"`
+	NotBefore     int64    `json:"not_before"`
+	NotAfter      int64    `json:"not_after"`
+	DaysRemaining int      `json:"days_remaining"`
+	Fingerprint   string   `json:"fingerprint"`
+	CertPath      string   `json:"cert_path"`
+	KeyPath       string   `json:"key_path"`
+}
+
+// StatusInfo mengembalikan ringkasan sertifikat aktif saat ini beserta sisa masa berlakunya
+func (m *certManager) StatusInfo() TLSStatusInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	info := TLSStatusInfo{
+		Enabled:    true,
+		SelfSigned: m.selfSigned,
+		Persistent: m.persistent,
+		CertPath:   m.certPath,
+		KeyPath:    m.keyPath,
+		DNSNames:   []string{},
+	}
+	if m.cert != nil && len(m.cert.Certificate) > 0 {
+		sum := sha256.Sum256(m.cert.Certificate[0])
+		parts := make([]string, len(sum))
+		for i, b := range sum {
+			parts[i] = strings.ToUpper(hex.EncodeToString([]byte{b}))
+		}
+		info.Fingerprint = strings.Join(parts, ":")
+		leaf := m.cert.Leaf
+		if leaf == nil {
+			leaf, _ = x509.ParseCertificate(m.cert.Certificate[0])
+		}
+		if leaf != nil {
+			info.Subject = leaf.Subject.CommonName
+			info.Issuer = leaf.Issuer.CommonName
+			if info.Issuer == "" && len(leaf.Issuer.Organization) > 0 {
+				info.Issuer = leaf.Issuer.Organization[0]
+			}
+			if len(leaf.DNSNames) > 0 {
+				info.DNSNames = leaf.DNSNames
+			}
+			info.NotBefore = leaf.NotBefore.Unix()
+			info.NotAfter = leaf.NotAfter.Unix()
+			days := int(time.Until(leaf.NotAfter).Hours() / 24)
+			if days < 0 {
+				days = 0
+			}
+			info.DaysRemaining = days
+		}
+	}
+	return info
+}
+
+// InstallCustomCert memvalidasi dan memasang sertifikat SSL kustom panel dengan hot-reload instan tanpa restart
+func (m *certManager) InstallCustomCert(certPEM, keyPEM []byte) error {
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("pasangan sertifikat dan kunci privat tidak valid: %w", err)
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("sertifikat X.509 tidak dapat dibaca: %w", err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.persistent && m.certPath != "" && m.keyPath != "" {
+		if err := os.MkdirAll(filepath.Dir(m.certPath), 0o700); err != nil {
+			return err
+		}
+		if err := writeAtomic(m.keyPath, keyPEM, 0o600); err != nil {
+			return fmt.Errorf("gagal menulis kunci privat: %w", err)
+		}
+		if err := writeAtomic(m.certPath, certPEM, 0o644); err != nil {
+			return fmt.Errorf("gagal menulis sertifikat: %w", err)
+		}
+		m.modTime = latestModTime(m.certPath, m.keyPath)
+	}
+	pair.Leaf = leaf
+	m.cert = &pair
+	m.notAfter = leaf.NotAfter
+	m.selfSigned = isManagedSelfSigned(leaf)
+	return nil
+}
+
+// ResetToSelfSigned membuat ulang sertifikat self-signed ECDSA P-256 dan langsung memuatnya tanpa restart
+func (m *certManager) ResetToSelfSigned() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.persistent {
+		return m.useEphemeralLocked()
+	}
+	if err := m.generateAndStore(); err != nil {
+		return err
+	}
+	return m.loadLocked()
+}
+
 func (m *certManager) getCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

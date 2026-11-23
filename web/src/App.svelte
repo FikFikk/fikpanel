@@ -3,6 +3,8 @@
   import { apiFetch, UNAUTHORIZED_EVENT } from './lib/api';
   import type { MetricPoint, OverviewData, Service } from './lib/types';
   import { notify } from './lib/stores/toast.svelte';
+  import { applyAppearance, appearanceState, type PanelAppearance } from './lib/stores/theme.svelte';
+  import { i18nState, setLocale, t, type Locale } from './lib/stores/i18n.svelte';
   import { NAV_ITEMS, routeFromHash } from './lib/layout/nav';
 
   import Login from './lib/layout/Login.svelte';
@@ -71,7 +73,9 @@
 
   $effect(() => {
     const item = NAV_ITEMS.find((n) => n.id === currentRoute);
-    document.title = `${item?.label ?? 'Dashboard'} · fikpanel`;
+    const label = item ? t(`nav.item.${item.id}` as any) : t('nav.item.home');
+    const brand = appearanceState.brand_name || 'fikpanel';
+    document.title = `${label} · ${brand}`;
   });
 
   function onHashChange() {
@@ -195,8 +199,30 @@
   }
 
   onMount(() => {
+    // Sinkronkan preferensi tampilan, branding, dan bahasa dari server sebelum/sesudah login
+    apiFetch<Partial<PanelAppearance> & { language?: Locale }>('/api/settings/public')
+      .then((pub) => {
+        if (!pub) return;
+        applyAppearance({
+          theme_mode: pub.theme_mode,
+          accent_preset: pub.accent_preset,
+          accent_custom: pub.accent_custom,
+          surface_style: pub.surface_style,
+          density: pub.density,
+          radius_style: pub.radius_style,
+          brand_name: pub.brand_name,
+          env_badge: pub.env_badge,
+        });
+        if (pub.language === 'id' || pub.language === 'en') {
+          setLocale(pub.language);
+        }
+      })
+      .catch(() => {
+        // Tetap gunakan cache localStorage bila jaringan belum siap
+      });
+
     const onUnauthorized = () => {
-      if (authenticated) endSession('Sesi berakhir, silakan masuk kembali', 'warning');
+      if (authenticated) endSession(i18nState.lang === 'en' ? 'Session expired, please sign in again' : 'Sesi berakhir, silakan masuk kembali', 'warning');
     };
     window.addEventListener('hashchange', onHashChange);
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);

@@ -169,3 +169,41 @@ func (s *Store) DeleteWebhook(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM system_webhooks WHERE id = ?`, id)
 	return err
 }
+
+// GetWebhook mengambil satu konfigurasi webhook berdasarkan ID
+func (s *Store) GetWebhook(ctx context.Context, id int64) (*SystemWebhook, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, name, channel, webhook_url, notify_on_high_cpu, notify_on_high_ram, notify_on_backup, notify_on_ssl_expiry, created_at FROM system_webhooks WHERE id = ?`, id)
+	var w SystemWebhook
+	var c, r, b, ssl int
+	if err := row.Scan(&w.ID, &w.Name, &w.Channel, &w.WebhookURL, &c, &r, &b, &ssl, &w.CreatedAt); err != nil {
+		return nil, err
+	}
+	w.NotifyOnHighCPU = c == 1
+	w.NotifyOnHighRAM = r == 1
+	w.NotifyOnBackup = b == 1
+	w.NotifyOnSSLExpiry = ssl == 1
+	return &w, nil
+}
+
+// UpdateWebhook memperbarui nama, kanal, URL, dan pemicu notifikasi webhook
+func (s *Store) UpdateWebhook(ctx context.Context, w *SystemWebhook) error {
+	c, r, b, ssl := 0, 0, 0, 0
+	if w.NotifyOnHighCPU {
+		c = 1
+	}
+	if w.NotifyOnHighRAM {
+		r = 1
+	}
+	if w.NotifyOnBackup {
+		b = 1
+	}
+	if w.NotifyOnSSLExpiry {
+		ssl = 1
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE system_webhooks SET name = ?, channel = ?, webhook_url = ?, notify_on_high_cpu = ?, notify_on_high_ram = ?, notify_on_backup = ?, notify_on_ssl_expiry = ? WHERE id = ?`,
+		w.Name, w.Channel, w.WebhookURL, c, r, b, ssl, w.ID)
+	if err != nil {
+		return fmt.Errorf("update webhook: %w", err)
+	}
+	return nil
+}

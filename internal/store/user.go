@@ -95,4 +95,14 @@ func (s *Store) UpdatePassword(ctx context.Context, userID int64, newHash string
 	return err
 }
 
+// SetUserTOTPSecret menyimpan atau menghapus (nil) rahasia TOTP terenkripsi milik pengguna
+func (s *Store) SetUserTOTPSecret(ctx context.Context, userID int64, encryptedSecret []byte) error {
+	if len(encryptedSecret) == 0 {
+		_, err := s.db.ExecContext(ctx, "UPDATE users SET totp_secret = NULL WHERE id = ?", userID)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE users SET totp_secret = ? WHERE id = ?", encryptedSecret, userID)
+	return err
+}
+
 

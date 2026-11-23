@@ -19,11 +19,13 @@ import (
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totp_code,omitempty"`
 }
 
 type LoginResponse struct {
-	OK   bool        `json:"ok"`
-	User interface{} `json:"user"`
+	OK          bool        `json:"ok"`
+	RequireTOTP bool        `json:"require_totp,omitempty"`
+	User        interface{} `json:"user,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -55,10 +57,34 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verifikasi kode 2FA TOTP (atau kode pemulihan) bila diaktifkan pada akun
+	if len(user.TotpSecret) > 0 {
+		if strings.TrimSpace(req.TOTPCode) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(LoginResponse{
+				OK:          false,
+				RequireTOTP: true,
+			})
+			return
+		}
+		if !s.verifyUserTOTPOrRecovery(r.Context(), user, req.TOTPCode) {
+			s.limiter.RecordFailure(ip)
+			_ = s.store.RecordAudit(r.Context(), "user", "auth.login_2fa_fail", req.Username, false, "Kode 2FA tidak valid", &user.ID)
+			http.Error(w, `{"error":"kode 2FA tidak valid"}`, http.StatusUnauthorized)
+			return
+		}
+	}
+
 	s.limiter.Reset(ip)
 	_ = s.store.UpdateLastLogin(r.Context(), user.ID)
 
-	token, err := s.store.CreateSession(r.Context(), user.ID, ip, r.UserAgent(), 24*time.Hour)
+	prefs := s.loadPanelPreferences(r.Context())
+	sessionDur := time.Duration(prefs.SessionHours) * time.Hour
+	if sessionDur < time.Hour {
+		sessionDur = 24 * time.Hour
+	}
+
+	token, err := s.store.CreateSession(r.Context(), user.ID, ip, r.UserAgent(), sessionDur)
 	if err != nil {
 		http.Error(w, `{"error":"gagal membuat sesi login"}`, http.StatusInternalServerError)
 		return
@@ -73,16 +99,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   86400,
+		MaxAge:   int(sessionDur.Seconds()),
 	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
 		OK: true,
 		User: map[string]interface{}{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
+			"id":           user.ID,
+			"username":     user.Username,
+			"role":         user.Role,
+			"totp_enabled": len(user.TotpSecret) > 0,
 		},
 	})
 }
@@ -120,10 +147,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":          user.ID,
-		"username":    user.Username,
-		"role":        user.Role,
-		"sudo_active": true,
+		"id":           user.ID,
+		"username":     user.Username,
+		"role":         user.Role,
+		"sudo_active":  true,
+		"totp_enabled": len(user.TotpSecret) > 0,
 	})
 }
 
@@ -226,12 +254,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	osDisplay := runtime.GOOS + "/" + runtime.GOARCH
-	if runtime.GOOS == "windows" {
-		osDisplay = "Windows Dev (" + runtime.GOARCH + ")"
-	} else {
-		osDisplay = "Linux (amd64 / arm64)"
-	}
+	osDisplay := detectHostOSPretty()
+	kernelDisplay := detectHostKernel()
+	uptimeSec := detectHostUptimeSec()
 
 	now := time.Now()
 	zoneName, zoneOffset := now.Zone()
@@ -241,10 +266,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"system": map[string]interface{}{
 			"hostname":   hostname,
 			"os":         osDisplay,
-			"kernel":     runtime.Version(),
+			"kernel":     kernelDisplay,
+			"go_version": runtime.Version(),
 			"version":    s.Version(),
 			"cpu_cores":  runtime.NumCPU(),
-			"uptime_sec": now.Unix(),
+			"uptime_sec": uptimeSec,
 			"ip":         getIP(r),
 		},
 		"server_time": map[string]interface{}{

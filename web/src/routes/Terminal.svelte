@@ -15,6 +15,7 @@
   } from '../lib/utils/terminalHelpers';
   import { toast } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
+  import { t } from '../lib/stores/i18n.svelte';
   import type {
     TerminalServer,
     TerminalCommand,
@@ -1551,7 +1552,7 @@
 
                 {#if servers.length > 0}
                   <div class="menu-divider"></div>
-                  <div class="menu-header">Hubungkan Server Remote:</div>
+                  <div class="menu-header">{t('terminal.connect_remote')}</div>
                   {#each servers as srv}
                     <button type="button" class="menu-item" onclick={() => connectToServer(srv)}>
                       <i class="ri-server-line menu-icon"></i>
@@ -1566,7 +1567,7 @@
                 <div class="menu-divider"></div>
                 <button type="button" class="menu-item menu-item--primary" onclick={openAddServerModal}>
                   <i class="ri-add-circle-line menu-icon"></i>
-                  <span>+ Tambah Server Baru...</span>
+                  <span>{t('terminal.add_server_menu')}</span>
                 </button>
               </div>
             {/if}
@@ -1582,7 +1583,7 @@
                 class="mode-pill"
                 class:is-active={activeTab.mode === 'pty'}
                 onclick={() => switchTabMode('pty')}
-                title="Mode PTY Interaktif (WebSocket + xterm.js: mendukung nano, vim, htop, tail -f, warna truecolor)"
+                title="PTY Interactive (WebSocket + xterm.js: nano, vim, htop, tail -f, truecolor)"
               >
                 PTY
               </button>
@@ -1591,7 +1592,7 @@
                 class="mode-pill"
                 class:is-active={activeTab.mode === 'console'}
                 onclick={() => switchTabMode('console')}
-                title="Mode Console (SSE live streaming, copy per blok, Tab auto-complete, stop proses)"
+                title="Console Mode (SSE streaming, copy per block, Tab auto-complete, stop process)"
               >
                 Console
               </button>
@@ -1603,8 +1604,8 @@
             class="action-icon-btn"
             class:is-active={showSearchBar}
             onclick={() => (showSearchBar ? closeSearchBar() : openSearchBar())}
-            title="Cari di output terminal (Ctrl+Shift+F)"
-            aria-label="Cari di output terminal"
+            title={t('terminal.search_btn')}
+            aria-label={t('terminal.search_btn')}
           >
             <i class="ri-search-line"></i>
           </button>
@@ -1614,8 +1615,8 @@
             class="action-icon-btn"
             class:is-active={showHistoryPicker}
             onclick={() => (showHistoryPicker ? (showHistoryPicker = false) : openHistoryPicker())}
-            title="Riwayat perintah persisten (Alt+R / Ctrl+R di Console)"
-            aria-label="Riwayat perintah"
+            title={t('terminal.history_btn')}
+            aria-label={t('terminal.history_btn')}
           >
             <i class="ri-history-line"></i>
           </button>
@@ -1624,8 +1625,8 @@
             type="button"
             class="action-icon-btn"
             onclick={exportActiveLog}
-            title="Unduh log terminal (.txt)"
-            aria-label="Unduh log terminal"
+            title={t('terminal.export_btn')}
+            aria-label={t('terminal.export_btn')}
           >
             <i class="ri-download-2-line"></i>
           </button>
@@ -1634,8 +1635,8 @@
             type="button"
             class="action-icon-btn"
             onclick={clearActiveTerminal}
-            title="Bersihkan layar (Ctrl+L)"
-            aria-label="Bersihkan layar"
+            title={t('terminal.clear_btn')}
+            aria-label={t('terminal.clear_btn')}
           >
             <i class="ri-delete-bin-7-line"></i>
           </button>
@@ -1644,8 +1645,8 @@
             type="button"
             class="action-icon-btn"
             onclick={toggleFullscreen}
-            title={isFullscreen ? 'Keluar layar penuh' : 'Layar penuh'}
-            aria-label="Layar penuh"
+            title={isFullscreen ? t('terminal.fullscreen_exit') : t('terminal.fullscreen_enter')}
+            aria-label={t('terminal.fullscreen_enter')}
           >
             <i class={isFullscreen ? 'ri-fullscreen-exit-line' : 'ri-fullscreen-line'}></i>
           </button>
@@ -1661,7 +1662,7 @@
             class="overlay-bar-input mono"
             bind:this={searchInputEl}
             bind:value={terminalSearchQuery}
-            placeholder="Cari teks di output terminal..."
+            placeholder={t('terminal.search_placeholder')}
             onkeydown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1673,7 +1674,7 @@
             }}
           />
           {#if activeTab?.mode === 'console' && terminalSearchQuery.trim()}
-            <span class="overlay-bar-meta">{consoleSearchMatchCount} cocok</span>
+            <span class="overlay-bar-meta">{t('terminal.search_matches', { count: consoleSearchMatchCount })}</span>
           {/if}
           <button
             type="button"
@@ -1727,15 +1728,15 @@
               bind:value={historyPickerQuery}
               oninput={() => (historyPickerIndex = 0)}
               onkeydown={handleHistoryPickerKeydown}
-              placeholder="Cari riwayat perintah (Enter = jalankan, Tab = tempel)..."
+              placeholder={t('terminal.history_placeholder')}
             />
             {#if persistedHistory.length > 0}
               <button
                 type="button"
                 class="overlay-bar-btn overlay-bar-btn--danger"
                 onclick={clearPersistedHistory}
-                title="Hapus seluruh riwayat perintah tab ini"
-                aria-label="Hapus riwayat perintah"
+                title={t('common.delete')}
+                aria-label={t('common.delete')}
               >
                 <i class="ri-delete-bin-line"></i>
               </button>
@@ -1747,16 +1748,16 @@
                 showHistoryPicker = false;
                 focusActiveTerminal();
               }}
-              title="Tutup riwayat (Esc)"
-              aria-label="Tutup riwayat"
+              title={t('shell.palette.close')}
+              aria-label={t('shell.palette.close')}
             >
               <i class="ri-close-line"></i>
             </button>
           </div>
 
-          <div class="history-picker-list" role="listbox" aria-label="Riwayat perintah">
+          <div class="history-picker-list" role="listbox" aria-label={t('terminal.history_btn')}>
             {#if filteredHistoryItems.length === 0}
-              <div class="history-picker-empty">Belum ada riwayat perintah yang cocok.</div>
+              <div class="history-picker-empty">{t('terminal.history_empty')}</div>
             {:else}
               {#each filteredHistoryItems as cmd, idx}
                 <div
@@ -1866,7 +1867,7 @@
               <p class="welcome-meta">
                 <span>{activeTab.username}@{activeTab.host}</span>
                 <span class="welcome-sep">&middot;</span>
-                <span>Tab auto-complete &middot; Ctrl+R riwayat &middot; Ctrl+Shift+F cari &middot; Drag lalu Ctrl+C salin</span>
+                <span>{t('terminal.welcome_hint')}</span>
               </p>
             </div>
 
@@ -1995,7 +1996,7 @@
             class:is-active={activeSidebarTab === 'servers'}
             onclick={() => (activeSidebarTab = 'servers')}
           >
-            Server List
+            {t('terminal.tab_servers')}
           </button>
           <button
             type="button"
@@ -2003,7 +2004,7 @@
             class:is-active={activeSidebarTab === 'commands'}
             onclick={() => (activeSidebarTab = 'commands')}
           >
-            Commands
+            {t('terminal.tab_commands')}
           </button>
         </div>
 
@@ -2012,7 +2013,7 @@
           <div class="sidebar-content">
             <div class="sidebar-actions-bar">
               <button type="button" class="btn btn--primary btn--sm" onclick={openAddServerModal}>
-                <i class="ri-add-line"></i> Add server
+                <i class="ri-add-line"></i> {t('terminal.add_server')}
               </button>
               <span class="sidebar-count">{servers.length} server</span>
             </div>
@@ -2021,13 +2022,13 @@
               {#if loadingServers}
                 <div class="state state--loading">
                   <span class="spinner"></span>
-                  <span>Memuat daftar server...</span>
+                  <span>{t('common.loading')}</span>
                 </div>
               {:else if servers.length === 0}
                 <div class="state state--empty">
                   <i class="ri-inbox-2-line state__icon"></i>
                   <span class="state__title">No Data</span>
-                  <span class="state__desc">Belum ada remote server tersimpan.</span>
+                  <span class="state__desc">{t('terminal.empty_servers')}</span>
                 </div>
               {:else}
                 <div class="sidebar-list">
@@ -2119,13 +2120,13 @@
           <div class="sidebar-content">
             <div class="sidebar-actions-bar">
               <button type="button" class="btn btn--primary btn--sm" onclick={openAddCommandModal}>
-                <i class="ri-add-line"></i> Add
+                <i class="ri-add-line"></i> {t('terminal.add_cmd')}
               </button>
               <div class="search-input-wrap">
                 <input
                   type="text"
                   bind:value={commandSearch}
-                  placeholder="Cari command..."
+                  placeholder={t('terminal.search_cmd')}
                   class="search-input"
                 />
                 {#if commandSearch}
@@ -2133,8 +2134,8 @@
                     type="button"
                     class="search-clear-btn"
                     onclick={() => (commandSearch = '')}
-                    title="Hapus pencarian"
-                    aria-label="Hapus pencarian"
+                    title={t('common.reset')}
+                    aria-label={t('common.reset')}
                   >
                     <i class="ri-close-line"></i>
                   </button>
@@ -2148,13 +2149,13 @@
               {#if loadingCommands}
                 <div class="state state--loading">
                   <span class="spinner"></span>
-                  <span>Memuat pintasan...</span>
+                  <span>{t('common.loading')}</span>
                 </div>
               {:else if filteredCommands.length === 0}
                 <div class="state state--empty">
                   <i class="ri-inbox-2-line state__icon"></i>
                   <span class="state__title">No Data</span>
-                  <span class="state__desc">Tidak ada perintah yang cocok.</span>
+                  <span class="state__desc">{t('terminal.empty_commands')}</span>
                 </div>
               {:else}
                 <div class="sidebar-list">

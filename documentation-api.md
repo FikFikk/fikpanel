@@ -22,9 +22,9 @@
 | Auth Required | No |
 | Headers | `Content-Type: application/json` |
 | Query Params | Tidak ada |
-| Request Body | `username` (string, wajib), `password` (string, wajib), `totp_code` (string, opsional) |
-| Response | HTTP 200 `{"ok": true, "user": {"id": 1, "username": "admin", "role": "admin"}}` + Cookie `panel_session` |
-| Notes | Rate limited: 5 kegagalan per 15 menit per IP. Cookie disetel `HttpOnly; Secure; SameSite=Strict`. |
+| Request Body | `username` (string, wajib), `password` (string, wajib), `totp_code` (string, opsional: kode OTP 6 digit atau kode pemulihan 8 karakter) |
+| Response | HTTP 200 `{"ok": true, "user": {"id": 1, "username": "admin", "role": "admin", "totp_enabled": true}}` + Cookie `panel_session`; atau HTTP 200 `{"ok": false, "require_totp": true}` bila 2FA aktif dan `totp_code` belum disertakan |
+| Notes | Rate limited: 5 kegagalan per 15 menit per IP. Mendukung verifikasi 2FA TOTP RFC 6238 (±1 step) maupun kode pemulihan sekali pakai. Masa berlaku sesi mengikuti preferensi `session_hours` (6–720 jam, default 24 jam). Cookie disetel `HttpOnly; Secure; SameSite=Strict`. |
 
 | Field | Detail |
 |---|---|
@@ -43,8 +43,8 @@
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"id": 1, "username": "admin", "role": "admin", "sudo_active": true}` |
-| Notes | Mengembalikan profil pengguna aktif dan status window otorisasi sudo. |
+| Response | HTTP 200 `{"id": 1, "username": "admin", "role": "admin", "sudo_active": true, "totp_enabled": false}` |
+| Notes | Mengembalikan profil pengguna aktif, status window otorisasi sudo, serta status aktivasi 2FA TOTP. |
 
 | Field | Detail |
 |---|---|
@@ -2933,6 +2933,190 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Request Body | `setting` (`"ssl"`, `"security_level"`, `"always_use_https"`, `"automatic_https_rewrites"`, `"brotli"`, `"tls_1_3"`, `"development_mode"`), `value` (`"off"`, `"flexible"`, `"full"`, `"strict"`, `"under_attack"`, `"high"`, `"medium"`, `"low"`, `"essentially_off"`, `"on"`) |
 | Response | HTTP 200 `{"ok": true, "setting": "security_level", "value": "under_attack"}` |
 | Notes | Mengubah pengaturan keamanan dan performa Cloudflare Edge secara langsung via `PATCH /client/v4/zones/{id}/settings/{setting}` (membutuhkan izin token `Zone -> Zone Settings -> Edit`). |
+
+---
+
+### 1.18 Pengaturan Panel, 2FA TOTP, Sesi Aktif, TLS Panel, Update Center, Webhook & Migrasi
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/public` |
+| Auth Required | No (Publik — dikecualikan dari IP Allowlist & Auth) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "appearance": {"theme_mode": "dark", "accent_preset": "lava", "accent_custom": "#FF5A2B", "surface_style": "obsidian", "density": "comfortable", "radius_style": "default", "brand_name": "fikpanel", "env_badge": ""}, "language": "id"}` |
+| Notes | Menyediakan preferensi tampilan, white-label brand, lencana lingkungan, dan bahasa sebelum pengguna login agar layar Login langsung selaras. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/preferences` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "preferences": {...}, "client_ip": "103.x.x.x"}` |
+| Notes | Mengembalikan seluruh preferensi panel (tampilan, bahasa, `session_hours`, `ip_allowlist`, dan ambang batas alert global) serta alamat IP klien saat ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/settings/preferences` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `theme_mode`, `accent_preset`, `accent_custom`, `surface_style`, `density`, `radius_style`, `brand_name`, `env_badge`, `language`, `session_hours`, `ip_allowlist` (`[]string`), `alert_cpu_pct`, `alert_ram_pct`, `alert_disk_pct`, `alert_ssl_days`, `alert_cooldown_min` |
+| Response | HTTP 200 `{"ok": true, "preferences": {...}, "message": "..."}`; HTTP 400 bila format IP/CIDR tidak valid atau IP klien saat ini tidak masuk `ip_allowlist` |
+| Notes | Proteksi anti-lockout: menolak `ip_allowlist` non-kosong yang mengecualikan IP pemanggil saat ini; loopback (`127.0.0.1`/`::1`) selalu diizinkan middleware. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/auth/2fa/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "enabled": false, "recovery_remaining": 0}` |
+| Notes | Mengembalikan status aktivasi 2FA TOTP dan jumlah sisa kode pemulihan pengguna aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/2fa/setup` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "secret": "JBSWY3DPEHPK3PXP...", "otpauth_uri": "otpauth://totp/..."}` |
+| Notes | Menghasilkan secret Base32 20-byte pending di SQLite `settings` hingga diverifikasi via `/api/auth/2fa/enable`; QR code dirender offline di browser. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/2fa/enable` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `code` (string 6 digit, wajib) |
+| Response | HTTP 200 `{"ok": true, "recovery_codes": ["XXXX-XXXX", ...], "message": "..."}`; HTTP 400 kode tidak valid |
+| Notes | Mengaktifkan 2FA permanen pada `users.totp_secret` dan menerbitkan 8 kode pemulihan sekali pakai (disimpan sebagai hash SHA-256). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/2fa/disable` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `password` (string, opsional) atau `code` (string OTP 6 digit, opsional — salah satu wajib valid) |
+| Response | HTTP 200 `{"ok": true, "message": "..."}`; HTTP 401 verifikasi gagal |
+| Notes | Menghapus `totp_secret` dan seluruh hash kode pemulihan, serta mencatat audit `auth.2fa_disabled`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/auth/sessions` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "sessions": [{"id": "a1b2c3d4...", "ip": "...", "user_agent": "...", "created_at": 179..., "expires_at": 179..., "is_current": true}]}` |
+| Notes | Menampilkan daftar sesi aktif milik pengguna saat ini dengan prefix ID aman (16 karakter hash). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/auth/sessions/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "..."}` |
+| Notes | Mencabut satu sesi perangkat berdasarkan prefix ID sesi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/sessions/revoke-others` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "revoked": 2, "message": "..."}` |
+| Notes | Mencabut seluruh sesi perangkat lain milik pengguna sambil mempertahankan sesi browser saat ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/tls` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "tls": {"enabled": true, "self_signed": true, "subject": "...", "issuer": "...", "not_after": 182..., "days_remaining": 396, "fingerprint": "..."}, "client_ip": "..."}` |
+| Notes | Mengembalikan metadata X.509 sertifikat HTTPS panel yang sedang aktif dilayani listener. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/settings/tls/custom` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `cert_pem` (string PEM, wajib), `key_pem` (string PEM, wajib) |
+| Response | HTTP 200 `{"ok": true, "tls": {...}, "message": "..."}`; HTTP 400 pasangan sertifikat/kunci tidak cocok |
+| Notes | Memvalidasi pasangan kunci TLS, menyimpannya secara atomik, dan menerapkan sertifikat secara hot-reload tanpa restart layanan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/settings/tls/self-signed` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "tls": {...}, "message": "..."}` |
+| Notes | Membuat ulang sertifikat self-signed ECDSA P-256 baru (397 hari) dan memuat ulang `certManager` seketika. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/system` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.4.2", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/settings/system/hostname`, `POST /api/settings/system/timezone`, `POST /api/settings/system/restart` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `hostname` (string RFC1123) / `timezone` (string IANA `Area/City`) / kosong untuk restart |
+| Response | HTTP 200 `{"ok": true, "message": "..."}` |
+| Notes | Menjalankan `hostnamectl set-hostname`, `timedatectl set-timezone`, atau restart daemon `fikpanel.service` secara detached (`systemd-run --no-block` dengan jeda 1,5 detik). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/updater/status`, `GET /api/settings/updater/check`, `POST /api/settings/updater/run`, `POST /api/settings/updater/autoupdate` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST`) |
+| Query Params | Tidak ada |
+| Request Body | `run`: `{"target": "latest"}`; `autoupdate`: `{"enabled": true}` |
+| Response | HTTP 200 status auto-update timer & log terakhir / hasil cek rilis GitHub (`latest_tag`, `update_available`, `release_url`) / konfirmasi eksekusi update |
+| Notes | Antarmuka API resmi untuk Update Center GUI yang terhubung langsung ke paket `internal/updater` (SHA-256 verified + rollback). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/webhooks/{id}`, `POST /api/webhooks/{id}/test` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `PUT`: `name`, `channel` (`telegram`/`discord`/`generic`), `webhook_url` (mendukung skema `tg://<token>/<chat_id>`), `notify_on_high_cpu`, `notify_on_high_ram`, `notify_on_backup`, `notify_on_ssl_expiry`; `test`: kosong |
+| Response | HTTP 200 `{"ok": true, "message": "..."}` |
+| Notes | Memperbarui konfigurasi webhook atau mengirim pesan uji coba langsung (Telegram Bot API, Discord Embed, atau Custom JSON POST) dan melaporkan HTTP status respons secara real-time. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/settings/backup/db`, `GET /api/settings/config/export`, `POST /api/settings/config/import` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST import`) |
+| Query Params | Tidak ada |
+| Request Body | `import`: JSON profil hasil ekspor (`preferences`, `terminal_commands`, `webhooks`) |
+| Response | `backup/db`: attachment `.db` atomik (`VACUUM INTO`); `config/export`: attachment `.json`; `config/import`: HTTP 200 ringkasan jumlah item yang diimpor |
+| Notes | Ekspor JSON secara sengaja tidak menyertakan kata sandi, hash 2FA, sesi, ataupun kunci privat SSH/SSL demi keamanan migrasi antar-server. |
 
 ---
 

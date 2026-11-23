@@ -307,7 +307,7 @@
     });
     resizeObserver.observe(hostEl);
 
-    // Sinkronkan palet warna xterm saat pengguna mengganti tema gelap/terang
+    // Sinkronkan palet warna xterm saat pengguna mengganti tema, aksen palet, atau nuansa latar di Settings
     themeObserver = new MutationObserver(() => {
       if (term) {
         term.options.theme = buildXtermTheme();
@@ -315,7 +315,7 @@
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-theme'],
+      attributeFilter: ['data-theme', 'data-accent', 'data-surface', 'style'],
     });
 
     requestAnimationFrame(() => {

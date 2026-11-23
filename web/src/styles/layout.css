@@ -509,6 +509,50 @@
   .topbar__user-logout:hover {
     background: var(--tint-danger);
   }
+  .topbar__env-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-xs);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.06em;
+    border: 1px solid transparent;
+  }
+  .topbar__env-badge--prod {
+    background: var(--tint-danger);
+    border-color: var(--ring-danger);
+    color: var(--danger-strong);
+  }
+  .topbar__env-badge--staging {
+    background: var(--tint-warning);
+    border-color: var(--ring-warning);
+    color: var(--warning-strong);
+  }
+  .topbar__env-badge--dev {
+    background: var(--tint-info);
+    border-color: var(--ring-info);
+    color: var(--info);
+  }
+  .topbar__lang-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--control-sm);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease, background var(--duration-fast) ease;
+  }
+  .topbar__lang-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-strong);
+    background: var(--tint-accent);
+  }
 
   @media (max-width: 1024px) {
     .topbar__client-time,
@@ -561,6 +605,28 @@
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     animation: fp-pop var(--duration-slow) var(--ease-spring);
+  }
+  .login__lang-switch {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    display: inline-flex;
+    padding: 2px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .login__lang-btn {
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+  }
+  .login__lang-btn.is-active {
+    background: var(--accent);
+    color: var(--text-on-accent);
   }
   .login__brand {
     display: flex;
