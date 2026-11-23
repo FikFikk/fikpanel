@@ -525,6 +525,16 @@ EOF
 systemctl daemon-reload
 systemctl enable fikpanel.service
 systemctl restart fikpanel.service || true
+
+# Tunggu layanan siap: saat start pertama, FikPanel membuat akun root dengan kata sandi acak
+# dan menyimpannya di berkas kredensial (izin 0600, hanya root).
+CRED_FILE="${INSTALL_DIR}/data/admin-credentials.txt"
+for _ in $(seq 1 20); do
+    if [ -f "$CRED_FILE" ] || [ -f "${INSTALL_DIR}/data/tls/panel.crt" ]; then
+        break
+    fi
+    sleep 1
+done
 sleep 1
 
 if systemctl is-active --quiet fikpanel.service; then
@@ -562,15 +572,30 @@ fi
 PRIVATE_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 PUBLIC_IP=$(curl -s4 --max-time 3 https://api.ipify.org 2>/dev/null || echo "$PRIVATE_IP")
 
+PANEL_USER=""
+PANEL_PASS=""
+if [ -f "$CRED_FILE" ]; then
+    PANEL_USER=$(awk '/^username:/ {print $2; exit}' "$CRED_FILE")
+    PANEL_PASS=$(awk '/^password:/ {print $2; exit}' "$CRED_FILE")
+fi
+
 echo -e "\n=============================================================="
 echo -e "${GREEN}${BOLD}✓ Instalasi FikPanel Berhasil Diselesaikan!${NC}"
 echo -e "=============================================================="
 if [ -n "$PRIVATE_IP" ] && [ "$PRIVATE_IP" != "127.0.0.1" ]; then
-    echo -e "Akses IP Privat    : ${CYAN}${BOLD}http://${PRIVATE_IP}:1405${NC} (atau https://${PRIVATE_IP}:1405)"
+    echo -e "Akses IP Privat    : ${CYAN}${BOLD}https://${PRIVATE_IP}:1405${NC}"
 fi
-echo -e "Akses IP Publik    : ${CYAN}${BOLD}http://${PUBLIC_IP}:1405${NC} (atau https://${PUBLIC_IP}:1405)"
-echo -e "Username Standar   : ${BOLD}root${NC}"
-echo -e "Password Standar   : ${YELLOW}(Dibuat saat login pertama atau kosong)${NC}"
+echo -e "Akses IP Publik    : ${CYAN}${BOLD}https://${PUBLIC_IP}:1405${NC}"
+if [ -n "$PANEL_PASS" ]; then
+    echo -e "Username           : ${BOLD}${PANEL_USER}${NC}"
+    echo -e "Password           : ${YELLOW}${BOLD}${PANEL_PASS}${NC}"
+    echo -e "                     (tersimpan di ${CRED_FILE}, hanya root; ganti setelah login)"
+else
+    echo -e "Username/Password  : ${YELLOW}akun lama tetap dipakai${NC} (lupa? sudo fikpanel reset-password)"
+fi
 echo -e "Status Layanan     : $(systemctl is-active fikpanel.service 2>/dev/null || echo 'unknown')"
 echo -e "Direktori Berkas   : ${INSTALL_DIR}"
-echo -e "==============================================================\n"
+echo -e "=============================================================="
+echo -e "${CYAN}Catatan:${NC} panel memakai sertifikat HTTPS self-signed, jadi browser menampilkan"
+echo -e "peringatan keamanan saat pertama dibuka. Pilih \"Advanced/Lanjutan\" lalu lanjutkan."
+echo -e "Sertifikat sendiri (mis. Let's Encrypt) dapat dipasang di ${INSTALL_DIR}/data/tls/panel.crt & panel.key.\n"

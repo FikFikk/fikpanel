@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fikpanel/internal/auth"
+	"fikpanel/internal/credentials"
 	"fikpanel/internal/services"
 	"fikpanel/internal/store"
 )
@@ -147,8 +148,8 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newPass := req.NewPassword
-	if len(newPass) < 4 {
-		http.Error(w, `{"error":"kata sandi baru minimal 4 karakter"}`, http.StatusBadRequest)
+	if err := auth.ValidateNewPassword(newPass); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -173,15 +174,28 @@ func (s *Server) handleUpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.UpdatePassword(r.Context(), user.ID, newHash); err != nil {
+	// Sesi lain (perangkat lain atau sesi yang mungkin dicuri) dicabut; sesi saat ini dipertahankan.
+	currentToken := ""
+	if cookie, err := r.Cookie("panel_session"); err == nil {
+		currentToken = cookie.Value
+	}
+	revoked, err := s.store.SetPasswordAndRevokeSessions(r.Context(), user.ID, newHash, currentToken)
+	if err != nil {
 		http.Error(w, `{"error":"gagal menyimpan kata sandi baru ke database"}`, http.StatusInternalServerError)
 		return
 	}
+	if s.credentialsFile != "" {
+		credentials.Forget(s.credentialsFile, user.Username)
+	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_success", user.Username, true, "Kata sandi administrator berhasil diperbarui", &user.ID)
+	_ = s.store.RecordAudit(r.Context(), "user", "auth.password_change_success", user.Username, true,
+		fmt.Sprintf("Kata sandi administrator diperbarui; %d sesi lain dicabut", revoked), &user.ID)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"ok":true,"message":"Kata sandi berhasil diperbarui"}`))
+	msg := "Kata sandi berhasil diperbarui"
+	if revoked > 0 {
+		msg = fmt.Sprintf("Kata sandi berhasil diperbarui; %d sesi login lain telah dikeluarkan", revoked)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg})
 }
 
 // handleOverview menyajikan ringkasan sistem, hardware, dan status modul panel (mirip aaPanel)

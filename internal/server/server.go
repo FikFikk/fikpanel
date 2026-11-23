@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -56,6 +59,14 @@ type Server struct {
 	limiter  *RateLimiter
 	version  string
 
+	// devMode mengaktifkan proxy Vite HMR & aset dari disk lokal (hanya untuk pengembangan).
+	devMode bool
+	// credentialsFile adalah berkas kredensial awal yang dihapus setelah admin mengganti kata sandi.
+	credentialsFile string
+	// certs & redirectSrv aktif bila TLS panel dinyalakan (EnableTLS).
+	certs       *certManager
+	redirectSrv *http.Server
+
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
 	bgCtx    context.Context
 	bgCancel context.CancelFunc
@@ -65,6 +76,44 @@ type Server struct {
 func (s *Server) SetVersion(v string) {
 	s.version = v
 }
+
+// SetDevMode mengaktifkan fitur khusus pengembangan. Di produksi proxy ke 127.0.0.1:5173 harus
+// mati, karena pengguna lokal mana pun (mis. proses PHP www-data) dapat membuka port tersebut
+// dan menyuntikkan JavaScript ke sesi administrator.
+func (s *Server) SetDevMode(dev bool) {
+	s.devMode = dev
+}
+
+// SetCredentialsFile menetapkan lokasi berkas kredensial awal (lihat paket credentials).
+func (s *Server) SetCredentialsFile(path string) {
+	s.credentialsFile = path
+}
+
+// EnableTLS menyalakan HTTPS pada port panel dengan sertifikat dari dir (self-signed otomatis bila
+// belum ada). HTTP biasa dari luar host di-redirect ke HTTPS; HTTP dari loopback tetap dilayani untuk
+// reverse proxy lokal dan health check updater. Mengembalikan deskripsi sertifikat untuk log.
+func (s *Server) EnableTLS(dir string) (string, error) {
+	cm, err := newCertManager(dir, func(format string, args ...any) {
+		fmt.Printf("[fikpanel tls] "+format+"\n", args...)
+	})
+	if err != nil {
+		return "", err
+	}
+	s.certs = cm
+	s.redirectSrv = &http.Server{
+		Handler:           http.HandlerFunc(redirectToHTTPS),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       15 * time.Second,
+		ErrorLog:          quietServerLog(),
+	}
+	s.server.ErrorLog = quietServerLog()
+	return fmt.Sprintf("%s; SHA-256 %s", cm.Describe(), cm.Fingerprint()), nil
+}
+
+// TLSEnabled melaporkan apakah panel melayani HTTPS.
+func (s *Server) TLSEnabled() bool { return s.certs != nil }
 
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
@@ -505,12 +554,14 @@ func (s *Server) registerRoutes() {
 	}
 
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Cek apakah Vite Dev Server aktif di port 5173 (memberikan HMR otomatis seketika saat file disimpan)
-		conn, err := net.DialTimeout("tcp", "127.0.0.1:5173", 50*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			viteProxy.ServeHTTP(w, r)
-			return
+		// 1. Mode dev saja: cek apakah Vite Dev Server aktif di port 5173 (HMR otomatis saat file disimpan)
+		if s.devMode {
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:5173", 50*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				viteProxy.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Terapkan Content Security Policy ketat pada mode produksi/statis (bukan proxy Vite dev)
@@ -532,8 +583,8 @@ func (s *Server) registerRoutes() {
 			_, _ = w.Write([]byte("window.location.reload();\nexport default {};\n"))
 		}
 
-		// 2. Jika Vite tidak aktif, sajikan dari disk lokal (agar refresh langsung membaca file terbaru tanpa restart Go)
-		if stat, err := os.Stat(localDistDir); err == nil && stat.IsDir() {
+		// 2. Mode dev saja: jika Vite tidak aktif, sajikan dari disk lokal (refresh membaca build terbaru tanpa restart Go)
+		if stat, err := os.Stat(localDistDir); s.devMode && err == nil && stat.IsDir() {
 			if strings.HasPrefix(r.URL.Path, "/assets/") && strings.HasSuffix(r.URL.Path, ".js") {
 				if _, err := os.Stat(localDistDir + r.URL.Path); err != nil {
 					setCSP()
@@ -565,17 +616,44 @@ func (s *Server) registerRoutes() {
 	})
 }
 
-// Start menjalankan listener HTTP
+// Start menjalankan listener HTTP (atau HTTPS + redirect bila EnableTLS dipanggil)
 func (s *Server) Start() error {
+	ln, err := net.Listen("tcp", s.server.Addr)
+	if err != nil {
+		return err
+	}
 	go s.nginx.RunWatchdog(s.bgCtx, time.Minute)
 	go s.sites.RunRenewLoop(s.bgCtx, func(ok bool, target, msg string) {
 		_ = s.store.RecordAudit(s.bgCtx, "system", "ssl.renew", target, ok, msg, nil)
 	})
-	return s.server.ListenAndServe()
+	if s.certs == nil {
+		return s.server.Serve(ln)
+	}
+	sl := newSniffListener(ln, s.certs.TLSConfig())
+	go func() { _ = s.redirectSrv.Serve(sl.redirect) }()
+	return s.server.Serve(sl)
 }
 
 // Shutdown menghentikan server secara graceful dengan batas waktu
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.bgCancel()
+	if s.redirectSrv != nil {
+		_ = s.redirectSrv.Shutdown(ctx)
+	}
 	return s.server.Shutdown(ctx)
+}
+
+// quietServerLog membuang log "TLS handshake error" yang muncul setiap kali browser menolak
+// sertifikat self-signed sebelum admin menerimanya, agar journal tidak dibanjiri pesan tak penting.
+func quietServerLog() *log.Logger {
+	return log.New(filteredWriter{w: os.Stderr}, "", log.LstdFlags)
+}
+
+type filteredWriter struct{ w io.Writer }
+
+func (f filteredWriter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("TLS handshake error")) {
+		return len(p), nil
+	}
+	return f.w.Write(p)
 }

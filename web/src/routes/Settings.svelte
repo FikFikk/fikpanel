@@ -79,8 +79,8 @@
       onNotify('Konfirmasi kata sandi tidak cocok!');
       return;
     }
-    if (newPassword.length < 4) {
-      onNotify('Kata sandi baru minimal 4 karakter!');
+    if (newPassword.length < 8) {
+      onNotify('Kata sandi baru minimal 8 karakter!');
       return;
     }
     updating = true;
@@ -230,15 +230,15 @@
         <form class="pass-form" onsubmit={handlePasswordChange}>
           <div class="field">
             <label for="old-pass" class="field__label">Kata Sandi Saat Ini</label>
-            <input id="old-pass" type="password" class="input" bind:value={oldPassword} placeholder="Kosongkan jika mode dev / saat ini tanpa sandi" autocomplete="current-password" />
+            <input id="old-pass" type="password" class="input" bind:value={oldPassword} placeholder="Kata sandi yang dipakai saat ini" autocomplete="current-password" />
           </div>
           <div class="field">
             <label for="new-pass" class="field__label">Kata Sandi Baru</label>
-            <input id="new-pass" type="password" class="input" bind:value={newPassword} required minlength="4" autocomplete="new-password" />
+            <input id="new-pass" type="password" class="input" bind:value={newPassword} required minlength="8" autocomplete="new-password" />
           </div>
           <div class="field">
             <label for="conf-pass" class="field__label">Konfirmasi Kata Sandi Baru</label>
-            <input id="conf-pass" type="password" class="input" bind:value={confirmPassword} required minlength="4" autocomplete="new-password" />
+            <input id="conf-pass" type="password" class="input" bind:value={confirmPassword} required minlength="8" autocomplete="new-password" />
           </div>
           <div>
             <button type="submit" class="btn btn--primary" disabled={updating}>

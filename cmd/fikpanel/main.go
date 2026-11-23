@@ -9,10 +9,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
+	"fikpanel/internal/auth"
+	"fikpanel/internal/credentials"
 	"fikpanel/internal/discovery"
 	"fikpanel/internal/metrics"
 	"fikpanel/internal/server"
@@ -84,7 +87,8 @@ Perintah yang Tersedia:
                   Opsi:
                     --port <nomor>   Port server HTTP/HTTPS (default: 1405)
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
-                    --dev            Mode development dengan auto-seed akun root
+                    --tls <mode>     auto (default, HTTPS self-signed / sertifikat di <data>/tls) atau off
+                    --dev            Pengembangan lokal: akun root tanpa sandi (JANGAN di server publik)
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
@@ -102,8 +106,9 @@ Perintah yang Tersedia:
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
   doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
-  reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
-  init            Inisialisasi kredensial awal administrator
+  reset-password  Reset kata sandi admin (acak bila --password kosong) & keluarkan semua sesinya
+                  Opsi: --user <nama>  --password <sandi>  --db <path>
+  init            Buat akun administrator baru (kata sandi acak bila --password kosong)
   version, -v     Menampilkan informasi versi biner FikPanel
   help, -h        Menampilkan panduan bantuan perintah ini
 
@@ -124,8 +129,24 @@ func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.Int("port", 1405, "Port server HTTP/HTTPS")
 	dbPath := fs.String("db", "fikpanel.db", "Lokasi file database SQLite")
-	isDev := fs.Bool("dev", true, "Mode development dengan auto-seed akun root")
+	isDev := fs.Bool("dev", false, "Mode pengembangan lokal: akun root TANPA kata sandi + proxy Vite (jangan dipakai di server publik)")
+	tlsMode := fs.String("tls", "auto", "TLS panel: auto (HTTPS, self-signed bila belum ada sertifikat) atau off (HTTP biasa)")
 	fs.Parse(args)
+
+	tlsExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "tls" {
+			tlsExplicit = true
+		}
+	})
+	mode := strings.ToLower(strings.TrimSpace(*tlsMode))
+	if mode != "auto" && mode != "off" {
+		fmt.Fprintf(os.Stderr, "Fatal: nilai --tls tidak valid: %q (gunakan auto atau off)\n", *tlsMode)
+		os.Exit(2)
+	}
+	if *isDev && !tlsExplicit {
+		mode = "off"
+	}
 
 	fmt.Printf("[fikpanel serve] Membuka database SQLite pada: %s...\n", *dbPath)
 	st, err := store.Open(*dbPath)
@@ -144,13 +165,33 @@ func runServe(args []string) {
 		fmt.Printf("Peringatan: Gagal seed default services: %v\n", err)
 	}
 
-	// Auto-seed akun dev (root / password kosong) untuk pengujian lokal
+	credPath := credentials.PathFor(*dbPath)
 	if *isDev {
+		// Akun dev (root / kata sandi kosong) hanya untuk pengujian lokal
 		devUser, err := st.EnsureDevUser("root", "")
 		if err != nil {
 			fmt.Printf("Peringatan: Gagal seed akun dev: %v\n", err)
 		} else {
 			fmt.Printf("[fikpanel dev] Akun dev aktif -> Username: %s | Password: (kosong)\n", devUser.Username)
+			fmt.Println("[fikpanel dev] PERINGATAN: mode --dev tidak aman untuk server yang dapat diakses publik.")
+		}
+	} else {
+		// Produksi: panel tidak boleh berjalan dengan akun tanpa kata sandi (fail-closed bila gagal).
+		credCtx, credCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		res, err := credentials.EnsureAdmin(credCtx, st, credPath)
+		credCancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Fatal: Gagal mengamankan akun administrator: %v\n", err)
+			os.Exit(1)
+		}
+		for _, c := range res.Created {
+			fmt.Printf("[fikpanel serve] Akun administrator awal dibuat: %s. Kata sandi acak tersimpan di %s (lihat: sudo cat %s)\n", c.Username, credPath, credPath)
+		}
+		for _, c := range res.Rotated {
+			fmt.Printf("[fikpanel serve] KEAMANAN: akun %s memakai kata sandi kosong; diganti dengan kata sandi acak di %s\n", c.Username, credPath)
+		}
+		if res.RevokedSession > 0 {
+			fmt.Printf("[fikpanel serve] KEAMANAN: %d sesi login akun tanpa kata sandi dicabut.\n", res.RevokedSession)
 		}
 	}
 
@@ -164,10 +205,25 @@ func runServe(args []string) {
 		os.Exit(1)
 	}
 	srv.SetVersion(version)
+	srv.SetDevMode(*isDev)
+	srv.SetCredentialsFile(credPath)
+
+	scheme := "http"
+	if mode == "auto" {
+		certDir := filepath.Join(filepath.Dir(credPath), "tls")
+		desc, err := srv.EnableTLS(certDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Fatal: Gagal menyiapkan TLS panel: %v (jalankan dengan --tls=off untuk HTTP biasa)\n", err)
+			os.Exit(1)
+		}
+		scheme = "https"
+		fmt.Printf("[fikpanel serve] TLS aktif: %s\n", desc)
+		fmt.Println("[fikpanel serve] HTTP biasa dari luar host di-redirect ke HTTPS; HTTP dari 127.0.0.1 tetap dilayani (reverse proxy lokal).")
+	}
 
 	// Jalankan server di goroutine terpisah
 	go func() {
-		fmt.Printf("[fikpanel serve] Server berjalan di http://127.0.0.1:%d\n", *port)
+		fmt.Printf("[fikpanel serve] Server berjalan di %s://127.0.0.1:%d\n", scheme, *port)
 		if err := srv.Start(); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "Fatal: Server berhenti tidak normal: %v\n", err)
 			os.Exit(1)
@@ -198,11 +254,11 @@ func runAgent(args []string) {
 	fmt.Printf("[fikpanel agent] Agen privileged aktif (idle timeout: %v)...\n", *idleExit)
 }
 
-// runInit menangani inisialisasi awal kredensial dan sertifikat TLS
+// runInit membuat akun administrator baru (kata sandi acak bila tidak diberikan)
 func runInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	username := fs.String("user", "admin", "Nama pengguna administrator")
-	password := fs.String("password", "", "Kata sandi admin (kosongkan untuk acak)")
+	password := fs.String("password", "", "Kata sandi admin (kosongkan untuk dibangkitkan acak)")
 	dbPath := fs.String("db", "fikpanel.db", "Lokasi file database SQLite")
 	fs.Parse(args)
 
@@ -213,21 +269,151 @@ func runInit(args []string) {
 	}
 	defer st.Close()
 
-	user, err := st.EnsureDevUser(*username, *password)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := st.GetUserByUsername(ctx, *username); err == nil {
+		fmt.Printf("[fikpanel init] Akun %s sudah ada. Untuk mengganti kata sandinya: sudo fikpanel reset-password --user %s\n", *username, *username)
+		return
+	}
+
+	pw, generated, err := chooseNewPassword(*password)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Gagal membuat user: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+		os.Exit(2)
+	}
+	hash, err := auth.HashPassword(pw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Gagal mengenkripsi kata sandi: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("[fikpanel init] User %s berhasil dibuat/diperbarui.\n", user.Username)
+	if _, err := st.CreateAdminUser(ctx, *username, hash); err != nil {
+		fmt.Fprintf(os.Stderr, "Gagal membuat akun: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("[fikpanel init] Akun administrator %s berhasil dibuat.\n", *username)
+	if generated {
+		fmt.Printf("  Kata sandi: %s\n  Simpan kata sandi ini; tidak akan ditampilkan lagi.\n", pw)
+	}
 }
 
-// runResetPassword menangani pemulihan kata sandi darurat
+// chooseNewPassword memvalidasi kata sandi dari flag atau membangkitkan yang acak bila kosong.
+func chooseNewPassword(fromFlag string) (password string, generated bool, err error) {
+	if fromFlag != "" {
+		if err := auth.ValidateNewPassword(fromFlag); err != nil {
+			return "", false, err
+		}
+		return fromFlag, false, nil
+	}
+	pw, err := auth.GeneratePassword(credentials.GeneratedPasswordLength)
+	return pw, true, err
+}
+
+// resolveProductionDB menentukan database yang dipakai layanan fikpanel (dari unit systemd),
+// lalu database lokal di direktori kerja. Tidak pernah membuat database baru secara diam-diam.
+func resolveProductionDB(flagValue string) (string, error) {
+	if flagValue != "" {
+		if _, err := os.Stat(flagValue); err != nil {
+			return "", fmt.Errorf("database %s tidak ditemukan", flagValue)
+		}
+		return flagValue, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	candidates := []string{updater.DetectPaths(ctx, updater.NewSystem()).DBPath, updater.DefaultDBPath, "fikpanel.db"}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && fi.Mode().IsRegular() {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("database FikPanel tidak ditemukan (dicoba: %s); gunakan --db <path>", strings.Join(candidates, ", "))
+}
+
+// runResetPassword mereset kata sandi administrator melalui CLI (akses root di server)
 func runResetPassword(args []string) {
 	fs := flag.NewFlagSet("reset-password", flag.ExitOnError)
-	username := fs.String("user", "admin", "Nama pengguna yang direset")
+	username := fs.String("user", "", "Nama pengguna yang direset (default: satu-satunya akun, atau root)")
+	password := fs.String("password", "", "Kata sandi baru (kosongkan agar dibangkitkan acak; lebih aman karena tidak tercatat di history shell)")
+	dbFlag := fs.String("db", "", "Lokasi database (default: diambil dari fikpanel.service, lalu /opt/fikpanel/data/fikpanel.db)")
 	fs.Parse(args)
 
-	fmt.Printf("[fikpanel reset-password] Mereset kata sandi untuk: %s\n", *username)
+	if runtime.GOOS == "linux" {
+		requireRoot("reset-password")
+	}
+	dbPath, err := resolveProductionDB(*dbFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+		os.Exit(1)
+	}
+	st, err := store.Open(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] Gagal membuka database %s: %v\n", dbPath, err)
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	users, err := st.ListUsers(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+		os.Exit(1)
+	}
+
+	target := strings.TrimSpace(*username)
+	if target == "" {
+		target = credentials.DefaultAdminUsername
+		if len(users) == 1 {
+			target = users[0].Username
+		}
+	}
+	var found *store.User
+	names := make([]string, 0, len(users))
+	for i := range users {
+		names = append(names, users[i].Username)
+		if users[i].Username == target {
+			found = &users[i]
+		}
+	}
+	if found == nil && len(users) > 0 {
+		fmt.Fprintf(os.Stderr, "[!] Akun %q tidak ditemukan. Akun yang tersedia: %s\n    Contoh: sudo fikpanel reset-password --user %s\n", target, strings.Join(names, ", "), names[0])
+		os.Exit(1)
+	}
+
+	pw, generated, err := chooseNewPassword(*password)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+		os.Exit(2)
+	}
+	hash, err := auth.HashPassword(pw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] Gagal mengenkripsi kata sandi: %v\n", err)
+		os.Exit(1)
+	}
+
+	var revoked int64
+	if found == nil {
+		created, err := st.CreateAdminUser(ctx, target, hash)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+			os.Exit(1)
+		}
+		found = created
+	} else if revoked, err = st.SetPasswordAndRevokeSessions(ctx, found.ID, hash, ""); err != nil {
+		fmt.Fprintf(os.Stderr, "[!] %v\n", err)
+		os.Exit(1)
+	}
+	credentials.Forget(credentials.PathFor(dbPath), target)
+	_ = st.RecordAudit(ctx, "system", "auth.password_reset_cli", target, true,
+		fmt.Sprintf("Kata sandi direset melalui CLI; %d sesi dicabut", revoked), &found.ID)
+
+	fmt.Printf("[✓] Kata sandi akun %s berhasil direset (%d sesi login dikeluarkan).\n", target, revoked)
+	fmt.Printf("    Username : %s\n", target)
+	if generated {
+		fmt.Printf("    Password : %s\n", pw)
+		fmt.Println("    Simpan kata sandi ini; tidak akan ditampilkan lagi.")
+	} else {
+		fmt.Println("    Password : (sesuai nilai --password)")
+	}
 }
 
 // runDoctor melakukan pengecekan diagnostik sistem FikPanel
