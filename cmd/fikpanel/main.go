@@ -632,23 +632,31 @@ func fetchGitHubReleases() ([]GitHubReleaseItem, error) {
 
 // runVersions menampilkan daftar versi rilis yang tersedia di GitHub Releases
 func runVersions(args []string) {
+	showAll := false
+	limit := 6
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
-			fmt.Println("Penggunaan: fikpanel versions")
-			fmt.Println("Menampilkan daftar seluruh versi rilis FikPanel yang tersedia di GitHub Releases.")
+			fmt.Println("Penggunaan: fikpanel versions [opsi]")
+			fmt.Println("Opsi:")
+			fmt.Println("  --all, -a    Tampilkan seluruh arsip riwayat rilis lawas")
 			return
+		}
+		if arg == "--all" || arg == "-a" {
+			showAll = true
 		}
 	}
 
 	fmt.Println("==========================================================================")
 	fmt.Println("             Daftar Rilis FikPanel yang Tersedia (GitHub)                 ")
 	fmt.Println("==========================================================================")
-	fmt.Printf("[*] Versi terpasang saat ini : v%s\n", version)
+	fmt.Printf("[*] Versi terpasang saat ini : v%s
+", version)
 	fmt.Println("[*] Menghubungi GitHub Releases API...")
 
 	releases, err := fetchGitHubReleases()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Gagal memuat daftar rilis: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[!] Gagal memuat daftar rilis: %v
+", err)
 		os.Exit(1)
 	}
 
@@ -659,12 +667,19 @@ func runVersions(args []string) {
 
 	currentNorm := strings.TrimPrefix(version, "v")
 
-	fmt.Printf("\n%-12s  %-20s  %-15s  %s\n", "TAG / VERSI", "TANGGAL RILIS", "STATUS", "KETERANGAN")
+	fmt.Printf("
+%-12s  %-20s  %-15s  %s
+", "TAG / VERSI", "TANGGAL RILIS", "STATUS", "KETERANGAN")
 	fmt.Println(strings.Repeat("-", 74))
 
+	count := 0
 	for _, rel := range releases {
 		if rel.Draft {
 			continue
+		}
+
+		if !showAll && count >= limit {
+			break
 		}
 
 		relNorm := strings.TrimPrefix(rel.TagName, "v")
@@ -678,24 +693,36 @@ func runVersions(args []string) {
 			status = "[TERPASANG]"
 		} else if rel.Prerelease {
 			status = "Pre-release"
+		} else if updater.CompareVersions(rel.TagName, "v0.4.0") < 0 {
+			status = "[DEPRECATED]"
 		}
 
 		title := rel.Name
 		if title == "" {
 			title = rel.TagName
 		}
+		if updater.CompareVersions(rel.TagName, "v0.4.0") < 0 && !strings.Contains(title, "Rentan") {
+			title += " (Legacy / Rentan)"
+		}
 
-		fmt.Printf("%-12s  %-20s  %-15s  %s\n", rel.TagName, dateStr, status, title)
+		fmt.Printf("%-12s  %-20s  %-15s  %s
+", rel.TagName, dateStr, status, title)
+		count++
 	}
 
 	fmt.Println(strings.Repeat("-", 74))
+	if !showAll && len(releases) > count {
+		fmt.Printf("Catatan: Hanya %d rilis terbaru yang ditampilkan demi stabilitas & keamanan.
+", count)
+		fmt.Println("Gunakan 'fikpanel versions --all' jika ingin melihat seluruh arsip rilis lawas.")
+		fmt.Println(strings.Repeat("-", 74))
+	}
 	fmt.Println("Pilihan Perintah Pembaruan:")
 	fmt.Println("  fikpanel update             # Perbarui ke rilis stabil terbaru")
-	fmt.Println("  fikpanel update <versi>     # Pasang versi tertentu (contoh: fikpanel update v0.3.1)")
+	fmt.Println("  fikpanel update <versi>     # Pasang versi tertentu (contoh: fikpanel update v0.4.0)")
 	fmt.Println()
 }
 
-// runUpdateCheck memeriksa apakah rilis baru tersedia di GitHub Releases tanpa mengunduh
 func runUpdateCheck() {
 	fmt.Println("[*] Memeriksa ketersediaan pembaruan FikPanel...")
 	releases, err := fetchGitHubReleases()
