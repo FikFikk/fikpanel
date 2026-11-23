@@ -168,7 +168,7 @@ git push origin v0.3.12
 4. Masukkan nama tag rilis (misal `v0.3.12`), lalu klik **Run workflow**.
 
 > **Apa yang terjadi secara otomatis?**  
-> Runner GitHub Actions akan secara otomatis mengompilasi frontend Svelte 5, mengompilasi biner Go multi-arsitektur (`Linux amd64`, `Linux arm64`, dan `Windows amd64`), lalu mengunggahnya ke halaman [GitHub Releases](https://github.com/FikFikk/fikpanel/releases). Server yang menjalankan `curl ... install.sh` atau `fikpanel update` akan langsung mendapatkan versi terbaru tersebut.
+> Runner GitHub Actions akan secara otomatis mengompilasi frontend Svelte 5, mengompilasi biner Go multi-arsitektur (`Linux amd64`, `Linux arm64`, dan `Windows amd64`), lalu mengunggahnya ke halaman [GitHub Releases](https://github.com/FikFikk/fikpanel/releases). Server yang menjalankan `curl ... install.sh` atau `fikpanel update` mendapatkan versi tersebut setelah workflow selesai (±2–3 menit setelah tag di-push), dan server dengan auto-update aktif memasangnya dalam pemeriksaan berikutnya (paling lambat ±1,5 jam).
 
 ---
 
@@ -195,21 +195,42 @@ curl -sSL https://panel.fikfikk.my.id/install.sh | sudo bash
 
 ---
 
-## Cara Pembaruan (Zero-Downtime Auto-Update)
+## Cara Pembaruan (Aman, dengan Rollback Otomatis)
 
-Jika FikPanel sudah terpasang di server Anda dan Anda ingin memperbarui ke versi rilis terbaru (misal ada penambahan menu, fitur baru, atau perbaikan bug), **data website, virtual host Nginx, dan akun database Anda dijamin 100% aman**:
+Pembaruan hanya mengganti biner panel. Website, virtual host Nginx, PHP, MySQL, dan container tetap berjalan; yang di-restart hanya layanan `fikpanel` (panel tidak dapat diakses beberapa detik).
 
-### 1. Melalui Perintah Terminal Server
+### 1. Auto-Update Terjadwal (Default)
+Instalasi baru (dan server yang sudah sekali diperbarui ke versi dengan updater baru) otomatis memeriksa rilis stabil baru **setiap jam** (dengan jeda acak hingga 30 menit agar tidak semua server update bersamaan) melalui `fikpanel-autoupdate.timer`.
+
 ```bash
-sudo fikpanel update
+sudo fikpanel auto-update status    # status timer + hasil pembaruan terakhir
+sudo fikpanel auto-update disable   # matikan (tetap mati walaupun panel diperbarui)
+sudo fikpanel auto-update enable    # nyalakan kembali
+```
+Auto-update tidak menyalakan layanan yang sengaja dihentikan admin, dan tidak mencoba ulang rilis yang pernah gagal health check sampai rilis berikutnya terbit.
+
+### 2. Pembaruan Manual
+```bash
+sudo fikpanel update            # ke rilis stabil terbaru
+sudo fikpanel update v0.3.18    # upgrade/downgrade ke versi tertentu
+sudo fikpanel update --status   # hasil pembaruan terakhir + log
 ```
 
-### 2. Melalui Skrip Pembaruan Otomatis
+### 3. Pemulihan / Server Lama (≤ v0.3.19)
 ```bash
-curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | sudo bash
 ```
+Skrip ini hanya mengunduh biner rilis terbaru, memverifikasi SHA-256, lalu menyerahkan proses ke updater bawaan biner tersebut. Server lama yang menjalankan `fikpanel update` otomatis melewati jalur ini, sehingga cukup satu kali pembaruan manual; setelah itu auto-update aktif.
 
-> Skrip pembaruan secara otomatis mencadangkan biner lama ke `fikpanel.bak`, mengunduh biner rilis terbaru, mengeksekusi migrasi skema database non-destruktif, dan me-restart daemon dalam 1–2 detik tanpa downtime.
+> **Alur pembaruan:**
+> 1. Tentukan tag rilis target; jika sudah terpasang dan layanan sudah menjalankannya, tidak ada unduhan maupun restart.
+> 2. Unduh paket dan `SHA256SUMS.txt` dari tag yang sama; tolak bila checksum tidak cocok.
+> 3. Jalankan `version` pada biner baru dan pastikan sesuai tag (menangkap paket rusak / arsitektur salah).
+> 4. Cadangkan biner + snapshot database SQLite ke `/opt/fikpanel/backups/updates/` (3 cadangan terakhir).
+> 5. Ganti biner secara atomik, restart `fikpanel.service`, lalu health check: proses aktif, menjalankan biner baru, merespons HTTP, dan stabil (tidak crash-loop).
+> 6. Bila versi baru tidak sehat dalam 60 detik, biner **dan** database dikembalikan otomatis ke kondisi sebelum pembaruan.
+>
+> Proses berjalan di unit systemd terpisah (`fikpanel-updater.service`), sehingga tetap selesai walaupun dipicu dari Web Terminal yang ikut terputus saat panel di-restart. Jika tag baru saja di-push, tunggu 2–3 menit sampai GitHub Actions selesai mengunggah biner; sebelum itu updater akan melaporkan rilis belum tersedia tanpa mengubah apa pun.
 
 ---
 
@@ -254,7 +275,8 @@ Perintah yang Tersedia:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
                     --adopt          Adopsi otomatis virtual host Nginx ke database (default: true)
                     --roots <paths>  Direktori kustom tambahan untuk pemindaian (pisahkan koma)
-  update          Perbarui biner FikPanel ke versi rilis terbaru tanpa menyentuh data
+  update          Perbarui FikPanel secara aman (checksum, backup, restart, health check, rollback)
+  auto-update     Kelola pembaruan otomatis terjadwal: enable | disable | status
   doctor          Diagnosa integritas database, Nginx, dan perizinan sistem
   reset-password  Reset kata sandi pengguna admin secara aman melalui CLI
   init            Inisialisasi kredensial awal administrator
