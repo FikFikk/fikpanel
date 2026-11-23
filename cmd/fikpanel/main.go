@@ -649,14 +649,12 @@ func runVersions(args []string) {
 	fmt.Println("==========================================================================")
 	fmt.Println("             Daftar Rilis FikPanel yang Tersedia (GitHub)                 ")
 	fmt.Println("==========================================================================")
-	fmt.Printf("[*] Versi terpasang saat ini : v%s
-", version)
+	fmt.Printf("[*] Versi terpasang saat ini : v%s\n", version)
 	fmt.Println("[*] Menghubungi GitHub Releases API...")
 
 	releases, err := fetchGitHubReleases()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Gagal memuat daftar rilis: %v
-", err)
+		fmt.Fprintf(os.Stderr, "[!] Gagal memuat daftar rilis: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -667,9 +665,7 @@ func runVersions(args []string) {
 
 	currentNorm := strings.TrimPrefix(version, "v")
 
-	fmt.Printf("
-%-12s  %-20s  %-15s  %s
-", "TAG / VERSI", "TANGGAL RILIS", "STATUS", "KETERANGAN")
+	fmt.Printf("\n%-12s  %-20s  %-15s  %s\n", "TAG / VERSI", "TANGGAL RILIS", "STATUS", "KETERANGAN")
 	fmt.Println(strings.Repeat("-", 74))
 
 	count := 0
@@ -705,15 +701,13 @@ func runVersions(args []string) {
 			title += " (Legacy / Rentan)"
 		}
 
-		fmt.Printf("%-12s  %-20s  %-15s  %s
-", rel.TagName, dateStr, status, title)
+		fmt.Printf("%-12s  %-20s  %-15s  %s\n", rel.TagName, dateStr, status, title)
 		count++
 	}
 
 	fmt.Println(strings.Repeat("-", 74))
 	if !showAll && len(releases) > count {
-		fmt.Printf("Catatan: Hanya %d rilis terbaru yang ditampilkan demi stabilitas & keamanan.
-", count)
+		fmt.Printf("Catatan: Hanya %d rilis terbaru yang ditampilkan demi stabilitas & keamanan.\n", count)
 		fmt.Println("Gunakan 'fikpanel versions --all' jika ingin melihat seluruh arsip rilis lawas.")
 		fmt.Println(strings.Repeat("-", 74))
 	}
