@@ -67,7 +67,7 @@
   </div>
 
   <div class="form-footer flex justify-end">
-    <button class="btn btn-primary" onclick={onSubmitOpcache} disabled={savingOpcache}>
+    <button type="button" class="btn btn--primary" onclick={onSubmitOpcache} disabled={savingOpcache}>
       {savingOpcache ? 'Menyimpan...' : 'Simpan & Terapkan OPcache'}
     </button>
   </div>

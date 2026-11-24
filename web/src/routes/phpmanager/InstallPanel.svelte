@@ -61,7 +61,7 @@
           <span class="cmd-type-label"><i class="ri-download-2-line"></i> Perintah Instalasi (Install)</span>
           <button
             type="button"
-            class="btn btn-xs btn-ghost"
+            class="btn btn--xs btn--ghost"
             onclick={() =>
               onCopyCommand(
                 sshModalExt?.install_command ||
@@ -69,7 +69,7 @@
                 'Perintah Install'
               )}
           >
-            <i class="ri-file-copy-line"></i> Salin Perintah
+            <i class="ri-file-copy-line" aria-hidden="true"></i> Salin Perintah
           </button>
         </div>
         <pre class="terminal-snippet mono"><code>{sshModalExt.install_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo apt-get install -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
@@ -82,7 +82,7 @@
             <span class="cmd-type-label text-warning"><i class="ri-delete-bin-line"></i> Perintah Copot (Uninstall)</span>
             <button
               type="button"
-              class="btn btn-xs btn-ghost"
+              class="btn btn--xs btn--ghost"
               onclick={() =>
                 onCopyCommand(
                   sshModalExt?.uninstall_command ||
@@ -90,7 +90,7 @@
                   'Perintah Uninstall'
                 )}
             >
-              <i class="ri-file-copy-line"></i> Salin Perintah
+              <i class="ri-file-copy-line" aria-hidden="true"></i> Salin Perintah
             </button>
           </div>
           <pre class="terminal-snippet mono"><code>{sshModalExt.uninstall_command || `sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y php${activeVersion}-${sshModalExt.name} && sudo systemctl restart php${activeVersion}-fpm`}</code></pre>
@@ -108,27 +108,27 @@
             {#if !sshModalExt.is_core}
               <button
                 type="button"
-                class="btn btn-sm btn-danger"
+                class="btn btn--sm btn--danger"
                 onclick={() => {
                   const ext = sshModalExt;
                   onClose();
                   if (ext) onUninstallExtension(ext);
                 }}
               >
-                <i class="ri-delete-bin-line"></i> Copot via Panel
+                <i class="ri-delete-bin-line" aria-hidden="true"></i> Copot via Panel
               </button>
             {/if}
           {:else}
             <button
               type="button"
-              class="btn btn-sm btn-primary"
+              class="btn btn--sm btn--primary"
               onclick={() => {
                 const ext = sshModalExt;
                 onClose();
                 if (ext) onInstallExtension(ext);
               }}
             >
-              <i class="ri-download-2-line"></i> Pasang Otomatis Sekarang
+              <i class="ri-download-2-line" aria-hidden="true"></i> Pasang Otomatis Sekarang
             </button>
           {/if}
         </div>
@@ -137,7 +137,7 @@
   {/if}
 
   {#snippet footer()}
-    <button type="button" class="btn btn-ghost" onclick={onClose}>Tutup</button>
+    <button type="button" class="btn btn--ghost" onclick={onClose}>Tutup</button>
   {/snippet}
 </Modal>
 

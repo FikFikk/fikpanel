@@ -286,6 +286,15 @@
           spellcheck="false"
         />
         <kbd class="palette__kbd">Esc</kbd>
+        <button
+          type="button"
+          class="palette__close-btn"
+          onclick={onClose}
+          aria-label={t('shell.palette.close')}
+          title={t('shell.palette.close')}
+        >
+          <i class="ri-close-line" aria-hidden="true"></i>
+        </button>
       </div>
 
       <div class="palette__list" role="listbox" aria-label={t('shell.search_menu')}>

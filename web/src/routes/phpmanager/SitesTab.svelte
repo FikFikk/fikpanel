@@ -22,15 +22,15 @@
 
 <!-- Tab: Situs Terhubung (HestiaCP / aaPanel Style) -->
 <div class="pg-phpmanager-sites-tab tab-pane">
-  <div class="section-title-wrap flex justify-between items-center">
+  <div class="section-title-wrap flex justify-between items-center flex-wrap gap-2">
     <div>
       <h4 class="section-title">Situs Terhubung: PHP {activeVersion}</h4>
       <p class="section-desc">
         Daftar seluruh virtual host web di server yang mengeksekusi skrip PHP melalui socket php{activeVersion}-fpm.
       </p>
     </div>
-    <a href="#/sites" class="btn btn-ghost btn-sm">
-      <i class="ri-external-link-line"></i> Buka Menu Websites
+    <a href="#/website" class="btn btn--ghost btn--sm">
+      <i class="ri-external-link-line" aria-hidden="true"></i> Buka Menu Website
     </a>
   </div>
 
@@ -53,8 +53,14 @@
                 <div class="flex items-center gap-2">
                   <span class="dot {site.enabled ? 'dot--success' : ''}"></span>
                   <span class="domain-title font-semibold">{site.domain}</span>
-                  <a href="http://{site.domain}" target="_blank" rel="noopener noreferrer" class="link-external" title="Kunjungi website">
-                    <i class="ri-external-link-line"></i>
+                  <a
+                    href="{site.ssl_mode && site.ssl_mode !== 'none' ? 'https' : 'http'}://{site.domain}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="link-external"
+                    title="Kunjungi website"
+                  >
+                    <i class="ri-external-link-line" aria-hidden="true"></i>
                   </a>
                 </div>
               </td>
@@ -101,8 +107,8 @@
         Saat ini belum ada virtual host yang dikonfigurasi untuk mengeksekusi skrip melalui PHP {activeVersion}. Anda dapat memilih versi ini saat menambah situs baru atau mengalihkan situs yang ada di menu Websites.
       </p>
       <div class="state__actions">
-        <a href="#/sites" class="btn btn-primary btn-sm">
-          <i class="ri-arrow-right-line"></i> Buka Menu Websites
+        <a href="#/website" class="btn btn--primary btn--sm">
+          <i class="ri-arrow-right-line" aria-hidden="true"></i> Buka Menu Website
         </a>
       </div>
     </div>

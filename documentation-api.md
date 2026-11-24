@@ -2355,8 +2355,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `[{"version": "8.5", "display_name": "PHP 8.5", "installed": true, "running": true, "socket": "/run/php/php8.5-fpm.sock", "ini_path": "/etc/php/8.5/fpm/php.ini", "fpm_conf_path": "/etc/php/8.5/fpm/pool.d/www.conf"}]` |
-| Notes | Mendeteksi instalasi multi-versi PHP host, status FPM socket, path konfigurasi, dan status daemon systemd. |
+| Response | HTTP 200 `{"ok": true, "versions": [{"version": "8.3", "installed": true, "running": true, "is_cli_default": true, "fpm_socket": "/run/php/php8.3-fpm.sock", "ini_path": "/etc/php/8.3/fpm/php.ini", "settings": {"memory_limit": "256M", "upload_max_filesize": "64M", "max_execution_time": "300"}, "sites": [...], "sites_count": 2}]}` |
+| Notes | Mendeteksi instalasi multi-versi PHP host, status FPM socket, status CLI default (`is_cli_default`), serta mengurutkan versi terpasang & berjalan di urutan terdepan. Situs tanpa versi PHP eksplisit hanya dilampirkan ke satu versi FPM aktif pertama. |
 
 | Field | Detail |
 |---|---|
@@ -2365,8 +2365,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"version": "8.5", "running": true, "pid": 1234, "uptime": "2d 4h", "memory_usage": "34.2 MB", "directives": {"upload_max_filesize": "100M", "memory_limit": "512M", ...}, "pool_settings": {"pm": "dynamic", "pm.max_children": "50", ...}, "disabled_functions": ["exec", "shell_exec"], "opcache": {"enabled": true, ...}, "extensions": [...]}` |
-| Notes | Mengembalikan inspeksi lengkap runtime PHP FPM tertentu mencakup status proses, nilai konfigurasi parser, pool worker, daftar ekstensi terpasang via `php -m`, dan OPcache. |
+| Response | HTTP 200 `{"ok": true, "detail": {"version": "8.3", "installed": true, "running": true, "is_cli_default": true, "fpm_socket": "/run/php/php8.3-fpm.sock", "ini_path": "/etc/php/8.3/fpm/php.ini", "service_status": {"active": true, "pid": "1234", "memory": "24.6 MB", "since": "..."}, "settings": {...}, "fpm_settings": {...}, "opcache_settings": {...}, "disabled_functions": [...], "all_extensions": [...], "sites": [...]}}` |
+| Notes | Mengembalikan inspeksi lengkap runtime PHP FPM termasuk PID, memori RSS cgroup nyata (`MemoryCurrent`), parser `php.ini`, `conf.d/*opcache*.ini`, pool `www.conf`, serta daftar ekstensi via `php -m`. Memvalidasi format `{version}` (`X.Y`). |
 
 | Field | Detail |
 |---|---|
@@ -2375,8 +2375,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | `action` (string, wajib: `start`, `stop`, `restart`, `reload`) |
-| Response | HTTP 200 `{"ok": true, "message": "Layanan PHP 8.5 berhasil di-restart"}` |
+| Response | HTTP 200 `{"ok": true, "version": "8.3", "action": "restart", "message": "Layanan php8.3-fpm berhasil di-restart"}` |
 | Notes | Mengendalikan daemon systemd `php{version}-fpm` dan merekam riwayat aksi ke tabel audit log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/php/versions/{version}/set-default` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "version": "8.3", "message": "PHP 8.3 berhasil ditetapkan sebagai versi CLI default"}` |
+| Notes | Menetapkan `/usr/bin/php{version}` sebagai binary CLI default sistem via `update-alternatives --set php` dan mencatat audit log `php.cli_default`. |
 
 | Field | Detail |
 |---|---|

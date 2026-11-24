@@ -40,13 +40,13 @@
 
 <!-- Tab 2: Configuration (Visual ala Gambar 1) -->
 <div class="pg-phpmanager-config-tab tab-pane">
-  <div class="section-title-wrap flex justify-between items-center">
+  <div class="section-title-wrap flex justify-between items-center flex-wrap gap-2">
     <div>
-      <h4 class="section-title">Configure Server: PHP {activeVersion}</h4>
+      <h4 class="section-title">Konfigurasi Visual: PHP {activeVersion}</h4>
       <p class="section-desc">Atur parameter dasar php.ini secara visual dengan penyesuaian nilai interaktif.</p>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick={() => onSwitchTab('raw_ini')}>
-      <i class="ri-file-code-line"></i> Buka Editor php.ini
+    <button type="button" class="btn btn--ghost btn--sm" onclick={() => onSwitchTab('raw_ini')}>
+      <i class="ri-file-code-line" aria-hidden="true"></i> Buka Editor php.ini
     </button>
   </div>
 
@@ -174,20 +174,20 @@
         <span class="f-hint">Zona waktu standar untuk seluruh fungsi tanggal PHP.</span>
       </div>
       <div class="form-input-wrap">
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
           <input id="f-tz" type="text" class="form-input mono flex-1" bind:value={formTimezone} placeholder="UTC" />
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (formTimezone = 'Asia/Jakarta')}>Asia/Jakarta</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (formTimezone = 'UTC')}>UTC</button>
+          <button type="button" class="btn btn--ghost btn--sm" onclick={() => (formTimezone = 'Asia/Jakarta')}>Asia/Jakarta</button>
+          <button type="button" class="btn btn--ghost btn--sm" onclick={() => (formTimezone = 'UTC')}>UTC</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="form-footer flex justify-between items-center">
+  <div class="form-footer flex justify-between items-center gap-3">
     <span class="text-xs text-subtle">
-      Perubahan akan disimpan langsung ke <code class="mono">{activeDetail?.iniPath}</code> dan layanan FPM akan dimuat ulang.
+      Perubahan akan disimpan langsung ke <code class="mono">{activeDetail?.ini_path || `/etc/php/${activeVersion}/fpm/php.ini`}</code>, diuji via <code class="mono">php-fpm -t</code>, lalu layanan di-reload.
     </span>
-    <button class="btn btn-primary" onclick={onSubmitVisualConfig} disabled={savingConfig}>
+    <button type="button" class="btn btn--primary" onclick={onSubmitVisualConfig} disabled={savingConfig}>
       {savingConfig ? 'Menyimpan...' : 'Simpan & Reload PHP-FPM'}
     </button>
   </div>

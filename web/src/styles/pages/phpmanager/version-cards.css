@@ -4,9 +4,51 @@
 
 @layer pages {
   .pg-phpmanager-version-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+
+    .php-section-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .php-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .php-section-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: var(--text-xs);
+      font-weight: var(--weight-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+
+    .php-section-title i {
+      color: var(--success-strong);
+      font-size: 0.9rem;
+    }
+
+    .php-section-title--muted {
+      color: var(--text-subtle);
+    }
+
+    .php-section-title--muted i {
+      color: var(--text-subtle);
+    }
+
+    .php-versions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+      gap: 1rem;
+    }
 
     .v-card {
       background: var(--bg-surface);
@@ -16,7 +58,12 @@
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      min-width: 0;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .v-card.installed {
+      border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
     }
 
     .v-card.installed:hover {
@@ -26,7 +73,7 @@
     }
 
     .v-card.not-installed {
-      opacity: 0.65;
+      opacity: 0.78;
       background: var(--bg-raised);
     }
 
@@ -34,6 +81,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 0.5rem;
     }
 
     .v-tag {

@@ -1,10 +1,10 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   ENTRY STYLESHEET — urutan layer & impor PENTING (vendor → tokens → base → layout → components → utilities → pages).
+   ENTRY STYLESHEET — urutan layer & impor PENTING (vendor → tokens → base → components → layout → utilities → pages).
    Font & ikon di-host sendiri (bukan CDN) agar lolos Content-Security-Policy
    'self' dan tidak membocorkan IP admin panel ke pihak ketiga.
    ════════════════════════════════════════════════════════════════════════════ */
 
-@layer vendor, tokens, base, layout, components, utilities, pages;
+@layer vendor, tokens, base, components, layout, utilities, pages;
 
 @import '@fontsource-variable/plus-jakarta-sans/index.css' layer(vendor);
 @import '@fontsource/fira-code/400.css' layer(vendor);
@@ -17,6 +17,6 @@
 
 @import './tokens.css' layer(tokens);
 @import './base.css' layer(base);
-@import './layout.css' layer(layout);
 @import './components/index.css' layer(components);
+@import './layout.css' layer(layout);
 @import './utilities.css' layer(utilities);

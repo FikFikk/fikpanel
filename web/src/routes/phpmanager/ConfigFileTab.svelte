@@ -7,16 +7,10 @@
     activeVersion: string;
     rawIniPath: string;
     isRawIniDirty: boolean;
-    rawIniSearch: string;
     rawIniContent: string;
-    rawIniLineNumbers: number[];
-    rawIniTextarea?: HTMLTextAreaElement;
     loadingRawIni: boolean;
     savingRawIni: boolean;
-    onPerformEditorSearch: (forward?: boolean) => void;
     onFetchRawIni: (version: string) => void;
-    onHandleEditorKeydown: (e: KeyboardEvent) => void;
-    onEditorScroll: (e: Event) => void;
     onSubmitRawIni: () => void;
   }
 
@@ -24,65 +18,42 @@
     activeVersion,
     rawIniPath,
     isRawIniDirty,
-    rawIniSearch = $bindable(),
     rawIniContent = $bindable(),
-    rawIniLineNumbers,
-    rawIniTextarea = $bindable(),
     loadingRawIni,
     savingRawIni,
-    onPerformEditorSearch,
     onFetchRawIni,
-    onHandleEditorKeydown,
-    onEditorScroll,
     onSubmitRawIni,
   }: Props = $props();
 </script>
 
-<!-- Tab 3: Configuration File (Editor php.ini ala Gambar 4 & 5) -->
+<!-- Tab 3: Configuration File (Editor php.ini berbasis CodeMirror 6) -->
 <div class="pg-phpmanager-config-file-tab tab-pane full-height-pane">
-  <!-- Tips Bar ala aaPanel Screenshot 4 -->
-  <div class="editor-tips-bar flex justify-between items-center">
+  <!-- Tips Bar & Status Berkas -->
+  <div class="editor-tips-bar flex justify-between items-center flex-wrap gap-2">
     <div class="tips-text">
-      <span class="font-semibold text-accent"><i class="ri-lightbulb-line"></i> Tips:</span>
-      <span><kbd>Ctrl+F</kbd> Cari kata kunci, <kbd>Ctrl+S</kbd> Simpan berkas, <kbd>Tab</kbd> Indentasi 4 spasi</span>
+      <span class="font-semibold text-accent"><i class="ri-lightbulb-line" aria-hidden="true"></i> Tips:</span>
+      <span><kbd>Ctrl+F</kbd> Cari, <kbd>Ctrl+H</kbd> Ganti, <kbd>Ctrl+S</kbd> Simpan</span>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
       <span class="file-path-badge mono" title={rawIniPath}>
-        <i class="ri-file-text-line"></i> {rawIniPath || 'php.ini'}
+        <i class="ri-file-text-line" aria-hidden="true"></i> {rawIniPath || 'php.ini'}
       </span>
       {#if isRawIniDirty}
         <span class="badge badge--warning">Belum Disimpan</span>
       {/if}
+      <button
+        type="button"
+        class="btn btn--ghost btn--xs"
+        onclick={() => onFetchRawIni(activeVersion)}
+        disabled={loadingRawIni}
+        title="Muat ulang dari disk (Batalkan perubahan)"
+      >
+        <i class="ri-restart-line" aria-hidden="true"></i> Muat Ulang
+      </button>
     </div>
   </div>
 
-  <!-- Search Bar Interaktif -->
-  <div class="editor-search-bar flex items-center gap-2">
-    <div class="search-input-wrap flex-1">
-      <i class="ri-search-line search-icon"></i>
-      <input
-        id="editor-search-input"
-        type="text"
-        class="editor-search-input"
-        placeholder="Ketik kata kunci untuk mencari di php.ini (misal: memory_limit, upload_max, disable_functions)..."
-        bind:value={rawIniSearch}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') onPerformEditorSearch(!e.shiftKey);
-        }}
-      />
-    </div>
-    <button class="btn btn-ghost btn-sm" onclick={() => onPerformEditorSearch(false)} title="Cari sebelumnya (Shift+Enter)">
-      <i class="ri-arrow-up-s-line"></i>
-    </button>
-    <button class="btn btn-ghost btn-sm" onclick={() => onPerformEditorSearch(true)} title="Cari selanjutnya (Enter)">
-      <i class="ri-arrow-down-s-line"></i>
-    </button>
-    <button class="btn btn-ghost btn-sm" onclick={() => onFetchRawIni(activeVersion)} disabled={loadingRawIni} title="Muat ulang dari disk (Batalkan perubahan)">
-      <i class="ri-restart-line"></i> Reset
-    </button>
-  </div>
-
-  <!-- Textarea Code Editor dengan Nomor Baris Gutter (Screenshot 4 & 5) -->
+  <!-- Editor CodeMirror 6 -->
   <div class="code-editor-wrapper flex-1">
     {#if loadingRawIni}
       <div class="editor-loading">
@@ -100,13 +71,13 @@
     {/if}
   </div>
 
-  <!-- Footer Editor ala aaPanel Screenshot 4 -->
-  <div class="editor-footer flex justify-between items-center">
+  <!-- Footer Editor -->
+  <div class="editor-footer flex justify-between items-center flex-wrap gap-2">
     <p class="editor-note text-xs text-subtle">
-      • Berkas konfigurasi utama PHP {activeVersion}. Jangan mengedit sembarangan jika belum memahami format sintaks direktif PHP INI.
+      Berkas utama PHP {activeVersion}. Sintaks diverifikasi otomatis via <code class="mono">php-fpm -t</code> dengan rollback cadangan bila gagal.
     </p>
-    <button class="btn btn-primary" onclick={onSubmitRawIni} disabled={savingRawIni || loadingRawIni}>
-      <i class="ri-save-line" aria-hidden="true"></i> {savingRawIni ? 'Menyimpan...' : 'Save'}
+    <button type="button" class="btn btn--primary" onclick={onSubmitRawIni} disabled={savingRawIni || loadingRawIni}>
+      <i class="ri-save-line" aria-hidden="true"></i> {savingRawIni ? 'Menyimpan...' : 'Simpan & Reload'}
     </button>
   </div>
 </div>

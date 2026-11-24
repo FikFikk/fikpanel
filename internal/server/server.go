@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.1"
+		return "0.7.2"
 	}
 	return s.version
 }
@@ -409,6 +409,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/php/versions", s.AuthMiddleware(http.HandlerFunc(s.handleListPHPVersions)))
 	s.mux.Handle("GET /api/php/versions/{version}/detail", s.AuthMiddleware(http.HandlerFunc(s.handleGetPHPVersionDetail)))
 	s.mux.Handle("POST /api/php/versions/{version}/service", s.AuthMiddleware(http.HandlerFunc(s.handleControlPHPService)))
+	s.mux.Handle("POST /api/php/versions/{version}/set-default", s.AuthMiddleware(http.HandlerFunc(s.handleSetDefaultPHPCLI)))
 	s.mux.Handle("POST /api/php/versions/{version}/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartPHPFPM)))
 	s.mux.Handle("POST /api/php/versions/{version}/settings", s.AuthMiddleware(http.HandlerFunc(s.handleUpdatePHPSetting)))
 	s.mux.Handle("POST /api/php/versions/{version}/save-config", s.AuthMiddleware(http.HandlerFunc(s.handleSavePHPConfigBatch)))

@@ -44,7 +44,7 @@
     <div class="site-chips-list">
       {#each sites.slice(0, 3) as site (site.id)}
         <a
-          href="#/sites"
+          href="#/website"
           class="site-chip"
           title="Situs: {site.domain} | Pengguna: {site.user} | Path: {site.root_path}"
         >

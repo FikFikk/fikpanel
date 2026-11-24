@@ -142,16 +142,4 @@
     display: inline-block;
     animation: fp-spin 0.8s linear infinite;
   }
-
-  /* Indikator tombol papan ketik */
-  kbd {
-    display: inline-block;
-    padding: 0 var(--space-1);
-    border: 1px solid var(--border-strong);
-    border-bottom-width: 2px;
-    border-radius: var(--radius-xs);
-    background: var(--bg-raised);
-    color: var(--text-secondary);
-    font-size: var(--text-2xs);
-  }
 }

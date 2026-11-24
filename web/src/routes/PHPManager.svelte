@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
   import type { PHPVersionInfo, PHPVersionDetail, PHPExtensionInfo } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
@@ -25,6 +25,8 @@
   let versions = $state<PHPVersionInfo[]>([]);
   let loading = $state(true);
   let installingVer = $state<string | null>(null);
+  let restartingVer = $state<string | null>(null);
+  let settingDefaultCLI = $state(false);
 
   // State versi yang sedang dikelola di modal/workspace
   let activeVersion = $state<string | null>(null);
@@ -48,18 +50,12 @@
   let formTimezone = $state('UTC');
   let savingConfig = $state(false);
 
-  // State Editor php.ini Langsung (Screenshot 4 & 5 aaPanel)
+  // State Editor php.ini Langsung (CodeMirror 6)
   let rawIniContent = $state('');
   let rawIniOriginal = $state('');
   let rawIniPath = $state('');
   let loadingRawIni = $state(false);
   let savingRawIni = $state(false);
-  let rawIniSearch = $state('');
-  let rawIniMatchCount = $state(0);
-  let rawIniCurrentMatchIndex = $state(0);
-  let rawIniTextarea = $state<HTMLTextAreaElement | null>(null);
-  let rawIniLineNumbers = $state<number[]>([]);
-  let rawIniScrollTop = $state(0);
 
   // State Editor Pool FPM www.conf
   let rawFpmContent = $state('');
@@ -118,12 +114,6 @@
     )
   );
 
-  // Hitung jumlah baris editor php.ini
-  $effect(() => {
-    const lines = rawIniContent.split('\n').length;
-    rawIniLineNumbers = Array.from({ length: Math.max(lines, 1) }, (_, i) => i + 1);
-  });
-
   onMount(async () => {
     await loadPHPVersions();
   });
@@ -141,9 +131,64 @@
     }
   }
 
-  // Buka modal manajemen detail untuk versi PHP terpilih
+  // Restart cepat layanan PHP-FPM langsung dari kartu versi
+  async function quickRestartFPM(ver: string) {
+    restartingVer = ver;
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string }>(`/api/php/versions/${ver}/restart`, {
+        method: 'POST',
+      });
+      notify(res.message || `Layanan php${ver}-fpm berhasil di-restart`, 'success');
+      await loadPHPVersions();
+      if (activeVersion === ver && showManageModal) {
+        await fetchVersionDetail(ver);
+      }
+    } catch (err: any) {
+      notify(err.message || `Gagal me-restart php${ver}-fpm`, 'error');
+    } finally {
+      restartingVer = null;
+    }
+  }
+
+  // Tetapkan versi PHP sebagai binary CLI default (/usr/bin/php)
+  async function setDefaultCLI(ver: string) {
+    const ok = await confirmDialog({
+      title: `Jadikan PHP ${ver} CLI Default?`,
+      message: `Perintah "php" dan Composer global di terminal akan menggunakan /usr/bin/php${ver} melalui update-alternatives.`,
+      confirmText: `Setel PHP ${ver}`,
+      tone: 'default',
+    });
+    if (!ok) return;
+
+    settingDefaultCLI = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string }>(`/api/php/versions/${ver}/set-default`, {
+        method: 'POST',
+      });
+      notify(res.message || `PHP ${ver} ditetapkan sebagai CLI default`, 'success');
+      await loadPHPVersions();
+      if (activeVersion === ver) {
+        await fetchVersionDetail(ver);
+      }
+    } catch (err: any) {
+      notify(err.message || `Gagal menyetel PHP ${ver} sebagai CLI default`, 'error');
+    } finally {
+      settingDefaultCLI = false;
+    }
+  }
+
+  // Buka modal manajemen detail untuk versi PHP terpilih (reset state editor agar tidak bocor antar versi)
   async function openManageModal(ver: string, tab: ManageTab = 'config') {
     activeVersion = ver;
+    activeDetail = null;
+    rawIniContent = '';
+    rawIniOriginal = '';
+    rawIniPath = '';
+    rawFpmContent = '';
+    rawFpmOriginal = '';
+    rawFpmPath = '';
+    logContent = '';
+    phpInfoContent = '';
     activeTab = tab;
     showManageModal = true;
     await fetchVersionDetail(ver);
@@ -667,69 +712,6 @@
     }
   }
 
-  // Penanganan tombol pintas keyboard di Editor php.ini (Ctrl+S, Ctrl+F, Tab)
-  function handleEditorKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      if (activeTab === 'raw_ini') {
-        submitRawIni();
-      } else if (activeTab === 'raw_fpm') {
-        submitRawFpm();
-      }
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
-      e.preventDefault();
-      const sInput = document.getElementById('editor-search-input');
-      if (sInput) sInput.focus();
-    } else if (e.key === 'Tab') {
-      e.preventDefault();
-      const ta = e.target as HTMLTextAreaElement;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
-      ta.selectionStart = ta.selectionEnd = start + 4;
-      if (activeTab === 'raw_ini') {
-        rawIniContent = ta.value;
-      } else if (activeTab === 'raw_fpm') {
-        rawFpmContent = ta.value;
-      }
-    }
-  }
-
-  // Sinkronisasi scroll gutter nomor baris dengan textarea
-  function onEditorScroll(e: Event) {
-    const ta = e.target as HTMLTextAreaElement;
-    rawIniScrollTop = ta.scrollTop;
-    const gutter = document.getElementById('editor-gutter');
-    if (gutter) {
-      gutter.scrollTop = ta.scrollTop;
-    }
-  }
-
-  // Navigasi pencarian teks di editor php.ini
-  function performEditorSearch(forward = true) {
-    if (!rawIniSearch || !rawIniTextarea) return;
-    const text = rawIniTextarea.value.toLowerCase();
-    const query = rawIniSearch.toLowerCase();
-    const currentPos = forward ? rawIniTextarea.selectionEnd : rawIniTextarea.selectionStart - 1;
-
-    let idx = forward ? text.indexOf(query, currentPos) : text.lastIndexOf(query, currentPos);
-    if (idx === -1) {
-      // Loop kembali dari awal atau akhir
-      idx = forward ? text.indexOf(query, 0) : text.lastIndexOf(query);
-    }
-
-    if (idx !== -1) {
-      rawIniTextarea.focus();
-      rawIniTextarea.setSelectionRange(idx, idx + query.length);
-      // Scroll textarea ke baris pencarian
-      const linesBefore = text.substring(0, idx).split('\n').length;
-      const approxScrollTop = (linesBefore - 5) * 20;
-      rawIniTextarea.scrollTop = Math.max(0, approxScrollTop);
-    } else {
-      notify(`Pencarian "${rawIniSearch}" tidak ditemukan`, 'warning');
-    }
-  }
-
   // Ganti Tab di dalam Modal
   async function switchTab(tab: ManageTab) {
     activeTab = tab;
@@ -749,32 +731,32 @@
 <div class="pg-phpmanager php-view">
   <!-- Header Halaman -->
   <header class="page-header">
-    <div class="page-header__titles">
+    <div class="page-header__main">
       <h1 class="page-header__title">
         <i class="ri-code-s-slash-line" aria-hidden="true"></i> PHP Multi-Version & FPM Tuning
       </h1>
-      <p class="page-header__subtitle">
+      <p class="page-header__sub">
         Deteksi otomatis versi PHP aktif di server, kelola konfigurasi php.ini visual & raw editor, tuning worker FPM pool, dan monitoring modul.
       </p>
     </div>
     <div class="page-header__actions">
-      <button class="btn btn-ghost" onclick={loadPHPVersions} disabled={loading} title="Periksa ulang biner dan socket PHP">
-        <i class="ri-refresh-line {loading ? 'spin' : ''}" aria-hidden="true"></i> Refresh Status
+      <button class="btn btn--ghost" onclick={loadPHPVersions} disabled={loading} title="Periksa ulang biner dan socket PHP">
+        <i class="ri-refresh-line {loading ? 'spin' : ''}" aria-hidden="true"></i> Segarkan Status
       </button>
     </div>
   </header>
 
-  <!-- Grid Kartu Versi PHP Server (Screenshot aaPanel Style) -->
+  <!-- Grid Kartu Versi PHP Server (terpasang di atas, belum terpasang di bawah) -->
   <VersionCards
     {versions}
     {installingVer}
+    {restartingVer}
     onOpenManageModal={openManageModal}
     onInstallPHP={installPHP}
+    onQuickRestartFPM={quickRestartFPM}
   />
 
-<!-- ===================================================================== -->
-<!-- Modal Komprehensif PHP-X.XManage (Gabungan Gambar 1, 2, 3, 4, 5 aaPanel) -->
-<!-- ===================================================================== -->
+<!-- Modal Komprehensif Pengelolaan PHP & Worker Pool FastCGI -->
 <Modal
   open={Boolean(showManageModal && activeVersion)}
   size="xl"
@@ -786,13 +768,16 @@
         <i class="ri-code-s-slash-line"></i>
       </div>
       <div class="modal__head-text">
-        <h3 class="modal__title">php-{activeVersion}Manage</h3>
+        <h3 class="modal__title">Kelola PHP {activeVersion}</h3>
         <span class="modal__sub">Panel Konfigurasi Dinamis PHP & Worker Pool FastCGI</span>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
+      {#if activeDetail?.is_cli_default}
+        <span class="badge badge--info"><i class="ri-terminal-line"></i> CLI Default</span>
+      {/if}
       {#if activeDetail?.running}
-        <span class="badge badge--success"><i class="ri-record-circle-line"></i> RUNNING (PID: {activeDetail.serviceStatus?.pid || '-'})</span>
+        <span class="badge badge--success"><i class="ri-record-circle-line"></i> RUNNING (PID: {activeDetail.service_status?.pid || '-'})</span>
       {:else if activeDetail?.installed}
         <span class="badge badge--danger"><i class="ri-stop-circle-line"></i> STOPPED</span>
       {/if}
@@ -903,7 +888,9 @@
           <ServiceTab
             activeVersion={activeVersion!}
             {activeDetail}
+            {settingDefaultCLI}
             onControlService={controlService}
+            onSetDefaultCLI={setDefaultCLI}
           />
 
         <!-- ================= TAB: SITUS TERHUBUNG (HESTIACP / AAPANEL STYLE) ================= -->
@@ -934,22 +921,16 @@
               onSubmitVisualConfig={submitVisualConfig}
             />
 
-          <!-- ================= TAB 3: CONFIGURATION FILE (EDITOR PHP.INI ALA GAMBAR 4 & 5) ================= -->
+          <!-- ================= TAB 3: CONFIGURATION FILE (EDITOR PHP.INI) ================= -->
           {:else if activeTab === 'raw_ini'}
             <ConfigFileTab
               activeVersion={activeVersion!}
               {rawIniPath}
               {isRawIniDirty}
-              bind:rawIniSearch
               bind:rawIniContent
-              {rawIniLineNumbers}
-              bind:rawIniTextarea
               {loadingRawIni}
               {savingRawIni}
-              onPerformEditorSearch={performEditorSearch}
               onFetchRawIni={fetchRawIni}
-              onHandleEditorKeydown={handleEditorKeydown}
-              onEditorScroll={onEditorScroll}
               onSubmitRawIni={submitRawIni}
             />
 
@@ -971,11 +952,13 @@
           <!-- ================= TAB 5: RAW FPM WWW.CONF ================= -->
           {:else if activeTab === 'raw_fpm'}
             <FpmConfigTab
+              activeVersion={activeVersion!}
               {rawFpmPath}
+              {isRawFpmDirty}
               bind:rawFpmContent
               {loadingRawFpm}
               {savingRawFpm}
-              onHandleEditorKeydown={handleEditorKeydown}
+              onFetchRawFpm={fetchRawFpm}
               onSubmitRawFpm={submitRawFpm}
             />
 

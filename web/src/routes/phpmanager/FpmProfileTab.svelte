@@ -33,13 +33,13 @@
 
 <!-- Tab 4: FPM Profile -->
 <div class="pg-phpmanager-fpm-profile-tab tab-pane">
-  <div class="section-title-wrap flex justify-between items-center">
+  <div class="section-title-wrap flex justify-between items-center flex-wrap gap-2">
     <div>
       <h4 class="section-title">FPM Profile (Pool: www.conf)</h4>
       <p class="section-desc">Konfigurasi alokasi worker process FastCGI untuk performa maksimal dan efisiensi RAM.</p>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick={() => onSwitchTab('raw_fpm')}>
-      <i class="ri-file-settings-line"></i> Buka www.conf Mentah
+    <button type="button" class="btn btn--ghost btn--sm" onclick={() => onSwitchTab('raw_fpm')}>
+      <i class="ri-file-settings-line" aria-hidden="true"></i> Buka www.conf Mentah
     </button>
   </div>
 
@@ -47,10 +47,10 @@
   <div class="preset-box">
     <span class="preset-title">Rekomendasi Preset Cepat Berdasarkan Kapasitas RAM:</span>
     <div class="flex flex-wrap gap-2 mt-2">
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyFpmRamPreset(1)}>RAM 1 GB</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyFpmRamPreset(2)}>RAM 2 GB</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyFpmRamPreset(4)}>RAM 4 GB</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyFpmRamPreset(8)}>RAM 8 GB+</button>
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyFpmRamPreset(1)}>RAM 1 GB</button>
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyFpmRamPreset(2)}>RAM 2 GB</button>
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyFpmRamPreset(4)}>RAM 4 GB</button>
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyFpmRamPreset(8)}>RAM 8 GB+</button>
     </div>
   </div>
 
@@ -121,7 +121,7 @@
   </div>
 
   <div class="form-footer flex justify-end">
-    <button class="btn btn-primary" onclick={onSubmitFpmPool} disabled={savingFpmPool}>
+    <button type="button" class="btn btn--primary" onclick={onSubmitFpmPool} disabled={savingFpmPool}>
       {savingFpmPool ? 'Menyimpan...' : 'Simpan & Reload FPM'}
     </button>
   </div>

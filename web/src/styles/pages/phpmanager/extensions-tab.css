@@ -56,5 +56,12 @@
       gap: 0.5rem;
       flex-wrap: wrap;
     }
+
+    @media (max-width: 768px) {
+      .search-mini-wrap,
+      .search-mini-input {
+        width: 100%;
+      }
+    }
   }
 }

@@ -33,21 +33,21 @@
   </div>
 
   <div class="flex justify-between items-center mb-3">
-    <div class="flex gap-2">
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyDisabledPreset('strict')}>
-        <i class="ri-shield-check-line"></i> Preset Ketat (Enterprise)
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyDisabledPreset('strict')}>
+        <i class="ri-shield-check-line" aria-hidden="true"></i> Preset Ketat (Enterprise)
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick={() => onApplyDisabledPreset('compat')}>
-        <i class="ri-apps-line"></i> Preset Kompatibel (Laravel/WP)
+      <button type="button" class="btn btn--ghost btn--sm" onclick={() => onApplyDisabledPreset('compat')}>
+        <i class="ri-apps-line" aria-hidden="true"></i> Preset Kompatibel (Laravel/WP)
       </button>
-      <button type="button" class="btn btn-ghost btn-sm text-danger" onclick={() => (disabledFuncs = [])}>
-        <i class="ri-delete-bin-line"></i> Kosongkan Semua
+      <button type="button" class="btn btn--danger btn--sm" onclick={() => (disabledFuncs = [])}>
+        <i class="ri-delete-bin-line" aria-hidden="true"></i> Kosongkan Semua
       </button>
     </div>
   </div>
 
   <!-- Input Tambah Fungsi -->
-  <div class="add-func-wrap flex gap-2 mb-4">
+  <div class="add-func-wrap flex flex-wrap gap-2 mb-4">
     <input
       type="text"
       class="form-input mono flex-1"
@@ -57,8 +57,8 @@
         if (e.key === 'Enter') onAddDisabledFunction();
       }}
     />
-    <button type="button" class="btn btn-primary" onclick={onAddDisabledFunction}>
-      <i class="ri-add-line"></i> Tambahkan
+    <button type="button" class="btn btn--primary" onclick={onAddDisabledFunction}>
+      <i class="ri-add-line" aria-hidden="true"></i> Tambahkan
     </button>
   </div>
 
@@ -86,11 +86,11 @@
     {/if}
   </div>
 
-  <div class="form-footer flex justify-between items-center mt-4">
+  <div class="form-footer flex justify-between items-center flex-wrap gap-2 mt-4">
     <span class="text-xs text-subtle">
       Total: {disabledFuncs.length} fungsi diblokir pada <code class="mono">disable_functions</code>.
     </span>
-    <button class="btn btn-primary" onclick={onSubmitDisabledFunctions} disabled={savingDisabledFuncs}>
+    <button type="button" class="btn btn--primary" onclick={onSubmitDisabledFunctions} disabled={savingDisabledFuncs}>
       {savingDisabledFuncs ? 'Menyimpan...' : 'Simpan & Terapkan ke php.ini'}
     </button>
   </div>

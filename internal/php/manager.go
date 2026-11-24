@@ -25,14 +25,83 @@ type AttachedSite struct {
 }
 
 type PHPVersionInfo struct {
-	Version    string            `json:"version"`   // misal: "8.5", "8.3", "8.2", "8.1"
-	Installed  bool              `json:"installed"` // true/false
-	Running    bool              `json:"running"`   // FPM running
-	FpmSocket  string            `json:"fpm_socket"`
-	IniPath    string            `json:"ini_path"`
-	Settings   map[string]string `json:"settings"` // upload_max_filesize, memory_limit, max_execution_time
-	Sites      []AttachedSite    `json:"sites"`
-	SitesCount int               `json:"sites_count"`
+	Version      string            `json:"version"`        // misal: "8.5", "8.3", "8.2", "8.1"
+	Installed    bool              `json:"installed"`      // true/false
+	Running      bool              `json:"running"`        // FPM running
+	IsCLIDefault bool              `json:"is_cli_default"` // Apakah menjadi binary CLI default (/usr/bin/php)
+	FpmSocket    string            `json:"fpm_socket"`
+	IniPath      string            `json:"ini_path"`
+	Settings     map[string]string `json:"settings"` // upload_max_filesize, memory_limit, max_execution_time
+	Sites        []AttachedSite    `json:"sites"`
+	SitesCount   int               `json:"sites_count"`
+}
+
+// Pola validasi nama ekstensi PHP agar aman dari injeksi argumen APT
+var validExtNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_+-]{0,39}$`)
+
+// validateVersion memastikan string versi PHP berbentuk X.Y yang sah sebelum menyentuh filesystem/systemd
+func validateVersion(ver string) error {
+	if !isPHPVersionFormat(ver) {
+		return fmt.Errorf("format versi PHP %q tidak valid (harus X.Y, mis. 8.3)", ver)
+	}
+	return nil
+}
+
+// validateExtensionName memastikan nama ekstensi hanya memuat karakter aman untuk paket APT
+func validateExtensionName(ext string) (string, error) {
+	clean := strings.ToLower(strings.TrimSpace(ext))
+	if !validExtNameRe.MatchString(clean) {
+		return "", fmt.Errorf("nama ekstensi %q tidak valid", ext)
+	}
+	return clean, nil
+}
+
+// formatByteSize mengubah ukuran byte mentah cgroup menjadi label KB/MB/GB yang mudah dibaca
+func formatByteSize(b uint64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case b >= gb:
+		return fmt.Sprintf("%.2f GB", float64(b)/float64(gb))
+	case b >= mb:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
+	case b >= kb:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
+// detectDefaultCLIVersion mendeteksi versi PHP yang sedang dipakai oleh binary CLI default `php`
+func (m *Manager) detectDefaultCLIVersion(ctx context.Context) string {
+	if runtime.GOOS != "linux" {
+		return "8.5"
+	}
+	out, err := exec.CommandContext(ctx, "php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;").Output()
+	if err != nil {
+		return ""
+	}
+	ver := strings.TrimSpace(string(out))
+	if isPHPVersionFormat(ver) {
+		return ver
+	}
+	return ""
+}
+
+// sortVersionInfos mengurutkan versi PHP agar yang terpasang & aktif selalu tampil paling depan
+func sortVersionInfos(list []PHPVersionInfo) {
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Installed != list[j].Installed {
+			return list[i].Installed
+		}
+		if list[i].Running != list[j].Running {
+			return list[i].Running
+		}
+		return comparePHPVersions(list[i].Version, list[j].Version) > 0
+	})
 }
 
 type Manager struct{}
@@ -154,13 +223,16 @@ func (m *Manager) ListVersions(ctx context.Context) ([]PHPVersionInfo, error) {
 		return comparePHPVersions(allVersions[i], allVersions[j]) > 0
 	})
 
+	defaultCLIVer := m.detectDefaultCLIVersion(ctx)
+
 	var list []PHPVersionInfo
 	for _, ver := range allVersions {
 		info := PHPVersionInfo{
-			Version:   ver,
-			Settings:  make(map[string]string),
-			FpmSocket: fmt.Sprintf("/run/php/php%s-fpm.sock", ver),
-			IniPath:   fmt.Sprintf("/etc/php/%s/fpm/php.ini", ver),
+			Version:      ver,
+			IsCLIDefault: ver == defaultCLIVer,
+			Settings:     make(map[string]string),
+			FpmSocket:    fmt.Sprintf("/run/php/php%s-fpm.sock", ver),
+			IniPath:      fmt.Sprintf("/etc/php/%s/fpm/php.ini", ver),
 		}
 
 		if runtime.GOOS != "linux" {
@@ -214,6 +286,9 @@ func (m *Manager) ListVersions(ctx context.Context) ([]PHPVersionInfo, error) {
 					parts := strings.SplitN(line, "=", 2)
 					key := strings.TrimSpace(parts[0])
 					val := strings.TrimSpace(parts[1])
+					if idx := strings.Index(val, ";"); idx > 0 {
+						val = strings.TrimSpace(val[:idx])
+					}
 					switch key {
 					case "memory_limit", "upload_max_filesize", "post_max_size", "max_execution_time":
 						info.Settings[key] = val
@@ -226,6 +301,8 @@ func (m *Manager) ListVersions(ctx context.Context) ([]PHPVersionInfo, error) {
 		list = append(list, info)
 	}
 
+	// Urutkan agar versi PHP yang sudah terpasang & berjalan selalu berada di urutan terdepan
+	sortVersionInfos(list)
 	return list, nil
 }
 
@@ -245,6 +322,7 @@ type PHPVersionDetail struct {
 	Version           string                 `json:"version"`
 	Installed         bool                   `json:"installed"`
 	Running           bool                   `json:"running"`
+	IsCLIDefault      bool                   `json:"is_cli_default"`
 	FpmSocket         string                 `json:"fpm_socket"`
 	IniPath           string                 `json:"ini_path"`
 	PoolConfPath      string                 `json:"pool_conf_path"`
@@ -267,20 +345,128 @@ func (m *Manager) RestartFPM(ctx context.Context, ver string) error {
 
 // ControlService mengontrol status daemon systemd php-fpm (start, stop, restart, reload)
 func (m *Manager) ControlService(ctx context.Context, ver string, action string) error {
-	if runtime.GOOS != "linux" {
-		return nil
+	if err := validateVersion(ver); err != nil {
+		return err
 	}
 	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "reload": true}
 	if !validActions[action] {
 		return fmt.Errorf("aksi layanan %q tidak valid", action)
 	}
+	if runtime.GOOS != "linux" {
+		return nil
+	}
 	serviceName := fmt.Sprintf("php%s-fpm", ver)
 	cmd := exec.CommandContext(ctx, "systemctl", action, serviceName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("gagal mengeksekusi %s %s: %s %w", action, serviceName, string(out), err)
+		return fmt.Errorf("gagal mengeksekusi %s %s: %s (%w)", action, serviceName, strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+// SetDefaultCLI menetapkan versi PHP tertentu sebagai binary CLI default (/usr/bin/php)
+func (m *Manager) SetDefaultCLI(ctx context.Context, ver string) error {
+	if err := validateVersion(ver); err != nil {
+		return err
+	}
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	binPath := fmt.Sprintf("/usr/bin/php%s", ver)
+	if _, err := os.Stat(binPath); err != nil {
+		return fmt.Errorf("binary CLI %s tidak ditemukan di server", binPath)
+	}
+	cmd := exec.CommandContext(ctx, "update-alternatives", "--set", "php", binPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal menyetel PHP %s sebagai CLI default: %s (%w)", ver, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// testFpmConfig menguji sintaks php-fpm sebelum reload agar kesalahan konfigurasi tidak mematikan layanan
+func (m *Manager) testFpmConfig(ctx context.Context, ver string) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	fpmBin := fmt.Sprintf("/usr/sbin/php-fpm%s", ver)
+	if _, err := os.Stat(fpmBin); err != nil {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, fpmBin, "-t")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("uji sintaks php-fpm%s gagal: %s", ver, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// applyIniUpdates memperbarui direktif berkas INI/FPM secara presisi:
+// mengganti baris aktif in-place, meng-uncomment baris komentar (;key = ...) di seksi aslinya,
+// atau menyisipkan baris baru hanya jika benar-benar belum ada.
+func applyIniUpdates(content string, settings map[string]string) (string, error) {
+	for k, v := range settings {
+		if strings.TrimSpace(k) == "" || strings.ContainsAny(k, "\r\n=;") {
+			return "", fmt.Errorf("kunci direktif %q tidak valid", k)
+		}
+		if strings.ContainsAny(v, "\r\n") {
+			return "", fmt.Errorf("nilai direktif %q tidak boleh mengandung baris baru", k)
+		}
+	}
+
+	lines := strings.Split(content, "\n")
+	updatedKeys := make(map[string]bool)
+	commentIdx := make(map[string]int)
+
+	for i, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == "" {
+			continue
+		}
+		// Catat posisi baris komentar (;key = ...) pertama yang cocok untuk uncomment in-place
+		if strings.HasPrefix(trimmed, ";") {
+			uncommented := strings.TrimSpace(strings.TrimLeft(trimmed, ";"))
+			if strings.Contains(uncommented, "=") {
+				parts := strings.SplitN(uncommented, "=", 2)
+				k := strings.TrimSpace(parts[0])
+				if _, want := settings[k]; want {
+					if _, recorded := commentIdx[k]; !recorded {
+						commentIdx[k] = i
+					}
+				}
+			}
+			continue
+		}
+		if !strings.Contains(trimmed, "=") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, "=", 2)
+		k := strings.TrimSpace(parts[0])
+		if newVal, ok := settings[k]; ok {
+			lines[i] = fmt.Sprintf("%s = %s", k, newVal)
+			updatedKeys[k] = true
+		}
+	}
+
+	// Urutkan key yang belum aktif agar keluaran deterministik
+	var remaining []string
+	for k := range settings {
+		if !updatedKeys[k] {
+			remaining = append(remaining, k)
+		}
+	}
+	sort.Strings(remaining)
+
+	for _, k := range remaining {
+		v := settings[k]
+		if idx, hasComment := commentIdx[k]; hasComment {
+			lines[idx] = fmt.Sprintf("%s = %s", k, v)
+		} else {
+			lines = append(lines, fmt.Sprintf("%s = %s", k, v))
+		}
+	}
+
+	return strings.Join(lines, "\n"), nil
 }
 
 // resolveIniPath mencari letak berkas konfigurasi php.ini aktif
@@ -307,6 +493,9 @@ func (m *Manager) resolvePoolPath(ver string) string {
 
 // GetVersionDetail mengambil seluruh informasi komprehensif versi PHP aktif
 func (m *Manager) GetVersionDetail(ctx context.Context, ver string) (*PHPVersionDetail, error) {
+	if err := validateVersion(ver); err != nil {
+		return nil, err
+	}
 	iniPath := m.resolveIniPath(ver)
 	poolPath := m.resolvePoolPath(ver)
 	logPath := fmt.Sprintf("/var/log/php%s-fpm.log", ver)
@@ -314,6 +503,7 @@ func (m *Manager) GetVersionDetail(ctx context.Context, ver string) (*PHPVersion
 
 	detail := &PHPVersionDetail{
 		Version:           ver,
+		IsCLIDefault:      ver == m.detectDefaultCLIVersion(ctx),
 		IniPath:           iniPath,
 		PoolConfPath:      poolPath,
 		FpmSocket:         fmt.Sprintf("/run/php/php%s-fpm.sock", ver),
@@ -378,17 +568,53 @@ func (m *Manager) GetVersionDetail(ctx context.Context, ver string) (*PHPVersion
 		detail.Installed = true
 	}
 
-	// Ambil PID & memory service jika running
+	// Ambil PID, memori cgroup, & waktu mulai service jika running
 	if detail.Running {
-		cmdPid := exec.CommandContext(ctx, "systemctl", "show", serviceName, "--property=MainPID,ActiveEnterTimestamp")
+		cmdPid := exec.CommandContext(ctx, "systemctl", "show", serviceName, "--property=MainPID,ActiveEnterTimestamp,MemoryCurrent")
 		if out, err := cmdPid.Output(); err == nil {
 			lines := strings.Split(string(out), "\n")
 			for _, l := range lines {
 				if strings.HasPrefix(l, "MainPID=") {
-					pidStr := strings.TrimPrefix(l, "MainPID=")
-					detail.ServiceStatus["pid"] = strings.TrimSpace(pidStr)
+					pidStr := strings.TrimSpace(strings.TrimPrefix(l, "MainPID="))
+					if pidStr != "" && pidStr != "0" {
+						detail.ServiceStatus["pid"] = pidStr
+					}
 				} else if strings.HasPrefix(l, "ActiveEnterTimestamp=") {
-					detail.ServiceStatus["since"] = strings.TrimPrefix(l, "ActiveEnterTimestamp=")
+					since := strings.TrimSpace(strings.TrimPrefix(l, "ActiveEnterTimestamp="))
+					if since != "" {
+						detail.ServiceStatus["since"] = since
+					}
+				} else if strings.HasPrefix(l, "MemoryCurrent=") {
+					memStr := strings.TrimSpace(strings.TrimPrefix(l, "MemoryCurrent="))
+					if memBytes, parseErr := strconv.ParseUint(memStr, 10, 64); parseErr == nil && memBytes > 0 && memBytes < (1<<60) {
+						detail.ServiceStatus["memory"] = formatByteSize(memBytes)
+					}
+				}
+			}
+		}
+	}
+
+	// 1b. Baca nilai dasar OPcache dari conf.d Debian/Ubuntu sebelum ditimpa php.ini utama
+	if opFiles, err := filepath.Glob(fmt.Sprintf("/etc/php/%s/fpm/conf.d/*opcache*.ini", ver)); err == nil {
+		for _, opPath := range opFiles {
+			if data, rErr := os.ReadFile(opPath); rErr == nil {
+				scanner := bufio.NewScanner(strings.NewReader(string(data)))
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if strings.HasPrefix(line, ";") || !strings.Contains(line, "=") {
+						continue
+					}
+					parts := strings.SplitN(line, "=", 2)
+					key := strings.TrimSpace(parts[0])
+					val := strings.TrimSpace(parts[1])
+					if idx := strings.Index(val, ";"); idx > 0 {
+						val = strings.TrimSpace(val[:idx])
+					}
+					switch key {
+					case "opcache.enable", "opcache.memory_consumption", "opcache.max_accelerated_files",
+						"opcache.validate_timestamps", "opcache.revalidate_freq":
+						detail.OpcacheSettings[key] = val
+					}
 				}
 			}
 		}
@@ -556,6 +782,9 @@ func (m *Manager) getDefaultExtensionList(ver string, loaded []string) []PHPExte
 
 // GetRawIni membaca teks mentah berkas php.ini
 func (m *Manager) GetRawIni(ctx context.Context, ver string) (string, string, error) {
+	if err := validateVersion(ver); err != nil {
+		return "", "", err
+	}
 	iniPath := m.resolveIniPath(ver)
 	if runtime.GOOS != "linux" {
 		sample := fmt.Sprintf(`[PHP]
@@ -615,15 +844,19 @@ opcache.max_accelerated_files = 10000
 	return string(data), iniPath, nil
 }
 
-// SaveRawIni menyimpan teks mentah ke berkas php.ini dengan backup otomatis
+// SaveRawIni menyimpan teks mentah ke berkas php.ini dengan backup otomatis, uji sintaks, & rollback
 func (m *Manager) SaveRawIni(ctx context.Context, ver string, content string) error {
+	if err := validateVersion(ver); err != nil {
+		return err
+	}
 	iniPath := m.resolveIniPath(ver)
 	if runtime.GOOS != "linux" {
 		return nil
 	}
 
-	// Backup berkas lama jika ada
-	if oldData, err := os.ReadFile(iniPath); err == nil {
+	// Simpan cadangan berkas lama untuk rollback jika uji sintaks gagal
+	oldData, hadOld := os.ReadFile(iniPath)
+	if hadOld == nil {
 		_ = os.WriteFile(iniPath+".bak", oldData, 0644)
 	}
 
@@ -631,13 +864,25 @@ func (m *Manager) SaveRawIni(ctx context.Context, ver string, content string) er
 		return fmt.Errorf("gagal menulis ke berkas %s: %w", iniPath, err)
 	}
 
+	if err := m.testFpmConfig(ctx, ver); err != nil {
+		if hadOld == nil {
+			_ = os.WriteFile(iniPath, oldData, 0644)
+		}
+		return err
+	}
+
 	// Reload layanan agar perubahan langsung efektif
-	_ = m.ControlService(ctx, ver, "reload")
+	if err := m.ControlService(ctx, ver, "reload"); err != nil {
+		return fmt.Errorf("berkas tersimpan tetapi gagal reload FPM: %w", err)
+	}
 	return nil
 }
 
 // GetRawFpm membaca teks mentah berkas www.conf (pool FPM)
 func (m *Manager) GetRawFpm(ctx context.Context, ver string) (string, string, error) {
+	if err := validateVersion(ver); err != nil {
+		return "", "", err
+	}
 	poolPath := m.resolvePoolPath(ver)
 	if runtime.GOOS != "linux" {
 		sample := fmt.Sprintf(`[www]
@@ -668,14 +913,18 @@ ping.path = /ping
 	return string(data), poolPath, nil
 }
 
-// SaveRawFpm menyimpan teks mentah ke berkas www.conf pool FPM
+// SaveRawFpm menyimpan teks mentah ke berkas www.conf pool FPM dengan uji sintaks & rollback
 func (m *Manager) SaveRawFpm(ctx context.Context, ver string, content string) error {
+	if err := validateVersion(ver); err != nil {
+		return err
+	}
 	poolPath := m.resolvePoolPath(ver)
 	if runtime.GOOS != "linux" {
 		return nil
 	}
 
-	if oldData, err := os.ReadFile(poolPath); err == nil {
+	oldData, hadOld := os.ReadFile(poolPath)
+	if hadOld == nil {
 		_ = os.WriteFile(poolPath+".bak", oldData, 0644)
 	}
 
@@ -683,107 +932,113 @@ func (m *Manager) SaveRawFpm(ctx context.Context, ver string, content string) er
 		return fmt.Errorf("gagal menulis ke berkas %s: %w", poolPath, err)
 	}
 
-	_ = m.ControlService(ctx, ver, "reload")
+	if err := m.testFpmConfig(ctx, ver); err != nil {
+		if hadOld == nil {
+			_ = os.WriteFile(poolPath, oldData, 0644)
+		}
+		return err
+	}
+
+	if err := m.ControlService(ctx, ver, "reload"); err != nil {
+		return fmt.Errorf("berkas pool tersimpan tetapi gagal reload FPM: %w", err)
+	}
 	return nil
 }
 
 // SaveConfigBatch memperbarui beberapa parameter konfigurasi php.ini sekaligus secara atomik
 func (m *Manager) SaveConfigBatch(ctx context.Context, ver string, settings map[string]string) error {
-	iniPath := m.resolveIniPath(ver)
-	if runtime.GOOS != "linux" {
-		return nil
+	if err := validateVersion(ver); err != nil {
+		return err
 	}
+	if runtime.GOOS != "linux" {
+		_, err := applyIniUpdates("", settings)
+		return err
+	}
+	iniPath := m.resolveIniPath(ver)
 
 	content, err := os.ReadFile(iniPath)
 	if err != nil {
 		return fmt.Errorf("tidak dapat membuka php.ini: %w", err)
 	}
 
-	lines := strings.Split(string(content), "\n")
-	updatedKeys := make(map[string]bool)
-
-	for i, l := range lines {
-		trimmed := strings.TrimSpace(l)
-		if strings.HasPrefix(trimmed, ";") || !strings.Contains(trimmed, "=") {
-			continue
-		}
-		parts := strings.SplitN(trimmed, "=", 2)
-		k := strings.TrimSpace(parts[0])
-		if newVal, ok := settings[k]; ok {
-			lines[i] = fmt.Sprintf("%s = %s", k, newVal)
-			updatedKeys[k] = true
-		}
-	}
-
-	// Sisipkan key baru jika belum ada di berkas
-	for k, v := range settings {
-		if !updatedKeys[k] {
-			lines = append(lines, fmt.Sprintf("%s = %s", k, v))
-		}
+	updated, err := applyIniUpdates(string(content), settings)
+	if err != nil {
+		return err
 	}
 
 	// Backup berkas lama
 	_ = os.WriteFile(iniPath+".bak", content, 0644)
 
-	if err := os.WriteFile(iniPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(iniPath, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("gagal menyimpan konfigurasi php.ini: %w", err)
 	}
 
-	_ = m.ControlService(ctx, ver, "reload")
+	if err := m.testFpmConfig(ctx, ver); err != nil {
+		_ = os.WriteFile(iniPath, content, 0644)
+		return err
+	}
+
+	if err := m.ControlService(ctx, ver, "reload"); err != nil {
+		return fmt.Errorf("konfigurasi tersimpan tetapi gagal reload FPM: %w", err)
+	}
 	return nil
 }
 
 // UpdateDisabledFunctions memperbarui direktif disable_functions di php.ini
 func (m *Manager) UpdateDisabledFunctions(ctx context.Context, ver string, funcs []string) error {
-	joined := strings.Join(funcs, ",")
+	var cleaned []string
+	for _, fn := range funcs {
+		f := strings.TrimSpace(strings.ToLower(fn))
+		if f != "" {
+			cleaned = append(cleaned, f)
+		}
+	}
+	joined := strings.Join(cleaned, ",")
 	return m.SaveConfigBatch(ctx, ver, map[string]string{"disable_functions": joined})
 }
 
-// SaveFpmPoolBatch memperbarui parameter pool www.conf FPM
+// SaveFpmPoolBatch memperbarui parameter pool www.conf FPM dengan uji sintaks & rollback
 func (m *Manager) SaveFpmPoolBatch(ctx context.Context, ver string, settings map[string]string) error {
-	poolPath := m.resolvePoolPath(ver)
-	if runtime.GOOS != "linux" {
-		return nil
+	if err := validateVersion(ver); err != nil {
+		return err
 	}
+	if runtime.GOOS != "linux" {
+		_, err := applyIniUpdates("", settings)
+		return err
+	}
+	poolPath := m.resolvePoolPath(ver)
 
 	content, err := os.ReadFile(poolPath)
 	if err != nil {
 		return fmt.Errorf("tidak dapat membuka pool www.conf: %w", err)
 	}
 
-	lines := strings.Split(string(content), "\n")
-	updatedKeys := make(map[string]bool)
-
-	for i, l := range lines {
-		trimmed := strings.TrimSpace(l)
-		if strings.HasPrefix(trimmed, ";") || !strings.Contains(trimmed, "=") {
-			continue
-		}
-		parts := strings.SplitN(trimmed, "=", 2)
-		k := strings.TrimSpace(parts[0])
-		if newVal, ok := settings[k]; ok {
-			lines[i] = fmt.Sprintf("%s = %s", k, newVal)
-			updatedKeys[k] = true
-		}
-	}
-
-	for k, v := range settings {
-		if !updatedKeys[k] {
-			lines = append(lines, fmt.Sprintf("%s = %s", k, v))
-		}
+	updated, err := applyIniUpdates(string(content), settings)
+	if err != nil {
+		return err
 	}
 
 	_ = os.WriteFile(poolPath+".bak", content, 0644)
-	if err := os.WriteFile(poolPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(poolPath, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("gagal menyimpan konfigurasi pool FPM: %w", err)
 	}
 
-	_ = m.ControlService(ctx, ver, "reload")
+	if err := m.testFpmConfig(ctx, ver); err != nil {
+		_ = os.WriteFile(poolPath, content, 0644)
+		return err
+	}
+
+	if err := m.ControlService(ctx, ver, "reload"); err != nil {
+		return fmt.Errorf("konfigurasi pool tersimpan tetapi gagal reload FPM: %w", err)
+	}
 	return nil
 }
 
 // GetLogs membaca isi log FPM atau slow log
 func (m *Manager) GetLogs(ctx context.Context, ver string, logType string) (string, error) {
+	if err := validateVersion(ver); err != nil {
+		return "", err
+	}
 	logPath := fmt.Sprintf("/var/log/php%s-fpm.log", ver)
 	if logType == "slow" {
 		logPath = fmt.Sprintf("/var/log/php%s-fpm.slow.log", ver)
@@ -815,6 +1070,9 @@ func (m *Manager) GetLogs(ctx context.Context, ver string, logType string) (stri
 
 // ClearLogs mengosongkan berkas log
 func (m *Manager) ClearLogs(ctx context.Context, ver string, logType string) error {
+	if err := validateVersion(ver); err != nil {
+		return err
+	}
 	logPath := fmt.Sprintf("/var/log/php%s-fpm.log", ver)
 	if logType == "slow" {
 		logPath = fmt.Sprintf("/var/log/php%s-fpm.slow.log", ver)
@@ -827,6 +1085,9 @@ func (m *Manager) ClearLogs(ctx context.Context, ver string, logType string) err
 
 // GetPhpInfo menghasilkan output diagnostik phpinfo live
 func (m *Manager) GetPhpInfo(ctx context.Context, ver string) (string, error) {
+	if err := validateVersion(ver); err != nil {
+		return "", err
+	}
 	phpBin := "php"
 	if _, err := exec.LookPath(fmt.Sprintf("php%s", ver)); err == nil {
 		phpBin = fmt.Sprintf("php%s", ver)
@@ -834,7 +1095,7 @@ func (m *Manager) GetPhpInfo(ctx context.Context, ver string) (string, error) {
 	cmd := exec.CommandContext(ctx, phpBin, "-i")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), fmt.Errorf("gagal menjalankan php -i: %w", err)
+		return string(out), fmt.Errorf("gagal menjalankan %s -i: %w", phpBin, err)
 	}
 	return string(out), nil
 }
@@ -846,53 +1107,80 @@ func (m *Manager) UpdateSetting(ctx context.Context, ver string, key string, val
 
 // InstallExtension memasang paket ekstensi PHP menggunakan manajer paket APT dan me-restart layanan FPM
 func (m *Manager) InstallExtension(ctx context.Context, version, extName string) (string, error) {
+	if err := validateVersion(version); err != nil {
+		return "", err
+	}
+	cleanExt, err := validateExtensionName(extName)
+	if err != nil {
+		return "", err
+	}
 	if runtime.GOOS != "linux" {
-		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan terpasang.", extName, version), nil
+		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan terpasang.", cleanExt, version), nil
 	}
 
-	pkg, _ := ResolveExtensionPackage(version, extName)
+	pkg, _ := ResolveExtensionPackage(version, cleanExt)
 
-	// Jalankan apt-get update & install
-	cmd := exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", pkg)
-	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-	out, err := cmd.CombinedOutput()
+	runAptInstall := func(targetPkg string) ([]byte, error) {
+		c := exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", targetPkg)
+		c.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+		return c.CombinedOutput()
+	}
+
+	out, err := runAptInstall(pkg)
 	if err != nil {
-		// Jika paket spesifik versi gagal, coba fallback ke paket generik php-<ext>
-		altPkg := fmt.Sprintf("php-%s", strings.ToLower(extName))
-		cmdAlt := exec.CommandContext(ctx, "apt-get", "install", "-y", "--no-install-recommends", altPkg)
-		cmdAlt.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-		outAlt, errAlt := cmdAlt.CombinedOutput()
-		if errAlt != nil {
-			return string(out), fmt.Errorf("gagal memasang paket %s: %s (%w)", pkg, strings.TrimSpace(string(outAlt)), err)
+		// Segarkan indeks APT sekali jika cache lokal usang, lalu coba ulang paket spesifik versi
+		upd := exec.CommandContext(ctx, "apt-get", "update", "-qq")
+		upd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+		_ = upd.Run()
+
+		out, err = runAptInstall(pkg)
+		if err != nil {
+			// Fallback ke paket generik php-<ext> jika tersedia di distro
+			altPkg := fmt.Sprintf("php-%s", cleanExt)
+			outAlt, errAlt := runAptInstall(altPkg)
+			if errAlt != nil {
+				return string(out), fmt.Errorf("gagal memasang paket %s: %s", pkg, strings.TrimSpace(string(outAlt)))
+			}
+			pkg = altPkg
+			out = outAlt
 		}
-		pkg = altPkg
-		out = outAlt
 	}
 
 	// Restart layanan FPM agar modul langsung aktif
-	_ = m.ControlService(ctx, version, "restart")
+	if rErr := m.ControlService(ctx, version, "restart"); rErr != nil {
+		return fmt.Sprintf("Paket %s terpasang, namun gagal restart FPM: %v", pkg, rErr), nil
+	}
 	return fmt.Sprintf("Paket %s berhasil dipasang. %s", pkg, strings.TrimSpace(string(out))), nil
 }
 
 // UninstallExtension mencopot paket ekstensi PHP dan me-restart layanan FPM
 func (m *Manager) UninstallExtension(ctx context.Context, version, extName string) (string, error) {
+	if err := validateVersion(version); err != nil {
+		return "", err
+	}
+	cleanExt, err := validateExtensionName(extName)
+	if err != nil {
+		return "", err
+	}
 	if runtime.GOOS != "linux" {
-		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan dicopot.", extName, version), nil
+		return fmt.Sprintf("[Dev Mode] Ekstensi %s untuk PHP %s berhasil disimulasikan dicopot.", cleanExt, version), nil
 	}
 
-	pkg, isCore := ResolveExtensionPackage(version, extName)
+	pkg, isCore := ResolveExtensionPackage(version, cleanExt)
 	if isCore {
-		return "", fmt.Errorf("ekstensi %s merupakan modul inti PHP dan tidak dapat dicopot secara mandiri", extName)
+		return "", fmt.Errorf("ekstensi %s merupakan modul inti PHP dan tidak dapat dicopot secara mandiri", cleanExt)
 	}
 
 	cmd := exec.CommandContext(ctx, "apt-get", "remove", "-y", pkg)
 	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), fmt.Errorf("gagal mencopot paket %s: %s (%w)", pkg, strings.TrimSpace(string(out)), err)
+		return string(out), fmt.Errorf("gagal mencopot paket %s: %s", pkg, strings.TrimSpace(string(out)))
 	}
 
 	// Restart layanan FPM agar modul dinonaktifkan
-	_ = m.ControlService(ctx, version, "restart")
+	if rErr := m.ControlService(ctx, version, "restart"); rErr != nil {
+		return fmt.Sprintf("Paket %s dicopot, namun gagal restart FPM: %v", pkg, rErr), nil
+	}
 	return fmt.Sprintf("Paket %s berhasil dicopot. %s", pkg, strings.TrimSpace(string(out))), nil
 }

@@ -24,27 +24,29 @@
 </script>
 
 <div class="tab-pane full-height-pane pg-phpmanager-logs-tab">
-  <div class="flex justify-between items-center mb-3">
-    <div class="flex gap-2">
+  <div class="flex justify-between items-center flex-wrap gap-2 mb-3">
+    <div class="flex flex-wrap gap-2">
       <button
-        class="btn btn-sm {logType === 'fpm' ? 'btn-primary' : 'btn-ghost'}"
+        type="button"
+        class="btn btn--sm {logType === 'fpm' ? 'btn--primary' : 'btn--ghost'}"
         onclick={() => onSelectLogType('fpm')}
       >
-        <i class="ri-error-warning-line"></i> Error Log (php-fpm.log)
+        <i class="ri-error-warning-line" aria-hidden="true"></i> Error Log (php-fpm.log)
       </button>
       <button
-        class="btn btn-sm {logType === 'slow' ? 'btn-primary' : 'btn-ghost'}"
+        type="button"
+        class="btn btn--sm {logType === 'slow' ? 'btn--primary' : 'btn--ghost'}"
         onclick={() => onSelectLogType('slow')}
       >
-        <i class="ri-timer-line"></i> Slow Log
+        <i class="ri-timer-line" aria-hidden="true"></i> Slow Log
       </button>
     </div>
-    <div class="flex gap-2">
-      <button class="btn btn-ghost btn-sm" onclick={onRefreshLogs} disabled={loadingLogs}>
-        <i class="ri-refresh-line {loadingLogs ? 'spin' : ''}"></i> Refresh
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class="btn btn--ghost btn--sm" onclick={onRefreshLogs} disabled={loadingLogs}>
+        <i class="ri-refresh-line {loadingLogs ? 'spin' : ''}" aria-hidden="true"></i> Segarkan
       </button>
-      <button class="btn btn-danger btn-sm" onclick={onClearLogs}>
-        <i class="ri-delete-bin-line"></i> Kosongkan Log
+      <button type="button" class="btn btn--danger btn--sm" onclick={onClearLogs}>
+        <i class="ri-delete-bin-line" aria-hidden="true"></i> Kosongkan Log
       </button>
     </div>
   </div>

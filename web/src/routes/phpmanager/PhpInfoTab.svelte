@@ -18,13 +18,13 @@
 </script>
 
 <div class="tab-pane full-height-pane pg-phpmanager-phpinfo-tab">
-  <div class="flex justify-between items-center mb-3">
+  <div class="flex justify-between items-center flex-wrap gap-2 mb-3">
     <div>
       <h4 class="section-title">Diagnostik phpinfo() — PHP {activeVersion}</h4>
       <p class="section-desc">Ringkasan konfigurasi internal, library dependensi, dan environment runtime.</p>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick={onRefreshPhpInfo} disabled={loadingPhpInfo}>
-      <i class="ri-refresh-line {loadingPhpInfo ? 'spin' : ''}"></i> Refresh Info
+    <button type="button" class="btn btn--ghost btn--sm" onclick={onRefreshPhpInfo} disabled={loadingPhpInfo}>
+      <i class="ri-refresh-line {loadingPhpInfo ? 'spin' : ''}" aria-hidden="true"></i> Segarkan Info
     </button>
   </div>
 

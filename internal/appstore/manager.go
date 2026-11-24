@@ -70,6 +70,15 @@ func (m *Manager) Catalog(ctx context.Context) []AppPackage {
 			AptPackages: []string{"php8.5-fpm", "php8.5-mysql", "php8.5-cli", "php8.5-curl", "php8.5-mbstring", "php8.5-gd", "php8.5-xml", "php8.5-zip"},
 		},
 		{
+			ID:          "php8.4",
+			Name:        "PHP 8.4 + FPM Suite",
+			Category:    "runtime",
+			Version:     "8.4",
+			Description: "PHP 8.4 runtime terbaru dengan property hooks, asymmetric visibility, FastCGI Process Manager, dan ekstensi inti web.",
+			Icon:        "ri-code-s-slash-line",
+			AptPackages: []string{"php8.4-fpm", "php8.4-mysql", "php8.4-cli", "php8.4-curl", "php8.4-mbstring", "php8.4-gd", "php8.4-xml", "php8.4-zip"},
+		},
+		{
 			ID:          "php8.3",
 			Name:        "PHP 8.3 + FPM Suite",
 			Category:    "runtime",
@@ -387,7 +396,22 @@ func (m *Manager) Install(appID string) error {
 				}
 			}
 			if len(pkgs) == 0 {
-				pkgs = []string{appID}
+				// Pastikan instalasi versi PHP apapun (mis. php8.4, php8.1, php8.0, php7.4) memasang suite FPM, bukan mod_php Apache
+				if strings.HasPrefix(appID, "php") && len(appID) >= 6 {
+					ver := strings.TrimPrefix(appID, "php")
+					pkgs = []string{
+						fmt.Sprintf("php%s-fpm", ver),
+						fmt.Sprintf("php%s-mysql", ver),
+						fmt.Sprintf("php%s-cli", ver),
+						fmt.Sprintf("php%s-curl", ver),
+						fmt.Sprintf("php%s-mbstring", ver),
+						fmt.Sprintf("php%s-gd", ver),
+						fmt.Sprintf("php%s-xml", ver),
+						fmt.Sprintf("php%s-zip", ver),
+					}
+				} else {
+					pkgs = []string{appID}
+				}
 			}
 		}
 
@@ -463,7 +487,22 @@ func (m *Manager) Uninstall(appID string) error {
 				}
 			}
 			if len(pkgs) == 0 {
-				pkgs = []string{appID}
+				// Pastikan instalasi versi PHP apapun (mis. php8.4, php8.1, php8.0, php7.4) memasang suite FPM, bukan mod_php Apache
+				if strings.HasPrefix(appID, "php") && len(appID) >= 6 {
+					ver := strings.TrimPrefix(appID, "php")
+					pkgs = []string{
+						fmt.Sprintf("php%s-fpm", ver),
+						fmt.Sprintf("php%s-mysql", ver),
+						fmt.Sprintf("php%s-cli", ver),
+						fmt.Sprintf("php%s-curl", ver),
+						fmt.Sprintf("php%s-mbstring", ver),
+						fmt.Sprintf("php%s-gd", ver),
+						fmt.Sprintf("php%s-xml", ver),
+						fmt.Sprintf("php%s-zip", ver),
+					}
+				} else {
+					pkgs = []string{appID}
+				}
 			}
 		}
 

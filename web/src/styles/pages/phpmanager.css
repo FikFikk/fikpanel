@@ -81,16 +81,20 @@
     @media (max-width: 768px) {
       .manage-modal-body {
         flex-direction: column;
+        margin: calc(var(--space-4) * -1);
+        min-height: 0;
         max-height: none;
+        overflow: visible;
       }
       .manage-sidebar {
         width: 100%;
         border-right: none;
         border-bottom: 1px solid var(--border);
+        padding: var(--space-2);
       }
-      .form-row {
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
+      .manage-content {
+        padding: var(--space-3);
+        overflow: visible;
       }
     }
   }

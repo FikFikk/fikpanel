@@ -25,13 +25,13 @@
 </script>
 
 <div class="tab-pane pg-phpmanager-extensions-tab">
-  <div class="section-title-wrap flex justify-between items-center">
+  <div class="section-title-wrap flex justify-between items-center flex-wrap gap-2">
     <div>
       <h4 class="section-title">Install Extensions (Ekstensi PHP {activeVersion})</h4>
       <p class="section-desc">Status modul dan pustaka ekstensi PHP populer di server.</p>
     </div>
     <div class="search-mini-wrap">
-      <i class="ri-search-line"></i>
+      <i class="ri-search-line" aria-hidden="true"></i>
       <input
         type="text"
         class="search-mini-input"
@@ -80,41 +80,41 @@
                   {#if !ext.is_core}
                     <button
                       type="button"
-                      class="btn btn-xs btn-danger"
+                      class="btn btn--xs btn--danger"
                       onclick={() => onUninstallExtension(ext)}
                       disabled={actionExtName === ext.name}
                       title="Copot paket ekstensi {ext.name}"
                     >
                       {#if actionExtName === ext.name}
-                        <i class="ri-loader-4-line spin"></i>
+                        <i class="ri-loader-4-line spin" aria-hidden="true"></i>
                       {:else}
-                        <i class="ri-delete-bin-line"></i> Copot
+                        <i class="ri-delete-bin-line" aria-hidden="true"></i> Copot
                       {/if}
                     </button>
                   {/if}
                 {:else}
                   <button
                     type="button"
-                    class="btn btn-xs btn-primary"
+                    class="btn btn--xs btn--primary"
                     onclick={() => onInstallExtension(ext)}
                     disabled={actionExtName === ext.name}
                     title="Pasang ekstensi {ext.name} secara otomatis (1-Klik via Panel)"
                   >
                     {#if actionExtName === ext.name}
-                      <i class="ri-loader-4-line spin"></i> Memasang...
+                      <i class="ri-loader-4-line spin" aria-hidden="true"></i> Memasang...
                     {:else}
-                      <i class="ri-download-2-line"></i> Install
+                      <i class="ri-download-2-line" aria-hidden="true"></i> Install
                     {/if}
                   </button>
                 {/if}
 
                 <button
                   type="button"
-                  class="btn btn-xs btn-ghost"
+                  class="btn btn--xs btn--ghost"
                   onclick={() => onOpenSshModal(ext)}
                   title="Lihat & Salin Perintah Instalasi via Terminal / SSH"
                 >
-                  <i class="ri-terminal-box-line"></i> Perintah SSH
+                  <i class="ri-terminal-box-line" aria-hidden="true"></i> Perintah SSH
                 </button>
               </div>
             </td>

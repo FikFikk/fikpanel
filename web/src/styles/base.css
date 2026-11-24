@@ -75,6 +75,19 @@
     font-family: var(--font-mono);
   }
 
+  /* Gaya dasar indikator tombol papan ketik ditempatkan di @layer base agar aturan layout/mobile bisa menimpanya */
+  kbd {
+    display: inline-block;
+    padding: 0 var(--space-1);
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-xs);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    white-space: nowrap;
+  }
+
   ::placeholder {
     color: var(--text-subtle);
     opacity: 1;

@@ -518,6 +518,7 @@ export interface PHPVersionDetail {
   version: string;
   installed: boolean;
   running: boolean;
+  is_cli_default?: boolean;
   fpm_socket: string;
   ini_path: string;
   pool_conf_path: string;
@@ -562,6 +563,7 @@ export interface PHPVersionInfo {
   version: string;
   installed: boolean;
   running: boolean;
+  is_cli_default?: boolean;
   fpm_socket: string;
   ini_path: string;
   settings: Record<string, string>;
