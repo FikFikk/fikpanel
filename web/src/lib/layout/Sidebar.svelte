@@ -8,11 +8,12 @@
     open: boolean;
     version?: string;
     onNavigate: () => void;
+    onPrefetch?: (id: string) => void;
     onLogout?: () => void;
     onOpenPalette?: () => void;
   }
 
-  let { current, open, version = '0.6.3', onNavigate, onLogout, onOpenPalette }: Props = $props();
+  let { current, open, version = '0.6.4', onNavigate, onPrefetch, onLogout, onOpenPalette }: Props = $props();
 
   let isCustomBrand = $derived(
     Boolean(appearanceState.brand_name && appearanceState.brand_name.trim().toLowerCase() !== 'fikpanel')
@@ -104,6 +105,8 @@
                 class="sidebar__item"
                 aria-current={current === item.id ? 'page' : undefined}
                 title={itemLabel}
+                onmouseenter={() => onPrefetch?.(item.id)}
+                onfocus={() => onPrefetch?.(item.id)}
                 onclick={onNavigate}
               >
                 <i class={item.icon} aria-hidden="true"></i>

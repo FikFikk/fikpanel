@@ -38,14 +38,35 @@
     settings: () => import('./routes/Settings.svelte'),
   };
   const loaded = new Map<string, Component<any>>([['home', Home as Component<any>]]);
+  const inflight = new Map<string, Promise<Component<any>>>();
 
-  // Kembalikan komponen langsung bila sudah ada di cache agar tidak ada kedipan loading
-  function loadRoute(id: string): Component<any> | Promise<Component<any>> {
+  // Muat chunk rute dengan deduplikasi promise dan simpan ke cache memori
+  function fetchRouteComponent(id: string): Promise<Component<any>> {
     const cached = loaded.get(id);
-    if (cached) return cached;
-    return loaders[id]().then((m) => {
-      loaded.set(id, m.default);
-      return m.default;
+    if (cached) return Promise.resolve(cached);
+    const pending = inflight.get(id);
+    if (pending) return pending;
+    const loader = loaders[id];
+    if (!loader) return Promise.resolve(Home as Component<any>);
+    const p = loader()
+      .then((m) => {
+        loaded.set(id, m.default);
+        inflight.delete(id);
+        return m.default;
+      })
+      .catch((err) => {
+        inflight.delete(id);
+        throw err;
+      });
+    inflight.set(id, p);
+    return p;
+  }
+
+  // Prefetch chunk saat pengguna mengarahkan kursor ke item sidebar agar klik langsung instan
+  function prefetchRoute(id: string) {
+    if (loaded.has(id) || inflight.has(id) || !loaders[id]) return;
+    fetchRouteComponent(id).catch(() => {
+      // Abaikan kegagalan prefetch latar belakang; akan dicoba ulang saat diklik
     });
   }
 
@@ -55,11 +76,18 @@
   let currentUser = $state('');
   let passkeysAvailable = $state(false);
 
-  // State navigasi & command palette
-  let currentRoute = $state(routeFromHash(window.location.hash));
+  // State navigasi & command palette (ActivePage diganti hanya setelah chunk siap agar bebas kedip)
+  const initialRoute = routeFromHash(window.location.hash);
+  let currentRoute = $state(initialRoute);
+  let activeRoute = $state(initialRoute);
+  let ActivePage = $state<Component<any> | null>(loaded.get(initialRoute) ?? null);
+  let routeError = $state('');
+  let routeLoading = $state(!loaded.has(initialRoute));
   let menuOpen = $state(false);
   let paletteOpen = $state(false);
   let routeAttempt = $state(0);
+  let navToken = 0;
+  let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 
   // State data global
   let overview = $state<OverviewData | null>(null);
@@ -79,23 +107,62 @@
     document.title = `${label} · ${brand}`;
   });
 
-  function onHashChange() {
-    const nextRoute = routeFromHash(window.location.hash);
-    if (nextRoute === currentRoute) {
+  // Pindah rute secara bersih: pre-resolve chunk sebelum swap agar halaman lama tidak berkedip/ketimpa
+  async function activateRoute(nextRoute: string, force = false) {
+    if (!force && nextRoute === activeRoute && ActivePage && !routeError) {
+      currentRoute = nextRoute;
       menuOpen = false;
       return;
     }
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const startVT = (document as Document & { startViewTransition?: (cb: () => void) => void }).startViewTransition;
-    if (typeof startVT === 'function' && !reducedMotion) {
-      startVT.call(document, () => {
-        currentRoute = nextRoute;
-        menuOpen = false;
-      });
-    } else {
-      currentRoute = nextRoute;
-      menuOpen = false;
+    currentRoute = nextRoute;
+    menuOpen = false;
+    routeError = '';
+    clearTimeout(skeletonTimer);
+
+    const cached = loaded.get(nextRoute);
+    if (cached) {
+      navToken++;
+      ActivePage = cached;
+      activeRoute = nextRoute;
+      routeLoading = false;
+      window.scrollTo({ top: 0 });
+      return;
     }
+
+    const token = ++navToken;
+    // Tampilkan skeleton hanya jika belum ada halaman aktif atau unduhan chunk > 180ms
+    if (!ActivePage) {
+      routeLoading = true;
+    } else {
+      skeletonTimer = setTimeout(() => {
+        if (token === navToken) routeLoading = true;
+      }, 180);
+    }
+
+    try {
+      const comp = await fetchRouteComponent(nextRoute);
+      if (token !== navToken) return;
+      clearTimeout(skeletonTimer);
+      ActivePage = comp;
+      activeRoute = nextRoute;
+      routeLoading = false;
+      window.scrollTo({ top: 0 });
+    } catch (err) {
+      if (token !== navToken) return;
+      clearTimeout(skeletonTimer);
+      routeLoading = false;
+      routeError = (err as Error)?.message ?? 'Periksa koneksi lalu coba lagi.';
+    }
+  }
+
+  function onHashChange() {
+    const nextRoute = routeFromHash(window.location.hash);
+    activateRoute(nextRoute);
+  }
+
+  function retryRoute() {
+    routeAttempt++;
+    activateRoute(currentRoute, true);
   }
 
   // Aliran metrik realtime (Server-Sent Events); browser menyambung ulang otomatis bila putus
@@ -242,6 +309,9 @@
     };
     window.addEventListener('hashchange', onHashChange);
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    if (!ActivePage) {
+      activateRoute(currentRoute, true);
+    }
 
     apiFetch<{ username: string }>('/api/auth/me')
       .then((me) => enterPanel(me.username))
@@ -249,6 +319,7 @@
       .finally(() => (checking = false));
 
     return () => {
+      clearTimeout(skeletonTimer);
       window.removeEventListener('hashchange', onHashChange);
       window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
       eventSource?.close();
@@ -273,6 +344,7 @@
       open={menuOpen}
       version={overview?.system?.version}
       onNavigate={() => (menuOpen = false)}
+      onPrefetch={prefetchRoute}
       onLogout={handleLogout}
       onOpenPalette={() => (paletteOpen = true)}
     />
@@ -291,27 +363,30 @@
       />
 
       <main class="app-shell__content" id="main-content" tabindex="-1">
-        {#key `${currentRoute}:${routeAttempt}`}
-          {#await loadRoute(currentRoute)}
-            <div class="app-shell__loading" role="status">
-              <div class="skeleton app-shell__sk-title"></div>
-              <div class="skeleton app-shell__sk-card"></div>
-              <div class="skeleton app-shell__sk-panel"></div>
-              <span class="sr-only">Memuat halaman…</span>
+        {#if routeError}
+          <div class="empty-state" role="alert">
+            <i class="ri-wifi-off-line" aria-hidden="true"></i>
+            <p class="empty-state__title">Halaman gagal dimuat</p>
+            <p>{routeError}</p>
+            <button class="btn btn--primary" onclick={retryRoute}>
+              <i class="ri-refresh-line" aria-hidden="true"></i> Coba lagi
+            </button>
+          </div>
+        {:else if routeLoading}
+          <div class="app-shell__loading" role="status">
+            <div class="skeleton app-shell__sk-title"></div>
+            <div class="skeleton app-shell__sk-card"></div>
+            <div class="skeleton app-shell__sk-panel"></div>
+            <span class="sr-only">Memuat halaman…</span>
+          </div>
+        {:else if ActivePage}
+          {@const Page = ActivePage}
+          {#key `${activeRoute}:${routeAttempt}`}
+            <div class="app-shell__view">
+              <Page {...routeProps(activeRoute)} />
             </div>
-          {:then Page}
-            <Page {...routeProps(currentRoute)} />
-          {:catch err}
-            <div class="empty-state" role="alert">
-              <i class="ri-wifi-off-line" aria-hidden="true"></i>
-              <p class="empty-state__title">Halaman gagal dimuat</p>
-              <p>{err?.message ?? 'Periksa koneksi lalu coba lagi.'}</p>
-              <button class="btn btn--primary" onclick={() => routeAttempt++}>
-                <i class="ri-refresh-line" aria-hidden="true"></i> Coba lagi
-              </button>
-            </div>
-          {/await}
-        {/key}
+          {/key}
+        {/if}
       </main>
     </div>
 

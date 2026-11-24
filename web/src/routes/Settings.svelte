@@ -2066,7 +2066,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.3'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.4'}</span>
                 </div>
               </div>
             </div>

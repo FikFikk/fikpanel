@@ -314,7 +314,6 @@
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
-    view-transition-name: fp-topbar;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -824,22 +823,8 @@
     font-size: var(--text-2xs);
   }
 
-  /* ── View Transitions API (transisi halaman halus ala aplikasi native) ─── */
-  .app-shell__content {
-    view-transition-name: fp-main-content;
-  }
-}
-
-::view-transition-old(fp-main-content) {
-  animation: fp-fade var(--duration-fast) ease-out reverse;
-}
-::view-transition-new(fp-main-content) {
-  animation: fp-fade var(--duration-base) var(--ease-out);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(fp-main-content),
-  ::view-transition-new(fp-main-content) {
-    animation: none;
+  /* Transisi halaman ringan tanpa overlay snapshot bertumpuk */
+  .app-shell__view {
+    animation: fp-route-enter 100ms var(--ease-out);
   }
 }

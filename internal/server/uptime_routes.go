@@ -125,7 +125,7 @@ func runUptimeProbe(ctx context.Context, m *store.UptimeMonitor) probeOutcome {
 	if err != nil {
 		return probeOutcome{Status: "down", LatencyMs: time.Since(start).Milliseconds(), SSLDays: -1, ErrMsg: err.Error()}
 	}
-	req.Header.Set("User-Agent", "FikPanel-UptimeMonitor/0.6.3")
+	req.Header.Set("User-Agent", "FikPanel-UptimeMonitor/0.6.4")
 
 	resp, err := client.Do(req)
 	lat := time.Since(start).Milliseconds()
