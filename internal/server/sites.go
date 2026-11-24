@@ -327,11 +327,22 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 	if u := GetUserFromContext(r.Context()); u != nil {
 		uid = &u.ID
 	}
-	_ = s.applyPostSiteProvisioning(r.Context(), created, in, uid)
+	// Nonaktifkan WriteDeadline pada provisioning panjang (Git clone, Composer, Vite build) agar tidak terpotong 180s
+	if strings.TrimSpace(in.GitRepoURL) != "" || strings.TrimSpace(in.DeployTemplate) != "" || strings.TrimSpace(in.BackupArchive) != "" {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	}
+	deployNotes := s.applyPostSiteProvisioning(r.Context(), created, in, uid)
 
 	s.auditSite(r, "site.create", created.Domain, true,
 		fmt.Sprintf("kind=%s alias=%s", created.Kind, created.Aliases))
-	writeJSON(w, http.StatusCreated, created)
+	type createSiteResponse struct {
+		*store.Site
+		DeployNotes map[string]string `json:"deploy_notes,omitempty"`
+	}
+	writeJSON(w, http.StatusCreated, createSiteResponse{
+		Site:        created,
+		DeployNotes: deployNotes,
+	})
 }
 
 func (s *Server) handleGetSite(w http.ResponseWriter, r *http.Request) {

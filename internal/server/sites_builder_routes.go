@@ -788,7 +788,7 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 	if repoURL := strings.TrimSpace(in.GitRepoURL); repoURL != "" && created.RootPath != "" && runtime.GOOS != "windows" {
 		updateSiteDeployProgress(created.Domain, 28, "git_clone", "Mengkloning repositori Git dari GitHub...")
 		token, _ := s.store.GetSetting(ctx, "github_token")
-		if err := s.cloneGitRepoToSite(ctx, created, repoURL, strings.TrimSpace(in.GitBranch), strings.TrimSpace(in.GitPostCmd), token, in.CreateDB, dbName, dbUser, dbPass); err != nil {
+		if err := s.cloneGitRepoToSite(ctx, created, repoURL, strings.TrimSpace(in.GitBranch), strings.TrimSpace(in.GitPostCmd), token, in.CreateDB, in.AutoSSL, dbName, dbUser, dbPass, notes); err != nil {
 			notes["git_warning"] = err.Error()
 		} else {
 			notes["git"] = "cloned"
@@ -857,8 +857,9 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 
 var ecosystemPortRegex = regexp.MustCompile(`(?i)\bPORT\s*:\s*['"]?(\d{2,5})['"]?`)
 
-// cloneGitRepoToSite mengkloning repositori Git ke direktori proyek situs, menyiapkan .env, menyelaraskan port PM2, dan menjalankan build
-func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, postCmd, githubToken string, createDB bool, dbName, dbUser, dbPass string) error {
+// cloneGitRepoToSite mengkloning repositori Git ke direktori proyek situs, menyiapkan .env aman, menyelaraskan port PM2, dan menjalankan build
+func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoURL, branch, postCmd, githubToken string, createDB, autoSSL bool, dbName, dbUser, dbPass string, notes map[string]string) error {
+	deployStart := time.Now()
 	targetDir := site.RootPath
 	if filepath.Base(targetDir) == "public" {
 		targetDir = filepath.Dir(targetDir)
@@ -960,33 +961,39 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			if rawUserModel, err := os.ReadFile(filepath.Join(targetDir, "app", "Models", "User.php")); err == nil {
 				if !strings.Contains(string(rawUserModel), "FilamentUser") && !strings.Contains(string(rawUserModel), "canAccessPanel") {
 					appEnvValue = "local"
+					if notes != nil {
+						notes["filament_user_warning"] = "Model User.php belum mengimplementasikan FilamentUser; APP_ENV sementara disetel ke 'local' agar panel tidak 403. Implementasikan FilamentUser lalu ubah APP_ENV=production."
+					}
 				}
 			}
 		}
 
-		// Buat nama cookie sesi dengan prefiks unik tanpa karakter titik (.) karena PHP otomatis mengubah titik menjadi underscore di $_COOKIE
-		// dan mengutamakan cookie pertama pada header Cookie (RFC 6265), sehingga prefiks 'fikpanel_' mencegah tabrakan dengan cookie lama di browser.
+		// Buat nama cookie sesi dengan prefiks unik tanpa karakter titik (.) agar tidak bertabrakan dengan cookie lama di browser
 		sessionCookieName := "fikpanel_" + sanitizeCookieSlug(site.Domain) + "_session"
+		appURL := resolveAppURL(ctx, site, autoSSL)
+		if notes != nil {
+			notes["app_url"] = appURL
+		}
 
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
 		envLines = append(envLines, "NODE_ENV=production")
-		envLines = append(envLines, fmt.Sprintf("APP_NAME=\"%s\"", site.Domain))
+		envLines = append(envLines, fmt.Sprintf("APP_NAME=%s", quoteEnvValue(site.Domain)))
 		envLines = append(envLines, fmt.Sprintf("APP_ENV=%s", appEnvValue))
 		envLines = append(envLines, "APP_DEBUG=false")
-		envLines = append(envLines, fmt.Sprintf("APP_URL=https://%s", site.Domain))
+		envLines = append(envLines, fmt.Sprintf("APP_URL=%s", appURL))
 		envLines = append(envLines, fmt.Sprintf("APP_KEY=%s", existingAppKey))
 		envLines = append(envLines, "SESSION_DRIVER=file")
 		envLines = append(envLines, fmt.Sprintf("SESSION_COOKIE=%s", sessionCookieName))
 		envLines = append(envLines, "CACHE_STORE=file")
 		if createDB && dbName != "" && dbUser != "" {
-			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", dbUser, dbPass, dbName))
+			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", url.QueryEscape(dbUser), url.QueryEscape(dbPass), dbName))
 			envLines = append(envLines, "DB_CONNECTION=mysql")
 			envLines = append(envLines, "DB_HOST=127.0.0.1")
 			envLines = append(envLines, "DB_PORT=3306")
 			envLines = append(envLines, fmt.Sprintf("DB_DATABASE=%s", dbName))
 			envLines = append(envLines, fmt.Sprintf("DB_USERNAME=%s", dbUser))
-			envLines = append(envLines, fmt.Sprintf("DB_PASSWORD=%s", dbPass))
+			envLines = append(envLines, fmt.Sprintf("DB_PASSWORD=%s", quoteEnvValue(dbPass)))
 		}
 		// Pertahankan variabel tambahan dari .env.example yang belum didefinisikan di atas
 		if rawExample, err := os.ReadFile(filepath.Join(targetDir, ".env.example")); err == nil {
@@ -1010,7 +1017,8 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 				}
 			}
 		}
-		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o644)
+		// Simpan .env dengan izin ketat 0640 (tidak world-readable)
+		_ = os.WriteFile(envPath, []byte(strings.Join(envLines, "\n")+"\n"), 0o640)
 	}
 
 	updateSiteDeployProgress(site.Domain, 44, "env", "Menyuntikkan variabel .env & menyelaraskan struktur direktori...")
@@ -1084,74 +1092,128 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			}
 		}
 
-		bctx, bcancel := context.WithTimeout(ctx, 240*time.Second)
+		bctx, bcancel := context.WithTimeout(ctx, 300*time.Second)
 		defer bcancel()
+		phpBin := resolvePHPBinary(site.PHPVersion)
+		compCmd := resolveComposerCommand(phpBin)
 		buildEnv := append(os.Environ(),
 			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			"CI=true",
 			"COMPOSER_ALLOW_SUPERUSER=1",
 			"COMPOSER_MEMORY_LIMIT=-1",
+			"NODE_OPTIONS=--max-old-space-size=768",
 		)
+
+		var deployWarnings []string
+		var combinedLog []byte
 
 		// Otomasi penuh proyek PHP Biasa, Laravel, & Laravel Filament dalam tahapan terukur agar persentase progress akurat
 		if hasArtisan {
-			var combinedLog []byte
-			runStage := func(pct int, stage, label, script string) {
+			runStage := func(pct int, stage, label, script string) error {
 				updateSiteDeployProgress(site.Domain, pct, stage, label)
 				c := exec.CommandContext(bctx, "sh", "-c", script)
 				c.Dir = targetDir
 				c.Env = buildEnv
-				out, _ := c.CombinedOutput()
+				out, err := c.CombinedOutput()
+				combinedLog = append(combinedLog, []byte("==> ["+stage+"] "+label+"\n")...)
 				combinedLog = append(combinedLog, out...)
 				combinedLog = append(combinedLog, '\n')
+				return err
 			}
 
-			runStage(56, "composer", "Menginstal dependensi Composer & membangun aset frontend...", strings.Join([]string{
-				"(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)",
-				"if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (npm install && npm run build) || true; fi",
+			compInstall := fmt.Sprintf("(%s install --no-interaction --prefer-dist --optimize-autoloader || %s install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-reqs || %s install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts)", compCmd, compCmd, compCmd)
+			viteBuild := "if [ -f package.json ] && [ ! -f public/build/manifest.json ]; then (if [ -f package-lock.json ]; then (npm ci --no-audit --no-fund || npm install --no-audit --no-fund); else npm install --no-audit --no-fund; fi && npm run build); fi"
+			if err := runStage(56, "composer", "Menginstal dependensi Composer ("+phpBin+") & membangun aset Vite...", compInstall+"; "+viteBuild); err != nil {
+				deployWarnings = append(deployWarnings, "Tahap composer/build mengembalikan galat; periksa fikpanel-deploy.log")
+			}
+			if _, statErr := os.Stat(filepath.Join(targetDir, "vendor", "autoload.php")); statErr != nil {
+				deployWarnings = append(deployWarnings, "vendor/autoload.php belum terbentuk — cek kecocokan ekstensi PHP pada "+phpBin)
+			}
+
+			migErr := runStage(72, "migrate", "Menjalankan migrasi skema database & seeder ("+phpBin+" artisan migrate)...", strings.Join([]string{
+				fmt.Sprintf("(%s artisan key:generate --force || true)", phpBin),
+				fmt.Sprintf("if ! %s artisan migrate --force; then if [ -f bootstrap/providers.php ]; then cp bootstrap/providers.php bootstrap/providers.php.fikbak && printf '<?php return [];\\n' > bootstrap/providers.php && (%s artisan migrate --force || true); mv bootstrap/providers.php.fikbak bootstrap/providers.php; fi; fi", phpBin, phpBin),
+				fmt.Sprintf("(%s artisan package:discover --ansi || true)", phpBin),
+				fmt.Sprintf("(%s artisan migrate --force --seed || %s artisan migrate --force)", phpBin, phpBin),
+			}, "; "))
+			if migErr != nil {
+				deployWarnings = append(deployWarnings, "Migrasi database melaporkan peringatan; cek koneksi DB dan fikpanel-deploy.log")
+			}
+
+			_ = runStage(84, "filament", "Menyiapkan aset Filament, Shield permission & optimasi cache produksi...", strings.Join([]string{
+				fmt.Sprintf("(%s artisan storage:link --force || true)", phpBin),
+				fmt.Sprintf("(%s artisan filament:upgrade || %s artisan filament:assets || true)", phpBin, phpBin),
+				fmt.Sprintf("(%s artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || %s artisan shield:generate --all --no-interaction 2>/dev/null || true)", phpBin, phpBin),
+				fmt.Sprintf("(%s artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || %s artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)", phpBin, phpBin),
+				fmt.Sprintf("(%s artisan optimize:clear || true)", phpBin),
+				fmt.Sprintf("(%s artisan optimize || (%s artisan config:cache && %s artisan view:cache) || true)", phpBin, phpBin, phpBin),
+				fmt.Sprintf("(%s artisan filament:optimize 2>/dev/null || true)", phpBin),
 			}, "; "))
 
-			runStage(72, "migrate", "Menjalankan migrasi skema database & seeder (php artisan migrate)...", strings.Join([]string{
-				"(php artisan key:generate --force || true)",
-				"if ! php artisan migrate --force; then if [ -f bootstrap/providers.php ]; then cp bootstrap/providers.php bootstrap/providers.php.fikbak && printf '<?php return [];\\n' > bootstrap/providers.php && (php artisan migrate --force || true); mv bootstrap/providers.php.fikbak bootstrap/providers.php; fi; fi",
-				"(php artisan package:discover --ansi || true)",
-				"(php artisan migrate --force --seed || php artisan migrate --force || true)",
-			}, "; "))
-
-			runStage(84, "filament", "Menyiapkan aset Filament, Shield permission & symlink storage...", strings.Join([]string{
-				"(php artisan storage:link --force || true)",
-				"(php artisan filament:upgrade || php artisan filament:assets || true)",
-				"(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)",
-				"(php artisan shield:super-admin --user=1 --panel=admin --no-interaction 2>/dev/null || php artisan shield:super-admin --user=1 --no-interaction 2>/dev/null || true)",
-				"(php artisan optimize:clear || true)",
-			}, "; "))
+			// Hormati perintah post-deploy kustom yang ditulis user bila berbeda dari preset bawaan Laravel
+			trimmedPost := strings.TrimSpace(postCmd)
+			if trimmedPost != "" && trimmedPost != laravelDefaultCmd {
+				if err := runStage(88, "custom_cmd", "Menjalankan perintah post-deploy kustom...", trimmedPost); err != nil {
+					deployWarnings = append(deployWarnings, "Perintah post-deploy kustom selesai dengan error")
+				}
+			}
 
 			// Bersihkan placeholder stub '{{ ViewAny }}' pada app/Policies/*.php hasil shield:generate
 			sanitizeFilamentShieldPolicies(targetDir)
 
-			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o644)
+			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o640)
 		} else {
 			if hasComposer && (postCmd == "" || strings.Contains(postCmd, "composer install")) {
-				postCmd = "(composer install --no-interaction --prefer-dist --optimize-autoloader || composer install --no-interaction --prefer-dist --ignore-platform-reqs || composer install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts || true)"
+				postCmd = fmt.Sprintf("(%s install --no-interaction --prefer-dist --optimize-autoloader || %s install --no-interaction --prefer-dist --ignore-platform-reqs || %s install --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts)", compCmd, compCmd, compCmd)
 			}
 			updateSiteDeployProgress(site.Domain, 65, "build", "Menjalankan perintah build & instalasi dependensi proyek...")
 			buildCmd := exec.CommandContext(bctx, "sh", "-c", postCmd+"; (command -v pm2 >/dev/null 2>&1 && pm2 save || true)")
 			buildCmd.Dir = targetDir
 			buildCmd.Env = buildEnv
-			out, _ := buildCmd.CombinedOutput()
-			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o644)
+			out, buildErr := buildCmd.CombinedOutput()
+			combinedLog = out
+			if buildErr != nil {
+				deployWarnings = append(deployWarnings, "Perintah build melaporkan galat; periksa fikpanel-deploy.log")
+			}
+			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), out, 0o640)
 		}
+
+		if len(deployWarnings) > 0 && notes != nil {
+			notes["deploy_warnings"] = strings.Join(deployWarnings, " | ")
+		}
+
+		// Catat riwayat initial deployment ke SQLite agar tampil di Riwayat Deploy & siap di-rollback
+		_, branchNow, _, commitNow := inspectProjectGitMeta(targetDir)
+		commitMsgBytes, _ := exec.CommandContext(ctx, "git", "-C", targetDir, "log", "-1", "--pretty=%s").Output()
+		statusStr := "success"
+		if len(deployWarnings) > 0 {
+			statusStr = "warning"
+		}
+		_, _ = s.store.RecordSiteDeployment(ctx, &store.SiteDeployment{
+			SiteID:        site.ID,
+			Trigger:       "initial",
+			Branch:        branchNow,
+			OldCommit:     "",
+			NewCommit:     commitNow,
+			CommitMessage: strings.TrimSpace(string(commitMsgBytes)),
+			Status:        statusStr,
+			DurationMs:    time.Since(deployStart).Milliseconds(),
+			Output:        string(combinedLog),
+		})
 	}
 
-	// Langkah akhir mutlak untuk seluruh proyek PHP / Static: pastikan kepemilikan www-data:www-data & izin tulis storage/cache
+	// Langkah akhir mutlak untuk seluruh proyek PHP / Static: pastikan kepemilikan www-data:www-data, .env 0640, & izin tulis storage/cache
 	if runtime.GOOS != "windows" && (site.Kind == "php" || site.Kind == "static" || hasArtisan) {
 		pctx, pcancel := context.WithTimeout(ctx, 30*time.Second)
 		defer pcancel()
 		permScript := fmt.Sprintf(
-			"chown -R www-data:www-data %q 2>/dev/null || true; chmod 755 /home/fikpanel /home/fikpanel/web %q %q/public 2>/dev/null || true; chmod 644 %q/.env 2>/dev/null || true; chmod -R 775 %q/storage %q/bootstrap/cache 2>/dev/null || true",
-			targetDir, targetDir, targetDir, targetDir, targetDir, targetDir,
+			"chown -R www-data:www-data %q 2>/dev/null || true; chmod 755 /home/fikpanel /home/fikpanel/web %q %q/public 2>/dev/null || true; chmod 640 %q/.env %q/fikpanel-deploy.log 2>/dev/null || true; chmod -R 775 %q/storage %q/bootstrap/cache 2>/dev/null || true",
+			targetDir, targetDir, targetDir, targetDir, targetDir, targetDir, targetDir,
 		)
 		_ = exec.CommandContext(pctx, "sh", "-c", permScript).Run()
+		if site.Kind == "php" && site.PHPVersion != "" {
+			_ = exec.CommandContext(pctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
+		}
 	}
 
 	return nil
@@ -1558,10 +1620,11 @@ func (s *Server) provisionLaravelSuperAdmin(ctx context.Context, site *store.Sit
 		return fmt.Errorf("file artisan tidak ditemukan di %s", projectDir)
 	}
 
+	phpBin := resolvePHPBinary(site.PHPVersion)
 	// Jika proyek menggunakan bezhansalleh/filament-shield, pastikan kebijakan (policies) dan permission telah digenerate
 	if rawComp, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(rawComp)), "bezhansalleh/filament-shield") {
 		sctx, scancel := context.WithTimeout(ctx, 45*time.Second)
-		shieldCmd := exec.CommandContext(sctx, "sh", "-c", "(php artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || php artisan shield:generate --all --no-interaction 2>/dev/null || true)")
+		shieldCmd := exec.CommandContext(sctx, "sh", "-c", fmt.Sprintf("(%s artisan shield:generate --all --panel=admin --no-interaction 2>/dev/null || %s artisan shield:generate --all --no-interaction 2>/dev/null || true)", phpBin, phpBin))
 		shieldCmd.Dir = projectDir
 		_ = shieldCmd.Run()
 		scancel()
@@ -1661,7 +1724,7 @@ echo "OK:" . $u->id;
 	pctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(pctx, "php", "-r", phpScript)
+	cmd := exec.CommandContext(pctx, phpBin, "-r", phpScript)
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(),
 		"FIK_ADMIN_NAME="+adminName,
@@ -1682,7 +1745,7 @@ echo "OK:" . $u->id;
 }
 
 // listLaravelAdminUsers mengambil daftar pengguna beserta role-nya dari proyek Laravel / Filament
-func listLaravelAdminUsers(ctx context.Context, projectDir string) ([]LaravelAdminUserItem, bool, bool) {
+func listLaravelAdminUsers(ctx context.Context, projectDir, phpVersion string) ([]LaravelAdminUserItem, bool, bool) {
 	hasArtisan := false
 	isFilament := false
 	if _, err := os.Stat(filepath.Join(projectDir, "artisan")); err == nil {
@@ -1723,7 +1786,7 @@ echo json_encode($out);
 `
 	lctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(lctx, "php", "-r", phpScript)
+	cmd := exec.CommandContext(lctx, resolvePHPBinary(phpVersion), "-r", phpScript)
 	cmd.Dir = projectDir
 	out, err := cmd.Output()
 	if err != nil {
@@ -1752,7 +1815,7 @@ func (s *Server) handleGetSiteLaravelAdmin(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	projectDir := resolveSiteProjectDir(site)
-	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
+	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir, site.PHPVersion)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":          true,
 		"is_laravel":  isLaravel,
@@ -1799,7 +1862,7 @@ func (s *Server) handleSaveSiteLaravelAdmin(w http.ResponseWriter, r *http.Reque
 
 	s.auditSite(r, "site.laravel.admin", site.Domain, true, fmt.Sprintf("Super Admin dibuat/diperbarui: %s", email))
 	projectDir := resolveSiteProjectDir(site)
-	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir)
+	users, isLaravel, isFilament := listLaravelAdminUsers(r.Context(), projectDir, site.PHPVersion)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":          true,
 		"is_laravel":  isLaravel,
@@ -2243,7 +2306,7 @@ func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
 	}
 }
 
-// handleSiteGitPull menarik perubahan terbaru dari repositori Git situs dan menjalankan otomatisasi pasca-pull
+// handleSiteGitPull menarik perubahan terbaru dari repositori Git situs dengan maintenance mode, anti-OOM build, dan Laravel/Filament optimize
 func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 	id, err := siteID(r)
 	if err != nil {
@@ -2256,245 +2319,76 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cfg, _ := s.store.GetOrInitSiteDeployConfig(r.Context(), id)
+
 	var req struct {
-		Command     string `json:"command"`
-		RunComposer *bool  `json:"run_composer"`
-		RunMigrate  *bool  `json:"run_migrate"`
-		ClearCache  *bool  `json:"clear_cache"`
+		Command         string `json:"command"`
+		RunComposer     *bool  `json:"run_composer"`
+		RunMigrate      *bool  `json:"run_migrate"`
+		ClearCache      *bool  `json:"clear_cache"`
+		AutoOptimize    *bool  `json:"auto_optimize"`
+		MaintenanceMode *bool  `json:"maintenance_mode"`
+		RebuildAssets   *bool  `json:"rebuild_assets"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	customCmd := strings.TrimSpace(req.Command)
-	runComposer := true
+
+	opts := siteDeployOptions{
+		Trigger:         "manual",
+		CustomCommand:   strings.TrimSpace(req.Command),
+		RunComposer:     true,
+		RunMigrate:      true,
+		ClearCache:      true,
+		AutoOptimize:    cfg == nil || cfg.AutoOptimize,
+		MaintenanceMode: cfg == nil || cfg.MaintenanceMode,
+		RebuildAssets:   cfg == nil || cfg.RebuildAssets,
+	}
 	if req.RunComposer != nil {
-		runComposer = *req.RunComposer
+		opts.RunComposer = *req.RunComposer
 	}
-	runMigrate := true
 	if req.RunMigrate != nil {
-		runMigrate = *req.RunMigrate
+		opts.RunMigrate = *req.RunMigrate
 	}
-	clearCache := true
 	if req.ClearCache != nil {
-		clearCache = *req.ClearCache
+		opts.ClearCache = *req.ClearCache
+	}
+	if req.AutoOptimize != nil {
+		opts.AutoOptimize = *req.AutoOptimize
+	}
+	if req.MaintenanceMode != nil {
+		opts.MaintenanceMode = *req.MaintenanceMode
+	}
+	if req.RebuildAssets != nil {
+		opts.RebuildAssets = *req.RebuildAssets
 	}
 
-	projectDir := resolveSiteProjectDir(site)
-	hasGit, branch, repoSlug, oldCommit := inspectProjectGitMeta(projectDir)
-	if !hasGit {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "Situs ini tidak memiliki repositori Git (.git tidak ditemukan pada direktori proyek)",
-		})
+	// Nonaktifkan WriteDeadline agar pull + composer + vite build di ARM64 tidak terpotong 180s
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	res, err := s.executeSiteDeploy(r.Context(), site, opts)
+	if err != nil {
+		s.auditSite(r, "site.git.pull", site.Domain, false, err.Error())
+		status := http.StatusBadGateway
+		if strings.Contains(err.Error(), "tidak memiliki repositori Git") {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	if branch == "" || branch == "HEAD" {
-		branch = "main"
-	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
-	defer cancel()
-
-	// Pastikan direktori proyek terdaftar sebagai safe.directory & credential helper Git aktif
-	s.syncGitGlobalCredentials(ctx, projectDir)
-
-	// Ambil remote URL saat ini dan suntikkan token GitHub sementara bila menggunakan HTTPS github.com
-	token, _ := s.store.GetSetting(ctx, "github_token")
-	origRemoteBytes, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "remote", "get-url", "origin").Output()
-	origRemoteURL := strings.TrimSpace(string(origRemoteBytes))
-	cleanRemoteURL := origRemoteURL
-	if strings.Contains(cleanRemoteURL, "@github.com/") {
-		if u, err := url.Parse(cleanRemoteURL); err == nil {
-			u.User = nil
-			cleanRemoteURL = u.String()
-		}
-	}
-	if token != "" && strings.HasPrefix(cleanRemoteURL, "https://github.com/") {
-		authRemoteURL := strings.Replace(cleanRemoteURL, "https://github.com/", "https://x-access-token:"+token+"@github.com/", 1)
-		_ = exec.CommandContext(ctx, "git", "-C", projectDir, "remote", "set-url", "origin", authRemoteURL).Run()
-		defer func() {
-			_ = exec.CommandContext(context.Background(), "git", "-C", projectDir, "remote", "set-url", "origin", cleanRemoteURL).Run()
-		}()
-	}
-
-	// Cadangkan berkas .env lokal di memori agar tidak tertimpa atau hilang saat sinkronisasi Git
-	envPath := filepath.Join(projectDir, ".env")
-	envBackup, envErr := os.ReadFile(envPath)
-
-	var logBuilder strings.Builder
-	appendStepLog := func(title, out string) {
-		clean := strings.TrimSpace(out)
-		if token != "" {
-			clean = strings.ReplaceAll(clean, token, "***")
-		}
-		logBuilder.WriteString("==> " + title + "\n")
-		if clean != "" {
-			logBuilder.WriteString(clean + "\n\n")
-		} else {
-			logBuilder.WriteString("OK\n\n")
-		}
-	}
-
-	// Abaikan perbedaan chmod/fileMode agar git pull berjalan aman tanpa reset paksa
-	_ = exec.CommandContext(ctx, "git", "-C", projectDir, "config", "core.fileMode", "false").Run()
-
-	execEnv := append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new",
-		"COMPOSER_ALLOW_SUPERUSER=1",
-		"HOME=/root",
-	)
-
-	if customCmd != "" && runtime.GOOS != "windows" {
-		shCmd := exec.CommandContext(ctx, "bash", "-c", customCmd)
-		shCmd.Dir = projectDir
-		shCmd.Env = execEnv
-		shOut, shErr := shCmd.CombinedOutput()
-		if envErr == nil && len(envBackup) > 0 {
-			if _, statErr := os.Stat(envPath); statErr != nil {
-				_ = os.WriteFile(envPath, envBackup, 0o644)
-			}
-		}
-		if shErr != nil {
-			cleanErr := strings.TrimSpace(string(shOut))
-			if token != "" {
-				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
-			}
-			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
-			writeJSON(w, http.StatusBadGateway, map[string]string{
-				"error": "Eksekusi perintah gagal: " + cleanErr,
-			})
-			return
-		}
-		appendStepLog(customCmd, string(shOut))
-
-		// Sanitasi otomatis Policy Filament Shield & rapikan kepemilikan direktori web
-		sanitizeFilamentShieldPolicies(projectDir)
-		_ = exec.CommandContext(ctx, "chown", "-R", "www-data:www-data", projectDir).Run()
-		for _, writableSub := range []string{"storage", "bootstrap/cache"} {
-			subPath := filepath.Join(projectDir, writableSub)
-			if _, err := os.Stat(subPath); err == nil {
-				_ = exec.CommandContext(ctx, "chmod", "-R", "775", subPath).Run()
-			}
-		}
-		if site.Kind == "php" && site.PHPVersion != "" {
-			_ = exec.CommandContext(ctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
-		}
-	} else {
-		pullCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "pull", "origin", branch)
-		pullCmd.Env = execEnv
-		pullOut, pullErr := pullCmd.CombinedOutput()
-		if pullErr != nil {
-			if envErr == nil && len(envBackup) > 0 {
-				_ = os.WriteFile(envPath, envBackup, 0o644)
-			}
-			cleanErr := strings.TrimSpace(string(pullOut))
-			if token != "" {
-				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
-			}
-			s.auditSite(r, "site.git.pull", site.Domain, false, cleanErr)
-			writeJSON(w, http.StatusBadGateway, map[string]string{
-				"error": "Git pull gagal: " + cleanErr,
-			})
-			return
-		}
-		appendStepLog("git pull origin "+branch, string(pullOut))
-
-		// Pulihkan kembali berkas .env lokal
-		if envErr == nil && len(envBackup) > 0 {
-			_ = os.WriteFile(envPath, envBackup, 0o644)
-		}
-
-		// Jalankan langkah pasca-pull sesuai jenis proyek
-		if runtime.GOOS != "windows" {
-			_, hasComposer := os.Stat(filepath.Join(projectDir, "composer.json"))
-			_, hasArtisan := os.Stat(filepath.Join(projectDir, "artisan"))
-			_, hasPackageJSON := os.Stat(filepath.Join(projectDir, "package.json"))
-
-			if hasComposer == nil && runComposer {
-				compCmd := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader")
-				compCmd.Dir = projectDir
-				compCmd.Env = execEnv
-				compOut, err := compCmd.CombinedOutput()
-				if err != nil {
-					compCmd2 := exec.CommandContext(ctx, "composer", "install", "--no-interaction", "--prefer-dist", "--optimize-autoloader", "--ignore-platform-reqs")
-					compCmd2.Dir = projectDir
-					compCmd2.Env = execEnv
-					compOut2, _ := compCmd2.CombinedOutput()
-					appendStepLog("composer install (--ignore-platform-reqs)", string(compOut)+"\n"+string(compOut2))
-				} else {
-					appendStepLog("composer install", string(compOut))
-				}
-			}
-
-			if hasArtisan == nil {
-				if runMigrate {
-					migCmd := exec.CommandContext(ctx, "php", "artisan", "migrate", "--force")
-					migCmd.Dir = projectDir
-					migOut, _ := migCmd.CombinedOutput()
-					appendStepLog("php artisan migrate", string(migOut))
-				}
-
-				sanitizeFilamentShieldPolicies(projectDir)
-
-				if clearCache {
-					optCmd := exec.CommandContext(ctx, "php", "artisan", "optimize:clear")
-					optCmd.Dir = projectDir
-					optOut, _ := optCmd.CombinedOutput()
-					appendStepLog("php artisan optimize:clear", string(optOut))
-
-					if compBytes, err := os.ReadFile(filepath.Join(projectDir, "composer.json")); err == nil && strings.Contains(strings.ToLower(string(compBytes)), "filament/filament") {
-						_ = exec.CommandContext(ctx, "php", "artisan", "filament:assets").Run()
-					}
-				}
-			}
-
-			if hasPackageJSON == nil && site.Kind == "node" && runComposer {
-				npmCmd := exec.CommandContext(ctx, "bash", "-c", "npm install && npm run build")
-				npmCmd.Dir = projectDir
-				npmOut, _ := npmCmd.CombinedOutput()
-				appendStepLog("npm install && npm run build", string(npmOut))
-				if _, err := os.Stat(filepath.Join(projectDir, "ecosystem.config.cjs")); err == nil {
-					pm2Out, _ := exec.CommandContext(ctx, "pm2", "restart", "ecosystem.config.cjs", "--update-env").CombinedOutput()
-					appendStepLog("pm2 restart ecosystem.config.cjs", string(pm2Out))
-				}
-			}
-
-			_ = exec.CommandContext(ctx, "chown", "-R", "www-data:www-data", projectDir).Run()
-			for _, writableSub := range []string{"storage", "bootstrap/cache"} {
-				subPath := filepath.Join(projectDir, writableSub)
-				if _, err := os.Stat(subPath); err == nil {
-					_ = exec.CommandContext(ctx, "chmod", "-R", "775", subPath).Run()
-				}
-			}
-			if site.Kind == "php" && site.PHPVersion != "" {
-				_ = exec.CommandContext(ctx, "systemctl", "reload", fmt.Sprintf("php%s-fpm", site.PHPVersion)).Run()
-			}
-		}
-	}
-
-	_, branchNow, repoNow, newCommit := inspectProjectGitMeta(projectDir)
-	if branchNow != "" {
-		branch = branchNow
-	}
-	if repoNow != "" {
-		repoSlug = repoNow
-	}
-
-	commitMsgBytes, _ := exec.CommandContext(ctx, "git", "-C", projectDir, "log", "-1", "--pretty=%s").Output()
-	commitMsg := strings.TrimSpace(string(commitMsgBytes))
-
-	s.auditSite(r, "site.git.pull", site.Domain, true, fmt.Sprintf("branch=%s commit=%s->%s", branch, oldCommit, newCommit))
-
+	s.auditSite(r, "site.git.pull", site.Domain, true, fmt.Sprintf("branch=%s commit=%s->%s (%dms)", res.Branch, res.OldCommit, res.NewCommit, res.DurationMs))
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":             true,
-		"domain":         site.Domain,
-		"branch":         branch,
-		"repo":           repoSlug,
-		"old_commit":     oldCommit,
-		"new_commit":     newCommit,
-		"commit_message": commitMsg,
-		"updated":        oldCommit != "" && newCommit != "" && oldCommit != newCommit,
-		"output":         strings.TrimSpace(logBuilder.String()),
+		"domain":         res.Domain,
+		"branch":         res.Branch,
+		"repo":           res.Repo,
+		"old_commit":     res.OldCommit,
+		"new_commit":     res.NewCommit,
+		"commit_message": res.CommitMessage,
+		"updated":        res.Updated,
+		"duration_ms":    res.DurationMs,
+		"output":         res.Output,
 	})
 }
 

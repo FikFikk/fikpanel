@@ -183,6 +183,11 @@
   let lAdminName = $state('Super Admin');
   let lAdminEmail = $state('');
   let lAdminPass = $state('admin12345');
+  let laravelSchedulerEnabled = $state(false);
+  let laravelPhpBinary = $state('php');
+  let laravelSchedulerBusy = $state(false);
+  let laravelOptimizeBusy = $state(false);
+  let laravelOptimizeOutput = $state('');
 
   // 9. Tab Reverse Proxy
   let fUpstream = $state('');
@@ -387,15 +392,24 @@
     if (!detail) return;
     laravelLoading = true;
     try {
-      const r = await apiFetch<{
-        ok: boolean;
-        is_laravel: boolean;
-        is_filament: boolean;
-        users: LaravelAdminUser[];
-      }>(`/api/sites/${siteId}/laravel-admin`);
+      const [r, dep] = await Promise.all([
+        apiFetch<{
+          ok: boolean;
+          is_laravel: boolean;
+          is_filament: boolean;
+          users: LaravelAdminUser[];
+        }>(`/api/sites/${siteId}/laravel-admin`),
+        apiFetch<{
+          ok: boolean;
+          scheduler_enabled?: boolean;
+          php_binary?: string;
+        }>(`/api/sites/${siteId}/deploy`).catch(() => ({ ok: false, scheduler_enabled: false, php_binary: 'php' }))
+      ]);
       isLaravelProject = !!r.is_laravel;
       isFilamentProject = !!r.is_filament;
       laravelUsers = r.users || [];
+      laravelSchedulerEnabled = Boolean(dep?.scheduler_enabled);
+      laravelPhpBinary = dep?.php_binary || 'php';
       if (!lAdminEmail) {
         lAdminEmail = `admin@${detail.site.domain}`;
       }
@@ -403,6 +417,47 @@
       onNotify(`Gagal memuat data admin: ${(err as Error).message}`);
     } finally {
       laravelLoading = false;
+    }
+  }
+
+  // Aktifkan / nonaktifkan cron '* * * * * php artisan schedule:run' di Cron Manager
+  async function toggleLaravelScheduler() {
+    if (!detail || laravelSchedulerBusy) return;
+    laravelSchedulerBusy = true;
+    const nextVal = !laravelSchedulerEnabled;
+    try {
+      const res = await apiFetch<{ ok: boolean; scheduler_enabled: boolean; message: string }>(
+        `/api/sites/${siteId}/laravel/scheduler`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled: nextVal })
+        }
+      );
+      laravelSchedulerEnabled = Boolean(res.scheduler_enabled);
+      onNotify(res.message || (laravelSchedulerEnabled ? 'Laravel Scheduler diaktifkan' : 'Laravel Scheduler dinonaktifkan'));
+    } catch (err) {
+      onNotify(`Gagal mengubah Laravel Scheduler: ${(err as Error).message}`);
+    } finally {
+      laravelSchedulerBusy = false;
+    }
+  }
+
+  // Jalankan optimize:clear + optimize + filament:optimize + reload PHP-FPM secara 1-klik
+  async function runLaravelOptimizeNow() {
+    if (!detail || laravelOptimizeBusy) return;
+    laravelOptimizeBusy = true;
+    laravelOptimizeOutput = '';
+    try {
+      const res = await apiFetch<{ ok: boolean; output?: string; message?: string }>(
+        `/api/sites/${siteId}/laravel/optimize`,
+        { method: 'POST', timeoutMs: 95_000 }
+      );
+      laravelOptimizeOutput = res.output || '';
+      onNotify(res.message || 'Cache produksi Laravel & Filament dioptimasi');
+    } catch (err) {
+      onNotify(`Optimasi gagal: ${(err as Error).message}`);
+    } finally {
+      laravelOptimizeBusy = false;
     }
   }
 
@@ -1471,6 +1526,46 @@
             </button>
           </div>
         </div>
+
+        {#if isLaravelProject || isFilamentProject}
+          <div class="ladmin-form-card">
+            <div class="ladmin-form-head">
+              <b><i class="ri-flashlight-line" aria-hidden="true"></i> Optimasi Produksi &amp; Scheduler ({laravelPhpBinary})</b>
+              <span class="tag">{laravelSchedulerEnabled ? 'Scheduler Aktif' : 'Scheduler Nonaktif'}</span>
+            </div>
+            <label class="toggle-row" for="ss-laravel-scheduler">
+              <div>
+                <b>Laravel Task Scheduler (<code class="mono">* * * * *</code>)</b>
+                <small>Daftarkan otomatis <code class="mono">{laravelPhpBinary} artisan schedule:run</code> di Cron Manager untuk notifikasi, export, &amp; job terjadwal.</small>
+              </div>
+              <input
+                id="ss-laravel-scheduler"
+                type="checkbox"
+                checked={laravelSchedulerEnabled}
+                onchange={toggleLaravelScheduler}
+                disabled={laravelSchedulerBusy}
+              />
+              <span class="track"></span>
+            </label>
+            <div class="ss-actions">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                onclick={runLaravelOptimizeNow}
+                disabled={laravelOptimizeBusy}
+              >
+                {#if laravelOptimizeBusy}
+                  <i class="ri-loader-4-line spin" aria-hidden="true"></i> Mengoptimasi Cache…
+                {:else}
+                  <i class="ri-rocket-2-line" aria-hidden="true"></i> Optimize Produksi (Artisan + Filament)
+                {/if}
+              </button>
+            </div>
+            {#if laravelOptimizeOutput}
+              <pre class="code-editor-sm">{laravelOptimizeOutput}</pre>
+            {/if}
+          </div>
+        {/if}
 
         <div class="sec-title">
           <h4>Daftar Akun Terdaftar di Database ({laravelUsers.length})</h4>

@@ -83,9 +83,9 @@
   const gitPullSnippets = [
     { label: '+ composer install', cmd: 'composer install --no-interaction --optimize-autoloader', phpOnly: true },
     { label: '+ php artisan migrate', cmd: 'php artisan migrate --force', phpOnly: true },
-    { label: '+ php artisan optimize:clear', cmd: 'php artisan optimize:clear', phpOnly: true },
+    { label: '+ artisan optimize', cmd: 'php artisan optimize && php artisan filament:optimize', phpOnly: true },
     { label: '+ filament:assets', cmd: 'php artisan filament:assets', phpOnly: true },
-    { label: '+ npm run build', cmd: 'npm install && npm run build', phpOnly: false },
+    { label: '+ npm run build', cmd: 'NODE_OPTIONS=--max-old-space-size=768 npm run build', phpOnly: false },
   ];
 
   // Memeriksa apakah snippet tertentu sudah ada di dalam rangkaian perintah Git Pull
@@ -96,6 +96,8 @@
 
   // Menambah atau menghapus snippet perintah dari input dinamis Git Pull
   function toggleGitSnippet(snippetCmd: string) {
+    const branch = gitPullTarget?.git_branch || 'main';
+    const basePull = `git pull origin ${branch}`;
     const parts = gitPullCustomCmd
       .split('&&')
       .map((p) => p.trim())
@@ -104,15 +106,14 @@
     if (idx !== -1) {
       parts.splice(idx, 1);
     } else {
+      if (parts.length === 0) parts.push(basePull);
       parts.push(snippetCmd);
     }
-    const branch = gitPullTarget?.git_branch || 'main';
-    gitPullCustomCmd = parts.length > 0 ? parts.join(' && ') : `git pull origin ${branch}`;
+    gitPullCustomCmd = parts.join(' && ');
   }
 
   function resetGitPullCmd() {
-    const branch = gitPullTarget?.git_branch || 'main';
-    gitPullCustomCmd = `git pull origin ${branch}`;
+    gitPullCustomCmd = '';
   }
 
   // Modal Konfirmasi Hapus Situs (Danger Zone + Anti-Paste + Auto-Backup)
@@ -367,18 +368,11 @@
     }
   }
 
-  // Buka modal konfirmasi Git Pull dengan perintah dinamis yang dapat diedit
+  // Buka modal Git Pull & Webhook Auto-Deploy (kosongkan custom command agar memakai pipeline otomatis aman)
   function openGitPullModal(site: Site) {
     gitPullTarget = site;
     gitPullRunning = false;
-    const branch = site.git_branch || 'main';
-    if (site.kind === 'php') {
-      gitPullCustomCmd = `git pull origin ${branch} && php artisan optimize:clear`;
-    } else if (site.kind === 'node') {
-      gitPullCustomCmd = `git pull origin ${branch} && npm install && npm run build`;
-    } else {
-      gitPullCustomCmd = `git pull origin ${branch}`;
-    }
+    gitPullCustomCmd = '';
     gitPullResult = null;
     gitPullError = '';
   }
@@ -390,7 +384,7 @@
     gitPullError = '';
   }
 
-  async function executeGitPull() {
+  async function executeGitPull(opts?: { auto_optimize?: boolean; maintenance_mode?: boolean; rebuild_assets?: boolean }) {
     if (!gitPullTarget || gitPullRunning) return;
     gitPullRunning = true;
     gitPullError = '';
@@ -400,7 +394,11 @@
         method: 'POST',
         body: JSON.stringify({
           command: gitPullCustomCmd.trim(),
+          auto_optimize: opts?.auto_optimize,
+          maintenance_mode: opts?.maintenance_mode,
+          rebuild_assets: opts?.rebuild_assets,
         }),
+        timeoutMs: 300_000,
       });
       gitPullResult = res;
       await loadSites(true);
@@ -410,8 +408,8 @@
       }
       onNotify(
         res.updated
-          ? `Git Pull ${res.domain} berhasil (${res.old_commit} → ${res.new_commit})`
-          : `Git Pull ${res.domain} selesai (sudah commit terbaru #${res.new_commit})`,
+          ? `Deploy ${res.domain} berhasil (${res.old_commit} → ${res.new_commit})`
+          : `Deploy ${res.domain} selesai (sudah commit terbaru #${res.new_commit})`,
       );
     } catch (err: any) {
       gitPullError = err.message || 'Gagal menjalankan Git Pull pada situs ini';
@@ -651,6 +649,8 @@
     onResetGitPullCmd={resetGitPullCmd}
     onToggleGitSnippet={toggleGitSnippet}
     onExecuteGitPull={executeGitPull}
+    {onNotify}
+    onSiteUpdated={() => loadSites(true)}
     {getProjectRootDir}
   />
 

@@ -48,7 +48,8 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 
 ### 2. Manajemen Website & Reverse Proxy
 
-- Pembuatan dan pengelolaan _Virtual Host_ Nginx (Reverse Proxy, Static HTML/JS, dan PHP-FPM).
+- Pembuatan dan pengelolaan _Virtual Host_ Nginx (Reverse Proxy, Static HTML/JS, dan PHP-FPM dengan `client_max_body_size 64m` & `fastcgi_read_timeout 120s`).
+- **Auto-Deploy Laravel & Filament Hardened:** Clone GitHub (Private/Public) dengan binary PHP CLI sesuai versi PHP-FPM situs, `.env` aman (`0640` + escaping karakter spesial + `APP_URL` adaptif), build Vite anti-OOM (`768 MB`), `artisan optimize` + `filament:optimize`, **Webhook Push-to-Deploy** (HMAC-SHA256), **1-Klik Rollback Commit**, dan toggle **Laravel Scheduler (`schedule:run`)**.
 - Pengaturan SSL/TLS otomatis via Let's Encrypt (**ACME HTTP-01** maupun **ACME DNS-01 Wildcard `*.domain`** berbasis `go-acme/lego v4` tanpa port 80 dengan 5 DNS provider ringan: Cloudflare auto-reuse Cloudflare Hub, DigitalOcean, Porkbun, Namecheap, DuckDNS) serta **Auto-SSL Panel Hot-Reload** tanpa restart.
 - Validasi konfigurasi atomik (`nginx -t`) sebelum commit perubahan konfigurasi untuk mencegah _downtime_.
 

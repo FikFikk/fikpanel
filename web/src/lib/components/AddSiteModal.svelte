@@ -231,7 +231,8 @@
   let checkError = $state('');
   let submitting = $state(false);
   let submitError = $state('');
-  let created = $state<Site | null>(null);
+  // State ringkasan pembuatan situs beserta catatan/peringatan deploy dari backend
+  let created = $state<(Site & { deploy_notes?: Record<string, string> }) | null>(null);
 
   // State progress bar real-time saat proses pembuatan & deployment situs berjalan
   let deployPercent = $state(0);
@@ -826,7 +827,7 @@
     }
 
     try {
-      const site = await apiFetch<Site>('/api/sites', {
+      const site = await apiFetch<Site & { deploy_notes?: Record<string, string> }>('/api/sites', {
         method: 'POST',
         body: JSON.stringify({
           domains,
@@ -852,13 +853,23 @@
           git_post_cmd: activeTab === 'git' ? gitPostCmd.trim() : '',
           backup_archive: activeTab === 'backup' ? selectedBackupArchive.trim() : ''
         }),
-        timeoutMs: 240_000
+        timeoutMs: 360_000
       });
       deployPercent = 100;
       deployStepLabel = 'Deployment selesai! Situs siap digunakan.';
       created = site;
       onCreated(site);
-      onNotify(`Situs ${site.domain} berhasil dibuat`);
+      const hasWarn = Boolean(
+        site.deploy_notes?.deploy_warnings ||
+        site.deploy_notes?.git_warning ||
+        site.deploy_notes?.db_warning ||
+        site.deploy_notes?.admin_warning
+      );
+      onNotify(
+        hasWarn
+          ? `Situs ${site.domain} dibuat dengan catatan — periksa ringkasan deploy`
+          : `Situs ${site.domain} berhasil dibuat`
+      );
     } catch (err) {
       submitError = (err as Error).message;
     } finally {
@@ -922,8 +933,22 @@
           {#if created.php_version}<dt>PHP</dt><dd>{created.php_version}</dd>{/if}
           {#if createDB}<dt>Database MySQL</dt><dd class="mono">{dbName} (user: {dbUser})</dd>{/if}
           {#if createDB && createAdmin && kind === 'php'}<dt>Super Admin</dt><dd class="mono">{adminEmail} (pass: {adminPass})</dd>{/if}
+          {#if created.deploy_notes?.app_url}<dt>APP_URL (.env)</dt><dd class="mono">{created.deploy_notes.app_url}</dd>{/if}
           <dt>Domain</dt><dd class="mono">{[created.domain, ...JSON.parse(created.aliases || '[]')].join(', ')}</dd>
         </dl>
+        {#if created.deploy_notes?.deploy_warnings || created.deploy_notes?.git_warning || created.deploy_notes?.db_warning || created.deploy_notes?.admin_warning || created.deploy_notes?.filament_user_warning}
+          <div class="ssl-cta warn">
+            <i class="ri-error-warning-line" aria-hidden="true"></i>
+            <div>
+              <b>Catatan &amp; Peringatan Deployment</b>
+              {#if created.deploy_notes?.git_warning}<span>Git: {created.deploy_notes.git_warning}</span>{/if}
+              {#if created.deploy_notes?.db_warning}<span>Database: {created.deploy_notes.db_warning}</span>{/if}
+              {#if created.deploy_notes?.admin_warning}<span>Super Admin: {created.deploy_notes.admin_warning}</span>{/if}
+              {#if created.deploy_notes?.deploy_warnings}<span>Build/Migrate: {created.deploy_notes.deploy_warnings}</span>{/if}
+              {#if created.deploy_notes?.filament_user_warning}<span>FilamentUser: {created.deploy_notes.filament_user_warning}</span>{/if}
+            </div>
+          </div>
+        {/if}
         <div class="ssl-cta" class:warn={!allPointHere}>
           <i class={allPointHere ? 'ri-shield-check-line' : 'ri-error-warning-line'}></i>
           <div>

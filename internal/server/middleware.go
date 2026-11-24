@@ -98,8 +98,10 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
-			// Lewati verifikasi CSRF khusus endpoint login publik
-			if !strings.HasSuffix(r.URL.Path, "/api/auth/login") && strings.HasPrefix(r.URL.Path, "/api/") {
+			// Lewati verifikasi CSRF khusus endpoint login publik & webhook Git push-to-deploy (diautentikasi secret 256-bit / HMAC)
+			if !strings.HasSuffix(r.URL.Path, "/api/auth/login") &&
+				!strings.HasPrefix(r.URL.Path, "/api/webhooks/git/") &&
+				strings.HasPrefix(r.URL.Path, "/api/") {
 				csrfVal := r.Header.Get("X-Panel-Request")
 				if csrfVal != "1" && csrfVal != "true" {
 					http.Error(w, `{"error":"header CSRF X-Panel-Request tidak valid"}`, http.StatusForbidden)
@@ -135,7 +137,10 @@ func (s *Server) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 // IPAllowlistMiddleware membatasi akses endpoint /api/* sesuai daftar IP/CIDR allowlist yang dikonfigurasi admin
 func (s *Server) IPAllowlistMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/settings/public" && r.URL.Path != "/api/status/public" {
+		if strings.HasPrefix(r.URL.Path, "/api/") &&
+			r.URL.Path != "/api/settings/public" &&
+			r.URL.Path != "/api/status/public" &&
+			!strings.HasPrefix(r.URL.Path, "/api/webhooks/git/") {
 			prefs := s.loadPanelPreferences(r.Context())
 			if len(prefs.IPAllowlist) > 0 && !ipMatchesAllowlist(getIP(r), prefs.IPAllowlist) {
 				http.Error(w, `{"error":"akses ditolak: alamat IP Anda tidak terdaftar dalam IP Allowlist panel"}`, http.StatusForbidden)

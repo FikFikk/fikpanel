@@ -1414,5 +1414,46 @@ export interface UptimeMonitor {
   recent_checks: UptimeCheck[];
 }
 
+// Konfigurasi Auto-Deploy Webhook & Riwayat Deployment per Situs
+export interface SiteDeployConfig {
+  site_id: number;
+  webhook_secret: string;
+  webhook_enabled: boolean;
+  auto_optimize: boolean;
+  maintenance_mode: boolean;
+  rebuild_assets: boolean;
+  branch: string;
+  updated_at: number;
+}
+
+export interface SiteDeploymentItem {
+  id: number;
+  site_id: number;
+  trigger: 'initial' | 'manual' | 'webhook' | 'rollback' | string;
+  branch: string;
+  old_commit: string;
+  new_commit: string;
+  commit_message: string;
+  status: 'success' | 'failed' | 'warning' | 'running' | string;
+  duration_ms: number;
+  output: string;
+  created_at: number;
+}
+
+export interface SiteDeployInfo {
+  ok: boolean;
+  config: SiteDeployConfig;
+  webhook_url: string;
+  has_git: boolean;
+  branch: string;
+  current_commit: string;
+  is_laravel: boolean;
+  is_filament: boolean;
+  php_binary: string;
+  scheduler_enabled: boolean;
+  scheduler_cron_id: number;
+  deployments: SiteDeploymentItem[];
+}
+
 
 

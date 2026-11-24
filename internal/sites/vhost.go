@@ -130,6 +130,7 @@ server {
     root {{.Root}};
 {{- if eq .Kind "php"}}
     index index.php index.html index.htm;
+    client_max_body_size 64m;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
@@ -139,6 +140,9 @@ server {
         try_files $uri =404;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_read_timeout 120s;
+        fastcgi_buffers 16 16k;
+        fastcgi_buffer_size 32k;
         fastcgi_pass unix:{{.PHPSocket}};
     }
 {{- else}}

@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.6.4"
+		return "0.6.5"
 	}
 	return s.version
 }
@@ -214,6 +214,8 @@ func (s *Server) registerRoutes() {
 	// Halaman status publik mandiri & feed JSON (tanpa autentikasi)
 	s.mux.HandleFunc("GET /api/status/public", s.handlePublicStatusJSON)
 	s.mux.HandleFunc("GET /status", s.handlePublicStatusHTML)
+	// Endpoint Webhook Push-to-Deploy publik (autentikasi secret 256-bit + verifikasi HMAC GitHub/GitLab)
+	s.mux.HandleFunc("POST /api/webhooks/git/{id}/{secret}", s.handleGitWebhookDeploy)
 
 	// Endpoint MCP Streamable HTTP (autentikasi Bearer Token 256-bit untuk Google Antigravity)
 	s.mux.Handle("/mcp", http.HandlerFunc(s.handleMCP))
@@ -299,6 +301,11 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/sites/{id}/laravel-admin", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteLaravelAdmin)))
 	s.mux.Handle("GET /api/sites/deploy-progress", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteDeployProgress)))
 	s.mux.Handle("POST /api/sites/{id}/laravel-admin", s.AuthMiddleware(http.HandlerFunc(s.handleSaveSiteLaravelAdmin)))
+	s.mux.Handle("POST /api/sites/{id}/laravel/scheduler", s.AuthMiddleware(http.HandlerFunc(s.handleToggleLaravelScheduler)))
+	s.mux.Handle("POST /api/sites/{id}/laravel/optimize", s.AuthMiddleware(http.HandlerFunc(s.handleOptimizeLaravelSite)))
+	s.mux.Handle("GET /api/sites/{id}/deploy", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteDeployInfo)))
+	s.mux.Handle("PUT /api/sites/{id}/deploy/config", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSiteDeployConfig)))
+	s.mux.Handle("POST /api/sites/{id}/deploy/rollback", s.AuthMiddleware(http.HandlerFunc(s.handleSiteDeployRollback)))
 	s.mux.Handle("POST /api/sites/{id}/git-pull", s.AuthMiddleware(http.HandlerFunc(s.handleSiteGitPull)))
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))

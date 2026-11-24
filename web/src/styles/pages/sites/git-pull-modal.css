@@ -237,6 +237,144 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
+
+    /* Navigasi sub-tab Git Pull / Webhook / Riwayat & Rollback */
+    .git-modal-tabs {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      margin-bottom: var(--sp-3-5);
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: var(--sp-2);
+    }
+
+    .git-modal-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      padding: var(--sp-1-5) var(--sp-3);
+      border-radius: var(--radius-xs);
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--dur-fast) var(--ease-out);
+    }
+
+    .git-modal-tab:hover {
+      color: var(--text);
+      background: var(--bg-raised);
+    }
+
+    .git-modal-tab.is-active {
+      background: var(--tint-accent);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .git-opt-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+      padding: var(--sp-2) var(--sp-2-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xs);
+    }
+
+    .git-opt-check {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .git-opt-check input {
+      accent-color: var(--accent);
+    }
+
+    .git-webhook-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+      padding: var(--sp-3-5);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .git-webhook-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-2);
+      flex-wrap: wrap;
+    }
+
+    .git-copy-row {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+    }
+
+    .git-copy-row input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .git-history-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .git-history-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-1-5);
+      padding: var(--sp-2-5) var(--sp-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .git-history-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-2);
+      flex-wrap: wrap;
+    }
+
+    .git-history-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      flex-wrap: wrap;
+      font-size: var(--text-xs);
+      color: var(--text);
+    }
+
+    .git-history-msg {
+      margin: 0;
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .git-history-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+    }
   }
 }
 

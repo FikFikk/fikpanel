@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.4", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.5", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3359,6 +3359,70 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Request Body | `domain` (string FQDN panel, wajib, bukan IP/localhost), `dns_provider` (string, default `"cloudflare"`), `include_wildcard` (bool, opsional), `credentials` (opsional `map[string]string`) |
 | Response | HTTP 200 `{"ok": true, "tls": {...}, "acme_domain": "...", "acme_provider": "...", "domains": [...], "not_after": 1790000000, "message": "..."}` |
 | Notes | Menerbitkan sertifikat Let's Encrypt ECDSA P-256 melalui DNS-01 (tanpa membuka port 80) lalu langsung memasang & melakukan *hot-reload* sertifikat HTTPS panel (`panel.crt`/`panel.key`) tanpa restart layanan `fikpanel.service`. Menonaktifkan `WriteDeadline` selama propagasi DNS (maks 4 menit) dan mencatat audit `settings.tls_acme`. |
+
+---
+
+### 1.22 Hardening Auto-Deploy Laravel/Filament, Webhook Push-to-Deploy & Rollback
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/deploy` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Path param `{id}` (ID situs) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "config": {...}, "webhook_url": "https://.../api/webhooks/git/1/<secret>", "php_binary": "/usr/bin/php8.3", "scheduler_enabled": true, "deployments": [...]}` |
+| Notes | Menginisialisasi otomatis secret webhook 256-bit bila belum ada, mendeteksi status Laravel/Filament & Cron Scheduler, serta mengembalikan 20 riwayat deploy terbaru. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/sites/{id}/deploy/config` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` |
+| Request Body | `webhook_enabled` (bool), `auto_optimize` (bool), `maintenance_mode` (bool), `rebuild_assets` (bool), `branch` (string opsional), `rotate_secret` (bool opsional) |
+| Response | HTTP 200 `{"ok": true, "config": {...}, "webhook_url": "...", "message": "..."}` |
+| Notes | Mengatur opsi pipeline auto-deploy dan rotasi secret webhook 256-bit secara instan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/webhooks/git/{id}/{secret}` |
+| Auth Required | No (Public webhook; autentikasi constant-time 256-bit URL secret + HMAC `X-Hub-Signature-256` GitHub / `X-Gitlab-Token` GitLab) |
+| Headers | `X-GitHub-Event`, `X-Hub-Signature-256` (opsional), `X-Gitlab-Token` (opsional) |
+| Query Params | Path param `{id}` & `{secret}` |
+| Request Body | Payload JSON push event GitHub/GitLab |
+| Response | HTTP 200 `pong` (event `ping`) / `skipped` (branch tidak cocok); HTTP 202 `{"ok": true, "queued": true, ...}` (deploy berjalan di latar belakang) |
+| Notes | Dikecualikan dari `CSRFMiddleware` & `IPAllowlistMiddleware`; menolak 403 bila webhook nonaktif dan 401 bila secret/HMAC tidak valid; memakai per-site mutex anti-overlap. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/deploy/rollback` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` |
+| Request Body | `commit` (string hash hex 6–40 karakter, wajib), `run_composer` (bool, default `true`) |
+| Response | HTTP 200 `{"ok": true, "old_commit": "...", "new_commit": "...", "output": "...", "message": "..."}` |
+| Notes | Mengembalikan repositori ke commit target (`git reset --hard`) dalam mode maintenance aman dengan cadangan `.env` (`0640`), optimasi ulang Laravel/Filament, reload PHP-FPM, dan pencatatan riwayat `trigger: "rollback"`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/laravel/scheduler` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "scheduler_enabled": true, "scheduler_cron_id": 5, "message": "..."}` |
+| Notes | Mendaftarkan atau menonaktifkan cron `* * * * * cd "<projectDir>" && <phpBin> artisan schedule:run >> /dev/null 2>&1` di tabel `cron_jobs`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/laravel/optimize` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "output": "...", "message": "Cache produksi Laravel & Filament berhasil dioptimasi"}` |
+| Notes | Menjalankan 1-klik `optimize:clear`, `storage:link`, `filament:assets`, `optimize` (fallback `config:cache + view:cache`), `filament:optimize`, perbaikan izin `www-data`, dan reload PHP-FPM. |
 
 ---
 
