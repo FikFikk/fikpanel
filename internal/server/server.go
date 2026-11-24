@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.6.2"
+		return "0.6.3"
 	}
 	return s.version
 }
@@ -239,6 +239,9 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/settings/tls", s.AuthMiddleware(http.HandlerFunc(s.handleGetPanelTLS)))
 	s.mux.Handle("POST /api/settings/tls/custom", s.AuthMiddleware(http.HandlerFunc(s.handleInstallCustomPanelTLS)))
 	s.mux.Handle("POST /api/settings/tls/self-signed", s.AuthMiddleware(http.HandlerFunc(s.handleResetSelfSignedTLS)))
+	s.mux.Handle("POST /api/settings/tls/acme", s.AuthMiddleware(http.HandlerFunc(s.handleIssuePanelACMETLS)))
+	s.mux.Handle("GET /api/ssl/dns-providers", s.AuthMiddleware(http.HandlerFunc(s.handleListACMEDNSProviders)))
+	s.mux.Handle("POST /api/ssl/dns-providers/{provider}", s.AuthMiddleware(http.HandlerFunc(s.handleSaveACMEDNSProvider)))
 	s.mux.Handle("GET /api/settings/system", s.AuthMiddleware(http.HandlerFunc(s.handleGetSettingsSystem)))
 	s.mux.Handle("POST /api/settings/system/hostname", s.AuthMiddleware(http.HandlerFunc(s.handleSetHostname)))
 	s.mux.Handle("POST /api/settings/system/timezone", s.AuthMiddleware(http.HandlerFunc(s.handleSetTimezone)))

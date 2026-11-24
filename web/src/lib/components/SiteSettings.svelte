@@ -5,7 +5,7 @@
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
   import CodeMirrorEditor from './ui/CodeMirrorEditor.svelte';
-  import type { DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
+  import type { DNSProviderMeta, DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
   import '../../styles/pages/components/site-settings.css';
 
   interface Props {
@@ -156,6 +156,12 @@
   let customSaving = $state(false);
   let deployedKey = $state('');
   let deployedCert = $state('');
+  let dnsProviders = $state<DNSProviderMeta[]>([]);
+  let sslChallengeType = $state<'http01' | 'dns01'>('http01');
+  let sslDnsProvider = $state('cloudflare');
+  let sslIncludeWildcard = $state(false);
+  let sslDnsCreds = $state<Record<string, string>>({});
+  let sslEditDnsCreds = $state(false);
 
   // 8. Tab PHP Version
   let fPHP = $state('');
@@ -226,6 +232,12 @@
   let daysLeft = $derived(cert?.not_after ? Math.floor((cert.not_after * 1000 - Date.now()) / 86400000) : 0);
   let dnsAllReady = $derived(!!dnsReport && dnsReport.dns.length > 0 && dnsReport.dns.every((d) => d.points_here));
   let hasWildcard = $derived((detail?.domains ?? []).some((d) => d.startsWith('*.')));
+  let activeDnsProvider = $derived(dnsProviders.find((p) => p.id === sslDnsProvider) ?? null);
+  let activeSteps = $derived(
+    sslChallengeType === 'dns01'
+      ? ['Memulai', 'Mendaftarkan akun ACME (lego)', 'Validasi DNS-01', 'Menerbitkan sertifikat', 'Menerapkan HTTPS ke Nginx', 'Selesai']
+      : STEPS
+  );
 
   // Sinkronkan form saat data diterima dari server
   function hydrate(d: SiteDetail) {
@@ -249,6 +261,13 @@
     sslEnabled = d.site.ssl_mode !== 'none' && d.site.ssl_mode !== 'cloudflare';
     sslForce = d.site.force_https === 1;
     sslHSTS = d.site.hsts === 1;
+    if (d.certificate?.challenge_type === 'dns01') {
+      sslChallengeType = 'dns01';
+      if (d.certificate.dns_provider) sslDnsProvider = d.certificate.dns_provider;
+    } else if (d.domains.some((dom) => dom.startsWith('*.'))) {
+      sslChallengeType = 'dns01';
+    }
+    sslIncludeWildcard = (d.certificate?.domains || '').includes('*.') || d.domains.some((dom) => dom.startsWith('*.'));
     hotlinkDomains = d.domains.join(', ');
     if (d.site.kind === 'static') {
       defaultDocs = 'index.html index.htm default.html';
@@ -420,6 +439,7 @@
       if (tab === 'ssl') {
         if (!dnsReport && !dnsLoading) checkDNS();
         loadDeployedCerts();
+        loadDNSProviders();
       }
       if (tab === 'laravel_admin') loadLaravelAdmin();
       if (tab === 'conf') loadVhost();
@@ -620,9 +640,23 @@
     }
   }
 
+  // Muat daftar 5 DNS provider ringan (go-acme/lego) beserta status konfigurasinya
+  async function loadDNSProviders() {
+    try {
+      const res = await apiFetch<{ ok: boolean; providers: DNSProviderMeta[] }>('/api/ssl/dns-providers');
+      dnsProviders = res.providers ?? [];
+    } catch {
+      // Abaikan kesalahan muat katalog provider DNS-01
+    }
+  }
+
   async function saveSSL(issue: boolean) {
     sslSaving = true;
     try {
+      const dnsCredsPayload: Record<string, string> = {};
+      for (const [k, v] of Object.entries(sslDnsCreds)) {
+        if (v.trim()) dnsCredsPayload[k] = v.trim();
+      }
       const r = await apiFetch<{ issuing: boolean }>(`/api/sites/${siteId}/ssl`, {
         method: 'POST',
         body: JSON.stringify({
@@ -631,13 +665,20 @@
           hsts: sslHSTS && sslForce,
           issue,
           skip_dns: skipDNS,
-          cloudflare: sslCloudflare
+          cloudflare: sslCloudflare,
+          challenge_type: sslChallengeType,
+          dns_provider: sslChallengeType === 'dns01' ? sslDnsProvider : '',
+          include_wildcard: sslChallengeType === 'dns01' && sslIncludeWildcard,
+          dns_credentials: sslChallengeType === 'dns01' && Object.keys(dnsCredsPayload).length > 0 ? dnsCredsPayload : undefined
         })
       });
       await load();
       onChanged();
       if (r.issuing) {
-        onNotify('Penerbitan sertifikat Let\'s Encrypt dimulai');
+        sslDnsCreds = {};
+        sslEditDnsCreds = false;
+        loadDNSProviders();
+        onNotify(sslChallengeType === 'dns01' ? `Penerbitan SSL DNS-01 (${sslDnsProvider}) dimulai` : 'Penerbitan sertifikat Let\'s Encrypt dimulai');
         schedulePoll();
       } else {
         onNotify(sslCloudflare ? 'Mode Cloudflare Flexible SSL disimpan' : (sslEnabled ? 'Pengaturan SSL disimpan' : 'SSL dinonaktifkan'));
@@ -1102,7 +1143,20 @@
 
         {#if sslSubTab === 'current'}
           <div class="cert-overview-card">
-            <div class="cov-item"><span>Tipe Sertifikat:</span><b>{detail.site.ssl_mode === 'custom' ? 'Custom Certificate' : detail.site.ssl_mode === 'cloudflare' ? 'Cloudflare Edge SSL (Flexible)' : certIssued ? 'Let\'s Encrypt TLS' : 'Belum Ada (None)'}</b></div>
+            <div class="cov-item">
+              <span>Tipe Sertifikat:</span>
+              <b>
+                {detail.site.ssl_mode === 'custom'
+                  ? 'Custom Certificate'
+                  : detail.site.ssl_mode === 'cloudflare'
+                    ? 'Cloudflare Edge SSL (Flexible)'
+                    : certIssued
+                      ? cert?.challenge_type === 'dns01'
+                        ? `Let's Encrypt DNS-01 (${cert.dns_provider || 'lego'})`
+                        : 'Let\'s Encrypt TLS (HTTP-01)'
+                      : 'Belum Ada (None)'}
+              </b>
+            </div>
             <div class="cov-item"><span>Brand / Penerbit:</span><b>{detail.site.ssl_mode === 'cloudflare' ? 'Cloudflare, Inc.' : cert?.issuer || '—'}</b></div>
             <div class="cov-item"><span>Domain(s):</span><b class="mono">{certSANs.join(', ') || detail.domains.join(', ')}</b></div>
             <div class="cov-item"><span>Masa Berlaku:</span>
@@ -1196,37 +1250,131 @@
             <input id="ss-ssl-on" type="checkbox" bind:checked={sslEnabled} disabled={jobRunning} /><span class="track"></span>
           </label>
           {#if sslEnabled}
-            <div class="dns-box mt">
-              <div class="dns-head">
-                <span><i class="ri-route-line"></i> Kesiapan DNS Sebelum Validasi ACME</span>
-                <button class="btn btn-secondary btn-xs btn-mini" onclick={checkDNS} disabled={dnsLoading}><i class="ri-refresh-line" class:spin={dnsLoading}></i> Cek ulang</button>
-              </div>
-              {#if dnsReport}
-                <ul class="dns-list">
-                  {#each dnsReport.dns as d (d.domain)}
-                    <li>
-                      <i class={d.points_here ? 'ri-checkbox-circle-fill ok' : 'ri-error-warning-fill warn'}></i>
-                      <span class="mono">{d.domain}</span>
-                      <small class="mono">{d.error ? 'tidak ter-resolve' : (d.ips ?? []).join(', ')}</small>
-                    </li>
-                  {/each}
-                </ul>
-                <p class="ip-note">IP server: <span class="mono">{dnsReport.server_ips.join(', ') || '—'}</span></p>
-                {#if !dnsAllReady}
-                  <label class="check" for="ss-skip-dns">
-                    <input id="ss-skip-dns" type="checkbox" bind:checked={skipDNS} />
-                    Lewati cek DNS (server di balik Cloudflare / CDN / Proxy)
-                  </label>
-                {/if}
-              {:else}
-                <p class="ip-note"><i class="ri-loader-4-line spin"></i> Memeriksa DNS…</p>
-              {/if}
+            <div class="challenge-grid mt">
+              <button
+                type="button"
+                class="challenge-card"
+                class:is-active={sslChallengeType === 'http01'}
+                onclick={() => (sslChallengeType = 'http01')}
+                disabled={jobRunning || hasWildcard}
+              >
+                <b><i class="ri-global-line" aria-hidden="true"></i> HTTP-01 (Webroot)</b>
+                <small>Standar cepat via port 80 publik. Tidak mendukung wildcard.</small>
+              </button>
+              <button
+                type="button"
+                class="challenge-card"
+                class:is-active={sslChallengeType === 'dns01'}
+                onclick={() => (sslChallengeType = 'dns01')}
+                disabled={jobRunning}
+              >
+                <b><i class="ri-shield-star-line" aria-hidden="true"></i> DNS-01 Wildcard (lego)</b>
+                <small>Dukung *.domain &amp; server di balik NAT/Cloudflare tanpa port 80.</small>
+              </button>
             </div>
+
+            {#if sslChallengeType === 'http01'}
+              <div class="dns-box mt">
+                <div class="dns-head">
+                  <span><i class="ri-route-line"></i> Kesiapan DNS Sebelum Validasi ACME</span>
+                  <button class="btn btn-secondary btn-xs btn-mini" onclick={checkDNS} disabled={dnsLoading}><i class="ri-refresh-line" class:spin={dnsLoading}></i> Cek ulang</button>
+                </div>
+                {#if dnsReport}
+                  <ul class="dns-list">
+                    {#each dnsReport.dns as d (d.domain)}
+                      <li>
+                        <i class={d.points_here ? 'ri-checkbox-circle-fill ok' : 'ri-error-warning-fill warn'}></i>
+                        <span class="mono">{d.domain}</span>
+                        <small class="mono">{d.error ? 'tidak ter-resolve' : (d.ips ?? []).join(', ')}</small>
+                      </li>
+                    {/each}
+                  </ul>
+                  <p class="ip-note">IP server: <span class="mono">{dnsReport.server_ips.join(', ') || '—'}</span></p>
+                  {#if !dnsAllReady}
+                    <label class="check" for="ss-skip-dns">
+                      <input id="ss-skip-dns" type="checkbox" bind:checked={skipDNS} />
+                      Lewati cek DNS (server di balik Cloudflare / CDN / Proxy)
+                    </label>
+                  {/if}
+                {:else}
+                  <p class="ip-note"><i class="ri-loader-4-line spin"></i> Memeriksa DNS…</p>
+                {/if}
+              </div>
+            {:else}
+              <div class="dns01-box mt">
+                <div class="dns01-head">
+                  <label class="label-inline" for="ss-dns-provider">DNS Provider (go-acme/lego)</label>
+                  {#if activeDnsProvider?.configured}
+                    <span class="ss-badge on">
+                      <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+                      {activeDnsProvider.source === 'cloudflare_hub' ? 'Otomatis dari Cloudflare Hub' : 'Kredensial Tersimpan'}
+                    </span>
+                  {:else}
+                    <span class="ss-badge pending">
+                      <i class="ri-key-2-line" aria-hidden="true"></i> Perlu Kredensial API
+                    </span>
+                  {/if}
+                </div>
+
+                <select
+                  id="ss-dns-provider"
+                  class="input"
+                  bind:value={sslDnsProvider}
+                  onchange={() => { sslDnsCreds = {}; sslEditDnsCreds = false; }}
+                  disabled={jobRunning}
+                >
+                  {#if dnsProviders.length > 0}
+                    {#each dnsProviders as prov (prov.id)}
+                      <option value={prov.id}>{prov.name}{prov.configured ? ' ✓' : ''}</option>
+                    {/each}
+                  {:else}
+                    <option value="cloudflare">Cloudflare DNS</option>
+                    <option value="digitalocean">DigitalOcean DNS</option>
+                    <option value="porkbun">Porkbun DNS</option>
+                    <option value="namecheap">Namecheap DNS</option>
+                    <option value="duckdns">DuckDNS</option>
+                  {/if}
+                </select>
+
+                {#if activeDnsProvider}
+                  <p class="ip-note">{activeDnsProvider.description}</p>
+                  {#if activeDnsProvider.configured && !sslEditDnsCreds}
+                    <div>
+                      <button type="button" class="btn btn-ghost btn-xs" onclick={() => (sslEditDnsCreds = true)}>
+                        <i class="ri-key-2-line" aria-hidden="true"></i> Ganti kredensial {activeDnsProvider.name}
+                      </button>
+                    </div>
+                  {:else}
+                    <div class="dns01-fields">
+                      {#each activeDnsProvider.fields as fld (fld.key)}
+                        <label class="fld" for="ss-dns-fld-{fld.key}">
+                          <span>{fld.label}{fld.required ? ' *' : ''}</span>
+                          <input
+                            id="ss-dns-fld-{fld.key}"
+                            type={fld.secret ? 'password' : 'text'}
+                            placeholder={fld.placeholder}
+                            value={sslDnsCreds[fld.key] ?? ''}
+                            oninput={(e) => { sslDnsCreds = { ...sslDnsCreds, [fld.key]: (e.currentTarget as HTMLInputElement).value }; }}
+                            disabled={jobRunning}
+                          />
+                        </label>
+                      {/each}
+                    </div>
+                  {/if}
+                {/if}
+
+                <label class="dns01-check" for="ss-dns-wildcard">
+                  <input id="ss-dns-wildcard" type="checkbox" bind:checked={sslIncludeWildcard} disabled={jobRunning} />
+                  <span>Sertakan Wildcard (<code class="mono">*.{detail.site.domain.replace(/^\*\./, '')}</code>) pada sertifikat</span>
+                </label>
+                <p class="ip-note">Kredensial disimpan lokal di SQLite dan otomatis dipakai kembali saat auto-renew 60 hari.</p>
+              </div>
+            {/if}
           {/if}
           {#if jobRunning && job}
             <div class="job mt">
-              {#each STEPS as st, i (st)}
-                {@const cur = Math.max(0, STEPS.findIndex((s) => job.step?.startsWith(s)))}
+              {#each activeSteps as st, i (st)}
+                {@const cur = Math.max(0, activeSteps.findIndex((s) => job.step?.startsWith(s)))}
                 <div class="step" class:done={i < cur} class:now={i === cur}>
                   <i class={i < cur ? 'ri-check-line' : i === cur ? 'ri-loader-4-line spin' : 'ri-checkbox-blank-circle-line'}></i>{st}
                 </div>
@@ -1239,7 +1387,7 @@
             {#if certIssued && sslEnabled}
               <button class="btn btn-ghost" onclick={() => saveSSL(true)} disabled={sslSaving || jobRunning}><i class="ri-refresh-line"></i> Terbitkan Ulang</button>
             {/if}
-            <button class="btn btn-primary" onclick={() => saveSSL(false)} disabled={sslSaving || jobRunning}>
+            <button class="btn btn-primary" onclick={() => saveSSL(sslEnabled && !certIssued ? true : false)} disabled={sslSaving || jobRunning}>
               {#if sslSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-shield-check-line"></i>{/if}
               {sslEnabled && !certIssued ? 'Simpan & Terbitkan SSL' : 'Simpan'}
             </button>

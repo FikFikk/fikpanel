@@ -164,4 +164,81 @@
     font-size: var(--fs-xxs);
     color: var(--text-secondary);
   }
+
+  /* Pemilih metode validasi ACME (HTTP-01 vs DNS-01 Wildcard via go-acme/lego) */
+  .cmp-site-settings .challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+  .cmp-site-settings .challenge-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 9px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .cmp-site-settings .challenge-card:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .cmp-site-settings .challenge-card.is-active {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .cmp-site-settings .challenge-card b {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+  .cmp-site-settings .challenge-card.is-active b {
+    color: var(--accent-strong);
+  }
+  .cmp-site-settings .challenge-card small {
+    font-size: 0.71rem;
+    color: var(--text-subtle);
+    line-height: 1.35;
+  }
+  .cmp-site-settings .dns01-box {
+    padding: 0.85rem 0.95rem;
+    border-radius: 10px;
+    background: var(--bg-surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .cmp-site-settings .dns01-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .cmp-site-settings .dns01-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.55rem;
+  }
+  .cmp-site-settings .dns01-check {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .cmp-site-settings .dns01-check input {
+    accent-color: var(--accent);
+  }
 }

@@ -82,6 +82,25 @@ export interface Certificate {
   key_type: string;
   last_error: string;
   renewed_at: number;
+  challenge_type?: 'http01' | 'dns01' | string;
+  dns_provider?: string;
+}
+
+export interface DNSProviderField {
+  key: string;
+  label: string;
+  placeholder: string;
+  secret: boolean;
+  required: boolean;
+}
+
+export interface DNSProviderMeta {
+  id: string;
+  name: string;
+  description: string;
+  configured: boolean;
+  source?: string;
+  fields: DNSProviderField[];
 }
 
 export interface SSLJob {

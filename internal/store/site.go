@@ -46,16 +46,18 @@ type Site struct {
 
 // Certificate merepresentasikan metadata sertifikat TLS milik sebuah situs
 type Certificate struct {
-	SiteID    int64  `json:"site_id"`
-	Status    string `json:"status"`
-	Issuer    string `json:"issuer"`
-	NotBefore int64  `json:"not_before"`
-	NotAfter  int64  `json:"not_after"`
-	Domains   string `json:"domains"`
-	Signature string `json:"signature"`
-	KeyType   string `json:"key_type"`
-	LastError string `json:"last_error"`
-	RenewedAt int64  `json:"renewed_at"`
+	SiteID        int64  `json:"site_id"`
+	Status        string `json:"status"`
+	Issuer        string `json:"issuer"`
+	NotBefore     int64  `json:"not_before"`
+	NotAfter      int64  `json:"not_after"`
+	Domains       string `json:"domains"`
+	Signature     string `json:"signature"`
+	KeyType       string `json:"key_type"`
+	LastError     string `json:"last_error"`
+	RenewedAt     int64  `json:"renewed_at"`
+	ChallengeType string `json:"challenge_type"`
+	DNSProvider   string `json:"dns_provider"`
 }
 
 const siteColumns = `s.id, s.domain, s.aliases, s.kind, COALESCE(s.upstream, ''), COALESCE(s.root_path, ''),
@@ -189,13 +191,14 @@ func (s *Store) ToggleSite(ctx context.Context, id int64) (int, error) {
 
 // GetCertificate mengambil metadata sertifikat situs; status 'none' bila belum ada
 func (s *Store) GetCertificate(ctx context.Context, siteID int64) (*Certificate, error) {
-	c := &Certificate{SiteID: siteID, Status: "none", Domains: "[]"}
+	c := &Certificate{SiteID: siteID, Status: "none", Domains: "[]", ChallengeType: "http01"}
 	err := s.db.QueryRowContext(ctx, `
 		SELECT status, issuer, not_before, not_after, domains, signature, key_type,
-		       COALESCE(last_error, ''), COALESCE(renewed_at, 0)
+		       COALESCE(last_error, ''), COALESCE(renewed_at, 0),
+		       COALESCE(challenge_type, 'http01'), COALESCE(dns_provider, '')
 		FROM certificates WHERE site_id = ?`, siteID).Scan(
 		&c.Status, &c.Issuer, &c.NotBefore, &c.NotAfter, &c.Domains, &c.Signature, &c.KeyType,
-		&c.LastError, &c.RenewedAt)
+		&c.LastError, &c.RenewedAt, &c.ChallengeType, &c.DNSProvider)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, nil
 	}
@@ -207,15 +210,20 @@ func (s *Store) GetCertificate(ctx context.Context, siteID int64) (*Certificate,
 
 // UpsertCertificate menyimpan atau memperbarui metadata sertifikat situs
 func (s *Store) UpsertCertificate(ctx context.Context, c *Certificate) error {
+	chType := c.ChallengeType
+	if chType == "" {
+		chType = "http01"
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO certificates (site_id, status, issuer, not_before, not_after, domains, signature, key_type, last_error, renewed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO certificates (site_id, status, issuer, not_before, not_after, domains, signature, key_type, last_error, renewed_at, challenge_type, dns_provider)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(site_id) DO UPDATE SET
 			status = excluded.status, issuer = excluded.issuer, not_before = excluded.not_before,
 			not_after = excluded.not_after, domains = excluded.domains, signature = excluded.signature,
-			key_type = excluded.key_type, last_error = excluded.last_error, renewed_at = excluded.renewed_at`,
+			key_type = excluded.key_type, last_error = excluded.last_error, renewed_at = excluded.renewed_at,
+			challenge_type = excluded.challenge_type, dns_provider = excluded.dns_provider`,
 		c.SiteID, c.Status, c.Issuer, c.NotBefore, c.NotAfter, c.Domains, c.Signature, c.KeyType,
-		nullIfEmpty(c.LastError), c.RenewedAt)
+		nullIfEmpty(c.LastError), c.RenewedAt, chType, c.DNSProvider)
 	if err != nil {
 		return fmt.Errorf("gagal menyimpan sertifikat: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"fikpanel/internal/auth"
+	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
 	"fikpanel/internal/updater"
 )
@@ -728,18 +730,24 @@ func (s *Server) handleRevokeOtherSessions(w http.ResponseWriter, r *http.Reques
 
 // handleGetPanelTLS mengembalikan metadata sertifikat HTTPS panel aktif (atau status HTTP)
 func (s *Server) handleGetPanelTLS(w http.ResponseWriter, r *http.Request) {
+	acmeDomain, _ := s.store.GetSetting(r.Context(), "panel_acme_domain")
+	acmeProvider, _ := s.store.GetSetting(r.Context(), "panel_acme_provider")
 	if s.certs == nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"ok":        true,
-			"tls":       TLSStatusInfo{Enabled: false, DNSNames: []string{}},
-			"client_ip": getIP(r),
+			"ok":            true,
+			"tls":           TLSStatusInfo{Enabled: false, DNSNames: []string{}},
+			"acme_domain":   acmeDomain,
+			"acme_provider": acmeProvider,
+			"client_ip":     getIP(r),
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":        true,
-		"tls":       s.certs.StatusInfo(),
-		"client_ip": getIP(r),
+		"ok":            true,
+		"tls":           s.certs.StatusInfo(),
+		"acme_domain":   acmeDomain,
+		"acme_provider": acmeProvider,
+		"client_ip":     getIP(r),
 	})
 }
 
@@ -802,6 +810,162 @@ func (s *Server) handleResetSelfSignedTLS(w http.ResponseWriter, r *http.Request
 		"ok":      true,
 		"tls":     s.certs.StatusInfo(),
 		"message": "Sertifikat self-signed panel berhasil dibuat ulang dan aktif",
+	})
+}
+
+// handleListACMEDNSProviders mengembalikan daftar 5 DNS provider ringan go-acme/lego beserta status konfigurasinya
+func (s *Server) handleListACMEDNSProviders(w http.ResponseWriter, r *http.Request) {
+	configured := s.store.ListConfiguredACMEDNSProviders(r.Context())
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":        true,
+		"providers": sites.SupportedDNSProviders(configured),
+	})
+}
+
+// handleSaveACMEDNSProvider menyimpan kredensial API DNS-01 ke SQLite untuk dipakai penerbitan & auto-renew
+func (s *Server) handleSaveACMEDNSProvider(w http.ResponseWriter, r *http.Request) {
+	provider := strings.ToLower(strings.TrimSpace(r.PathValue("provider")))
+	if provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nama provider DNS wajib diisi"})
+		return
+	}
+	supported := false
+	for _, p := range sites.SupportedDNSProviders(nil) {
+		if p.ID == provider {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider DNS %q tidak didukung", provider)})
+		return
+	}
+
+	var req struct {
+		Credentials map[string]string `json:"credentials"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload JSON tidak valid"})
+		return
+	}
+	hasVal := false
+	for _, v := range req.Credentials {
+		if strings.TrimSpace(v) != "" {
+			hasVal = true
+			break
+		}
+	}
+	if !hasVal {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minimal satu kredensial provider DNS wajib diisi"})
+		return
+	}
+
+	if err := s.store.SaveACMEDNSProvider(r.Context(), provider, req.Credentials); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("gagal menyimpan kredensial DNS: %v", err)})
+		return
+	}
+
+	user := GetUserFromContext(r.Context())
+	var uid *int64
+	if user != nil {
+		uid = &user.ID
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "ssl.dns_provider_save", provider, true, "Menyimpan kredensial ACME DNS-01 untuk "+provider, uid)
+
+	configured := s.store.ListConfiguredACMEDNSProviders(r.Context())
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":        true,
+		"providers": sites.SupportedDNSProviders(configured),
+		"message":   "Kredensial DNS-01 " + provider + " berhasil disimpan",
+	})
+}
+
+// handleIssuePanelACMETLS menerbitkan sertifikat Let's Encrypt DNS-01 (via go-acme/lego) untuk panel lalu hot-reload tanpa restart
+func (s *Server) handleIssuePanelACMETLS(w http.ResponseWriter, r *http.Request) {
+	if s.certs == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "TLS panel tidak aktif (panel dijalankan dengan --tls=off)"})
+		return
+	}
+	if s.sites == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "manajer sertifikat ACME belum siap"})
+		return
+	}
+
+	var req struct {
+		Domain          string            `json:"domain"`
+		DNSProvider     string            `json:"dns_provider"`
+		IncludeWildcard bool              `json:"include_wildcard"`
+		Credentials     map[string]string `json:"credentials"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload JSON tidak valid"})
+		return
+	}
+
+	domain := strings.ToLower(strings.TrimSpace(req.Domain))
+	domain = strings.TrimPrefix(domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	domain = strings.TrimSuffix(domain, "/")
+	if domain == "" || !strings.Contains(domain, ".") || net.ParseIP(domain) != nil || !hostnameRe.MatchString(domain) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "domain panel tidak valid (gunakan FQDN seperti panel.domain.com, bukan IP/localhost)"})
+		return
+	}
+
+	provider := strings.ToLower(strings.TrimSpace(req.DNSProvider))
+	if provider == "" {
+		provider = "cloudflare"
+	}
+
+	domains := []string{domain}
+	if req.IncludeWildcard {
+		domains = append(domains, "*."+domain)
+	}
+
+	// Nonaktifkan WriteDeadline pada request ACME agar propagasi DNS-01 (maks 4 menit) tidak terpotong WriteTimeout server
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancel()
+
+	certPEM, keyPEM, leaf, err := s.sites.ObtainCertBundleDNS01(ctx, domains, provider, req.Credentials, nil)
+	if err != nil {
+		status := http.StatusInternalServerError
+		var ve *sites.ValidationError
+		if errors.As(err, &ve) {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if err := s.certs.InstallCustomCert(certPEM, keyPEM); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("sertifikat terbit tetapi gagal dipasang ke TLS panel: %v", err)})
+		return
+	}
+
+	_ = s.store.SetSetting(r.Context(), "panel_acme_domain", domain)
+	_ = s.store.SetSetting(r.Context(), "panel_acme_provider", provider)
+
+	user := GetUserFromContext(r.Context())
+	var uid *int64
+	if user != nil {
+		uid = &user.ID
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "settings.tls_acme", domain, true,
+		fmt.Sprintf("Auto-SSL Panel ACME DNS-01 (%s) berhasil diterbitkan & hot-reload untuk %s", provider, strings.Join(domains, ", ")), uid)
+
+	notAfter := int64(0)
+	if leaf != nil {
+		notAfter = leaf.NotAfter.Unix()
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":            true,
+		"tls":           s.certs.StatusInfo(),
+		"acme_domain":   domain,
+		"acme_provider": provider,
+		"domains":       domains,
+		"not_after":     notAfter,
+		"message":       fmt.Sprintf("Sertifikat Let's Encrypt DNS-01 untuk %s berhasil diterbitkan dan langsung aktif (hot-reload)", strings.Join(domains, ", ")),
 	})
 }
 

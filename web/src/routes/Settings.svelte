@@ -16,7 +16,7 @@
     type ThemeMode,
   } from '../lib/stores/theme.svelte';
   import { dateLocale, i18nState, setLocale, t, type Locale } from '../lib/stores/i18n.svelte';
-  import type { AuditLog, OverviewData, SystemWebhook } from '../lib/types';
+  import type { AuditLog, DNSProviderMeta, OverviewData, SystemWebhook } from '../lib/types';
   import Modal from '../lib/components/ui/Modal.svelte';
   import {
     getWebAuthnEnvironment,
@@ -175,6 +175,14 @@
   let customCertPEM = $state('');
   let customKeyPEM = $state('');
   let savingTLS = $state(false);
+  let dnsProviders = $state<DNSProviderMeta[]>([]);
+  let acmeDomain = $state('');
+  let acmeProvider = $state('cloudflare');
+  let acmeIncludeWildcard = $state(false);
+  let acmeCreds = $state<Record<string, string>>({});
+  let acmeEditCreds = $state(false);
+  let issuingACME = $state(false);
+  let activeAcmeProvider = $derived(dnsProviders.find((p) => p.id === acmeProvider) ?? null);
 
   // ── Tab D: Sistem, Hostname, Timezone, & Update Center ──
   interface SystemEnvInfo {
@@ -383,9 +391,25 @@
 
   async function loadTLS() {
     try {
-      const res = await apiFetch<{ tls: TLSStatus; client_ip?: string }>('/api/settings/tls');
+      const [res, provRes] = await Promise.all([
+        apiFetch<{ tls: TLSStatus; acme_domain?: string; acme_provider?: string; client_ip?: string }>('/api/settings/tls'),
+        apiFetch<{ ok: boolean; providers: DNSProviderMeta[] }>('/api/ssl/dns-providers').catch(() => ({ ok: false, providers: [] })),
+      ]);
       tlsInfo = res?.tls || null;
       if (res?.client_ip) clientIP = res.client_ip;
+      dnsProviders = provRes?.providers || [];
+      if (res?.acme_domain) {
+        acmeDomain = res.acme_domain;
+      } else if (!acmeDomain && typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        // Isi otomatis domain FQDN panel bila bukan IP atau localhost
+        if (host && host !== 'localhost' && host.includes('.') && !/^\d+(\.\d+){3}$/.test(host) && !host.includes(':')) {
+          acmeDomain = host;
+        }
+      }
+      if (res?.acme_provider) {
+        acmeProvider = res.acme_provider;
+      }
     } catch {
       // Abaikan kesalahan muat TLS
     }
@@ -709,6 +733,39 @@
   }
 
   // ── Aksi Tab C: TLS Custom & IP Allowlist ──
+  async function issuePanelACMETLS() {
+    const dom = acmeDomain.trim();
+    if (!dom) {
+      onNotify('Domain FQDN panel wajib diisi (contoh: panel.domain.com)', 'warning');
+      return;
+    }
+    const credsPayload: Record<string, string> = {};
+    for (const [k, v] of Object.entries(acmeCreds)) {
+      if (v.trim()) credsPayload[k] = v.trim();
+    }
+    issuingACME = true;
+    try {
+      const res = await apiFetch<{ tls: TLSStatus; message: string }>('/api/settings/tls/acme', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: dom,
+          dns_provider: acmeProvider,
+          include_wildcard: acmeIncludeWildcard,
+          credentials: Object.keys(credsPayload).length > 0 ? credsPayload : undefined,
+        }),
+      });
+      tlsInfo = res.tls;
+      acmeCreds = {};
+      acmeEditCreds = false;
+      onNotify(res.message || 'Auto-SSL Panel berhasil diterbitkan & aktif', 'success');
+      await loadTLS();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal menerbitkan Auto-SSL Panel via DNS-01', 'error');
+    } finally {
+      issuingACME = false;
+    }
+  }
+
   async function installCustomTLS() {
     if (!customCertPEM.trim() || !customKeyPEM.trim()) {
       onNotify('Sertifikat PEM dan Private Key PEM wajib diisi', 'warning');
@@ -1792,6 +1849,106 @@
                 </div>
               </div>
 
+              <div class="acme-panel-box">
+                <div class="acme-panel-box__head">
+                  <span class="acme-panel-box__title">
+                    <i class="ri-shield-star-line" aria-hidden="true"></i>
+                    {t('settings.network.acme_title')}
+                  </span>
+                  {#if activeAcmeProvider?.configured}
+                    <span class="badge badge--success badge--sm">
+                      {activeAcmeProvider.source === 'cloudflare_hub'
+                        ? t('settings.network.acme_cf_hub')
+                        : t('settings.network.acme_saved')}
+                    </span>
+                  {:else}
+                    <span class="badge badge--warning badge--sm">{t('settings.network.acme_unconfigured')}</span>
+                  {/if}
+                </div>
+                <p class="panel-desc">{t('settings.network.acme_desc')}</p>
+
+                <div class="form-grid-2">
+                  <div class="field">
+                    <label for="acme-panel-domain" class="field__label">{t('settings.network.acme_domain')}</label>
+                    <input
+                      id="acme-panel-domain"
+                      type="text"
+                      class="input mono"
+                      bind:value={acmeDomain}
+                      placeholder="panel.domainanda.com"
+                      disabled={issuingACME}
+                    />
+                  </div>
+                  <div class="field">
+                    <label for="acme-panel-provider" class="field__label">{t('settings.network.acme_provider')}</label>
+                    <select
+                      id="acme-panel-provider"
+                      class="input"
+                      bind:value={acmeProvider}
+                      onchange={() => { acmeCreds = {}; acmeEditCreds = false; }}
+                      disabled={issuingACME}
+                    >
+                      {#if dnsProviders.length > 0}
+                        {#each dnsProviders as prov (prov.id)}
+                          <option value={prov.id}>{prov.name}{prov.configured ? ' ✓' : ''}</option>
+                        {/each}
+                      {:else}
+                        <option value="cloudflare">Cloudflare DNS</option>
+                        <option value="digitalocean">DigitalOcean DNS</option>
+                        <option value="porkbun">Porkbun DNS</option>
+                        <option value="namecheap">Namecheap DNS</option>
+                        <option value="duckdns">DuckDNS</option>
+                      {/if}
+                    </select>
+                  </div>
+                </div>
+
+                {#if activeAcmeProvider}
+                  <p class="panel-desc">{activeAcmeProvider.description}</p>
+                  {#if activeAcmeProvider.configured && !acmeEditCreds}
+                    <div>
+                      <button type="button" class="btn btn--ghost btn--sm" onclick={() => (acmeEditCreds = true)} disabled={issuingACME}>
+                        <i class="ri-key-2-line" aria-hidden="true"></i> {t('settings.network.acme_change_creds')}
+                      </button>
+                    </div>
+                  {:else}
+                    <div class="form-grid-2">
+                      {#each activeAcmeProvider.fields as fld (fld.key)}
+                        <div class="field">
+                          <label for="acme-cred-{fld.key}" class="field__label">{fld.label}{fld.required ? ' *' : ''}</label>
+                          <input
+                            id="acme-cred-{fld.key}"
+                            type={fld.secret ? 'password' : 'text'}
+                            class="input mono"
+                            placeholder={fld.placeholder}
+                            value={acmeCreds[fld.key] ?? ''}
+                            oninput={(e) => { acmeCreds = { ...acmeCreds, [fld.key]: (e.currentTarget as HTMLInputElement).value }; }}
+                            disabled={issuingACME}
+                          />
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                {/if}
+
+                <label class="acme-panel-box__check" for="acme-panel-wildcard">
+                  <input id="acme-panel-wildcard" type="checkbox" bind:checked={acmeIncludeWildcard} disabled={issuingACME} />
+                  <span>{t('settings.network.acme_wildcard')}</span>
+                </label>
+
+                <div class="card-foot-actions">
+                  <button type="button" class="btn btn--primary" onclick={issuePanelACMETLS} disabled={issuingACME || savingTLS || !acmeDomain.trim()}>
+                    {#if issuingACME}
+                      <i class="ri-loader-4-line spin" aria-hidden="true"></i> {t('settings.network.acme_issuing')}
+                    {:else}
+                      <i class="ri-shield-check-line" aria-hidden="true"></i> {t('settings.network.acme_issue_btn')}
+                    {/if}
+                  </button>
+                </div>
+              </div>
+
+              <div class="tls-divider-label">{t('settings.network.tls_manual_title')}</div>
+
               <div class="form-grid-2">
                 <div class="field">
                   <label for="tls-cert" class="field__label">Certificate / Fullchain (PEM)</label>
@@ -1804,10 +1961,10 @@
               </div>
 
               <div class="card-foot-actions">
-                <button type="button" class="btn btn--primary" onclick={installCustomTLS} disabled={savingTLS}>
+                <button type="button" class="btn btn--primary" onclick={installCustomTLS} disabled={savingTLS || issuingACME}>
                   {savingTLS ? t('common.saving') : t('settings.network.tls_install_btn')}
                 </button>
-                <button type="button" class="btn btn--secondary" onclick={resetSelfSignedTLS} disabled={savingTLS}>
+                <button type="button" class="btn btn--secondary" onclick={resetSelfSignedTLS} disabled={savingTLS || issuingACME}>
                   {t('settings.network.tls_reset_btn')}
                 </button>
               </div>
@@ -1909,7 +2066,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.2'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.3'}</span>
                 </div>
               </div>
             </div>

@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.2", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.3", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3318,14 +3318,58 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.21 ACME DNS-01 Wildcard SSL (`go-acme/lego`) & Auto-SSL Panel Hot-Reload
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/ssl/dns-providers` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "providers": [{"id": "cloudflare", "name": "Cloudflare DNS", "configured": true, "source": "cloudflare_hub", "fields": [...]}]}` |
+| Notes | Mengembalikan 5 provider DNS-01 ringan (`cloudflare`, `digitalocean`, `porkbun`, `namecheap`, `duckdns`) beserta status apakah kredensial sudah tersimpan (`saved`) atau terdeteksi otomatis dari Cloudflare Hub (`cloudflare_hub`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/ssl/dns-providers/{provider}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{provider}` (`cloudflare`, `digitalocean`, `porkbun`, `namecheap`, `duckdns`) |
+| Request Body | `credentials` (object `map[string]string`, wajib minimal 1 kunci non-kosong sesuai spesifikasi provider) |
+| Response | HTTP 200 `{"ok": true, "providers": [...], "message": "Kredensial DNS-01 ... berhasil disimpan"}` |
+| Notes | Menyimpan kredensial API DNS provider ke tabel SQLite `acme_dns_providers` untuk penerbitan & auto-renew DNS-01 dan mencatat audit `ssl.dns_provider_save`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/ssl` *(diperluas untuk DNS-01 Wildcard)* |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID situs) |
+| Request Body | `enabled` (bool), `force_https` (bool), `hsts` (bool), `issue` (bool), `skip_dns` (bool), `cloudflare` (bool), `challenge_type` (`"http01"` default / `"dns01"`), `dns_provider` (string, mis. `"cloudflare"`), `include_wildcard` (bool, otomatis tambah `"*.<domain>"`), `dns_credentials` (opsional `map[string]string` yang sekaligus disimpan) |
+| Response | HTTP 200 `{"ok": true, "issuing": true, ...}` |
+| Notes | Ketika `challenge_type: "dns01"`, pengecekan A-record HTTP-01 dilewati dan penerbitan dijalankan asinkron via `go-acme/lego v4` (timeout 4 menit) dengan resolver propagasi `1.1.1.1:53` & `8.8.8.8:53`. Metode dan provider disimpan ke tabel `certificates` agar auto-renew berkala tetap menggunakan DNS-01. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/settings/tls/acme` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `domain` (string FQDN panel, wajib, bukan IP/localhost), `dns_provider` (string, default `"cloudflare"`), `include_wildcard` (bool, opsional), `credentials` (opsional `map[string]string`) |
+| Response | HTTP 200 `{"ok": true, "tls": {...}, "acme_domain": "...", "acme_provider": "...", "domains": [...], "not_after": 1790000000, "message": "..."}` |
+| Notes | Menerbitkan sertifikat Let's Encrypt ECDSA P-256 melalui DNS-01 (tanpa membuka port 80) lalu langsung memasang & melakukan *hot-reload* sertifikat HTTPS panel (`panel.crt`/`panel.key`) tanpa restart layanan `fikpanel.service`. Menonaktifkan `WriteDeadline` selama propagasi DNS (maks 4 menit) dan mencatat audit `settings.tls_acme`. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |
 |---|---|---|---|
 | `srv.StartUptimeProber` | Setiap 15 detik (background ticker, maks 6 probe konkuren) | Mengevaluasi monitor Uptime & SSL yang sudah jatuh tempo berdasarkan `interval_sec`, memeriksa status HTTP/keyword/TLS peer cert/TCP port, dan menyiarkan alert Webhook (`DOWN`/`RECOVERED`/`SSL EXPIRING`) | Mencatat hasil ke `uptime_checks`, memperbarui ringkasan `uptime_monitors`, dan memangkas histori pemeriksaan > 7 hari |
 | `waf.LogWatcher.Start` | Setiap 4 detik (background daemon) | Memindai byte baru pada seluruh access log Nginx (`/var/log/nginx/*.access.log`), mendeteksi probe keamanan, mengekstrak telemetri client (IP, User-Agent, Device, OS, Browser), mengklasifikasikan jenis ancaman, dan melengkapi koordinat geolokasi (Country, City, ISP, Lat/Long) | Mengisi dan memperbarui entri pada tabel `waf_events`; melakukan deduplikasi event dari IP dan path yang sama dalam jeda 15 detik |
-| `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
-| `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
+| `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME (HTTP-01 maupun DNS-01) yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
+| `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 atau DNS-01 (mempertahankan `challenge_type` & `dns_provider` tersimpan) | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
 | `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |
 | `srv.StartMonitoringRecorder` | Setiap 60 detik (background ticker) & setiap 24 jam (purge) | Merekam metrik CPU, RAM, Disk, Jaringan jika fitur monitor aktif, serta membersihkan snapshot metrik melebihi masa retensi | Menyimpan data historis ke tabel `monitor_snapshots`; menghapus snapshot lama secara berkala |
 | `srv.cronMgr.Start` | Setiap menit (sesuai spesifikasi cron) | Mengeksekusi antrean tugas cron kustom pengguna yang terdaftar di database | Menjalankan skrip shell/perintah cadangan atau pemeliharaan berkala; jika opsi `log_file` disetel, membuat direktori induk otomatis dan menulis output log ke berkas disk |

@@ -18,20 +18,21 @@
 
 ## Tentang fikpanel
 
-**fikpanel** adalah web control panel manajemen server open-source yang dirancang untuk kecepatan ekstrem, penggunaan memori minimal (< 25 MB RAM saat idle), dan instalasi tanpa dependensi runtime rumit. Seluruh antarmuka web dikompilasi dan disematkan langsung (*embedded*) ke dalam satu biner statis Go.
+**fikpanel** adalah web control panel manajemen server open-source yang dirancang untuk kecepatan ekstrem, penggunaan memori minimal (< 25 MB RAM saat idle), dan instalasi tanpa dependensi runtime rumit. Seluruh antarmuka web dikompilasi dan disematkan langsung (_embedded_) ke dalam satu biner statis Go.
 
-Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi terbaru dari **Svelte 5 (Runes)**, fikpanel menghadirkan pengalaman kontrol server bergaya *Bento Dark Dashboard* yang responsif, mulus, dan bebas lag.
+Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi terbaru dari **Svelte 5 (Runes)**, fikpanel menghadirkan pengalaman kontrol server bergaya _Bento Dark Dashboard_ yang responsif, mulus, dan bebas lag.
 
 ---
 
 ## Fitur Unggulan
 
 ### 1. Dashboard Bento Realtime
+
 - **Penjadwal Tugas (Cron Jobs)**: Manajemen eksekusi skrip otomatis, pembersihan log berkala, trigger manual, dan riwayat terminal log per tugas.
 - **Monitor Performa Persisten ala aaPanel (Status Switch & Histori)**: Saklar on/off status monitoring — jika aktif, daemon background mencatat metrik CPU, RAM, Network I/O, dan Load Average (1m, 5m, 15m) tiap 60 detik ke SQLite dengan retensi hingga 30 hari. Jika dimatikan, pencatatan berhenti. Dilengkapi grafik visual time-range (1 jam, 6 jam, hari ini, 7 hari, 30 hari) serta mode Live Streaming SSE (1s).
 - **Software App Store & Toolkit 1-Klik**: Katalog instalasi paket software esensial Linux otomatis (`Nginx`, `PHP 8.2/8.3 + FPM Suite`, `MariaDB/MySQL`, `Redis Cache`, `Node.js + NPM`, `Certbot`, `Git`) dilengkapi terminal viewer log proses instalasi live.
-- **Task Manager & Process Killer**: Pantau proses sistem paling berat (CPU/RAM teratas), tombol kill proses, dan audit port jaringan yang mendengarkan (*Listening Ports*).
-- **Pembersih Sistem & Optimasi RAM (Cleaner)**: Pindai dan bersihkan sampah paket APT, arsip log lama (`.gz`, `.old`), file temporary, serta flush buffer RAM (*drop caches*) dalam 1-klik.
+- **Task Manager & Process Killer**: Pantau proses sistem paling berat (CPU/RAM teratas), tombol kill proses, dan audit port jaringan yang mendengarkan (_Listening Ports_).
+- **Pembersih Sistem & Optimasi RAM (Cleaner)**: Pindai dan bersihkan sampah paket APT, arsip log lama (`.gz`, `.old`), file temporary, serta flush buffer RAM (_drop caches_) dalam 1-klik.
 - **Pencadangan & Snapshot (Backup S3 / Lokal)**: Cadangkan database MySQL / direktori website ke MinIO / S3 Object Storage atau arsip lokal secara instan.
 - **DNS Zone & Record Manager**: Manajemen authoritative DNS records (A/AAAA, CNAME, TXT, MX) visual per domain.
 - **PHP Multi-Version & FPM Tuning**: Deteksi versi PHP aktif (8.3, 8.2, 8.1, 7.4), kontrol daemon FPM, dan form penyesuaian parameter `php.ini` (memory limit, upload size).
@@ -40,27 +41,31 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 - **Node.js & PM2 Process Manager**: Monitor utilisasi CPU/RAM per proses Node, status uptime, dan kontrol siklus hidup (start/stop/restart) aplikasi.
 - **Terminal Shell Nyata**: Eksekusi perintah bash/cmd sistem secara langsung dengan timeout guard dan limit output 64KB (menggantikan mode simulasi mock).
 - **SSL Let's Encrypt Auto-Renew Button**: Pemeriksaan masa aktif sertifikat SSL semua domain dan pemicu pembaruan massal secara 1-klik di panel situs.
-- **4 Circular Radial Gauges**: Visualisasi status beban (*Load Average*), utilisasi CPU, konsumsi RAM, dan sisa kapasitas penyimpanan Disk (`/`) dilengkapi *ambient glow* dan peringatan ambang batas otomatis (>= 85%).
-- **Streaming Metrik SSE (1 Detik)**: Data metrik dikirim via *Server-Sent Events* dengan penyimpanan riwayat *Ring Buffer* 300 titik tanpa membebani database.
-- **Canvas Realtime Wave Chart**: Grafik performa bergradasi warna dinamis, deteksi metrik puncak (*Peak Stats*), throughput jaringan (Download / Upload), serta crosshair interaktif.
-- **Top Bar Utilitas**: Indikator status Live dengan animasi *two-layer pulse*, IP *click-to-copy*, dan toggle *eye mask* untuk privasi screenshot.
+- **4 Circular Radial Gauges**: Visualisasi status beban (_Load Average_), utilisasi CPU, konsumsi RAM, dan sisa kapasitas penyimpanan Disk (`/`) dilengkapi _ambient glow_ dan peringatan ambang batas otomatis (>= 85%).
+- **Streaming Metrik SSE (1 Detik)**: Data metrik dikirim via _Server-Sent Events_ dengan penyimpanan riwayat _Ring Buffer_ 300 titik tanpa membebani database.
+- **Canvas Realtime Wave Chart**: Grafik performa bergradasi warna dinamis, deteksi metrik puncak (_Peak Stats_), throughput jaringan (Download / Upload), serta crosshair interaktif.
+- **Top Bar Utilitas**: Indikator status Live dengan animasi _two-layer pulse_, IP _click-to-copy_, dan toggle _eye mask_ untuk privasi screenshot.
 
 ### 2. Manajemen Website & Reverse Proxy
-- Pembuatan dan pengelolaan *Virtual Host* Nginx (Reverse Proxy, Static HTML/JS, dan PHP-FPM).
-- Pengaturan SSL/TLS otomatis via Let's Encrypt (protokol ACME HTTP-01) dengan rotasi otomatis.
-- Validasi konfigurasi atomik (`nginx -t`) sebelum commit perubahan konfigurasi untuk mencegah *downtime*.
+
+- Pembuatan dan pengelolaan _Virtual Host_ Nginx (Reverse Proxy, Static HTML/JS, dan PHP-FPM).
+- Pengaturan SSL/TLS otomatis via Let's Encrypt (**ACME HTTP-01** maupun **ACME DNS-01 Wildcard `*.domain`** berbasis `go-acme/lego v4` tanpa port 80 dengan 5 DNS provider ringan: Cloudflare auto-reuse Cloudflare Hub, DigitalOcean, Porkbun, Namecheap, DuckDNS) serta **Auto-SSL Panel Hot-Reload** tanpa restart.
+- Validasi konfigurasi atomik (`nginx -t`) sebelum commit perubahan konfigurasi untuk mencegah _downtime_.
 
 ### 3. Manajemen Layanan (Services)
+
 - Kontrol status layanan (Start, Stop, Restart) langsung dari dashboard.
-- Dilengkapi sistem *allowlist* keamanan untuk unit penting: `fikpanel`, `nginx`, `sshd`, `mariadb`, `redis`, dan `php-fpm`.
+- Dilengkapi sistem _allowlist_ keamanan untuk unit penting: `fikpanel`, `nginx`, `sshd`, `mariadb`, `redis`, dan `php-fpm`.
 
 ### 4. Keamanan Berlapis & Audit Trail
-- **Zero CGO SQLite WAL**: Penyimpanan lokal berkecepatan tinggi dengan mode *Write-Ahead Logging*.
+
+- **Zero CGO SQLite WAL**: Penyimpanan lokal berkecepatan tinggi dengan mode _Write-Ahead Logging_.
 - **Argon2id Password Hashing**: Standar industri paling aman terhadap serangan brute-force.
 - **Proteksi Mutasi CSRF**: Seluruh permintaan mutasi HTTP diwajibkan menyertakan header keamanan `X-Panel-Request: 1`.
 - **Audit Log Terperinci**: Riwayat aktivitas administratif tersimpan rapi dengan retensi otomatis 90 hari.
 
 ### 5. Web Terminal PTY, CodeMirror 6 IDE & Built-in MCP Server (Google Antigravity)
+
 - **Built-in MCP Server (`/mcp` Streamable HTTP):** Hubungkan **Google Antigravity** langsung ke server FikPanel dengan **Bearer Token 256-bit** ber-scope (**18 Read-Only** diagnostic tools + **8 Operator** tools non-destruktif termasuk Vhost, Log Laravel/App, PM2, Docker, Port Listening, Database metadata, Git Pull Situs, WAF IP Block, serta **3 MCP Runbook Prompts**), penyensoran rahasia log otomatis, audit trail lengkap, dan generator `mcp_config.json` 1-klik di Pengaturan.
 - **Built-in Uptime & SSL Monitor + Public Status Page (`/status`):** Pemantauan HTTP/HTTPS/TCP terjadwal dengan strip 30-bar heartbeat, peringatan kedaluwarsa SSL, notifikasi webhook Telegram/Discord/Custom JSON, impor situs 1-klik, dan halaman status publik mandiri tanpa login.
 - **Web Terminal PTY WebGL & Remote SSH Pool:** Terminal interaktif `xterm.js` berakselerasi GPU WebGL (`@xterm/addon-webgl`), mode Console SSE dengan tombol Stop, pencarian & export log, serta manajer remote SSH terenkripsi **AES-256-GCM** dengan verifikasi host **TOFU**.
@@ -73,13 +78,13 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 
 ## Arsitektur & Teknologi
 
-| Lapisan | Teknologi | Peran & Alasan Pemilihan |
-|---|---|---|
-| **Backend Core** | **Go (Golang 1.26+)** | Stdlib-first, *cross-compile* `CGO_ENABLED=0`, pemakaian RAM idle 8–15 MB, konkurensi goroutine efisien, MCP SDK resmi |
-| **Frontend UI** | **Svelte 5 (Runes)** | Reaktivitas berbasis `$state` dan `$derived`, ukuran bundel ultra-ringan (~90 KB), zero virtual DOM overhead |
-| **Database** | **SQLite (modernc.org/sqlite)** | Pure-Go tanpa CGO, binary tetap 100% static, bebas dependensi eksternal, performa tinggi dengan WAL mode |
-| **Aset Web** | **Go `embed.FS`** | Seluruh aset HTML, CSS, dan JS dikompilasi dan disematkan langsung ke dalam satu biner `fikpanel` |
-| **Styling & Ikon** | **CSS3 Bento + RemixIcon v4** | Desain bertema dark modern (Linear/Coolify aesthetic), bebas emoji, ramah aksesibilitas |
+| Lapisan            | Teknologi                       | Peran & Alasan Pemilihan                                                                                               |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Backend Core**   | **Go (Golang 1.26+)**           | Stdlib-first, _cross-compile_ `CGO_ENABLED=0`, pemakaian RAM idle 8–15 MB, konkurensi goroutine efisien, MCP SDK resmi |
+| **Frontend UI**    | **Svelte 5 (Runes)**            | Reaktivitas berbasis `$state` dan `$derived`, ukuran bundel ultra-ringan (~90 KB), zero virtual DOM overhead           |
+| **Database**       | **SQLite (modernc.org/sqlite)** | Pure-Go tanpa CGO, binary tetap 100% static, bebas dependensi eksternal, performa tinggi dengan WAL mode               |
+| **Aset Web**       | **Go `embed.FS`**               | Seluruh aset HTML, CSS, dan JS dikompilasi dan disematkan langsung ke dalam satu biner `fikpanel`                      |
+| **Styling & Ikon** | **CSS3 Bento + RemixIcon v4**   | Desain bertema dark modern (Linear/Coolify aesthetic), bebas emoji, ramah aksesibilitas                                |
 
 ---
 
@@ -114,16 +119,19 @@ fikpanel/
 ## Panduan Memulai (Development & Build)
 
 ### Prasyarat
+
 1. **Go 1.26** atau versi lebih baru.
 2. **Node.js 18+** & **npm** (untuk kompilasi frontend).
 
 ### 1. Klon Repositori
+
 ```bash
 git clone https://github.com/FikFikk/fikpanel.git
 cd fikpanel
 ```
 
 ### 2. Kompilasi Aset Frontend (Svelte 5)
+
 ```bash
 cd web
 npm install
@@ -132,17 +140,21 @@ cd ..
 ```
 
 ### 3. Jalankan Server dalam Mode Development
+
 ```bash
 go run ./cmd/fikpanel serve --dev --port 1405
 ```
+
 > Server akan berjalan di `http://127.0.0.1:1405` (mode `--dev` memakai HTTP biasa).
 > Pada mode `--dev`, akun pengujian lokal dibuat otomatis:
+>
 > - **Username**: `root`
-> - **Password**: *(kosongkan / tekan Masuk)*
+> - **Password**: _(kosongkan / tekan Masuk)_
 >
 > **Jangan pernah memakai `--dev` di server publik.** Tanpa `--dev` (mode produksi), FikPanel membuat akun `root` dengan kata sandi acak saat start pertama, mengganti kata sandi kosong yang tersisa dari instalasi lama, dan melayani HTTPS.
 
 ### 4. Build Single Binary Produksi
+
 ```bash
 # Untuk Windows
 go build -ldflags="-s -w" -o bin/fikpanel.exe ./cmd/fikpanel
@@ -156,6 +168,7 @@ GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/fikpanel ./cmd/fikpanel
 Setiap kali Anda selesai mengembangkan fitur atau menu baru dan ingin merilis versi terbaru ke publik/server:
 
 #### Opsi A: Menggunakan Git Tag (Rekomendasi Developer)
+
 ```bash
 # 1. Pastikan semua perubahan sudah di-commit dan dipush ke branch main
 git add .
@@ -170,6 +183,7 @@ git push origin main --follow-tags
 ```
 
 #### Opsi B: Menggunakan Web GitHub (Tombol "Run workflow")
+
 1. Buka repositori Anda di GitHub > tab **Actions**.
 2. Pilih workflow **Release FikPanel Binaries** di bilah kiri.
 3. Klik tombol biru **Run workflow** di sebelah kanan.
@@ -185,29 +199,34 @@ git push origin main --follow-tags
 FikPanel dapat langsung dipasang di server Linux Anda (Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS, RHEL) hanya dengan satu baris perintah:
 
 ### 1. Metode Utama (Tersedia Sekarang via GitHub CDN)
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/install.sh | sudo bash
 ```
 
-### 2. Metode Domain Kustom (*Coming Soon*)
+### 2. Metode Domain Kustom (_Coming Soon_)
+
 ```bash
 # Segera hadir melalui jalur domain resmi:
 curl -sSL https://panel.fikfikk.my.id/install.sh | sudo bash
 ```
 
 > **Catatan Instalasi:**
+>
 > - Installer secara otomatis melakukan **pre-deteksi software** pada host server.
-> - Jika server sudah memiliki proyek berjalan (Nginx, MySQL, PHP, Docker), konfigurasi dan database yang ada **TIDAK AKAN DITIMPA** (fitur *smart-skip*).
+> - Jika server sudah memiliki proyek berjalan (Nginx, MySQL, PHP, Docker), konfigurasi dan database yang ada **TIDAK AKAN DITIMPA** (fitur _smart-skip_).
 > - Komponen FikPanel mandiri dan menggunakan database embedded SQLite. Software website seperti MySQL, PHP, Docker, dan Fail2ban bersifat opsional dan dapat dipasang belakangan dengan 1-klik dari Web Panel.
 > - Akses Web Panel setelah instalasi: **`https://IP_SERVER:1405`**. Alamat `http://` otomatis dialihkan ke HTTPS.
 
 ### Login Pertama & Keamanan Akun
+
 - Installer menampilkan **username `root` dan kata sandi acak 20 karakter** di akhir instalasi. Kata sandi yang sama tersimpan di `/opt/fikpanel/data/admin-credentials.txt` (izin `0600`, hanya root): `sudo cat /opt/fikpanel/data/admin-credentials.txt`.
 - Ganti kata sandi di menu **Pengaturan** setelah login (minimal 8 karakter). Berkas kredensial di atas otomatis dihapus dan sesi login di perangkat lain dikeluarkan.
 - Lupa kata sandi: `sudo fikpanel reset-password` (kata sandi baru acak ditampilkan sekali, semua sesi akun tersebut dikeluarkan). Opsi: `--user <nama>`, `--password <sandi>`.
 - **Server lama (≤ v0.3.19)** yang akun `root`-nya masih tanpa kata sandi: saat diperbarui, kata sandi kosong diganti otomatis dengan kata sandi acak (lihat berkas kredensial di atas) dan semua sesi lama dicabut.
 
 ### HTTPS Panel
+
 - Panel melayani HTTPS di port `1405` dengan sertifikat **self-signed** yang dibuat otomatis (`/opt/fikpanel/data/tls/panel.crt` + `panel.key`, diperbarui otomatis sebelum kedaluwarsa). Browser menampilkan peringatan sertifikat saat pertama dibuka; sidik jari SHA-256 sertifikat tercatat di `journalctl -u fikpanel`.
 - Sertifikat sendiri (misalnya Let's Encrypt untuk `panel.domain-anda.com`) cukup ditimpa ke dua berkas tersebut; dimuat ulang otomatis dalam ±30 detik tanpa restart, dan tidak pernah ditimpa FikPanel.
 - HTTP biasa dari `127.0.0.1` tetap dilayani (reverse proxy Nginx / Cloudflare Tunnel di host yang sama). Untuk mematikan TLS sepenuhnya, tambahkan `--tls=off` pada `ExecStart` di `fikpanel.service`.
@@ -219,6 +238,7 @@ curl -sSL https://panel.fikfikk.my.id/install.sh | sudo bash
 Pembaruan hanya mengganti biner panel. Website, virtual host Nginx, PHP, MySQL, dan container tetap berjalan; yang di-restart hanya layanan `fikpanel` (panel tidak dapat diakses beberapa detik).
 
 ### 1. Auto-Update Terjadwal (Default)
+
 Instalasi baru (dan server yang sudah sekali diperbarui ke versi dengan updater baru) otomatis memeriksa rilis stabil baru **setiap jam** (dengan jeda acak hingga 30 menit agar tidak semua server update bersamaan) melalui `fikpanel-autoupdate.timer`.
 
 ```bash
@@ -226,9 +246,11 @@ sudo fikpanel auto-update status    # status timer + hasil pembaruan terakhir
 sudo fikpanel auto-update disable   # matikan (tetap mati walaupun panel diperbarui)
 sudo fikpanel auto-update enable    # nyalakan kembali
 ```
+
 Auto-update tidak menyalakan layanan yang sengaja dihentikan admin, dan tidak mencoba ulang rilis yang pernah gagal health check sampai rilis berikutnya terbit.
 
 ### 2. Pembaruan Manual
+
 ```bash
 sudo fikpanel update            # ke rilis stabil terbaru
 sudo fikpanel update v0.3.18    # upgrade/downgrade ke versi tertentu
@@ -236,12 +258,15 @@ sudo fikpanel update --status   # hasil pembaruan terakhir + log
 ```
 
 ### 3. Pemulihan / Server Lama (≤ v0.3.19)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/update.sh | sudo bash
 ```
+
 Skrip ini hanya mengunduh biner rilis terbaru, memverifikasi SHA-256, lalu menyerahkan proses ke updater bawaan biner tersebut. Server lama yang menjalankan `fikpanel update` otomatis melewati jalur ini, sehingga cukup satu kali pembaruan manual; setelah itu auto-update aktif.
 
 > **Alur pembaruan:**
+>
 > 1. Tentukan tag rilis target; jika sudah terpasang dan layanan sudah menjalankannya, tidak ada unduhan maupun restart.
 > 2. Unduh paket dan `SHA256SUMS.txt` dari tag yang sama; tolak bila checksum tidak cocok.
 > 3. Jalankan `version` pada biner baru dan pastikan sesuai tag (menangkap paket rusak / arsitektur salah).
@@ -258,16 +283,19 @@ Skrip ini hanya mengunduh biner rilis terbaru, memverifikasi SHA-256, lalu menye
 Jika Anda ingin mencopot FikPanel sepenuhnya dari server:
 
 ### 1. Pencopotan Cepat via One-Line Command
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/FikFikk/fikpanel/main/scripts/uninstall.sh | sudo bash
 ```
 
 ### 2. Melalui Skrip Lokal di Server
+
 ```bash
 sudo /opt/fikpanel/scripts/uninstall.sh
 ```
 
 > **Opsi Uninstaller:**
+>
 > - `-y` atau `--yes`: Melewati konfirmasi interaktif.
 > - `--full`: Mencopot FikPanel sekaligus membersihkan paket stack (Nginx, MySQL, PHP) dari server.
 
@@ -328,12 +356,14 @@ Contoh Penggunaan:
 ---
 
 ## Dokumentasi Lengkap
+
 - [Dokumentasi Logika Bisnis & Siklus Hidup Entitas (documentation.md)](./documentation.md)
 - [Spesifikasi REST API & Tugas Terjadwal (documentation-api.md)](./documentation-api.md)
 
 ---
 
 ## Lisensi & Perlindungan Hak Cipta
+
 Didistribusikan di bawah lisensi **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
 Hak Cipta (C) 2026 **FikFikk (Fikri)**. Seluruh hak cipta dilindungi undang-undang.
 

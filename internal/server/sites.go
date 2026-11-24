@@ -805,12 +805,16 @@ func (s *Server) handleSiteSSL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Enabled    bool `json:"enabled"`
-		ForceHTTPS bool `json:"force_https"`
-		HSTS       bool `json:"hsts"`
-		Issue      bool `json:"issue"`
-		SkipDNS    bool `json:"skip_dns"`
-		Cloudflare bool `json:"cloudflare"`
+		Enabled         bool              `json:"enabled"`
+		ForceHTTPS      bool              `json:"force_https"`
+		HSTS            bool              `json:"hsts"`
+		Issue           bool              `json:"issue"`
+		SkipDNS         bool              `json:"skip_dns"`
+		Cloudflare      bool              `json:"cloudflare"`
+		ChallengeType   string            `json:"challenge_type"`
+		DNSProvider     string            `json:"dns_provider"`
+		IncludeWildcard bool              `json:"include_wildcard"`
+		DNSCredentials  map[string]string `json:"dns_credentials"`
 	}
 	if !decodeNginxBody(w, r, &req) {
 		return
@@ -887,7 +891,14 @@ func (s *Server) handleSiteSSL(w http.ResponseWriter, r *http.Request) {
 			uid = &u.ID
 		}
 		domain := site.Domain
-		err := s.sites.IssueSSL(r.Context(), id, req.SkipDNS, func(ok bool, msg string) {
+		opts := sites.IssueOptions{
+			SkipDNS:         req.SkipDNS,
+			ChallengeType:   req.ChallengeType,
+			DNSProvider:     req.DNSProvider,
+			IncludeWildcard: req.IncludeWildcard,
+			Credentials:     req.DNSCredentials,
+		}
+		err := s.sites.IssueSSLWithOptions(r.Context(), id, opts, func(ok bool, msg string) {
 			_ = s.store.RecordAudit(s.bgCtx, "user", "ssl.issue", domain, ok, msg, uid)
 		})
 		if err != nil {

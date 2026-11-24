@@ -57,8 +57,19 @@ func (m *Manager) setJob(siteID int64, fn func(j *SSLJob)) {
 	m.jobs[siteID] = j
 }
 
-// IssueSSL memvalidasi prasyarat lalu memulai job penerbitan sertifikat di background
+// IssueSSL memvalidasi prasyarat lalu memulai job penerbitan sertifikat (memakai opsi DNS-01 tersimpan bila ada)
 func (m *Manager) IssueSSL(ctx context.Context, siteID int64, skipDNS bool, onDone func(ok bool, msg string)) error {
+	opts := IssueOptions{SkipDNS: skipDNS, ChallengeType: "http01"}
+	if existingCert, err := m.store.GetCertificate(ctx, siteID); err == nil && existingCert != nil && existingCert.ChallengeType == "dns01" && existingCert.DNSProvider != "" {
+		opts.ChallengeType = "dns01"
+		opts.DNSProvider = existingCert.DNSProvider
+		opts.SkipDNS = true
+	}
+	return m.IssueSSLWithOptions(ctx, siteID, opts, onDone)
+}
+
+// IssueSSLWithOptions memvalidasi prasyarat HTTP-01 atau DNS-01 (Wildcard via go-acme/lego) lalu menjalankan job di background
+func (m *Manager) IssueSSLWithOptions(ctx context.Context, siteID int64, opts IssueOptions, onDone func(ok bool, msg string)) error {
 	site, err := m.store.GetSite(ctx, siteID)
 	if err != nil {
 		return err
@@ -66,15 +77,42 @@ func (m *Manager) IssueSSL(ctx context.Context, siteID int64, skipDNS bool, onDo
 	if site.Enabled != 1 {
 		return &ValidationError{Msg: "aktifkan situs terlebih dahulu sebelum menerbitkan SSL"}
 	}
-	domains := AllDomains(site)
+
+	chType := strings.ToLower(strings.TrimSpace(opts.ChallengeType))
+	if chType != "dns01" {
+		chType = "http01"
+	}
+	opts.ChallengeType = chType
+	opts.DNSProvider = strings.ToLower(strings.TrimSpace(opts.DNSProvider))
+
+	domains := expandDomainsWithWildcard(AllDomains(site), chType == "dns01" && opts.IncludeWildcard)
+	hasWildcard := false
 	for _, d := range domains {
 		if strings.HasPrefix(d, "*.") {
-			return &ValidationError{Msg: "domain wildcard membutuhkan validasi DNS-01 yang belum didukung; hapus alias " + d + " dulu"}
+			hasWildcard = true
+			break
 		}
 	}
 
-	// Let's Encrypt HTTP-01 hanya berhasil bila semua domain sudah mengarah ke server ini
-	if !skipDNS && !m.mock {
+	if hasWildcard && chType != "dns01" {
+		return &ValidationError{Msg: "domain wildcard (*.) wajib menggunakan metode tantangan DNS-01 (go-acme/lego)"}
+	}
+
+	if chType == "dns01" {
+		if opts.DNSProvider == "" {
+			opts.DNSProvider = "cloudflare"
+		}
+		// Validasi ketersediaan kredensial DNS provider di awal agar feedback cepat sebelum masuk background job
+		creds, cErr := m.resolveDNSCredentials(ctx, opts.DNSProvider, opts.Credentials)
+		if cErr != nil {
+			return &ValidationError{Msg: cErr.Error()}
+		}
+		if _, pErr := buildLegoDNSProvider(opts.DNSProvider, creds); pErr != nil {
+			return &ValidationError{Msg: pErr.Error()}
+		}
+		opts.Credentials = creds
+	} else if !opts.SkipDNS && !m.mock {
+		// Let's Encrypt HTTP-01 hanya berhasil bila semua domain sudah mengarah ke server ini
 		results, _ := m.CheckDNS(ctx, domains)
 		var bad []string
 		for _, r := range results {
@@ -95,22 +133,34 @@ func (m *Manager) IssueSSL(ctx context.Context, siteID int64, skipDNS bool, onDo
 	m.jobs[siteID] = SSLJob{Running: true, Step: "Memulai", StartedAt: time.Now().Unix()}
 	m.jobsMu.Unlock()
 
-	_ = m.store.UpsertCertificate(ctx, &store.Certificate{SiteID: siteID, Status: "pending", Domains: "[]"})
+	_ = m.store.UpsertCertificate(ctx, &store.Certificate{
+		SiteID:        siteID,
+		Status:        "pending",
+		Domains:       "[]",
+		ChallengeType: opts.ChallengeType,
+		DNSProvider:   opts.DNSProvider,
+	})
 
 	// Job dilepas dari context request supaya tetap berjalan setelah respons HTTP dikirim
-	go m.runIssue(site, domains, onDone)
+	go m.runIssue(site, domains, opts, onDone)
 	return nil
 }
 
 // runIssue mengeksekusi penerbitan, menyimpan metadata, dan menerapkan vhost HTTPS
-func (m *Manager) runIssue(site *store.Site, domains []string, onDone func(ok bool, msg string)) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+func (m *Manager) runIssue(site *store.Site, domains []string, opts IssueOptions, onDone func(ok bool, msg string)) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 
 	var cert *store.Certificate
 	var err error
 	if m.mock {
 		cert, err = m.simulateIssue(ctx, site.ID, domains)
+		if cert != nil {
+			cert.ChallengeType = opts.ChallengeType
+			cert.DNSProvider = opts.DNSProvider
+		}
+	} else if opts.ChallengeType == "dns01" {
+		cert, err = m.acmeIssueDNS01(ctx, site, domains, opts)
 	} else {
 		cert, err = m.acmeIssue(ctx, site, domains)
 	}
@@ -133,7 +183,12 @@ func (m *Manager) runIssue(site *store.Site, domains []string, onDone func(ok bo
 	if err != nil {
 		msg = "Penerbitan SSL gagal: " + err.Error()
 		_ = m.store.UpsertCertificate(dbCtx, &store.Certificate{
-			SiteID: site.ID, Status: "failed", Domains: "[]", LastError: err.Error(),
+			SiteID:        site.ID,
+			Status:        "failed",
+			Domains:       "[]",
+			LastError:     err.Error(),
+			ChallengeType: opts.ChallengeType,
+			DNSProvider:   opts.DNSProvider,
 		})
 	}
 	m.setJob(site.ID, func(j *SSLJob) {
