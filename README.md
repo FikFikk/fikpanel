@@ -6,9 +6,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go Version" />
+  <img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go Version" />
   <img src="https://img.shields.io/badge/Svelte-5.0_(Runes)-FF3E00?style=flat&logo=svelte&logoColor=white" alt="Svelte 5" />
   <img src="https://img.shields.io/badge/Database-SQLite_WAL-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite WAL" />
+  <img src="https://img.shields.io/badge/MCP-Antigravity_Ready-8b5cf6?style=flat" alt="MCP Server" />
   <img src="https://img.shields.io/badge/Architecture-Single_Binary-10b981?style=flat" alt="Single Binary" />
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" />
 </p>
@@ -59,9 +60,13 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 - **Proteksi Mutasi CSRF**: Seluruh permintaan mutasi HTTP diwajibkan menyertakan header keamanan `X-Panel-Request: 1`.
 - **Audit Log Terperinci**: Riwayat aktivitas administratif tersimpan rapi dengan retensi otomatis 90 hari.
 
-### 5. Terminal Web & AI Copilot
-- **Terminal Web Terintegrasi**: Eksekusi perintah sistem secara cepat dengan proteksi sanitasi perintah.
-- **AI Copilot Diagnostik**: Asisten cerdas untuk mendiagnosa anomali server, konsumsi resource tinggi, dan saran pemecahan masalah.
+### 5. Web Terminal PTY, CodeMirror 6 IDE & Built-in MCP Server (Google Antigravity)
+- **Built-in MCP Server (`/mcp` Streamable HTTP):** Hubungkan **Google Antigravity** langsung ke server FikPanel dengan **Bearer Token 256-bit** ber-scope (`Read-Only` 12 diagnostic tools atau `Operator` 17 tools termasuk Docker, Nginx, Systemd, Uptime & WAF), penyensoran rahasia log otomatis, audit trail lengkap, dan generator `mcp_config.json` 1-klik di Pengaturan.
+- **Built-in Uptime & SSL Monitor + Public Status Page (`/status`):** Pemantauan HTTP/HTTPS/TCP terjadwal dengan strip 30-bar heartbeat, peringatan kedaluwarsa SSL, notifikasi webhook Telegram/Discord/Custom JSON, impor situs 1-klik, dan halaman status publik mandiri tanpa login.
+- **Web Terminal PTY WebGL & Remote SSH Pool:** Terminal interaktif `xterm.js` berakselerasi GPU WebGL (`@xterm/addon-webgl`), mode Console SSE dengan tombol Stop, pencarian & export log, serta manajer remote SSH terenkripsi **AES-256-GCM** dengan verifikasi host **TOFU**.
+- **CodeMirror 6 IDE Editor:** Editor kode bertema design token (17+ bahasa: Nginx, YAML, JSON, PHP, JS/TS, HTML, SQL, Dockerfile, Shell, INI) di File Manager, Nginx Manager, Vhost/Rewrite, Docker Compose, Kubernetes, dan PHP Manager.
+- **Keamanan & Personalisasi Modern:** **FIDO2 Passkeys / WebAuthn** (Windows Hello PIN, QR HP, Biometrik), **2FA TOTP** dengan kode pemulihan, **Custom Panel TLS Hot-Reload**, **IP/CIDR Allowlist anti-lockout**, **Appearance & Branding Studio** (7 palet + Custom Hex + multi-bahasa ID/EN), **Actionable `Ctrl+K` Command Palette**, serta pengiriman aset pra-kompresi **Brotli (`.br`) + Gzip** dengan `immutable` caching.
+- **AI Copilot Diagnostik:** Asisten AI internal (OpenAI-compatible, Anthropic, Gemini) dengan fallback diagnostik lokal offline.
 
 ---
 
@@ -69,7 +74,7 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 
 | Lapisan | Teknologi | Peran & Alasan Pemilihan |
 |---|---|---|
-| **Backend Core** | **Go (Golang 1.22+)** | Stdlib-first, *cross-compile* instan, pemakaian RAM idle 8–15 MB, konkurensi goroutine efisien |
+| **Backend Core** | **Go (Golang 1.26+)** | Stdlib-first, *cross-compile* `CGO_ENABLED=0`, pemakaian RAM idle 8–15 MB, konkurensi goroutine efisien, MCP SDK resmi |
 | **Frontend UI** | **Svelte 5 (Runes)** | Reaktivitas berbasis `$state` dan `$derived`, ukuran bundel ultra-ringan (~90 KB), zero virtual DOM overhead |
 | **Database** | **SQLite (modernc.org/sqlite)** | Pure-Go tanpa CGO, binary tetap 100% static, bebas dependensi eksternal, performa tinggi dengan WAL mode |
 | **Aset Web** | **Go `embed.FS`** | Seluruh aset HTML, CSS, dan JS dikompilasi dan disematkan langsung ke dalam satu biner `fikpanel` |
@@ -108,7 +113,7 @@ fikpanel/
 ## Panduan Memulai (Development & Build)
 
 ### Prasyarat
-1. **Go 1.22** atau versi lebih baru.
+1. **Go 1.26** atau versi lebih baru.
 2. **Node.js 18+** & **npm** (untuk kompilasi frontend).
 
 ### 1. Klon Repositori
@@ -156,11 +161,11 @@ git add .
 git commit -m "feat: deskripsi pembaruan atau fitur baru"
 git push origin main
 
-# 2. Buat tag versi baru (gunakan format vX.Y.Z, misal: v0.3.12)
-git tag v0.3.12
+# 2. Buat tag versi baru (gunakan format vX.Y.Z, misal: v0.6.0)
+git tag -a v0.6.0 -m "Release v0.6.0"
 
 # 3. Push tag ke GitHub (otomatis memicu build & release di GitHub Actions)
-git push origin v0.3.12
+git push origin main --follow-tags
 ```
 
 #### Opsi B: Menggunakan Web GitHub (Tombol "Run workflow")

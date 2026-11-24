@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.5.0", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.0", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3261,6 +3261,60 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Request Body | Tidak ada |
 | Response | HTTP 200 `text/html; charset=utf-8` (halaman HTML mandiri bertema gelap dengan meta auto-refresh 30 detik dan strip 30-heartbeat) |
 | Notes | Halaman status publik mandiri bergaya statuspage yang menampilkan nama brand white-label panel, status agregat (`operational`/`degraded`/`outage`), sisa SSL, dan riwayat heartbeat. |
+
+---
+
+### 1.20 Built-in MCP Server (Google Antigravity) & Token Akses API
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /mcp`, `GET /mcp`, `DELETE /mcp` |
+| Auth Required | Yes (Header `Authorization: Bearer fkp_<token>` atau `X-API-Key`) |
+| Headers | `Authorization: Bearer fkp_...`, `Content-Type: application/json`, `Accept: application/json, text/event-stream`, `Mcp-Session-Id` (otomatis oleh klien MCP) |
+| Query Params | Tidak ada |
+| Request Body | JSON-RPC 2.0 MCP Streamable HTTP (`initialize`, `tools/list`, `tools/call`) |
+| Response | HTTP 200 JSON / SSE Streamable HTTP sesuai spesifikasi MCP 2025-03-26; HTTP 401 bila token tidak valid/dicabut; HTTP 429 rate-limit gagal auth |
+| Notes | Mengekspos 12 tools Read-Only (`server_overview`, `list_sites`, `read_site_logs`, `nginx_status_and_logs`, `list_services`, `read_service_logs`, `list_uptime_monitors`, `get_waf_summary`, `list_cron_jobs`, `list_audit_logs`, `list_docker_containers`, `read_docker_logs`) untuk scope `readonly`, dan +5 tools tambahan (`restart_service`, `restart_docker_container`, `test_and_reload_nginx`, `check_uptime_now`, `check_site_dns`) untuk scope `operator`. `GET /mcp` menonaktifkan `WriteTimeout` agar stream SSE panjang tidak terputus, seluruh output log disensor via `ai.RedactSecrets`, dan setiap panggilan tercatat di Audit Log. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/mcp/tokens` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "endpoint": "/mcp", "transport": "streamable-http", "protocol": "MCP 2025-03-26", "tokens": [...], "tools": [...]}` |
+| Notes | Mengembalikan daftar token MCP terdaftar (hanya prefix aman, tanpa nilai rahasia) beserta katalog 14 tools MCP. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/mcp/tokens` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string, wajib), `scope` (`readonly` atau `operator`) |
+| Response | HTTP 201 `{"ok": true, "token": "fkp_...", "item": {...}, "message": "..."}` |
+| Notes | Menerbitkan token 256-bit baru (`token` mentah hanya dikembalikan satu kali) dan mencatat audit `mcp.token_create`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/mcp/tokens/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `name` (string), `scope` (`readonly`/`operator`), `enabled` (bool) |
+| Response | HTTP 200 `{"ok": true, "message": "Token MCP diperbarui"}` |
+| Notes | Mengubah nama, menurunkan/menaikkan scope, atau menjeda sementara token MCP secara real-time. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/mcp/tokens/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Token MCP berhasil dicabut"}` |
+| Notes | Menghapus token permanen dari SQLite sehingga sesi MCP aktif langsung ditolak HTTP 401. |
 
 ---
 

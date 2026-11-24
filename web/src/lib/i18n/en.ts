@@ -110,6 +110,7 @@ export const dictEN: Record<TranslationKey, string> = {
   'settings.tab.network': 'HTTPS & Access',
   'settings.tab.system': 'System & Updates',
   'settings.tab.webhooks': 'Webhooks & Alerts',
+  'settings.tab.mcp': 'MCP (Antigravity)',
   'settings.tab.backup': 'Backup & Migration',
 
   // Tab A + G
@@ -283,6 +284,34 @@ export const dictEN: Record<TranslationKey, string> = {
   'settings.backup.migrate_desc': 'Quickly clone theme, branding, language, Terminal command shortcuts, and webhook rules to a new VPS (passwords and private keys are excluded).',
   'settings.backup.export_btn': 'Export Profile (.json)',
   'settings.backup.import_btn': 'Import Profile (.json)',
+
+  // Tab G: MCP Server & Google Antigravity Integration
+  'settings.mcp.hero_title': 'FikPanel MCP Server for Google Antigravity',
+  'settings.mcp.hero_desc': 'Connect Google Antigravity directly to your FikPanel server via standard Streamable HTTP (/mcp) to inspect Nginx/site logs, check Uptime & SSL, review WAF incidents, and manage audited services straight from your IDE.',
+  'settings.mcp.ready_badge': 'Ready',
+  'settings.mcp.coming_soon': 'Coming Soon',
+  'settings.mcp.endpoint_label': 'Streamable HTTP MCP Endpoint',
+  'settings.mcp.config_title': 'Ready-to-Paste Config (mcp_config.json)',
+  'settings.mcp.config_path_hint': 'Save to ~/.gemini/config/mcp_config.json (Global) or .agents/mcp_config.json (Workspace), then open Additional Options (...) → MCP Servers in Antigravity.',
+  'settings.mcp.step_1': 'Create an MCP token below (choose Read-Only for safe diagnostics, or Operator to allow service/Docker restarts and Nginx reload).',
+  'settings.mcp.step_3': 'Start a chat in Google Antigravity and ask: "Check my FikPanel server health, active websites, Docker containers, and whether any Uptime monitor is down."',
+  'settings.mcp.copy_json': 'Copy Antigravity JSON',
+  'settings.mcp.self_signed_warn': 'Your panel is accessed over plain HTTP or a self-signed certificate. For reliable remote MCP connections in Antigravity, use a valid HTTPS domain or an SSH localhost tunnel.',
+  'settings.mcp.tokens_title': 'MCP Access Tokens (Bearer)',
+  'settings.mcp.tokens_desc': 'Issue scoped tokens per device/IDE. Raw tokens are displayed only once upon creation and every MCP tool call is recorded in the Audit Log.',
+  'settings.mcp.token_name': 'Client / Device Name',
+  'settings.mcp.token_name_placeholder': 'e.g. Antigravity Work Laptop',
+  'settings.mcp.token_scope': 'Permission Scope',
+  'settings.mcp.scope_readonly': 'Read-Only — Diagnostics, Metrics, Logs & Uptime (Recommended)',
+  'settings.mcp.scope_operator': 'Operator — Read-Only + Restart Service, Reload Nginx & Probe Uptime',
+  'settings.mcp.create_btn': '+ Create MCP Token',
+  'settings.mcp.new_token_title': 'New MCP Token Created — Copy It Now!',
+  'settings.mcp.new_token_desc': 'This token will not be shown again once you leave this page. The Antigravity JSON block above is already pre-filled with this token — just click Copy JSON.',
+  'settings.mcp.empty_tokens': 'No MCP tokens issued yet. Create your first token to connect Google Antigravity.',
+  'settings.mcp.calls': '{count} calls',
+  'settings.mcp.never_used': 'Never called yet',
+  'settings.mcp.tools_title': 'Available MCP Tool Catalog',
+  'settings.mcp.tools_desc': 'All log reads automatically redact passwords, tokens, and private keys (BR-04). No unrestricted shell or destructive delete tools are exposed.',
 
   // Dashboard (Home)
   'home.status_normal': 'Normal',

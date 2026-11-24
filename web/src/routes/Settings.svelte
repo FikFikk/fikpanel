@@ -33,7 +33,7 @@
 
   let { overview, onNotify }: Props = $props();
 
-  type SettingsTabId = 'appearance' | 'security' | 'network' | 'system' | 'webhooks' | 'backup';
+  type SettingsTabId = 'appearance' | 'security' | 'network' | 'system' | 'webhooks' | 'mcp' | 'backup';
   let activeTab = $state<SettingsTabId>('appearance');
 
   // ── State Preferensi Panel Terpadu (disimpan di SQLite settings) ──
@@ -258,6 +258,53 @@
   let importingConfig = $state(false);
   let importFileEl = $state<HTMLInputElement | null>(null);
 
+  // ── Tab G: MCP Server (Fokus Google Antigravity) ──
+  interface MCPTokenItem {
+    id: number;
+    name: string;
+    token_prefix: string;
+    scope: 'readonly' | 'operator' | string;
+    enabled: boolean;
+    call_count: number;
+    last_used_at: number;
+    last_used_ip: string;
+    created_at: number;
+  }
+  interface MCPToolItem {
+    name: string;
+    scope: 'readonly' | 'operator' | string;
+    title: string;
+    description: string;
+  }
+  let mcpTokens = $state<MCPTokenItem[]>([]);
+  let mcpTools = $state<MCPToolItem[]>([]);
+  let mcpNewName = $state('Google Antigravity');
+  let mcpNewScope = $state<'readonly' | 'operator'>('readonly');
+  let mcpCreating = $state(false);
+  let mcpPlainToken = $state('');
+  let mcpBusyId = $state<number | null>(null);
+
+  const mcpEndpointUrl = $derived(
+    typeof window !== 'undefined' ? `${window.location.origin}/mcp` : 'https://panel.domain.com/mcp'
+  );
+
+  const antigravityConfigJson = $derived(
+    JSON.stringify(
+      {
+        mcpServers: {
+          fikpanel: {
+            url: mcpEndpointUrl,
+            headers: {
+              Authorization: `Bearer ${mcpPlainToken || '<PASTE_FIKPANEL_MCP_TOKEN>'}`,
+            },
+          },
+        },
+      },
+      null,
+      2
+    )
+  );
+
   // ── Pemuatan Data Awal ──
   async function loadPreferences() {
     try {
@@ -351,12 +398,23 @@
     }
   }
 
+  async function loadMCP() {
+    try {
+      const res = await apiFetch<{ ok: boolean; tokens: MCPTokenItem[]; tools: MCPToolItem[] }>('/api/mcp/tokens');
+      mcpTokens = res?.tokens || [];
+      mcpTools = res?.tools || [];
+    } catch {
+      // Abaikan kesalahan pemuatan token MCP
+    }
+  }
+
   onMount(() => {
     loadPreferences();
     loadSecurityData();
     loadTLS();
     loadSystemAndUpdater();
     loadWebhooks();
+    loadMCP();
   });
 
   // ── Aksi Tab A + G: Live Preview & Simpan Tampilan / Bahasa ──
@@ -909,6 +967,72 @@
     }
   }
 
+  // ── Aksi Tab G: Manajemen Token MCP (Google Antigravity) ──
+  async function handleCreateMCPToken(e: SubmitEvent) {
+    e.preventDefault();
+    if (!mcpNewName.trim()) {
+      onNotify('Nama perangkat / klien MCP wajib diisi', 'warning');
+      return;
+    }
+    mcpCreating = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; token: string; message?: string }>('/api/mcp/tokens', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: mcpNewName.trim(),
+          scope: mcpNewScope,
+        }),
+      });
+      mcpPlainToken = res.token || '';
+      onNotify(res.message || 'Token MCP berhasil dibuat', 'success');
+      await loadMCP();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal membuat token MCP', 'error');
+    } finally {
+      mcpCreating = false;
+    }
+  }
+
+  async function handleToggleMCPToken(tok: MCPTokenItem) {
+    mcpBusyId = tok.id;
+    try {
+      await apiFetch(`/api/mcp/tokens/${tok.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: tok.name,
+          scope: tok.scope,
+          enabled: !tok.enabled,
+        }),
+      });
+      onNotify(tok.enabled ? `Token "${tok.name}" dijeda` : `Token "${tok.name}" diaktifkan kembali`, 'info');
+      await loadMCP();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal mengubah status token MCP', 'error');
+    } finally {
+      mcpBusyId = null;
+    }
+  }
+
+  async function handleDeleteMCPToken(tok: MCPTokenItem) {
+    const ok = await confirmDialog({
+      title: 'Cabut Token MCP?',
+      message: `Klien Antigravity yang memakai token "${tok.name}" (${tok.token_prefix}) akan langsung kehilangan akses ke /mcp.`,
+      confirmText: 'Cabut Token',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    mcpBusyId = tok.id;
+    try {
+      await apiFetch(`/api/mcp/tokens/${tok.id}`, { method: 'DELETE' });
+      onNotify(`Token "${tok.name}" berhasil dicabut`, 'success');
+      await loadMCP();
+    } catch (err: any) {
+      onNotify(err?.message || 'Gagal mencabut token MCP', 'error');
+    } finally {
+      mcpBusyId = null;
+    }
+  }
+
   // ── Aksi Tab F: Snapshot DB & Export/Import Profil JSON ──
   function triggerDownload(url: string) {
     const a = document.createElement('a');
@@ -989,6 +1113,7 @@
     { id: 'network', icon: 'ri-lock-2-line', key: 'settings.tab.network' },
     { id: 'system', icon: 'ri-cpu-line', key: 'settings.tab.system' },
     { id: 'webhooks', icon: 'ri-notification-3-line', key: 'settings.tab.webhooks' },
+    { id: 'mcp', icon: 'ri-plug-2-line', key: 'settings.tab.mcp' },
     { id: 'backup', icon: 'ri-database-2-line', key: 'settings.tab.backup' },
   ];
 </script>
@@ -1757,7 +1882,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.5.0'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.0'}</span>
                 </div>
               </div>
             </div>
@@ -2064,7 +2189,245 @@
           </div>
         </div>
 
-      <!-- ═══ TAB 6: BACKUP SNAPSHOT SQLITE & MIGRASI PROFIL JSON (F) ═══ -->
+      <!-- ═══ TAB 6: MCP SERVER & INTEGRASI GOOGLE ANTIGRAVITY ═══ -->
+      {:else if activeTab === 'mcp'}
+        <div class="card">
+          <div class="card__head">
+            <h3 class="card__title">
+              <i class="ri-plug-2-line" aria-hidden="true"></i> {t('settings.mcp.hero_title')}
+            </h3>
+            <div class="row-actions">
+              <span class="badge badge--info mono">Streamable HTTP</span>
+              <span class="badge badge--success">{t('settings.mcp.ready_badge')}</span>
+            </div>
+          </div>
+          <div class="card__body stack">
+            <p class="panel-desc">{t('settings.mcp.hero_desc')}</p>
+
+            <!-- Daftar klien MCP: fokus Google Antigravity, klien lain Coming Soon -->
+            <div class="mcp-clients-row">
+              <span class="mcp-client-pill mcp-client-pill--active">
+                <i class="ri-sparkling-2-fill" aria-hidden="true"></i>
+                Google Antigravity
+                <span class="mcp-client-pill__tag">{t('settings.mcp.ready_badge')}</span>
+              </span>
+              <span class="mcp-client-pill">
+                <i class="ri-terminal-window-line" aria-hidden="true"></i>
+                Cursor
+                <span class="mcp-client-pill__tag">{t('settings.mcp.coming_soon')}</span>
+              </span>
+              <span class="mcp-client-pill">
+                <i class="ri-chat-3-line" aria-hidden="true"></i>
+                Claude Desktop
+                <span class="mcp-client-pill__tag">{t('settings.mcp.coming_soon')}</span>
+              </span>
+              <span class="mcp-client-pill">
+                <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+                VS Code Copilot
+                <span class="mcp-client-pill__tag">{t('settings.mcp.coming_soon')}</span>
+              </span>
+            </div>
+
+            <!-- URL Endpoint MCP -->
+            <div class="field">
+              <span class="field__label">{t('settings.mcp.endpoint_label')}</span>
+              <div class="inline-action-row">
+                <input type="text" class="input mono" value={mcpEndpointUrl} readonly aria-label={t('settings.mcp.endpoint_label')} />
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--sm"
+                  onclick={() => copyQuick(mcpEndpointUrl, 'Endpoint MCP disalin')}
+                >
+                  <i class="ri-file-copy-line" aria-hidden="true"></i> {t('common.copy')}
+                </button>
+              </div>
+            </div>
+
+            {#if typeof window !== 'undefined' && (window.location.protocol !== 'https:' || tlsInfo?.self_signed)}
+              <div class="alert alert--warning">
+                <i class="ri-information-line" aria-hidden="true"></i>
+                <span>{t('settings.mcp.self_signed_warn')}</span>
+              </div>
+            {/if}
+
+            <!-- Blok konfigurasi mcp_config.json siap salin untuk Google Antigravity -->
+            <div class="mcp-snippet-box">
+              <div class="mcp-snippet-box__head">
+                <strong class="field__label">{t('settings.mcp.config_title')}</strong>
+                <button
+                  type="button"
+                  class="btn btn--primary btn--sm"
+                  onclick={() => copyQuick(antigravityConfigJson, 'Konfigurasi mcp_config.json Antigravity disalin')}
+                >
+                  <i class="ri-file-copy-line" aria-hidden="true"></i> {t('settings.mcp.copy_json')}
+                </button>
+              </div>
+              <pre class="mcp-code mono">{antigravityConfigJson}</pre>
+              <ol class="mcp-steps">
+                <li>{t('settings.mcp.step_1')}</li>
+                <li>{t('settings.mcp.config_path_hint')}</li>
+                <li>{t('settings.mcp.step_3')}</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kartu Manajemen Token MCP -->
+        <div class="card">
+          <div class="card__head">
+            <h3 class="card__title">
+              <i class="ri-key-2-line" aria-hidden="true"></i> {t('settings.mcp.tokens_title')}
+            </h3>
+            <span class="badge badge--muted mono">{mcpTokens.length}</span>
+          </div>
+          <div class="card__body stack">
+            <p class="panel-desc">{t('settings.mcp.tokens_desc')}</p>
+
+            {#if mcpPlainToken}
+              <div class="recovery-box">
+                <div class="recovery-box__head">
+                  <strong>{t('settings.mcp.new_token_title')}</strong>
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="btn btn--primary btn--xs"
+                      onclick={() => copyQuick(antigravityConfigJson, 'JSON Antigravity dengan token baru disalin')}
+                    >
+                      <i class="ri-file-copy-line" aria-hidden="true"></i> {t('settings.mcp.copy_json')}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--secondary btn--xs"
+                      onclick={() => copyQuick(mcpPlainToken, 'Token Bearer MCP disalin')}
+                    >
+                      <i class="ri-key-line" aria-hidden="true"></i> {t('common.copy')}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--xs"
+                      onclick={() => (mcpPlainToken = '')}
+                      aria-label={t('common.close')}
+                      title={t('common.close')}
+                    >
+                      <i class="ri-close-line" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                </div>
+                <p class="panel-desc">{t('settings.mcp.new_token_desc')}</p>
+                <div class="copy-code-row">
+                  <code class="mono">{mcpPlainToken}</code>
+                </div>
+              </div>
+            {/if}
+
+            <form class="form-grid-2" onsubmit={handleCreateMCPToken}>
+              <div class="field">
+                <label for="mcp-tok-name" class="field__label">{t('settings.mcp.token_name')}</label>
+                <input
+                  id="mcp-tok-name"
+                  type="text"
+                  class="input"
+                  maxlength="60"
+                  bind:value={mcpNewName}
+                  placeholder={t('settings.mcp.token_name_placeholder')}
+                  required
+                />
+              </div>
+              <div class="field">
+                <label for="mcp-tok-scope" class="field__label">{t('settings.mcp.token_scope')}</label>
+                <select id="mcp-tok-scope" class="input" bind:value={mcpNewScope}>
+                  <option value="readonly">{t('settings.mcp.scope_readonly')}</option>
+                  <option value="operator">{t('settings.mcp.scope_operator')}</option>
+                </select>
+              </div>
+              <div class="card-foot-actions">
+                <button type="submit" class="btn btn--primary btn--sm" disabled={mcpCreating}>
+                  {mcpCreating ? t('common.saving') : t('settings.mcp.create_btn')}
+                </button>
+              </div>
+            </form>
+
+            {#if mcpTokens.length === 0}
+              <p class="panel-desc">{t('settings.mcp.empty_tokens')}</p>
+            {:else}
+              <div class="item-stack">
+                {#each mcpTokens as tok (tok.id)}
+                  <div class="list-row-item">
+                    <div class="list-row-item__main">
+                      <div class="list-row-item__title">
+                        <strong>{tok.name}</strong>
+                        <span class="mono text-subtle">{tok.token_prefix}</span>
+                        <span class="badge {tok.scope === 'operator' ? 'badge--warning' : 'badge--info'}">
+                          {tok.scope === 'operator' ? 'Operator' : 'Read-Only'}
+                        </span>
+                        <span class="badge {tok.enabled ? 'badge--success' : 'badge--muted'}">
+                          {tok.enabled ? t('common.enabled') : t('common.disabled')}
+                        </span>
+                      </div>
+                      <div class="list-row-item__sub mono">
+                        {t('settings.mcp.calls', { count: tok.call_count })}
+                        &middot;
+                        {tok.last_used_at
+                          ? `${formatUnix(tok.last_used_at)}${tok.last_used_ip ? ` (${tok.last_used_ip})` : ''}`
+                          : t('settings.mcp.never_used')}
+                      </div>
+                    </div>
+                    <div class="row-actions">
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--xs"
+                        onclick={() => handleToggleMCPToken(tok)}
+                        disabled={mcpBusyId === tok.id}
+                        aria-label={tok.enabled ? 'Nonaktifkan token MCP' : 'Aktifkan token MCP'}
+                        title={tok.enabled ? 'Jeda Token' : 'Aktifkan Token'}
+                      >
+                        <i class={tok.enabled ? 'ri-pause-line' : 'ri-play-line'} aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--xs btn--danger"
+                        onclick={() => handleDeleteMCPToken(tok)}
+                        disabled={mcpBusyId === tok.id}
+                        aria-label="Cabut token MCP"
+                        title="Cabut Token"
+                      >
+                        <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Katalog Tools MCP -->
+        <div class="card">
+          <div class="card__head">
+            <h3 class="card__title">
+              <i class="ri-tools-line" aria-hidden="true"></i> {t('settings.mcp.tools_title')}
+            </h3>
+            <span class="badge badge--muted mono">{mcpTools.length} tools</span>
+          </div>
+          <div class="card__body stack">
+            <p class="panel-desc">{t('settings.mcp.tools_desc')}</p>
+            <div class="mcp-tools-grid">
+              {#each mcpTools as tl (tl.name)}
+                <div class="mcp-tool-card">
+                  <div class="mcp-tool-card__head">
+                    <code class="mcp-tool-card__name mono">{tl.name}</code>
+                    <span class="badge {tl.scope === 'operator' ? 'badge--warning' : 'badge--info'}">
+                      {tl.scope === 'operator' ? 'Operator' : 'Read-Only'}
+                    </span>
+                  </div>
+                  <div class="mcp-tool-card__desc">{tl.description}</div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
+
+      <!-- ═══ TAB 7: BACKUP SNAPSHOT SQLITE & MIGRASI PROFIL JSON (F) ═══ -->
       {:else if activeTab === 'backup'}
         <div class="two-col-cards">
           <div class="card">

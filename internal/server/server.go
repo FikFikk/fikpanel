@@ -34,6 +34,8 @@ import (
 	"fikpanel/internal/terminal"
 	"fikpanel/internal/waf"
 	"fikpanel/web"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Server mengelola siklus hidup HTTP router dan middleware unprivileged
@@ -74,6 +76,11 @@ type Server struct {
 	// certs & redirectSrv aktif bila TLS panel dinyalakan (EnableTLS).
 	certs       *certManager
 	redirectSrv *http.Server
+
+	// Server MCP (Model Context Protocol) Streamable HTTP untuk integrasi Google Antigravity
+	mcpReadOnlySrv *mcp.Server
+	mcpOperatorSrv *mcp.Server
+	mcpHandler     http.Handler
 
 	// bgCtx/bgCancel mengatur umur goroutine background (watchdog) hingga shutdown
 	bgCtx    context.Context
@@ -126,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.5.0"
+		return "0.6.0"
 	}
 	return s.version
 }
@@ -163,6 +170,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	_ = srv.termSecrets.MigratePlaintextServers(srv.bgCtx)
 	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
 	srv.ai = ai.NewClient(s, m, srv.nginx)
+	srv.initMCPServers()
 
 	srv.registerRoutes()
 
@@ -207,6 +215,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/status/public", s.handlePublicStatusJSON)
 	s.mux.HandleFunc("GET /status", s.handlePublicStatusHTML)
 
+	// Endpoint MCP Streamable HTTP (autentikasi Bearer Token 256-bit untuk Google Antigravity)
+	s.mux.Handle("/mcp", http.HandlerFunc(s.handleMCP))
+
 	// Endpoint terproteksi autentikasi sesi
 	s.mux.Handle("GET /api/auth/me", s.AuthMiddleware(http.HandlerFunc(s.handleMe)))
 	s.mux.Handle("GET /api/auth/users", s.AuthMiddleware(http.HandlerFunc(s.handleListPanelUsers)))
@@ -241,6 +252,11 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/settings/config/import", s.AuthMiddleware(http.HandlerFunc(s.handleImportPanelConfig)))
 	s.mux.Handle("PUT /api/webhooks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWebhook)))
 	s.mux.Handle("POST /api/webhooks/{id}/test", s.AuthMiddleware(http.HandlerFunc(s.handleTestWebhook)))
+	// Manajemen Token Akses MCP Server (Google Antigravity)
+	s.mux.Handle("GET /api/mcp/tokens", s.AuthMiddleware(http.HandlerFunc(s.handleListMCPTokens)))
+	s.mux.Handle("POST /api/mcp/tokens", s.AuthMiddleware(http.HandlerFunc(s.handleCreateMCPToken)))
+	s.mux.Handle("PUT /api/mcp/tokens/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateMCPToken)))
+	s.mux.Handle("DELETE /api/mcp/tokens/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteMCPToken)))
 	s.mux.Handle("GET /api/metrics/live", s.AuthMiddleware(http.HandlerFunc(s.metrics.ServeHTTP)))
 	s.mux.Handle("GET /api/overview", s.AuthMiddleware(http.HandlerFunc(s.handleOverview)))
 

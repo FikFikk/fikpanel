@@ -109,6 +109,7 @@ export const dictID = {
   'settings.tab.network': 'HTTPS & Akses',
   'settings.tab.system': 'Sistem & Update',
   'settings.tab.webhooks': 'Webhook & Alert',
+  'settings.tab.mcp': 'MCP (Antigravity)',
   'settings.tab.backup': 'Backup & Migrasi',
 
   // Tab A + G: Tampilan, Branding & Bahasa
@@ -282,6 +283,34 @@ export const dictID = {
   'settings.backup.migrate_desc': 'Kloning cepat tema, branding, bahasa, daftar shortcut Terminal, dan konfigurasi webhook ke server VPS baru (tanpa mengekspor kata sandi/kunci privat).',
   'settings.backup.export_btn': 'Export Profil (.json)',
   'settings.backup.import_btn': 'Import Profil (.json)',
+
+  // Tab G: MCP Server & Integrasi Google Antigravity
+  'settings.mcp.hero_title': 'FikPanel MCP Server untuk Google Antigravity',
+  'settings.mcp.hero_desc': 'Hubungkan Google Antigravity langsung ke server FikPanel melalui protokol standar Streamable HTTP (/mcp) untuk diagnosa log Nginx/situs, pemantauan Uptime & SSL, inspeksi WAF, serta kontrol layanan ter-audit langsung dari IDE Anda.',
+  'settings.mcp.ready_badge': 'Siap Dipakai',
+  'settings.mcp.coming_soon': 'Segera Hadir',
+  'settings.mcp.endpoint_label': 'Endpoint MCP Streamable HTTP',
+  'settings.mcp.config_title': 'Konfigurasi Siap-Salin (mcp_config.json)',
+  'settings.mcp.config_path_hint': 'Simpan ke ~/.gemini/config/mcp_config.json (Global) atau .agents/mcp_config.json (Per-Proyek), lalu cek Additional Options (...) → MCP Servers di Antigravity.',
+  'settings.mcp.step_1': 'Buat token MCP pada kartu di bawah (pilih Read-Only untuk diagnosa aman, atau Operator jika ingin mengizinkan restart service/Docker & reload Nginx).',
+  'settings.mcp.step_3': 'Mulai chat di Google Antigravity dan coba tanyakan: "Cek kesehatan server FikPanel, daftar situs aktif, kontainer Docker, dan apakah ada monitor Uptime yang down?"',
+  'settings.mcp.copy_json': 'Salin JSON Antigravity',
+  'settings.mcp.self_signed_warn': 'Panel memakai koneksi HTTP biasa atau sertifikat self-signed. Untuk koneksi remote paling stabil di Antigravity, gunakan domain HTTPS valid atau akses melalui SSH port forwarding (localhost).',
+  'settings.mcp.tokens_title': 'Token Akses MCP (Bearer Token)',
+  'settings.mcp.tokens_desc': 'Terbitkan token terpisah per perangkat/IDE dengan izin terbatas. Token mentah hanya ditampilkan satu kali saat dibuat dan seluruh panggilan tool dicatat di Audit Log.',
+  'settings.mcp.token_name': 'Nama Perangkat / Klien',
+  'settings.mcp.token_name_placeholder': 'Misal: Antigravity Laptop Kerja',
+  'settings.mcp.token_scope': 'Tingkat Izin (Scope)',
+  'settings.mcp.scope_readonly': 'Read-Only — Diagnosa, Metrik, Log & Uptime (Rekomendasi)',
+  'settings.mcp.scope_operator': 'Operator — Read-Only + Restart Service, Reload Nginx & Probe Uptime',
+  'settings.mcp.create_btn': '+ Buat Token MCP',
+  'settings.mcp.new_token_title': 'Token MCP Baru Berhasil Dibuat — Simpan Sekarang!',
+  'settings.mcp.new_token_desc': 'Token ini tidak akan ditampilkan lagi setelah Anda menutup halaman. Blok JSON Antigravity di atas sudah otomatis terisi token ini — tinggal klik Salin JSON.',
+  'settings.mcp.empty_tokens': 'Belum ada token MCP yang dibuat. Buat token pertama untuk menghubungkan Google Antigravity.',
+  'settings.mcp.calls': '{count} panggilan',
+  'settings.mcp.never_used': 'Belum pernah dipanggil',
+  'settings.mcp.tools_title': 'Katalog Tools MCP Tersedia',
+  'settings.mcp.tools_desc': 'Seluruh pembacaan log otomatis menyensor kata sandi, token, dan kunci privat (BR-04). Tidak ada akses shell bebas/destruktif.',
 
   // Halaman Dashboard (Home)
   'home.status_normal': 'Normal',
