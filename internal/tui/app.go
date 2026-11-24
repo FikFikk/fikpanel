@@ -139,7 +139,7 @@ func NewModel(cfg Config, st *store.Store) Model {
 		cfg.RefreshInterval = 2 * time.Second
 	}
 	if cfg.Version == "" {
-		cfg.Version = "0.6.7"
+		cfg.Version = "0.6.8"
 	}
 	host, _ := os.Hostname()
 	if host == "" {
@@ -1103,7 +1103,7 @@ func (m Model) viewLogOverlay(w int) string {
 	end := minInt(len(m.logLines), start+maxRows)
 
 	lines := []string{
-		stAccent.Render("▤ " + m.logTitle) + stSubtle.Render(fmt.Sprintf("  (baris %d–%d dari %d · ↑/↓ scroll · Esc tutup)", start+1, end, len(m.logLines))),
+		stAccent.Render("▤ "+m.logTitle) + stSubtle.Render(fmt.Sprintf("  (baris %d–%d dari %d · ↑/↓ scroll · Esc tutup)", start+1, end, len(m.logLines))),
 		"",
 	}
 	for i := start; i < end; i++ {

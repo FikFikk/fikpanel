@@ -30,9 +30,13 @@ export interface Site {
   extra_conf: string;
   enabled: number;
   updated_at: number;
+  framework?: string;
   ssl_status: SSLStatus;
   ssl_expires: number;
+  live_status?: 'running' | 'down' | 'degraded' | 'stopped' | string;
+  live_detail?: string;
   request_count?: number;
+  request_source?: 'nginx' | 'global_log' | 'waf' | 'tunnel' | 'none' | string;
   backup_count?: number;
   has_git?: boolean;
   git_branch?: string;

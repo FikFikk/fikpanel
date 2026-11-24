@@ -435,29 +435,254 @@ func (m *Manager) SaveCustomCert(ctx context.Context, siteID int64, domain, keyP
 	return cert, nil
 }
 
-// GetLog membaca baris terakhir log akses atau error untuk domain (termasuk file rotasi .log.1 bila file utama baru dirotasi)
+// LogDir mengembalikan direktori log Nginx yang digunakan oleh manajer situs
+func (m *Manager) LogDir() string {
+	return m.paths.LogDir
+}
+
+// VhostDir mengembalikan direktori vhost Nginx yang digunakan oleh manajer situs
+func (m *Manager) VhostDir() string {
+	return m.paths.VhostDir
+}
+
+// DiscoverDomainLogPaths memindai konfigurasi vhost Nginx host untuk mencari jalur access_log dan error_log kustom milik domain
+func DiscoverDomainLogPaths(domain string, extraDirs ...string) (accessPath, errorPath string) {
+	target := strings.ToLower(strings.TrimSpace(domain))
+	if target == "" {
+		return "", ""
+	}
+	var dirs []string
+	seenDir := map[string]bool{}
+	addDir := func(d string) {
+		d = strings.TrimSpace(d)
+		if d == "" || seenDir[d] {
+			return
+		}
+		seenDir[d] = true
+		dirs = append(dirs, d)
+	}
+	for _, d := range extraDirs {
+		addDir(d)
+	}
+	if runtime.GOOS == "linux" {
+		addDir("/etc/nginx/sites-enabled")
+		addDir("/etc/nginx/conf.d")
+	}
+
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			fullPath := filepath.Join(dir, entry.Name())
+			raw, err := os.ReadFile(fullPath)
+			if err != nil {
+				continue
+			}
+			aPath, ePath, matched := extractLogPathsFromVhostConfig(string(raw), target)
+			if !matched {
+				continue
+			}
+			if aPath != "" && accessPath == "" {
+				accessPath = aPath
+			}
+			if ePath != "" && errorPath == "" {
+				errorPath = ePath
+			}
+			if accessPath != "" && errorPath != "" {
+				return accessPath, errorPath
+			}
+		}
+	}
+	return accessPath, errorPath
+}
+
+// extractLogPathsFromVhostConfig membedah blok server{} Nginx dan mengambil direktif access_log/error_log bila server_name cocok
+func extractLogPathsFromVhostConfig(content, targetDomain string) (accessPath, errorPath string, matched bool) {
+	inServer := false
+	braceDepth := 0
+	serverMatched := false
+	var blockAccess, blockError string
+
+	flushBlock := func() {
+		if serverMatched {
+			matched = true
+			if blockAccess != "" && accessPath == "" {
+				accessPath = blockAccess
+			}
+			if blockError != "" && errorPath == "" {
+				errorPath = blockError
+			}
+		}
+		inServer = false
+		braceDepth = 0
+		serverMatched = false
+		blockAccess = ""
+		blockError = ""
+	}
+
+	for _, rawLine := range strings.Split(content, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if idx := strings.IndexByte(line, '#'); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		if line == "" {
+			continue
+		}
+
+		if !inServer {
+			if strings.HasPrefix(line, "server") && strings.Contains(line, "{") {
+				rest := strings.TrimSpace(strings.TrimPrefix(line, "server"))
+				if strings.HasPrefix(rest, "{") {
+					inServer = true
+					braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
+					if braceDepth <= 0 {
+						flushBlock()
+					}
+				}
+			}
+			continue
+		}
+
+		// Periksa direktif server_name, access_log, dan error_log di dalam blok server
+		fields := strings.Fields(strings.TrimRight(line, ";"))
+		if len(fields) >= 2 {
+			switch strings.ToLower(fields[0]) {
+			case "server_name":
+				for _, tok := range fields[1:] {
+					cleanTok := strings.ToLower(strings.Trim(tok, `;"'`))
+					if cleanTok == targetDomain {
+						serverMatched = true
+						break
+					}
+				}
+			case "access_log":
+				cand := strings.Trim(fields[1], `;"'`)
+				if cand != "" && !strings.EqualFold(cand, "off") && !strings.HasPrefix(cand, "syslog:") {
+					if blockAccess == "" {
+						blockAccess = cand
+					}
+				}
+			case "error_log":
+				cand := strings.Trim(fields[1], `;"'`)
+				if cand != "" && !strings.EqualFold(cand, "off") && !strings.HasPrefix(cand, "syslog:") {
+					if blockError == "" {
+						blockError = cand
+					}
+				}
+			}
+		}
+
+		braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+		if braceDepth <= 0 {
+			flushBlock()
+		}
+	}
+	if inServer {
+		flushBlock()
+	}
+	return accessPath, errorPath, matched
+}
+
+// readBoundedLogLines membaca ekor berkas log dengan batas byte ketat untuk melindungi memori server kecil
+func readBoundedLogLines(path string, maxBytes int64, filterDomain string, maxLines int) []string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil || st.IsDir() || st.Size() == 0 {
+		return nil
+	}
+
+	skipFirst := false
+	if maxBytes > 0 && st.Size() > maxBytes {
+		if _, err := f.Seek(st.Size()-maxBytes, 0); err != nil {
+			return nil
+		}
+		skipFirst = true
+	}
+
+	buf := make([]byte, min(st.Size(), maxBytes))
+	if maxBytes <= 0 {
+		buf = make([]byte, st.Size())
+	}
+	n, _ := f.Read(buf)
+	if n <= 0 {
+		return nil
+	}
+	text := string(buf[:n])
+	if skipFirst {
+		if nl := strings.IndexByte(text, '\n'); nl >= 0 {
+			text = text[nl+1:]
+		}
+	}
+
+	lowerFilter := strings.ToLower(strings.TrimSpace(filterDomain))
+	var out []string
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if lowerFilter != "" && !strings.Contains(strings.ToLower(trimmed), lowerFilter) {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	if maxLines > 0 && len(out) > maxLines {
+		out = out[len(out)-maxLines:]
+	}
+	return out
+}
+
+// GetLog membaca baris terakhir log akses atau error untuk domain (mendukung file khusus domain, vhost host kustom, serta fallback log global Nginx)
 func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
 	if logType != "access" && logType != "error" {
 		logType = "access"
 	}
-	path := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, logType))
-	rotatedPath := path + ".1"
+	if maxLines <= 0 {
+		maxLines = 200
+	}
+	const maxReadBytes = 2 * 1024 * 1024
 
+	// 1. Cek berkas log standar FikPanel (<LogDir>/<domain>.<type>.log + .1)
+	primaryPath := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, logType))
 	var allLines []string
-	if rotData, err := os.ReadFile(rotatedPath); err == nil && len(rotData) > 0 {
-		for _, line := range strings.Split(strings.TrimSpace(string(rotData)), "\n") {
-			if strings.TrimSpace(line) != "" {
-				allLines = append(allLines, line)
+	allLines = append(allLines, readBoundedLogLines(primaryPath+".1", maxReadBytes, "", maxLines)...)
+	allLines = append(allLines, readBoundedLogLines(primaryPath, maxReadBytes, "", maxLines)...)
+
+	// 2. Bila kosong, telusuri direktif access_log / error_log kustom di vhost Nginx host
+	if len(allLines) == 0 {
+		customAccess, customError := DiscoverDomainLogPaths(domain, m.paths.VhostDir)
+		customPath := customAccess
+		if logType == "error" {
+			customPath = customError
+		}
+		if customPath != "" && filepath.Clean(customPath) != filepath.Clean(primaryPath) {
+			base := strings.ToLower(filepath.Base(customPath))
+			isGlobalShared := base == "access.log" || base == "error.log"
+			filter := ""
+			if isGlobalShared {
+				filter = domain
 			}
+			allLines = append(allLines, readBoundedLogLines(customPath+".1", maxReadBytes, filter, maxLines)...)
+			allLines = append(allLines, readBoundedLogLines(customPath, maxReadBytes, filter, maxLines)...)
 		}
 	}
-	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			if strings.TrimSpace(line) != "" {
-				allLines = append(allLines, line)
-			}
-		}
+
+	// 3. Fallback ke log global Nginx (<LogDir>/access.log atau error.log) dengan penyaringan domain
+	if len(allLines) == 0 {
+		globalPath := filepath.Join(m.paths.LogDir, logType+".log")
+		allLines = append(allLines, readBoundedLogLines(globalPath, 4*1024*1024, domain, maxLines)...)
 	}
+
 	if len(allLines) == 0 {
 		return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), nil
 	}

@@ -131,6 +131,104 @@
       color: var(--accent);
     }
 
+    .btn-refresh-sites {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      height: 34px;
+      padding: 0 var(--sp-3);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-refresh-sites:hover:not(:disabled) {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .btn-refresh-sites:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    /* Bar aksi massal untuk situs terpilih */
+    .bulk-action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--sp-3);
+      padding: var(--sp-2) var(--sp-3-5);
+      background: var(--bg-raised);
+      border: 1px solid var(--ring-accent);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .bulk-action-info {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      color: var(--text);
+      font-size: var(--text-xs);
+    }
+
+    .bulk-action-info i {
+      color: var(--accent);
+      font-size: var(--text-base);
+    }
+
+    .bulk-action-btns {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-2);
+    }
+
+    .btn-bulk {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
+      height: 28px;
+      padding: 0 var(--sp-2-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-bulk:hover:not(:disabled) {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+
+    .btn-bulk:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .btn-bulk--ghost {
+      background: transparent;
+      border-color: transparent;
+      color: var(--text-muted);
+    }
+
+    .btn-bulk--ghost:hover:not(:disabled) {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
     /* Badge status mesin web server Nginx */
     .server-badge {
       display: inline-flex;
@@ -144,9 +242,9 @@
     }
 
     .server-badge.is-running {
-      background: var(--tint-accent);
-      border: 1px solid var(--ring-accent);
-      color: var(--accent);
+      background: var(--tint-success);
+      border: 1px solid var(--ring-success);
+      color: var(--success-strong);
     }
 
     .server-badge.is-stopped {
@@ -185,9 +283,14 @@
     .pulse-indicator {
       width: 7px;
       height: 7px;
-      background: var(--accent);
+      background: var(--success);
       border-radius: 50%;
       animation: fp-pulse 1.5s infinite;
+    }
+
+    .server-badge.is-stopped .pulse-indicator {
+      background: var(--danger);
+      animation: none;
     }
 
     .server-status-tag {

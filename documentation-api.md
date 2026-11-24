@@ -182,7 +182,7 @@
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"site": Site, "domains": [], "certificate": {"status", "issuer", "not_before", "not_after", "domains", "signature", "key_type", "last_error"}, "ssl_job": {"running", "step", "ok", "message"}}`; HTTP 404 |
-| Notes | Dipoll UI tiap 1,5 detik selama `ssl_job.running=true`. |
+| Notes | Dipoll UI tiap 1,5 detik selama `ssl_job.running=true`. Objek `Site` pada `GET /api/sites` dan `GET /api/sites/{id}` menyertakan hasil probe kesehatan live (`live_status`: `running`/`down`/`degraded`/`stopped`, `live_detail`) dan sumber penghitung permintaan (`request_source`: `nginx`/`global_log`/`waf`/`tunnel`/`none`). |
 
 | Field | Detail |
 |---|---|
@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.7", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.8", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3413,6 +3413,16 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Request Body | `enabled` (bool, wajib) |
 | Response | HTTP 200 `{"ok": true, "scheduler_enabled": true, "scheduler_cron_id": 5, "message": "..."}` |
 | Notes | Mendaftarkan atau menonaktifkan cron `* * * * * cd "<projectDir>" && <phpBin> artisan schedule:run >> /dev/null 2>&1` di tabel `cron_jobs`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/backup` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID situs) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "domain": "example.com", "file_name": "example.com-20261124-142000.tar.gz", "path": "/var/backups/fikpanel/...", "size_bytes": 4521984, "db_included": true, "backup_count": 1, "message": "..."}`; HTTP 400 bila direktori proyek tidak ditemukan |
+| Notes | Membuat arsip cadangan `.tar.gz` proyek situs secara langsung ke `/var/backups/fikpanel/` (mengecualikan `node_modules`, `.cache`, `storage/framework/cache`, `storage/framework/views`), menyertakan dump MySQL bila `.env` proyek memuat `DB_DATABASE`, menonaktifkan `WriteDeadline` (timeout 3 menit), dan mencatat audit `site.backup`. |
 
 | Field | Detail |
 |---|---|

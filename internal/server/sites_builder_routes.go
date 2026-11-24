@@ -2062,9 +2062,9 @@ func countDomainBackups(domain string) int {
 	if strings.TrimSpace(domain) == "" {
 		return 0
 	}
-	safeDom := strings.ToLower(strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(domain))
+	safeDom := strings.ToLower(strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_").Replace(domain))
 	lowerDom := strings.ToLower(domain)
-	dirs := []string{"/var/backups/fikpanel", "/home/fikpanel/backups"}
+	dirs := siteBackupSearchDirs()
 	count := 0
 	seen := map[string]bool{}
 	for _, dir := range dirs {
@@ -2258,12 +2258,13 @@ func inspectProjectCICDMeta(projectDir string) (hasCICD bool, provider string) {
 	return false, ""
 }
 
-// enrichSiteRuntimeMeta memperkaya objek Site dengan jumlah request log Nginx nyata, jumlah backup, metadata Git, dan pipeline CI/CD
-func (s *Server) enrichSiteRuntimeMeta(site *store.Site) {
+// enrichSiteRuntimeMeta memperkaya objek Site dengan status hidup aktual, jumlah request log Nginx nyata, jumlah backup, metadata Git, dan pipeline CI/CD
+func (s *Server) enrichSiteRuntimeMeta(ctx context.Context, site *store.Site, nginxRunning bool) {
 	if site == nil {
 		return
 	}
-	site.RequestCount = countDomainAccessLogRequests(site.Domain)
+	site.LiveStatus, site.LiveDetail = probeSiteLiveStatus(site, nginxRunning)
+	site.RequestCount, site.RequestSource = s.countSiteRequests(ctx, site)
 	site.BackupCount = countDomainBackups(site.Domain)
 	projectDir := resolveSiteProjectDir(site)
 	hasGit, branch, repoSlug, shortCommit := inspectProjectGitMeta(projectDir)

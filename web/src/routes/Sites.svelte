@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { apiFetch } from '../lib/api';
+  import { apiFetch, formatBytes } from '../lib/api';
   import type { Site, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
   import NginxManager from '../lib/components/NginxManager.svelte';
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
@@ -73,6 +73,9 @@
   let gitPullError = $state('');
   let openMoreSiteId = $state<number | null>(null);
   let renewingAllSSL = $state(false);
+  let refreshingSites = $state(false);
+  let backingUpSiteId = $state<number | null>(null);
+  let bulkBusy = $state(false);
 
   function toggleMoreMenu(siteId: number, e: MouseEvent) {
     e.stopPropagation();
@@ -148,9 +151,19 @@
   // Memuat daftar situs dan status Nginx dari server (silent = tanpa indikator loading)
   async function loadSites(silent = false) {
     if (!silent) loading = true;
+    else refreshingSites = true;
     try {
       const data = await apiFetch<SitesData>('/api/sites');
-      sites = data.sites || [];
+      const nextSites = data.sites || [];
+      sites = nextSites;
+      // Bersihkan ID terpilih yang sudah tidak ada dalam daftar situs
+      if (selectedIds.size > 0) {
+        const validIds = new Set(nextSites.map((item) => item.id));
+        const pruned = new Set([...selectedIds].filter((id) => validIds.has(id)));
+        if (pruned.size !== selectedIds.size) {
+          selectedIds = pruned;
+        }
+      }
       if (data.web_server) {
         webServer = data.web_server;
       }
@@ -158,6 +171,7 @@
       onNotify(err.message || 'Gagal memuat daftar situs');
     } finally {
       loading = false;
+      refreshingSites = false;
     }
   }
 
@@ -418,9 +432,122 @@
     }
   }
 
-  // Memicu pencadangan situs
-  function triggerBackup(site: Site) {
-    onNotify(`Proses backup untuk situs ${site.domain} telah dijadwalkan`);
+  // Memicu pencadangan arsip nyata situs ke server (POST /api/sites/{id}/backup)
+  async function triggerBackup(site: Site) {
+    if (backingUpSiteId !== null || bulkBusy) return;
+    backingUpSiteId = site.id;
+    onNotify(`Membuat arsip cadangan untuk ${site.domain}...`);
+    try {
+      const res = await apiFetch<{
+        ok: boolean;
+        file_name: string;
+        size_bytes: number;
+        db_included?: boolean;
+        backup_count: number;
+      }>(`/api/sites/${site.id}/backup`, {
+        method: 'POST',
+        timeoutMs: 180_000,
+      });
+      await loadSites(true);
+      const dbTag = res.db_included ? ' + DB' : '';
+      onNotify(`Cadangan ${site.domain} tersimpan (${res.file_name} • ${formatBytes(res.size_bytes)}${dbTag})`);
+    } catch (err: any) {
+      onNotify(err?.message || `Gagal membuat cadangan situs ${site.domain}`);
+    } finally {
+      backingUpSiteId = null;
+    }
+  }
+
+  function clearSelection() {
+    selectedIds = new Set();
+  }
+
+  // Jalankan backup massal untuk seluruh situs yang dicentang
+  async function bulkBackupSites() {
+    if (bulkBusy || selectedIds.size === 0) return;
+    const targets = sites.filter((s) => selectedIds.has(s.id));
+    if (targets.length === 0) return;
+    bulkBusy = true;
+    let okCount = 0;
+    try {
+      onNotify(`Memulai cadangan massal untuk ${targets.length} situs...`);
+      for (const s of targets) {
+        backingUpSiteId = s.id;
+        try {
+          await apiFetch(`/api/sites/${s.id}/backup`, { method: 'POST', timeoutMs: 180_000 });
+          okCount++;
+        } catch {
+          // Lanjutkan ke situs berikutnya jika salah satu direktori gagal dicadangkan
+        }
+      }
+      await loadSites(true);
+      clearSelection();
+      onNotify(`Cadangan massal selesai: ${okCount} dari ${targets.length} situs berhasil dicadangkan`);
+    } finally {
+      backingUpSiteId = null;
+      bulkBusy = false;
+    }
+  }
+
+  // Perbarui sertifikat SSL secara massal untuk situs terpilih (non-Cloudflare)
+  async function bulkRenewSSL() {
+    if (bulkBusy || selectedIds.size === 0) return;
+    const targets = sites.filter((s) => selectedIds.has(s.id) && s.ssl_mode !== 'cloudflare');
+    if (targets.length === 0) {
+      onNotify('Seluruh situs terpilih menggunakan Cloudflare Edge SSL');
+      return;
+    }
+    bulkBusy = true;
+    let okCount = 0;
+    try {
+      onNotify(`Memperbarui SSL untuk ${targets.length} situs terpilih...`);
+      for (const site of targets) {
+        try {
+          await apiFetch(`/api/sites/${site.id}/ssl`, {
+            method: 'POST',
+            body: JSON.stringify({
+              enabled: true,
+              force_https: site.force_https === 1,
+              hsts: site.hsts === 1,
+              issue: true,
+              skip_dns: true,
+            }),
+          });
+          okCount++;
+        } catch {
+          // Lanjutkan pembaruan untuk situs terpilih lainnya
+        }
+      }
+      await loadSites(true);
+      clearSelection();
+      onNotify(`Pembaruan SSL dijalankan untuk ${okCount} dari ${targets.length} situs terpilih`);
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  // Toggle status aktif/nonaktif untuk seluruh situs terpilih
+  async function bulkToggleSites() {
+    if (bulkBusy || selectedIds.size === 0) return;
+    const targets = sites.filter((s) => selectedIds.has(s.id));
+    if (targets.length === 0) return;
+    bulkBusy = true;
+    let okCount = 0;
+    try {
+      for (const site of targets) {
+        try {
+          await apiFetch(`/api/sites/${site.id}/toggle`, { method: 'POST' });
+          okCount++;
+        } catch {
+          // Lanjutkan ke situs berikutnya jika toggle gagal
+        }
+      }
+      await loadSites(true);
+      clearSelection();
+      onNotify(`Status ${okCount} dari ${targets.length} situs berhasil diubah`);
+    } finally {
+      bulkBusy = false;
+    }
   }
 
   // Toggle seleksi checkbox
@@ -521,6 +648,16 @@
         <i class={renewingAllSSL ? 'ri-loader-4-line spin' : 'ri-shield-keyhole-line'}></i>
         <span>{renewingAllSSL ? 'Memeriksa SSL...' : 'Perbarui SSL Semua'}</span>
       </button>
+
+      <button
+        class="btn btn-refresh-sites"
+        title="Segarkan status live upstream dan hitungan permintaan terbaru"
+        disabled={loading || refreshingSites}
+        onclick={() => loadSites(true)}
+      >
+        <i class={refreshingSites ? 'ri-loader-4-line spin' : 'ri-refresh-line'}></i>
+        <span>Segarkan</span>
+      </button>
     </div>
 
     <div class="tb-right">
@@ -532,11 +669,44 @@
           bind:value={searchQuery}
         />
         {#if searchQuery}
-          <button class="btn-clear-search" onclick={() => (searchQuery = '')}>&times;</button>
+          <button
+            class="btn-clear-search"
+            aria-label="Hapus pencarian"
+            title="Hapus pencarian"
+            onclick={() => (searchQuery = '')}
+          >&times;</button>
         {/if}
       </div>
     </div>
   </div>
+
+  <!-- ═════════ 2b. Bar Aksi Massal (muncul saat >= 1 situs dicentang) ═════════ -->
+  {#if selectedIds.size > 0 && webServer.installed}
+    <div class="bulk-action-bar">
+      <div class="bulk-action-info">
+        <i class="ri-checkbox-multiple-line"></i>
+        <span><strong>{selectedIds.size}</strong> situs dipilih</span>
+      </div>
+      <div class="bulk-action-btns">
+        <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkBackupSites}>
+          <i class={bulkBusy ? 'ri-loader-4-line spin' : 'ri-archive-line'}></i>
+          <span>Backup Terpilih</span>
+        </button>
+        <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkRenewSSL}>
+          <i class="ri-shield-keyhole-line"></i>
+          <span>Perbarui SSL</span>
+        </button>
+        <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkToggleSites}>
+          <i class="ri-shut-down-line"></i>
+          <span>Toggle Status</span>
+        </button>
+        <button type="button" class="btn-bulk btn-bulk--ghost" disabled={bulkBusy} onclick={clearSelection}>
+          <i class="ri-close-line"></i>
+          <span>Batal</span>
+        </button>
+      </div>
+    </div>
+  {/if}
 
   <!-- ═════════ 3. Tampilan Utama: Warning Nginx Belum Terpasang vs Tabel ═════════ -->
   {#if !webServer.installed}
@@ -582,6 +752,7 @@
       {loading}
       {filteredSites}
       {selectedIds}
+      {backingUpSiteId}
       bind:openMoreSiteId
       onToggleSelectAll={toggleSelectAll}
       onToggleSelectSite={toggleSelectSite}

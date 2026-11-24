@@ -16,13 +16,13 @@
 
     .sites-table {
       width: 100%;
-      min-width: 1060px;
+      min-width: 860px;
       border-collapse: collapse;
       font-size: var(--text-xs);
     }
 
     .sites-table th {
-      padding: var(--sp-2-5) var(--sp-3-5);
+      padding: var(--sp-2-5) var(--sp-2-5);
       background: var(--bg-raised);
       border-bottom: 1px solid var(--border);
       color: var(--text-subtle);
@@ -35,7 +35,7 @@
     }
 
     .sites-table td {
-      padding: var(--sp-3) var(--sp-3-5);
+      padding: var(--sp-2-5) var(--sp-2-5);
       border-bottom: 1px solid var(--border-subtle);
       vertical-align: middle;
     }
@@ -93,20 +93,36 @@
       font-size: var(--text-2xs);
     }
 
-    /* Tombol status aktif/dijeda */
+    /* Tombol status operasional live (Online/Down/Degraded/Stopped) */
     .btn-status-play {
       display: inline-flex;
       align-items: center;
       gap: var(--sp-1-5);
+      padding: 2px var(--sp-1-5);
       background: transparent;
       border: none;
+      border-radius: var(--radius-xs);
       font-size: var(--text-xs);
       font-weight: 600;
+      white-space: nowrap;
       cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out);
     }
 
-    .btn-status-play.is-active {
-      color: var(--accent);
+    .btn-status-play:hover {
+      background: var(--bg-hover);
+    }
+
+    .btn-status-play.is-online {
+      color: var(--success-strong);
+    }
+
+    .btn-status-play.is-down {
+      color: var(--danger-strong);
+    }
+
+    .btn-status-play.is-degraded {
+      color: var(--warning-strong);
     }
 
     .btn-status-play.is-paused {
@@ -118,11 +134,24 @@
       display: inline-flex;
       align-items: center;
       gap: var(--sp-1-5);
+      padding: 2px var(--sp-1-5);
       background: transparent;
       border: none;
+      border-radius: var(--radius-xs);
       color: var(--text-muted);
       font-size: var(--text-xs);
+      white-space: nowrap;
       cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out);
+    }
+
+    .btn-backup-info:hover:not(:disabled) {
+      background: var(--bg-hover);
+    }
+
+    .btn-backup-info:disabled {
+      opacity: 0.65;
+      cursor: wait;
     }
 
     .btn-backup-info i {
@@ -198,12 +227,6 @@
       color: var(--text);
     }
 
-    .perpetual-badge {
-      color: var(--text-muted);
-      font-size: var(--text-xs);
-      white-space: nowrap;
-    }
-
     /* Badge status SSL */
     .ssl-badge {
       display: inline-flex;
@@ -254,18 +277,57 @@
       color: var(--danger-strong);
     }
 
-    /* Kolom statistik permintaan */
+    /* Kolom statistik permintaan nyata */
     .req-stat-box {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: var(--sp-1-5);
+      gap: var(--sp-2);
     }
 
-    .req-sparkline {
-      width: 28px;
-      height: 10px;
-      background: linear-gradient(90deg, var(--accent) 30%, transparent 30%);
-      border-bottom: 2px solid var(--accent);
+    .req-num {
+      min-width: 20px;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .req-meter {
+      display: inline-flex;
+      align-items: center;
+      width: 44px;
+      height: 6px;
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .req-meter__fill {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: var(--radius-full);
+      transition: width var(--dur-fast) var(--ease-out);
+    }
+
+    .req-tunnel-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 2px var(--sp-2);
+      background: var(--tint-info);
+      border: 1px solid var(--ring-info);
+      border-radius: var(--radius-2xs);
+      color: var(--info);
+      font-family: inherit;
+      font-size: var(--text-2xs);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background var(--dur-fast) var(--ease-out);
+    }
+
+    .req-tunnel-tag:hover {
+      background: var(--bg-hover);
     }
 
     .req-btn-trigger {
@@ -287,18 +349,18 @@
 
     /* Kolom operasi & menu dropdown More */
     .col-ops {
-      width: 180px;
-      min-width: 180px;
+      width: 156px;
+      min-width: 156px;
       text-align: right;
     }
 
     .sites-table th.col-ops {
       text-align: right;
-      padding-right: var(--sp-4-5);
+      padding-right: var(--sp-3);
     }
 
     .sites-table td.col-ops {
-      padding-right: var(--sp-4-5);
+      padding-right: var(--sp-3);
     }
 
     .ops-wrap {
@@ -313,11 +375,50 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--sp-2);
       padding: var(--sp-2) var(--sp-3-5);
       background: var(--bg-inset);
       border-top: 1px solid var(--border-subtle);
       color: var(--text-subtle);
       font-size: var(--text-xs);
+    }
+
+    .footer-status-summary {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-2);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      padding: 2px var(--sp-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-2xs);
+      font-weight: 600;
+    }
+
+    .status-pill.is-online {
+      background: var(--tint-success);
+      color: var(--success-strong);
+    }
+
+    .status-pill.is-down {
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+    }
+
+    .status-pill.is-degraded {
+      background: var(--tint-warning);
+      color: var(--warning-strong);
+    }
+
+    .status-pill.is-paused {
+      background: var(--bg-raised);
+      color: var(--text-subtle);
     }
 
     /* Pill Git, CI/CD, & Tombol Git Pull */

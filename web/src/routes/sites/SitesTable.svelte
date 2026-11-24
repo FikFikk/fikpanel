@@ -7,8 +7,9 @@
     loading: boolean;
     filteredSites: Site[];
     selectedIds: Set<number>;
+    backingUpSiteId: number | null;
     openMoreSiteId: number | null;
-    onToggleSelectAll: (e?: Event) => void;
+    onToggleSelectAll: (e: Event) => void;
     onToggleSelectSite: (id: number) => void;
     onToggleSite: (id: number) => void;
     onTriggerBackup: (s: Site) => void;
@@ -28,6 +29,7 @@
     loading,
     filteredSites,
     selectedIds,
+    backingUpSiteId,
     openMoreSiteId = $bindable(),
     onToggleSelectAll,
     onToggleSelectSite,
@@ -44,6 +46,69 @@
     getProjectRootDir,
     sslDaysLeft,
   }: Props = $props();
+
+  // Hitung nilai maksimum permintaan di tabel untuk lebar bilah proporsional nyata
+  let maxRequests = $derived(Math.max(1, ...filteredSites.map((item) => item.request_count ?? 0)));
+
+  // Ringkasan kesehatan live seluruh situs yang tampil pada footer tabel
+  let statusSummary = $derived.by(() => {
+    let online = 0;
+    let down = 0;
+    let degraded = 0;
+    let stopped = 0;
+    for (const s of filteredSites) {
+      const st = s.live_status || (s.enabled === 1 ? 'running' : 'stopped');
+      if (st === 'running') online++;
+      else if (st === 'down') down++;
+      else if (st === 'degraded') degraded++;
+      else stopped++;
+    }
+    return { online, down, degraded, stopped };
+  });
+
+  // Tentukan skema URL yang tepat berdasarkan status SSL aktif situs
+  function siteHref(s: Site): string {
+    const hasSSL = s.ssl_mode === 'cloudflare' || (s.ssl_status === 'issued' && s.ssl_mode !== 'none');
+    return `${hasSSL ? 'https' : 'http'}://${s.domain}`;
+  }
+
+  // Petakan status live probe ke kelas warna semantik, ikon, dan label
+  function liveStatusMeta(s: Site): { cls: string; icon: string; label: string } {
+    const st = s.live_status || (s.enabled === 1 ? 'running' : 'stopped');
+    if (st === 'running') {
+      return { cls: 'is-online', icon: 'ri-checkbox-circle-fill', label: 'Online' };
+    }
+    if (st === 'down') {
+      return { cls: 'is-down', icon: 'ri-error-warning-fill', label: 'Down' };
+    }
+    if (st === 'degraded') {
+      return { cls: 'is-degraded', icon: 'ri-alert-fill', label: 'Degraded' };
+    }
+    return { cls: 'is-paused', icon: 'ri-pause-circle-line', label: 'Stopped' };
+  }
+
+  // Label sumber data jumlah permintaan yang jujur untuk tooltip
+  function requestSourceHint(source?: string): string {
+    switch (source) {
+      case 'nginx':
+        return 'Log akses khusus Nginx';
+      case 'global_log':
+        return 'Log akses global Nginx';
+      case 'waf':
+        return 'Catatan event WAF';
+      case 'tunnel':
+        return 'Cloudflare Tunnel / direct upstream (tidak melewati log Nginx)';
+      default:
+        return 'Belum ada catatan log akses Nginx';
+    }
+  }
+
+  // Persentase lebar bar proporsional terhadap situs dengan trafik tertinggi di daftar
+  function requestBarPct(count?: number): number {
+    const n = count ?? 0;
+    if (n <= 0) return 0;
+    return Math.max(8, Math.min(100, Math.round((n / maxRequests) * 100)));
+  }
 </script>
 
 <div class="table-container pg-sites-table">
@@ -67,6 +132,7 @@
           <th class="col-chk">
             <input
               type="checkbox"
+              aria-label="Pilih semua situs"
               checked={selectedIds.size === filteredSites.length && filteredSites.length > 0}
               onchange={onToggleSelectAll}
             />
@@ -75,7 +141,6 @@
           <th class="col-status">Status</th>
           <th class="col-backup">Cadangan</th>
           <th class="col-quick">Aksi Cepat</th>
-          <th class="col-expire">Masa Berlaku</th>
           <th class="col-ssl">SSL</th>
           <th class="col-req">Permintaan</th>
           <th class="col-ops">Operasi</th>
@@ -83,10 +148,13 @@
       </thead>
       <tbody>
         {#each filteredSites as s (s.id)}
+          {@const stMeta = liveStatusMeta(s)}
+          {@const isBackingUp = backingUpSiteId === s.id}
           <tr class="site-row {selectedIds.has(s.id) ? 'selected-row' : ''}">
             <td class="col-chk">
               <input
                 type="checkbox"
+                aria-label="Pilih situs {s.domain}"
                 checked={selectedIds.has(s.id)}
                 onchange={() => onToggleSelectSite(s.id)}
               />
@@ -96,11 +164,11 @@
             <td class="col-name">
               <div class="site-domain-box">
                 <a
-                  href="http://{s.domain}"
+                  href={siteHref(s)}
                   target="_blank"
                   rel="noopener noreferrer"
                   class="domain-link"
-                  title="Buka situs di tab baru"
+                  title="Buka {siteHref(s)} di tab baru"
                 >
                   <span class="domain-text">{s.domain}</span>
                   <i class="ri-external-link-line icon-ext"></i>
@@ -163,29 +231,34 @@
               </div>
             </td>
 
-            <!-- Kolom Status Operasional (Toggle Play/Pause) -->
+            <!-- Kolom Status Operasional Live (Probe TCP/PHP-FPM/Nginx) -->
             <td class="col-status">
               <button
-                class="btn-status-play {s.enabled === 1 ? 'is-active' : 'is-paused'}"
+                type="button"
+                class="btn-status-play {stMeta.cls}"
                 onclick={() => onToggleSite(s.id)}
-                title={s.enabled === 1 ? 'Situs sedang berjalan (Klik untuk menghentikan)' : 'Situs dihentikan (Klik untuk menjalankan)'}
+                title="{s.live_detail || (s.enabled === 1 ? 'Situs aktif' : 'Situs dihentikan')} — Klik untuk {s.enabled === 1 ? 'menghentikan' : 'menjalankan'} vhost"
               >
-                <i class="{s.enabled === 1 ? 'ri-play-circle-fill' : 'ri-pause-circle-line'}"></i>
-                <span>{s.enabled === 1 ? 'Running' : 'Stopped'}</span>
+                <i class={stMeta.icon}></i>
+                <span>{stMeta.label}</span>
               </button>
             </td>
 
-            <!-- Kolom Cadangan / Backup -->
+            <!-- Kolom Cadangan / Backup Nyata 1-Klik -->
             <td class="col-backup">
               <button
+                type="button"
                 class="btn-backup-info"
+                disabled={backingUpSiteId !== null}
                 onclick={() => onTriggerBackup(s)}
-                title="Klik untuk membuat cadangan situs"
+                title={isBackingUp
+                  ? `Sedang membuat arsip cadangan ${s.domain}...`
+                  : `Klik untuk membuat arsip cadangan .tar.gz langsung ke server (${s.backup_count ?? 0} arsip tersimpan)`}
               >
-                <i class="ri-cloud-line"></i>
+                <i class={isBackingUp ? 'ri-loader-4-line spin' : 'ri-archive-line'}></i>
                 <div class="backup-text-wrap">
                   <span class="backup-main">{s.backup_count ?? 0} Backup</span>
-                  <span class="backup-sub">Cadangkan</span>
+                  <span class="backup-sub">{isBackingUp ? 'Memproses...' : 'Cadangkan'}</span>
                 </div>
               </button>
             </td>
@@ -194,24 +267,30 @@
             <td class="col-quick">
               <div class="quick-actions-bar">
                 <button
+                  type="button"
                   class="quick-act-btn"
                   onclick={() => onOpenInFileManager(getProjectRootDir(s))}
+                  aria-label="Buka direktori proyek situs di File Manager FikPanel"
                   title="Buka direktori proyek situs di File Manager FikPanel"
                 >
                   <i class="ri-folder-open-fill icon-amber"></i>
                 </button>
 
                 <button
+                  type="button"
                   class="quick-act-btn"
                   onclick={() => onOpenInTerminal(getProjectRootDir(s))}
+                  aria-label="Buka Terminal di folder root proyek situs ini"
                   title="Buka Terminal di folder root proyek situs ini"
                 >
                   <i class="ri-terminal-box-line icon-cyan"></i>
                 </button>
 
                 <button
+                  type="button"
                   class="quick-act-btn"
                   onclick={() => onOpenSettings(s, 'domain')}
+                  aria-label="Pengaturan situs (domain, direktori, SSL, konfigurasi)"
                   title="Pengaturan situs (domain, direktori, SSL, konfigurasi)"
                 >
                   <i class="ri-settings-3-line icon-gray"></i>
@@ -240,24 +319,21 @@
               </div>
             </td>
 
-            <!-- Kolom Masa Berlaku -->
-            <td class="col-expire">
-              <span class="perpetual-badge">Permanen</span>
-            </td>
-
             <!-- Kolom Sertifikat SSL -->
             <td class="col-ssl">
               {#if s.ssl_mode === 'cloudflare'}
                 <button
+                  type="button"
                   class="ssl-badge ssl-cloudflare"
                   onclick={() => onOpenSettings(s, 'ssl')}
-                  title="Cloudflare Edge SSL (Flexible) Aktif"
+                  title="Cloudflare Edge SSL Aktif"
                 >
                   <i class="ri-cloud-line"></i>
                   <span>Cloudflare</span>
                 </button>
               {:else if s.ssl_status === 'issued' && s.ssl_mode !== 'none'}
                 <button
+                  type="button"
                   class="ssl-badge ssl-active"
                   class:ssl-expiring={sslDaysLeft(s) < 15}
                   onclick={() => onOpenSettings(s, 'ssl')}
@@ -267,17 +343,18 @@
                   <span>{sslDaysLeft(s)} Hari</span>
                 </button>
               {:else if s.ssl_status === 'pending'}
-                <button class="ssl-badge ssl-pending" onclick={() => onOpenSettings(s, 'ssl')} title="Sertifikat sedang diterbitkan">
+                <button type="button" class="ssl-badge ssl-pending" onclick={() => onOpenSettings(s, 'ssl')} title="Sertifikat sedang diterbitkan">
                   <i class="ri-loader-4-line spin"></i>
                   <span>Menerbitkan</span>
                 </button>
               {:else if s.ssl_status === 'failed' && s.ssl_mode !== 'none'}
-                <button class="ssl-badge ssl-failed" onclick={() => onOpenSettings(s, 'ssl')} title="Penerbitan gagal, klik untuk detail">
+                <button type="button" class="ssl-badge ssl-failed" onclick={() => onOpenSettings(s, 'ssl')} title="Penerbitan gagal, klik untuk detail">
                   <i class="ri-shield-cross-line"></i>
                   <span>Gagal</span>
                 </button>
               {:else}
                 <button
+                  type="button"
                   class="ssl-badge ssl-inactive"
                   onclick={() => onOpenSettings(s, 'ssl')}
                   title="Klik untuk memasang sertifikat Let's Encrypt"
@@ -288,17 +365,31 @@
               {/if}
             </td>
 
-            <!-- Kolom Permintaan / Request Count -->
+            <!-- Kolom Permintaan / Request Count Nyata -->
             <td class="col-req mono">
-              <button
-                type="button"
-                class="req-stat-box req-btn-trigger"
-                onclick={() => onOpenLogViewer(s)}
-                title="Total {(s.request_count ?? 0).toLocaleString('id-ID')} permintaan HTTP tercatat di log Nginx (Klik untuk lihat Access Log)"
-              >
-                <span class="req-num">{(s.request_count ?? 0).toLocaleString('id-ID')}</span>
-                <span class="req-sparkline"></span>
-              </button>
+              {#if (s.request_count ?? 0) === 0 && s.request_source === 'tunnel'}
+                <button
+                  type="button"
+                  class="req-tunnel-tag"
+                  onclick={() => onOpenLogViewer(s)}
+                  title="Trafik masuk via Cloudflare Tunnel langsung ke {s.upstream || 'upstream lokal'} tanpa melewati access log Nginx (Klik untuk lihat log)"
+                >
+                  <i class="ri-route-line"></i>
+                  <span>Tunnel</span>
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  class="req-stat-box req-btn-trigger"
+                  onclick={() => onOpenLogViewer(s)}
+                  title="Total {(s.request_count ?? 0).toLocaleString('id-ID')} permintaan • Sumber: {requestSourceHint(s.request_source)} (Klik untuk lihat Access Log)"
+                >
+                  <span class="req-num">{(s.request_count ?? 0).toLocaleString('id-ID')}</span>
+                  <span class="req-meter" aria-hidden="true">
+                    <span class="req-meter__fill" style="width: {requestBarPct(s.request_count)}%"></span>
+                  </span>
+                </button>
+              {/if}
             </td>
 
             <!-- Kolom Operasi -->
@@ -393,13 +484,34 @@
       </tbody>
     </table>
 
-    <!-- Footer Bar Tabel Situs -->
+    <!-- Footer Bar Tabel Situs dengan Ringkasan Kesehatan Real-Time -->
     <div class="table-footer">
       <div class="footer-left">
-        <span>Total <strong>{filteredSites.length}</strong> situs terdaftar</span>
+        <span>Total <strong>{filteredSites.length}</strong> situs ditampilkan</span>
       </div>
-      <div class="footer-right">
-        <span class="badge">Halaman 1 dari 1</span>
+      <div class="footer-right footer-status-summary">
+        <span class="status-pill is-online">
+          <i class="ri-checkbox-circle-fill"></i>
+          <span>{statusSummary.online} Online</span>
+        </span>
+        {#if statusSummary.down > 0}
+          <span class="status-pill is-down">
+            <i class="ri-error-warning-fill"></i>
+            <span>{statusSummary.down} Down</span>
+          </span>
+        {/if}
+        {#if statusSummary.degraded > 0}
+          <span class="status-pill is-degraded">
+            <i class="ri-alert-fill"></i>
+            <span>{statusSummary.degraded} Degraded</span>
+          </span>
+        {/if}
+        {#if statusSummary.stopped > 0}
+          <span class="status-pill is-paused">
+            <i class="ri-pause-circle-line"></i>
+            <span>{statusSummary.stopped} Stopped</span>
+          </span>
+        {/if}
       </div>
     </div>
   {/if}

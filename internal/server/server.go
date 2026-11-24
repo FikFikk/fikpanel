@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.6.7"
+		return "0.6.8"
 	}
 	return s.version
 }
@@ -307,6 +307,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("PUT /api/sites/{id}/deploy/config", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSiteDeployConfig)))
 	s.mux.Handle("POST /api/sites/{id}/deploy/rollback", s.AuthMiddleware(http.HandlerFunc(s.handleSiteDeployRollback)))
 	s.mux.Handle("POST /api/sites/{id}/git-pull", s.AuthMiddleware(http.HandlerFunc(s.handleSiteGitPull)))
+	s.mux.Handle("POST /api/sites/{id}/backup", s.AuthMiddleware(http.HandlerFunc(s.handleBackupSite)))
 	s.mux.Handle("POST /api/sites/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSite)))
 	s.mux.Handle("DELETE /api/sites/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteSite)))
 

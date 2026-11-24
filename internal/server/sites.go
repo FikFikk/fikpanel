@@ -243,14 +243,30 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	for i := range list {
-		s.enrichSiteRuntimeMeta(&list[i])
-	}
 	ws, err := s.nginx.Status(r.Context())
 	if err != nil {
 		writeSiteError(w, err)
 		return
 	}
+	nginxRunning := ws.Running
+	if r.URL.Query().Get("mock_nginx") == "0" {
+		nginxRunning = false
+	}
+
+	// Perkaya metadata runtime dan uji kesehatan live tiap situs secara paralel dengan batas konkurensi
+	sem := make(chan struct{}, 8)
+	var metaWG sync.WaitGroup
+	for i := range list {
+		metaWG.Add(1)
+		sem <- struct{}{}
+		go func(idx int) {
+			defer metaWG.Done()
+			defer func() { <-sem }()
+			s.enrichSiteRuntimeMeta(r.Context(), &list[idx], nginxRunning)
+		}(i)
+	}
+	metaWG.Wait()
+
 	webServer := map[string]interface{}{
 		"name": "nginx", "display_name": "Nginx Web Server", "category": "webserver",
 		"installed": ws.Installed, "version": ws.Version, "running": ws.Running, "service_unit": "nginx.service",
@@ -376,7 +392,11 @@ func (s *Server) handleGetSite(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.UpsertCertificate(r.Context(), &certRecord)
 	}
 
-	s.enrichSiteRuntimeMeta(site)
+	nginxRunning := true
+	if ws, wsErr := s.nginx.Status(r.Context()); wsErr == nil {
+		nginxRunning = ws.Running
+	}
+	s.enrichSiteRuntimeMeta(r.Context(), site, nginxRunning)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
 		writeSiteError(w, err)
@@ -673,7 +693,11 @@ func (s *Server) handleSiteVhost(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.UpsertCertificate(r.Context(), &certRecord)
 	}
 
-	s.enrichSiteRuntimeMeta(site)
+	nginxRunning := true
+	if ws, wsErr := s.nginx.Status(r.Context()); wsErr == nil {
+		nginxRunning = ws.Running
+	}
+	s.enrichSiteRuntimeMeta(r.Context(), site, nginxRunning)
 	cert, err := s.store.GetCertificate(r.Context(), id)
 	if err != nil {
 		writeSiteError(w, err)
