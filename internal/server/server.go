@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.6.9"
+		return "0.7.0"
 	}
 	return s.version
 }
@@ -164,6 +164,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		limiter:          NewRateLimiter(),
 	}
 	srv.bgCtx, srv.bgCancel = context.WithCancel(context.Background())
+	srv.cronMgr.SetFailureCallback(srv.notifyCronFailure)
 	srv.cronMgr.Start(srv.bgCtx)
 	srv.sshPool.StartJanitor(srv.bgCtx)
 	// Migrasikan kredensial SSH plaintext lawas ke AES-256-GCM secara transparan di awal
@@ -336,12 +337,15 @@ func (s *Server) registerRoutes() {
 
 	// Penjadwal Tugas (Cron Jobs)
 	s.mux.Handle("GET /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronJobs)))
+	s.mux.Handle("GET /api/cron/system", s.AuthMiddleware(http.HandlerFunc(s.handleListSystemCrons)))
 	s.mux.Handle("POST /api/cron/jobs", s.AuthMiddleware(http.HandlerFunc(s.handleCreateCronJob)))
 	s.mux.Handle("PUT /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCronJob)))
 	s.mux.Handle("DELETE /api/cron/jobs/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteCronJob)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunCronJobNow)))
+	s.mux.Handle("POST /api/cron/jobs/{id}/stop", s.AuthMiddleware(http.HandlerFunc(s.handleStopCronJob)))
 	s.mux.Handle("GET /api/cron/jobs/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleListCronLogs)))
+	s.mux.Handle("DELETE /api/cron/jobs/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleClearCronDBLogs)))
 	s.mux.Handle("GET /api/cron/jobs/{id}/file-log", s.AuthMiddleware(http.HandlerFunc(s.handleGetCronJobFileLog)))
 	s.mux.Handle("POST /api/cron/jobs/{id}/file-log/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearCronJobFileLog)))
 

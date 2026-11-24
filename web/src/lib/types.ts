@@ -813,28 +813,40 @@ export interface PM2Process {
 export interface CronJob {
   id: number;
   name: string;
-  schedule_type: 'minute_n' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom' | string;
+  schedule_type: 'minutes' | 'minute_n' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom' | string;
   spec: string;
   command: string;
+  working_dir?: string;
   enabled: boolean;
   save_log: boolean;
+  notify_on_fail?: boolean;
   log_file?: string;
   timeout_sec: number;
   last_run_at: number;
   last_status: string;
   created_at: number;
   updated_at: number;
+  next_run_at?: number;
+  is_running?: boolean;
 }
 
 export interface CronLog {
   id: number;
   job_id: number;
-  status: 'success' | 'failed' | 'timeout' | string;
+  status: 'success' | 'failed' | 'timeout' | 'stopped' | 'interrupted' | string;
   output: string;
   exit_code: number;
   duration_ms: number;
   started_at: number;
   finished_at: number;
+}
+
+export interface SystemCronEntry {
+  source: string;
+  file: string;
+  schedule: string;
+  user: string;
+  command: string;
 }
 
 // ── Docker & Kontainerisasi (10 Modul) ──────────────────────────────────────

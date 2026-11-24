@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.9", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.7.0", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3413,6 +3413,36 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Request Body | `enabled` (bool, wajib) |
 | Response | HTTP 200 `{"ok": true, "scheduler_enabled": true, "scheduler_cron_id": 5, "message": "..."}` |
 | Notes | Mendaftarkan atau menonaktifkan cron `* * * * * cd "<projectDir>" && <phpBin> artisan schedule:run >> /dev/null 2>&1` di tabel `cron_jobs`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/cron/system` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "entries": [{"source": "cron.d", "file": "/etc/cron.d/certbot", "schedule": "0 */12 * * *", "user": "root", "command": "..."}]}` |
+| Notes | Memindai secara hanya-baca crontab OS (`crontab -l`, `/etc/crontab`, dan `/etc/cron.d/*`) pada host Linux. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/cron/jobs/{id}/stop` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID tugas cron) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "id": 1, "message": "Sinyal henti telah dikirim ke seluruh grup proses tugas cron"}`; HTTP 409 bila tugas sedang tidak berjalan |
+| Notes | Membatalkan konteks tugas dan mengirim `SIGKILL` ke seluruh process group (`-pid`) agar tidak menyisakan subproses orphan; mencatat status `stopped` dan audit `cron.stop`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/cron/jobs/{id}/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID tugas cron) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Riwayat eksekusi database berhasil dibersihkan"}` |
+| Notes | Menghapus seluruh riwayat eksekusi SQLite (`cron_logs`) milik tugas terkait. Pembuatan/pembaruan tugas (`POST`/`PUT /api/cron/jobs`) kini mendukung `working_dir`, `notify_on_fail`, validasi penuh 5-field/`@macro`, blokir perintah berbahaya, whitelist prefix `log_file`, serta `POST /api/cron/jobs/{id}/run` berjalan *detached* (HTTP 200 selesai cepat / HTTP 202 berjalan di latar belakang). |
 
 | Field | Detail |
 |---|---|
