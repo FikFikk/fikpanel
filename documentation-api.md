@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.1", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.2", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |

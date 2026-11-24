@@ -22,12 +22,13 @@ import (
 	"fikpanel/internal/services"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
+	"fikpanel/internal/tui"
 	"fikpanel/internal/updater"
 )
 
 var (
 	// version menyimpan informasi versi rilis saat kompilasi
-	version = "0.6.1"
+	version = "0.6.2"
 )
 
 func main() {
@@ -50,6 +51,8 @@ func main() {
 		runUpdateCheck()
 	case "serve":
 		runServe(os.Args[2:])
+	case "tui", "top":
+		runTUI(os.Args[2:])
 	case "agent":
 		runAgent(os.Args[2:])
 	case "init":
@@ -89,6 +92,10 @@ Perintah yang Tersedia:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
                     --tls <mode>     auto (default, HTTPS self-signed / sertifikat di <data>/tls) atau off
                     --dev            Pengembangan lokal: akun root tanpa sandi (JANGAN di server publik)
+  tui, top        Buka dashboard TUI interaktif (Bubble Tea) langsung di terminal SSH
+                  Opsi:
+                    --db <path>      Lokasi database SQLite (default: otomatis deteksi layanan aktif)
+                    --refresh <dur>  Interval penyegaran metrik (default: 2s)
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
@@ -243,6 +250,32 @@ func runServe(args []string) {
 		fmt.Fprintf(os.Stderr, "Galat saat shutdown server: %v\n", err)
 	}
 	fmt.Println("[fikpanel serve] Server berhasil dihentikan.")
+}
+
+// runTUI menjalankan dashboard TUI interaktif (Bubble Tea + Lipgloss) langsung di terminal
+func runTUI(args []string) {
+	fs := flag.NewFlagSet("tui", flag.ExitOnError)
+	dbFlag := fs.String("db", "", "Lokasi database SQLite (default: otomatis deteksi dari fikpanel.service atau fikpanel.db lokal)")
+	refresh := fs.Duration("refresh", 2*time.Second, "Interval penyegaran metrik sistem live")
+	fs.Parse(args)
+
+	dbPath := strings.TrimSpace(*dbFlag)
+	if dbPath == "" {
+		if resolved, err := resolveProductionDB(""); err == nil && resolved != "" {
+			dbPath = resolved
+		} else {
+			dbPath = "fikpanel.db"
+		}
+	}
+
+	if err := tui.Run(tui.Config{
+		Version:         version,
+		DBPath:          dbPath,
+		RefreshInterval: *refresh,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "[fikpanel tui] Gagal menjalankan TUI: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // runAgent menangani eksekusi mode RPC privileged agent

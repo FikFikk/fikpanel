@@ -66,6 +66,7 @@ Menggabungkan keandalan sistem backend **Golang** dengan reaktivitas generasi te
 - **Web Terminal PTY WebGL & Remote SSH Pool:** Terminal interaktif `xterm.js` berakselerasi GPU WebGL (`@xterm/addon-webgl`), mode Console SSE dengan tombol Stop, pencarian & export log, serta manajer remote SSH terenkripsi **AES-256-GCM** dengan verifikasi host **TOFU**.
 - **CodeMirror 6 IDE Editor:** Editor kode bertema design token (17+ bahasa: Nginx, YAML, JSON, PHP, JS/TS, HTML, SQL, Dockerfile, Shell, INI) di File Manager, Nginx Manager, Vhost/Rewrite, Docker Compose, Kubernetes, dan PHP Manager.
 - **Keamanan & Personalisasi Modern:** **FIDO2 Passkeys / WebAuthn** (Windows Hello PIN, QR HP, Biometrik), **2FA TOTP** dengan kode pemulihan, **Custom Panel TLS Hot-Reload**, **IP/CIDR Allowlist anti-lockout**, **Appearance & Branding Studio** (7 palet + Custom Hex + multi-bahasa ID/EN), **Actionable `Ctrl+K` Command Palette**, serta pengiriman aset pra-kompresi **Brotli (`.br`) + Gzip** dengan `immutable` caching.
+- **Interactive Terminal TUI (`fikpanel tui`):** Dashboard terminal layar penuh bergaya `btop`/`k9s` berbasis `charmbracelet/bubbletea` langsung di SSH (5 tab: Overview sparkline, Sites, Uptime & SSL 20-bar heartbeat + probe, Services + journalctl overlay, Docker/PM2 + konfirmasi restart).
 - **AI Copilot Diagnostik:** Asisten AI internal (OpenAI-compatible, Anthropic, Gemini) dengan fallback diagnostik lokal offline.
 
 ---
@@ -289,6 +290,10 @@ Perintah yang Tersedia:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
                     --tls <mode>     auto (default, HTTPS self-signed / sertifikat di <data>/tls) atau off
                     --dev            Pengembangan lokal: akun root tanpa sandi (JANGAN di server publik)
+  tui, top        Buka dashboard TUI interaktif (Bubble Tea) langsung di terminal SSH
+                  Opsi:
+                    --db <path>      Lokasi database SQLite (default: otomatis deteksi layanan aktif)
+                    --refresh <dur>  Interval penyegaran metrik (default: 2s)
   discover        Pindai infrastruktur server dan adopsi otomatis konfigurasi
                   Opsi:
                     --db <path>      Lokasi berkas database SQLite (default: fikpanel.db)
