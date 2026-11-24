@@ -127,31 +127,41 @@ func TestMCPServerStreamableHTTPAndScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools read-only gagal: %v", err)
 	}
-	if len(toolsRes.Tools) != 12 {
-		t.Fatalf("harapan 12 tools read-only, dapat %d", len(toolsRes.Tools))
+	if len(toolsRes.Tools) != 18 {
+		t.Fatalf("harapan 18 tools read-only, dapat %d", len(toolsRes.Tools))
 	}
 	for _, tl := range toolsRes.Tools {
-		if tl.Name == "restart_service" || tl.Name == "test_and_reload_nginx" || tl.Name == "restart_docker_container" {
+		if tl.Name == "restart_service" || tl.Name == "git_pull_site" || tl.Name == "block_waf_ip" || tl.Name == "restart_docker_container" {
 			t.Fatalf("tool operator %q tidak boleh muncul pada token readonly", tl.Name)
 		}
 	}
 
-	// 4. Panggil tool server_overview dan pastikan mengembalikan metrik JSON + mencatat call_count
+	// Verifikasi 2 MCP Prompts tersedia pada mode read-only
+	roPrompts, err := roSession.ListPrompts(ctx, &mcp.ListPromptsParams{})
+	if err != nil || len(roPrompts.Prompts) != 2 {
+		t.Fatalf("harapan 2 prompts read-only, err=%v count=%d", err, len(roPrompts.Prompts))
+	}
+
+	// 4. Panggil tool server_overview + list_databases dan pastikan call_count bertambah
 	callRes, err := roSession.CallTool(ctx, &mcp.CallToolParams{Name: "server_overview", Arguments: map[string]any{}})
 	if err != nil || callRes.IsError || len(callRes.Content) == 0 {
 		t.Fatalf("panggilan server_overview gagal: err=%v res=%+v", err, callRes)
 	}
+	dbRes, err := roSession.CallTool(ctx, &mcp.CallToolParams{Name: "list_databases", Arguments: map[string]any{}})
+	if err != nil || dbRes.IsError || len(dbRes.Content) == 0 {
+		t.Fatalf("panggilan list_databases gagal: err=%v res=%+v", err, dbRes)
+	}
 
-	// Pastikan call_count di daftar token bertambah menjadi 1
+	// Pastikan call_count di daftar token bertambah menjadi 2
 	reqList := httptest.NewRequest(http.MethodGet, "/api/mcp/tokens", nil)
 	reqList.AddCookie(cookie)
 	wList := httptest.NewRecorder()
 	srv.server.Handler.ServeHTTP(wList, reqList)
-	if wList.Code != http.StatusOK || !bytes.Contains(wList.Body.Bytes(), []byte(`"call_count":1`)) {
-		t.Fatalf("call_count tidak bertambah pasca pemanggilan MCP: %s", wList.Body.String())
+	if wList.Code != http.StatusOK || !bytes.Contains(wList.Body.Bytes(), []byte(`"call_count":2`)) {
+		t.Fatalf("call_count tidak bertambah menjadi 2 pasca pemanggilan MCP: %s", wList.Body.String())
 	}
 
-	// 5. Buat token Operator dan pastikan 14 tools (10 read-only + 4 operator) diekspos
+	// 5. Buat token Operator dan pastikan 26 tools + 3 prompts diekspos serta guard IP privat block_waf_ip bekerja
 	reqOp := httptest.NewRequest(http.MethodPost, "/api/mcp/tokens", bytes.NewBufferString(`{"name":"Antigravity Ops","scope":"operator"}`))
 	reqOp.AddCookie(cookie)
 	reqOp.Header.Set("Content-Type", "application/json")
@@ -179,8 +189,22 @@ func TestMCPServerStreamableHTTPAndScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools operator gagal: %v", err)
 	}
-	if len(opTools.Tools) != 17 {
-		t.Fatalf("harapan 17 tools operator, dapat %d", len(opTools.Tools))
+	if len(opTools.Tools) != 26 {
+		t.Fatalf("harapan 26 tools operator, dapat %d", len(opTools.Tools))
+	}
+
+	opPrompts, err := opSession.ListPrompts(ctx, &mcp.ListPromptsParams{})
+	if err != nil || len(opPrompts.Prompts) != 3 {
+		t.Fatalf("harapan 3 prompts operator, err=%v count=%d", err, len(opPrompts.Prompts))
+	}
+
+	// Uji proteksi block_waf_ip menolak IP loopback/privat (127.0.0.1)
+	blockRes, err := opSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "block_waf_ip",
+		Arguments: map[string]any{"ip": "127.0.0.1", "remarks": "test"},
+	})
+	if err == nil && !blockRes.IsError {
+		t.Fatalf("harapan block_waf_ip menolak IP loopback 127.0.0.1")
 	}
 
 	// 6. Cabut token read-only dan verifikasi permintaan selanjutnya langsung ditolak 401

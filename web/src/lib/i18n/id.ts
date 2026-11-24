@@ -301,8 +301,8 @@ export const dictID = {
   'settings.mcp.token_name': 'Nama Perangkat / Klien',
   'settings.mcp.token_name_placeholder': 'Misal: Antigravity Laptop Kerja',
   'settings.mcp.token_scope': 'Tingkat Izin (Scope)',
-  'settings.mcp.scope_readonly': 'Read-Only — Diagnosa, Metrik, Log & Uptime (Rekomendasi)',
-  'settings.mcp.scope_operator': 'Operator — Read-Only + Restart Service, Reload Nginx & Probe Uptime',
+  'settings.mcp.scope_readonly': 'Read-Only — 18 Tool Diagnosa (Metrik, Vhost, Log Nginx/Laravel/PM2/Docker, Port, Uptime, WAF)',
+  'settings.mcp.scope_operator': 'Operator — 26 Tool (+ Git Pull Situs, Restart Service/PM2/Docker, Reload Nginx, Blokir IP WAF)',
   'settings.mcp.create_btn': '+ Buat Token MCP',
   'settings.mcp.new_token_title': 'Token MCP Baru Berhasil Dibuat — Simpan Sekarang!',
   'settings.mcp.new_token_desc': 'Token ini tidak akan ditampilkan lagi setelah Anda menutup halaman. Blok JSON Antigravity di atas sudah otomatis terisi token ini — tinggal klik Salin JSON.',
@@ -311,6 +311,10 @@ export const dictID = {
   'settings.mcp.never_used': 'Belum pernah dipanggil',
   'settings.mcp.tools_title': 'Katalog Tools MCP Tersedia',
   'settings.mcp.tools_desc': 'Seluruh pembacaan log otomatis menyensor kata sandi, token, dan kunci privat (BR-04). Tidak ada akses shell bebas/destruktif.',
+  'settings.mcp.filter_all': 'Semua',
+  'settings.mcp.filter_search': 'Cari nama atau deskripsi tool…',
+  'settings.mcp.prompts_title': 'Runbook Prompt Bawaan (MCP Prompts)',
+  'settings.mcp.prompts_desc': 'Template alur investigasi & deploy terstruktur yang otomatis dikenali oleh IDE/Antigravity.',
 
   // Halaman Dashboard (Home)
   'home.status_normal': 'Normal',

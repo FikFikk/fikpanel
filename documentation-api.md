@@ -3135,7 +3135,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.0", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
+| Response | HTTP 200 `{"ok": true, "system": {"hostname": "...", "os_pretty": "Ubuntu 24.04...", "kernel": "6.8.0...", "go_version": "go1.26.0", "cpu_cores": 4, "uptime_sec": 86400, "version": "0.6.1", "db_path": "...", "db_size_bytes": 102400, "timezone": "Asia/Jakarta", "tz_abbr": "WIB"}, "timezones": [...]}` |
 | Notes | Membaca informasi lingkungan host nyata dari `/etc/os-release`, `/proc/sys/kernel/osrelease`, `/proc/uptime`, ukuran file SQLite aktual, serta daftar timezone umum. |
 
 | Field | Detail |
@@ -3274,7 +3274,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Query Params | Tidak ada |
 | Request Body | JSON-RPC 2.0 MCP Streamable HTTP (`initialize`, `tools/list`, `tools/call`) |
 | Response | HTTP 200 JSON / SSE Streamable HTTP sesuai spesifikasi MCP 2025-03-26; HTTP 401 bila token tidak valid/dicabut; HTTP 429 rate-limit gagal auth |
-| Notes | Mengekspos 12 tools Read-Only (`server_overview`, `list_sites`, `read_site_logs`, `nginx_status_and_logs`, `list_services`, `read_service_logs`, `list_uptime_monitors`, `get_waf_summary`, `list_cron_jobs`, `list_audit_logs`, `list_docker_containers`, `read_docker_logs`) untuk scope `readonly`, dan +5 tools tambahan (`restart_service`, `restart_docker_container`, `test_and_reload_nginx`, `check_uptime_now`, `check_site_dns`) untuk scope `operator`. `GET /mcp` menonaktifkan `WriteTimeout` agar stream SSE panjang tidak terputus, seluruh output log disensor via `ai.RedactSecrets`, dan setiap panggilan tercatat di Audit Log. |
+| Notes | Mengekspos **18 tools Read-Only** (`server_overview`, `list_sites`, `read_site_vhost`, `read_site_logs`, `read_site_app_log`, `nginx_status_and_logs`, `list_services`, `read_service_logs`, `list_pm2_processes`, `read_pm2_logs`, `list_docker_containers`, `read_docker_logs`, `list_databases`, `list_listening_ports`, `list_uptime_monitors`, `get_waf_summary`, `list_cron_jobs`, `list_audit_logs`) + 2 prompts untuk scope `readonly`, dan **+8 tools Operator** (`git_pull_site`, `restart_service`, `restart_pm2_process`, `restart_docker_container`, `test_and_reload_nginx`, `check_uptime_now`, `check_site_dns`, `block_waf_ip`) + prompt `deploy_and_verify` untuk scope `operator`. `GET /mcp` menonaktifkan `WriteTimeout` agar stream SSE panjang tidak terputus, seluruh output log disensor via `ai.RedactSecrets`, dan setiap panggilan tercatat di Audit Log. |
 
 | Field | Detail |
 |---|---|

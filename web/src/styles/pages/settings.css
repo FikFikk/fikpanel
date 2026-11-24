@@ -701,6 +701,19 @@
       gap: var(--space-2);
     }
 
+    .mcp-filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+
+    .mcp-filter-search {
+      max-width: 260px;
+      height: var(--control-sm);
+    }
+
     .mcp-tool-card {
       display: flex;
       flex-direction: column;

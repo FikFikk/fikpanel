@@ -276,13 +276,34 @@
     title: string;
     description: string;
   }
+  interface MCPPromptItem {
+    name: string;
+    title: string;
+    description: string;
+  }
   let mcpTokens = $state<MCPTokenItem[]>([]);
   let mcpTools = $state<MCPToolItem[]>([]);
+  let mcpPrompts = $state<MCPPromptItem[]>([]);
+  let mcpToolFilter = $state<'all' | 'readonly' | 'operator'>('all');
+  let mcpToolQuery = $state('');
   let mcpNewName = $state('Google Antigravity');
   let mcpNewScope = $state<'readonly' | 'operator'>('readonly');
   let mcpCreating = $state(false);
   let mcpPlainToken = $state('');
   let mcpBusyId = $state<number | null>(null);
+
+  const filteredMcpTools = $derived.by(() => {
+    const q = mcpToolQuery.trim().toLowerCase();
+    return mcpTools.filter((tl) => {
+      if (mcpToolFilter !== 'all' && tl.scope !== mcpToolFilter) return false;
+      if (!q) return true;
+      return (
+        tl.name.toLowerCase().includes(q) ||
+        tl.title.toLowerCase().includes(q) ||
+        tl.description.toLowerCase().includes(q)
+      );
+    });
+  });
 
   const mcpEndpointUrl = $derived(
     typeof window !== 'undefined' ? `${window.location.origin}/mcp` : 'https://panel.domain.com/mcp'
@@ -400,9 +421,15 @@
 
   async function loadMCP() {
     try {
-      const res = await apiFetch<{ ok: boolean; tokens: MCPTokenItem[]; tools: MCPToolItem[] }>('/api/mcp/tokens');
+      const res = await apiFetch<{
+        ok: boolean;
+        tokens: MCPTokenItem[];
+        tools: MCPToolItem[];
+        prompts?: MCPPromptItem[];
+      }>('/api/mcp/tokens');
       mcpTokens = res?.tokens || [];
       mcpTools = res?.tools || [];
+      mcpPrompts = res?.prompts || [];
     } catch {
       // Abaikan kesalahan pemuatan token MCP
     }
@@ -1882,7 +1909,7 @@
                 </div>
                 <div class="info-row">
                   <span class="info-label">{t('settings.system.panel_version')}</span>
-                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.0'}</span>
+                  <span class="badge badge--info mono">v{sysInfo?.version || overview?.system?.version || '0.6.1'}</span>
                 </div>
               </div>
             </div>
@@ -2407,12 +2434,47 @@
             <h3 class="card__title">
               <i class="ri-tools-line" aria-hidden="true"></i> {t('settings.mcp.tools_title')}
             </h3>
-            <span class="badge badge--muted mono">{mcpTools.length} tools</span>
+            <span class="badge badge--muted mono">{filteredMcpTools.length} / {mcpTools.length} tools</span>
           </div>
           <div class="card__body stack">
             <p class="panel-desc">{t('settings.mcp.tools_desc')}</p>
+            <div class="mcp-filter-bar">
+              <div class="pill-choice-row">
+                <button
+                  type="button"
+                  class="choice-chip"
+                  class:is-active={mcpToolFilter === 'all'}
+                  onclick={() => (mcpToolFilter = 'all')}
+                >
+                  {t('settings.mcp.filter_all')} ({mcpTools.length})
+                </button>
+                <button
+                  type="button"
+                  class="choice-chip"
+                  class:is-active={mcpToolFilter === 'readonly'}
+                  onclick={() => (mcpToolFilter = 'readonly')}
+                >
+                  Read-Only ({mcpTools.filter((x) => x.scope === 'readonly').length})
+                </button>
+                <button
+                  type="button"
+                  class="choice-chip"
+                  class:is-active={mcpToolFilter === 'operator'}
+                  onclick={() => (mcpToolFilter = 'operator')}
+                >
+                  Operator ({mcpTools.filter((x) => x.scope === 'operator').length})
+                </button>
+              </div>
+              <input
+                type="search"
+                class="input mcp-filter-search"
+                bind:value={mcpToolQuery}
+                placeholder={t('settings.mcp.filter_search')}
+                aria-label={t('settings.mcp.filter_search')}
+              />
+            </div>
             <div class="mcp-tools-grid">
-              {#each mcpTools as tl (tl.name)}
+              {#each filteredMcpTools as tl (tl.name)}
                 <div class="mcp-tool-card">
                   <div class="mcp-tool-card__head">
                     <code class="mcp-tool-card__name mono">{tl.name}</code>
@@ -2426,6 +2488,32 @@
             </div>
           </div>
         </div>
+
+        {#if mcpPrompts.length > 0}
+          <!-- Katalog MCP Runbook Prompts -->
+          <div class="card">
+            <div class="card__head">
+              <h3 class="card__title">
+                <i class="ri-magic-line" aria-hidden="true"></i> {t('settings.mcp.prompts_title')}
+              </h3>
+              <span class="badge badge--muted mono">{mcpPrompts.length} prompts</span>
+            </div>
+            <div class="card__body stack">
+              <p class="panel-desc">{t('settings.mcp.prompts_desc')}</p>
+              <div class="mcp-tools-grid">
+                {#each mcpPrompts as pr (pr.name)}
+                  <div class="mcp-tool-card">
+                    <div class="mcp-tool-card__head">
+                      <code class="mcp-tool-card__name mono">{pr.name}</code>
+                      <span class="badge badge--success">Prompt</span>
+                    </div>
+                    <div class="mcp-tool-card__desc">{pr.description}</div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          </div>
+        {/if}
 
       <!-- ═══ TAB 7: BACKUP SNAPSHOT SQLITE & MIGRASI PROFIL JSON (F) ═══ -->
       {:else if activeTab === 'backup'}

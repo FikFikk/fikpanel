@@ -302,8 +302,8 @@ export const dictEN: Record<TranslationKey, string> = {
   'settings.mcp.token_name': 'Client / Device Name',
   'settings.mcp.token_name_placeholder': 'e.g. Antigravity Work Laptop',
   'settings.mcp.token_scope': 'Permission Scope',
-  'settings.mcp.scope_readonly': 'Read-Only — Diagnostics, Metrics, Logs & Uptime (Recommended)',
-  'settings.mcp.scope_operator': 'Operator — Read-Only + Restart Service, Reload Nginx & Probe Uptime',
+  'settings.mcp.scope_readonly': 'Read-Only — 18 Diagnostic Tools (Metrics, Vhost, Nginx/Laravel/PM2/Docker Logs, Ports, Uptime, WAF)',
+  'settings.mcp.scope_operator': 'Operator — 26 Tools (+ Site Git Pull, Restart Service/PM2/Docker, Reload Nginx, WAF IP Block)',
   'settings.mcp.create_btn': '+ Create MCP Token',
   'settings.mcp.new_token_title': 'New MCP Token Created — Copy It Now!',
   'settings.mcp.new_token_desc': 'This token will not be shown again once you leave this page. The Antigravity JSON block above is already pre-filled with this token — just click Copy JSON.',
@@ -312,6 +312,10 @@ export const dictEN: Record<TranslationKey, string> = {
   'settings.mcp.never_used': 'Never called yet',
   'settings.mcp.tools_title': 'Available MCP Tool Catalog',
   'settings.mcp.tools_desc': 'All log reads automatically redact passwords, tokens, and private keys (BR-04). No unrestricted shell or destructive delete tools are exposed.',
+  'settings.mcp.filter_all': 'All',
+  'settings.mcp.filter_search': 'Search tool name or description…',
+  'settings.mcp.prompts_title': 'Built-in Runbook Prompts (MCP Prompts)',
+  'settings.mcp.prompts_desc': 'Structured investigation and deployment prompt templates automatically exposed to your IDE / Antigravity.',
 
   // Dashboard (Home)
   'home.status_normal': 'Normal',
