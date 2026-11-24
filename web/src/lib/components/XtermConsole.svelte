@@ -344,6 +344,15 @@
       if (active) instance.focus();
     });
 
+    // Hitung ulang dimensi cell setelah webfont monospace selesai dimuat agar jumlah baris PTY selalu presisi
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      document.fonts.ready.then(() => {
+        if (!destroyed && active) {
+          fit();
+        }
+      });
+    }
+
     return () => {
       destroyed = true;
       resizeObserver?.disconnect();
@@ -381,9 +390,14 @@
   // ── API publik komponen yang dipanggil oleh halaman induk Terminal.svelte ──
 
   export function fit() {
-    if (!fitAddon || !hostEl || hostEl.clientWidth === 0 || hostEl.clientHeight === 0) return;
+    if (!fitAddon || !term || !hostEl || hostEl.clientWidth === 0 || hostEl.clientHeight === 0) return;
     try {
+      const buf = term.buffer.active;
+      const atBottom = buf.viewportY >= buf.baseY;
       fitAddon.fit();
+      if (atBottom) {
+        term.scrollToBottom();
+      }
       sendResize();
     } catch {
       // Abaikan fit saat elemen belum siap diukur

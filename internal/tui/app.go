@@ -139,7 +139,7 @@ func NewModel(cfg Config, st *store.Store) Model {
 		cfg.RefreshInterval = 2 * time.Second
 	}
 	if cfg.Version == "" {
-		cfg.Version = "0.6.6"
+		cfg.Version = "0.6.7"
 	}
 	host, _ := os.Hostname()
 	if host == "" {

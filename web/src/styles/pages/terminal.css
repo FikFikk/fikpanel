@@ -2,14 +2,15 @@
   .pg-terminal {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 120px);
-    min-height: 580px;
+    height: calc(100dvh - var(--topbar-height) - var(--space-5) * 2);
+    min-height: 360px;
 
     /* Kontainer utama terminal dan panel samping */
     .terminal-layout {
       position: relative;
       display: flex;
       flex: 1;
+      min-height: 0;
       background: var(--bg-inset);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
@@ -32,6 +33,8 @@
       flex-direction: column;
       flex: 1;
       min-width: 0;
+      min-height: 0;
+      overflow: hidden;
       background: var(--bg-inset);
     }
 
@@ -431,16 +434,19 @@
       background: var(--bg-inset);
     }
 
+    /* Penting: padding harus diletakkan pada .xterm, bukan parent .xterm-canvas-host,
+       agar FitAddon.proposeDimensions() mengurangi padding vertikal dengan akurat dan baris prompt bawah tidak terpotong */
     .xterm-canvas-host {
       flex: 1;
       min-width: 0;
       min-height: 0;
-      padding: var(--sp-2-5) var(--sp-3);
+      padding: 0;
       overflow: hidden;
     }
 
     .xterm-canvas-host .xterm {
       height: 100%;
+      padding: var(--sp-2-5) var(--sp-3);
     }
 
     .xterm-status-bar {
