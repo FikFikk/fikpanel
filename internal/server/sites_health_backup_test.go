@@ -133,15 +133,56 @@ server {
 		t.Fatalf("Kasus fallback log global salah: count=%d source=%s", cnt2, src2)
 	}
 
-	// Kasus 3: Cloudflare Tunnel langsung ke localhost tanpa log Nginx -> source "tunnel"
+	// Kasus 3: Cloudflare Tunnel langsung ke localhost meski berkas log Nginx 0-byte sudah ada -> source "tunnel"
+	emptyTunnelLog := filepath.Join(logDir, "tunnel.example.com.access.log")
+	if err := os.WriteFile(emptyTunnelLog, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cnt3, src3 := countSiteRequestsInDirs(&store.Site{
 		Domain:   "tunnel.example.com",
-		Kind:     "proxy",
+		Kind:     "node",
 		Upstream: "http://localhost:8888",
 		SSLMode:  "cloudflare",
 	}, logDir, vhostDir, nil)
 	if cnt3 != 0 || src3 != "tunnel" {
-		t.Fatalf("Kasus deteksi tunnel salah: count=%d source=%s", cnt3, src3)
+		t.Fatalf("Kasus deteksi tunnel dengan log kosong 0-byte salah: count=%d source=%s", cnt3, src3)
+	}
+
+	// Kasus 4: Dual-vhost (conf.d punya log kosong 0-byte, vhost kedua di direktori sama punya log aktif) -> harus dijumlahkan semua
+	emptyConfDLog := filepath.Join(logDir, "kostash.example.com.access.log")
+	liveHostLog := filepath.Join(logDir, "kostash.access.log")
+	if err := os.WriteFile(emptyConfDLog, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(liveHostLog, []byte("hit1\nhit2\nhit3\nhit4\nhit5\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vhostDir, "01-fikpanel-kostash.conf"), []byte(fmt.Sprintf(`
+server {
+    listen 80;
+    server_name kostash.example.com;
+    access_log %s;
+}
+`, emptyConfDLog)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vhostDir, "02-host-kostash.conf"), []byte(fmt.Sprintf(`
+server {
+    listen 5456;
+    server_name kostash.example.com _;
+    access_log %s;
+}
+`, liveHostLog)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cnt4, src4 := countSiteRequestsInDirs(&store.Site{
+		Domain:  "kostash.example.com",
+		Kind:    "php",
+		SSLMode: "cloudflare",
+	}, logDir, vhostDir, nil)
+	if cnt4 != 5 || src4 != "nginx" {
+		t.Fatalf("Kasus dual-vhost (0-byte + live log) salah: count=%d source=%s", cnt4, src4)
 	}
 }
 

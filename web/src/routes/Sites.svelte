@@ -47,12 +47,14 @@
   let showAddModal = $state(false);
   let settingsTarget = $state<{ id: number; tab: string } | null>(null);
 
-  // Modal Log Akses / Error Situs (Real Nginx Logs)
+  // Modal Log Akses / Error Situs (Real Nginx Logs + Auto-Refresh Live)
   let showLogModal = $state(false);
   let logTarget = $state<Site | null>(null);
   let logTab = $state<'access' | 'error'>('access');
   let logContent = $state('');
+  let logPath = $state('');
   let logLoading = $state(false);
+  let logLive = $state(true);
 
   // Modal Git Pull & Auto-Deploy (khusus situs yang dibuat dari Git)
   interface GitPullResponse {
@@ -355,22 +357,43 @@
     onNotify(`Membuka terminal pada direktori ${targetPath}`);
   }
 
-  // Buka penampil log situs nyata dari server
-  async function fetchSiteLogs(site: Site, type: 'access' | 'error') {
-    logLoading = true;
+  // Buka penampil log situs nyata dari server sekaligus menyinkronkan jumlah request terbaru
+  async function fetchSiteLogs(site: Site, type: 'access' | 'error', silent = false) {
+    if (!silent) logLoading = true;
     try {
-      const res = await apiFetch<{ ok: boolean; content: string }>(`/api/sites/${site.id}/logs?type=${type}`);
+      const res = await apiFetch<{
+        ok: boolean;
+        content: string;
+        log_path?: string;
+        request_count?: number;
+        request_source?: string;
+      }>(`/api/sites/${site.id}/logs?type=${type}`);
       logContent = res.content || `Belum ada catatan ${type} log untuk ${site.domain}.`;
+      logPath = res.log_path || '';
+      if (typeof res.request_count === 'number') {
+        const nextCount = res.request_count;
+        const nextSource = res.request_source || site.request_source;
+        if (logTarget && logTarget.id === site.id) {
+          logTarget = { ...logTarget, request_count: nextCount, request_source: nextSource };
+        }
+        sites = sites.map((item) =>
+          item.id === site.id ? { ...item, request_count: nextCount, request_source: nextSource } : item,
+        );
+      }
     } catch (err: any) {
-      logContent = `Gagal memuat log: ${err.message || 'Kesalahan jaringan'}`;
+      if (!silent) {
+        logContent = `Gagal memuat log: ${err.message || 'Kesalahan jaringan'}`;
+      }
     } finally {
-      logLoading = false;
+      if (!silent) logLoading = false;
     }
   }
 
   function openLogViewer(site: Site) {
     logTarget = site;
     logTab = 'access';
+    logPath = '';
+    logLive = true;
     showLogModal = true;
     fetchSiteLogs(site, 'access');
   }
@@ -381,6 +404,22 @@
       fetchSiteLogs(logTarget, tab);
     }
   }
+
+  // Polling log & counter otomatis tiap 5 detik saat modal log terbuka dalam mode Live
+  $effect(() => {
+    const targetId = logTarget?.id;
+    const tab = logTab;
+    if (!showLogModal || !targetId || !logLive) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        const current = sites.find((item) => item.id === targetId) || logTarget;
+        if (current) {
+          fetchSiteLogs(current, tab, true);
+        }
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  });
 
   // Buka modal Git Pull & Webhook Auto-Deploy (kosongkan custom command agar memakai pipeline otomatis aman)
   function openGitPullModal(site: Site) {
@@ -569,6 +608,35 @@
 
   onMount(() => {
     loadSites();
+
+    // Segarkan otomatis status live & jumlah permintaan tiap 10 detik saat tab aktif dan tidak sibuk
+    const pollTimer = setInterval(() => {
+      if (
+        document.visibilityState === 'visible' &&
+        !loading &&
+        !refreshingSites &&
+        backingUpSiteId === null &&
+        !bulkBusy &&
+        !deletingSite &&
+        !gitPullRunning &&
+        !showAddModal
+      ) {
+        loadSites(true);
+      }
+    }, 10_000);
+
+    // Segarkan seketika ketika pengguna kembali dari tab website ke FikPanel
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !loading && !refreshingSites && !bulkBusy && backingUpSiteId === null) {
+        loadSites(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   });
 </script>
 
@@ -801,9 +869,12 @@
     {logTab}
     {logLoading}
     {logContent}
+    {logPath}
+    {logLive}
     onClose={() => (showLogModal = false)}
     onSwitchLogTab={switchLogTab}
     onRefreshLogs={fetchSiteLogs}
+    onToggleLive={() => (logLive = !logLive)}
   />
 
   <!-- ═════════ MODAL: Git Pull & Auto-Deploy ═════════ -->

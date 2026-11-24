@@ -221,59 +221,81 @@ func countDomainInGlobalLog(globalLogPath, domain string) int64 {
 	return count
 }
 
-// countSiteRequestsInDirs menghitung permintaan HTTP situs secara berjenjang: log vhost khusus -> log vhost host -> log global -> waf_events -> deteksi tunnel
+// countSiteRequestsInDirs menghitung permintaan HTTP situs lintas seluruh vhost domain (conf.d + sites-enabled), log global, waf_events, dan deteksi tunnel
 func countSiteRequestsInDirs(site *store.Site, logDir, vhostDir string, wafCounter func(string) int64) (int64, string) {
 	if site == nil || strings.TrimSpace(site.Domain) == "" {
 		return 0, "none"
 	}
 
-	// 1. Cek log khusus FikPanel (<logDir>/<domain>.access.log{,.1,.*.gz})
+	// 1. Gabungkan & jumlahkan seluruh berkas access_log khusus milik domain di conf.d maupun sites-enabled
 	primaryPath := filepath.Join(logDir, site.Domain+".access.log")
-	total, primaryExists := countFileWithRotations(primaryPath)
-	if total > 0 {
-		return total, "nginx"
-	}
+	seenPath := map[string]bool{}
+	var dedicatedPaths []string
+	var sharedLogPaths []string
 
-	// 2. Cek direktif access_log kustom di konfigurasi vhost Nginx host
-	customExists := false
-	customAccess, _ := sites.DiscoverDomainLogPaths(site.Domain, vhostDir)
-	if customAccess != "" && filepath.Clean(customAccess) != filepath.Clean(primaryPath) {
-		base := strings.ToLower(filepath.Base(customAccess))
-		if base == "access.log" {
-			if n := countDomainInGlobalLog(customAccess, site.Domain); n > 0 {
-				return n, "global_log"
-			}
+	addLogPath := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		clean := filepath.Clean(p)
+		if seenPath[clean] {
+			return
+		}
+		seenPath[clean] = true
+		if strings.EqualFold(filepath.Base(p), "access.log") {
+			sharedLogPaths = append(sharedLogPaths, p)
 		} else {
-			cTotal, cExists := countFileWithRotations(customAccess)
-			customExists = cExists
-			if cTotal > 0 {
-				return cTotal, "nginx"
-			}
+			dedicatedPaths = append(dedicatedPaths, p)
 		}
 	}
 
-	// 3. Cek log akses global Nginx (<logDir>/access.log) dengan penyaringan domain
-	if n := countDomainInGlobalLog(filepath.Join(logDir, "access.log"), site.Domain); n > 0 {
-		return n, "global_log"
+	addLogPath(primaryPath)
+	discoveredAccess, _ := sites.DiscoverAllDomainLogPaths(site.Domain, vhostDir)
+	for _, p := range discoveredAccess {
+		addLogPath(p)
 	}
 
-	// 4. Cek catatan insiden/trafik di tabel waf_events
+	var totalDedicated int64
+	anyDedicatedExists := false
+	for _, p := range dedicatedPaths {
+		cnt, exists := countFileWithRotations(p)
+		if exists {
+			anyDedicatedExists = true
+		}
+		totalDedicated += cnt
+	}
+	if totalDedicated > 0 {
+		return totalDedicated, "nginx"
+	}
+
+	// 2. Cek log akses global Nginx (termasuk path global kustom dari vhost) dengan penyaringan domain
+	addLogPath(filepath.Join(logDir, "access.log"))
+	var totalGlobal int64
+	for _, gp := range sharedLogPaths {
+		totalGlobal += countDomainInGlobalLog(gp, site.Domain)
+	}
+	if totalGlobal > 0 {
+		return totalGlobal, "global_log"
+	}
+
+	// 3. Cek catatan insiden/trafik di tabel waf_events
 	if wafCounter != nil {
 		if n := wafCounter(site.Domain); n > 0 {
 			return n, "waf"
 		}
 	}
 
-	// 5. Deteksi jujur situs yang merutekan trafik langsung via Cloudflare Tunnel tanpa melewati log Nginx
-	if !primaryExists && !customExists {
-		host, _, _ := extractDialHostPort(site.Upstream)
-		if (site.SSLMode == "cloudflare" && host != "" && isLocalUpstreamHost(host)) ||
-			(site.Kind == "proxy" && host != "" && isLocalUpstreamHost(host)) {
+	// 4. Deteksi jujur situs Cloudflare Tunnel / direct localhost port yang tidak menerima trafik lewat Nginx
+	// Tetap berlaku meski file kosong 0-byte <domain>.access.log dibuat Nginx dari vhost conf.d
+	host, port, _ := extractDialHostPort(site.Upstream)
+	if host != "" && isLocalUpstreamHost(host) && port != "80" && port != "443" {
+		if site.SSLMode == "cloudflare" || site.Kind == "proxy" {
 			return 0, "tunnel"
 		}
 	}
 
-	if primaryExists || customExists {
+	if anyDedicatedExists {
 		return 0, "nginx"
 	}
 	return 0, "none"

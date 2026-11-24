@@ -10,9 +10,12 @@
     logTab: 'access' | 'error';
     logLoading: boolean;
     logContent: string;
+    logPath?: string;
+    logLive?: boolean;
     onClose: () => void;
     onSwitchLogTab: (tab: 'access' | 'error') => void;
     onRefreshLogs: (target: Site, tab: 'access' | 'error') => void;
+    onToggleLive?: () => void;
   }
 
   let {
@@ -21,9 +24,12 @@
     logTab,
     logLoading,
     logContent,
+    logPath = '',
+    logLive = true,
     onClose,
     onSwitchLogTab,
     onRefreshLogs,
+    onToggleLive,
   }: Props = $props();
 </script>
 
@@ -36,28 +42,48 @@
   {#if logTarget}
     <div class="pg-sites-logs-modal">
       <div class="log-tabs">
-        <button
-          type="button"
-          class="log-tab {logTab === 'access' ? 'active' : ''}"
-          onclick={() => onSwitchLogTab('access')}
-        >
-          Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
-        </button>
-        <button
-          type="button"
-          class="log-tab {logTab === 'error' ? 'active' : ''}"
-          onclick={() => onSwitchLogTab('error')}
-        >
-          Error Log
-        </button>
-        <button
-          type="button"
-          class="log-tab"
-          onclick={() => logTarget && onRefreshLogs(logTarget, logTab)}
-          disabled={logLoading}
-        >
-          <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
-        </button>
+        <div class="log-tabs-left">
+          <button
+            type="button"
+            class="log-tab {logTab === 'access' ? 'active' : ''}"
+            onclick={() => onSwitchLogTab('access')}
+          >
+            Access Log ({(logTarget.request_count ?? 0).toLocaleString('id-ID')} Req)
+          </button>
+          <button
+            type="button"
+            class="log-tab {logTab === 'error' ? 'active' : ''}"
+            onclick={() => onSwitchLogTab('error')}
+          >
+            Error Log
+          </button>
+          <button
+            type="button"
+            class="log-tab"
+            onclick={() => logTarget && onRefreshLogs(logTarget, logTab)}
+            disabled={logLoading}
+          >
+            <i class="ri-refresh-line" class:spin={logLoading}></i> Segarkan
+          </button>
+          {#if onToggleLive}
+            <button
+              type="button"
+              class="log-tab log-live-btn {logLive ? 'is-live' : ''}"
+              onclick={onToggleLive}
+              title="Aktifkan atau jeda pembaruan log otomatis tiap 5 detik"
+            >
+              <span class="log-live-dot"></span>
+              <span>{logLive ? 'Live 5s' : 'Live Off'}</span>
+            </button>
+          {/if}
+        </div>
+
+        {#if logPath}
+          <span class="log-source-path mono" title="Berkas log Nginx yang dibaca: {logPath}">
+            <i class="ri-file-text-line"></i>
+            <span>{logPath}</span>
+          </span>
+        {/if}
       </div>
 
       <div class="log-viewer mono">
@@ -78,4 +104,3 @@
     </button>
   {/snippet}
 </Modal>
-

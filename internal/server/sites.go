@@ -737,7 +737,7 @@ func (s *Server) handleSaveSiteVhost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
-// handleSiteLogs membaca potongan baris log akses atau error domain
+// handleSiteLogs membaca potongan baris log akses atau error domain beserta path berkas dan hitungan permintaan terbaru
 func (s *Server) handleSiteLogs(w http.ResponseWriter, r *http.Request) {
 	id, err := siteID(r)
 	if err != nil {
@@ -753,16 +753,20 @@ func (s *Server) handleSiteLogs(w http.ResponseWriter, r *http.Request) {
 	if logType != "error" {
 		logType = "access"
 	}
-	content, err := s.sites.GetLog(site.Domain, logType, 200)
+	content, logPath, err := s.sites.GetLogWithSource(site.Domain, logType, 200)
 	if err != nil {
 		writeSiteError(w, err)
 		return
 	}
+	reqCount, reqSource := s.countSiteRequests(r.Context(), site)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":      true,
-		"domain":  site.Domain,
-		"type":    logType,
-		"content": content,
+		"ok":             true,
+		"domain":         site.Domain,
+		"type":           logType,
+		"content":        content,
+		"log_path":       logPath,
+		"request_count":  reqCount,
+		"request_source": reqSource,
 	})
 }
 

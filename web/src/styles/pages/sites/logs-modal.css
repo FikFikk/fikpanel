@@ -6,11 +6,24 @@
   .pg-sites-logs-modal {
     .log-tabs {
       display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
       gap: var(--sp-2);
       margin-bottom: var(--sp-3);
     }
 
+    .log-tabs-left {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--sp-2);
+    }
+
     .log-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1-5);
       padding: var(--sp-1-5) var(--sp-3);
       background: var(--bg-raised);
       border: 1px solid var(--border);
@@ -26,8 +39,43 @@
       color: var(--text);
     }
 
+    .log-live-btn.is-live {
+      background: var(--tint-success);
+      border-color: var(--ring-success);
+      color: var(--success-strong);
+      font-weight: 600;
+    }
+
+    .log-live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-subtle);
+    }
+
+    .log-live-btn.is-live .log-live-dot {
+      background: var(--success);
+      animation: fp-pulse 1.5s infinite;
+    }
+
+    .log-source-path {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-1);
+      max-width: 100%;
+      padding: 2px var(--sp-2);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      color: var(--text-subtle);
+      font-size: var(--text-2xs);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .log-viewer {
-      height: 260px;
+      height: 300px;
       padding: var(--sp-3-5);
       background: var(--bg-inset);
       border: 1px solid var(--border);
@@ -48,4 +96,3 @@
     }
   }
 }
-

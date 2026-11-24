@@ -445,11 +445,11 @@ func (m *Manager) VhostDir() string {
 	return m.paths.VhostDir
 }
 
-// DiscoverDomainLogPaths memindai konfigurasi vhost Nginx host untuk mencari jalur access_log dan error_log kustom milik domain
-func DiscoverDomainLogPaths(domain string, extraDirs ...string) (accessPath, errorPath string) {
+// DiscoverAllDomainLogPaths memindai seluruh vhost Nginx (sites-enabled & conf.d) untuk mengumpulkan semua jalur access_log dan error_log domain
+func DiscoverAllDomainLogPaths(domain string, extraDirs ...string) (accessPaths, errorPaths []string) {
 	target := strings.ToLower(strings.TrimSpace(domain))
 	if target == "" {
-		return "", ""
+		return nil, nil
 	}
 	var dirs []string
 	seenDir := map[string]bool{}
@@ -461,14 +461,17 @@ func DiscoverDomainLogPaths(domain string, extraDirs ...string) (accessPath, err
 		seenDir[d] = true
 		dirs = append(dirs, d)
 	}
-	for _, d := range extraDirs {
-		addDir(d)
-	}
+	// Prioritaskan vhost host asli di sites-enabled terlebih dahulu lalu conf.d dan direktori tambahan
 	if runtime.GOOS == "linux" {
 		addDir("/etc/nginx/sites-enabled")
 		addDir("/etc/nginx/conf.d")
 	}
+	for _, d := range extraDirs {
+		addDir(d)
+	}
 
+	seenAccess := map[string]bool{}
+	seenError := map[string]bool{}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -483,46 +486,55 @@ func DiscoverDomainLogPaths(domain string, extraDirs ...string) (accessPath, err
 			if err != nil {
 				continue
 			}
-			aPath, ePath, matched := extractLogPathsFromVhostConfig(string(raw), target)
-			if !matched {
-				continue
+			aPaths, ePaths := extractAllLogPathsFromVhostConfig(string(raw), target)
+			for _, p := range aPaths {
+				clean := filepath.Clean(p)
+				if !seenAccess[clean] {
+					seenAccess[clean] = true
+					accessPaths = append(accessPaths, p)
+				}
 			}
-			if aPath != "" && accessPath == "" {
-				accessPath = aPath
-			}
-			if ePath != "" && errorPath == "" {
-				errorPath = ePath
-			}
-			if accessPath != "" && errorPath != "" {
-				return accessPath, errorPath
+			for _, p := range ePaths {
+				clean := filepath.Clean(p)
+				if !seenError[clean] {
+					seenError[clean] = true
+					errorPaths = append(errorPaths, p)
+				}
 			}
 		}
+	}
+	return accessPaths, errorPaths
+}
+
+// DiscoverDomainLogPaths mengembalikan jalur access_log dan error_log pertama yang ditemukan untuk domain
+func DiscoverDomainLogPaths(domain string, extraDirs ...string) (accessPath, errorPath string) {
+	aPaths, ePaths := DiscoverAllDomainLogPaths(domain, extraDirs...)
+	if len(aPaths) > 0 {
+		accessPath = aPaths[0]
+	}
+	if len(ePaths) > 0 {
+		errorPath = ePaths[0]
 	}
 	return accessPath, errorPath
 }
 
-// extractLogPathsFromVhostConfig membedah blok server{} Nginx dan mengambil direktif access_log/error_log bila server_name cocok
-func extractLogPathsFromVhostConfig(content, targetDomain string) (accessPath, errorPath string, matched bool) {
+// extractAllLogPathsFromVhostConfig membedah seluruh blok server{} Nginx dan mengumpulkan semua access_log/error_log bila server_name cocok
+func extractAllLogPathsFromVhostConfig(content, targetDomain string) (accessPaths, errorPaths []string) {
 	inServer := false
 	braceDepth := 0
 	serverMatched := false
-	var blockAccess, blockError string
+	var blockAccess, blockError []string
 
 	flushBlock := func() {
 		if serverMatched {
-			matched = true
-			if blockAccess != "" && accessPath == "" {
-				accessPath = blockAccess
-			}
-			if blockError != "" && errorPath == "" {
-				errorPath = blockError
-			}
+			accessPaths = append(accessPaths, blockAccess...)
+			errorPaths = append(errorPaths, blockError...)
 		}
 		inServer = false
 		braceDepth = 0
 		serverMatched = false
-		blockAccess = ""
-		blockError = ""
+		blockAccess = nil
+		blockError = nil
 	}
 
 	for _, rawLine := range strings.Split(content, "\n") {
@@ -563,16 +575,12 @@ func extractLogPathsFromVhostConfig(content, targetDomain string) (accessPath, e
 			case "access_log":
 				cand := strings.Trim(fields[1], `;"'`)
 				if cand != "" && !strings.EqualFold(cand, "off") && !strings.HasPrefix(cand, "syslog:") {
-					if blockAccess == "" {
-						blockAccess = cand
-					}
+					blockAccess = append(blockAccess, cand)
 				}
 			case "error_log":
 				cand := strings.Trim(fields[1], `;"'`)
 				if cand != "" && !strings.EqualFold(cand, "off") && !strings.HasPrefix(cand, "syslog:") {
-					if blockError == "" {
-						blockError = cand
-					}
+					blockError = append(blockError, cand)
 				}
 			}
 		}
@@ -585,7 +593,7 @@ func extractLogPathsFromVhostConfig(content, targetDomain string) (accessPath, e
 	if inServer {
 		flushBlock()
 	}
-	return accessPath, errorPath, matched
+	return accessPaths, errorPaths
 }
 
 // readBoundedLogLines membaca ekor berkas log dengan batas byte ketat untuk melindungi memori server kecil
@@ -642,8 +650,8 @@ func readBoundedLogLines(path string, maxBytes int64, filterDomain string, maxLi
 	return out
 }
 
-// GetLog membaca baris terakhir log akses atau error untuk domain (mendukung file khusus domain, vhost host kustom, serta fallback log global Nginx)
-func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
+// GetLogWithSource membaca baris terakhir log akses/error lintas seluruh vhost domain beserta jalur berkas log aktif yang terbaca
+func (m *Manager) GetLogWithSource(domain, logType string, maxLines int) (content, sourcePath string, err error) {
 	if logType != "access" && logType != "error" {
 		logType = "access"
 	}
@@ -652,44 +660,77 @@ func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
 	}
 	const maxReadBytes = 2 * 1024 * 1024
 
-	// 1. Cek berkas log standar FikPanel (<LogDir>/<domain>.<type>.log + .1)
+	// Kumpulkan seluruh kandidat berkas log khusus domain (vhost FikPanel + seluruh vhost host sites-enabled/conf.d)
 	primaryPath := filepath.Join(m.paths.LogDir, fmt.Sprintf("%s.%s.log", domain, logType))
-	var allLines []string
-	allLines = append(allLines, readBoundedLogLines(primaryPath+".1", maxReadBytes, "", maxLines)...)
-	allLines = append(allLines, readBoundedLogLines(primaryPath, maxReadBytes, "", maxLines)...)
-
-	// 2. Bila kosong, telusuri direktif access_log / error_log kustom di vhost Nginx host
-	if len(allLines) == 0 {
-		customAccess, customError := DiscoverDomainLogPaths(domain, m.paths.VhostDir)
-		customPath := customAccess
-		if logType == "error" {
-			customPath = customError
+	var dedicatedPaths []string
+	seen := map[string]bool{}
+	addDedicated := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
 		}
-		if customPath != "" && filepath.Clean(customPath) != filepath.Clean(primaryPath) {
-			base := strings.ToLower(filepath.Base(customPath))
-			isGlobalShared := base == "access.log" || base == "error.log"
-			filter := ""
-			if isGlobalShared {
-				filter = domain
-			}
-			allLines = append(allLines, readBoundedLogLines(customPath+".1", maxReadBytes, filter, maxLines)...)
-			allLines = append(allLines, readBoundedLogLines(customPath, maxReadBytes, filter, maxLines)...)
+		base := strings.ToLower(filepath.Base(p))
+		if base == "access.log" || base == "error.log" {
+			return
+		}
+		clean := filepath.Clean(p)
+		if seen[clean] {
+			return
+		}
+		seen[clean] = true
+		dedicatedPaths = append(dedicatedPaths, p)
+	}
+	addDedicated(primaryPath)
+	aPaths, ePaths := DiscoverAllDomainLogPaths(domain, m.paths.VhostDir)
+	if logType == "error" {
+		for _, p := range ePaths {
+			addDedicated(p)
+		}
+	} else {
+		for _, p := range aPaths {
+			addDedicated(p)
 		}
 	}
 
-	// 3. Fallback ke log global Nginx (<LogDir>/access.log atau error.log) dengan penyaringan domain
+	var allLines []string
+	var usedPaths []string
+	for _, p := range dedicatedPaths {
+		var lines []string
+		lines = append(lines, readBoundedLogLines(p+".1", maxReadBytes, "", maxLines)...)
+		lines = append(lines, readBoundedLogLines(p, maxReadBytes, "", maxLines)...)
+		if len(lines) > 0 {
+			allLines = append(allLines, lines...)
+			usedPaths = append(usedPaths, filepath.ToSlash(p))
+		}
+	}
+
+	// Fallback ke log global Nginx (<LogDir>/access.log atau error.log) dengan penyaringan domain
 	if len(allLines) == 0 {
 		globalPath := filepath.Join(m.paths.LogDir, logType+".log")
-		allLines = append(allLines, readBoundedLogLines(globalPath, 4*1024*1024, domain, maxLines)...)
+		gLines := readBoundedLogLines(globalPath, 4*1024*1024, domain, maxLines)
+		if len(gLines) > 0 {
+			allLines = append(allLines, gLines...)
+			usedPaths = append(usedPaths, filepath.ToSlash(globalPath))
+		}
 	}
 
 	if len(allLines) == 0 {
-		return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), nil
+		// Tampilkan jalur berkas log yang dipantau meski masih kosong agar transparan
+		if len(dedicatedPaths) > 0 {
+			sourcePath = filepath.ToSlash(dedicatedPaths[0])
+		}
+		return fmt.Sprintf("Belum ada catatan %s log untuk %s.", logType, domain), sourcePath, nil
 	}
 	if len(allLines) > maxLines {
 		allLines = allLines[len(allLines)-maxLines:]
 	}
-	return strings.Join(allLines, "\n"), nil
+	return strings.Join(allLines, "\n"), strings.Join(usedPaths, ", "), nil
+}
+
+// GetLog membaca baris terakhir log akses atau error untuk domain (mendukung seluruh vhost host & fallback global)
+func (m *Manager) GetLog(domain, logType string, maxLines int) (string, error) {
+	content, _, err := m.GetLogWithSource(domain, logType, maxLines)
+	return content, err
 }
 
 // ClearLog mengosongkan log akses dan error untuk domain
