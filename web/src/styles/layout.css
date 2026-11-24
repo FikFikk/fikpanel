@@ -20,11 +20,14 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-width: 0;
+    max-width: 100%;
     margin-left: var(--sidebar-width);
   }
   .app-shell__content {
     flex: 1;
     width: 100%;
+    min-width: 0;
     max-width: var(--content-max);
     margin: 0 auto;
     padding: var(--space-5) var(--space-6);
@@ -318,6 +321,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+    width: 100%;
+    max-width: 100%;
     height: var(--topbar-height);
     padding: 0 var(--space-6);
     background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
@@ -328,14 +333,76 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    min-width: 0;
+    flex: 1 1 auto;
   }
   .topbar__right {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    flex-shrink: 0;
   }
+  /* Tombol drawer khusus mobile — digayakan langsung di @layer layout agar tidak tertimpa .btn */
   .topbar__menu {
     display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--control-md);
+    height: var(--control-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-size: 1.15rem;
+    transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, color var(--duration-fast) ease;
+  }
+  .topbar__menu:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  /* Brand ringkas khusus layar ponsel ketika pil IP dipindah ke dropdown akun */
+  .topbar__mobile-brand {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .topbar__mobile-brand-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Lencana OS digayakan mandiri di @layer layout agar aturan responsif tidak tertimpa .badge */
+  .topbar__os {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--control-sm);
+    max-width: 240px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .topbar__os i {
+    flex-shrink: 0;
+    color: var(--text-subtle);
+  }
+  .topbar__os-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .topbar__ip {
     display: inline-flex;
@@ -433,10 +500,24 @@
     color: var(--accent-strong);
     border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   }
+  /* Tombol pengalih tema digayakan mandiri agar tidak tertimpa .btn--ghost */
   .topbar__theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-sm);
+    height: var(--control-sm);
     border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     background: var(--bg-raised);
     color: var(--text-secondary);
+    font-size: 0.95rem;
+    transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, color var(--duration-fast) ease;
+  }
+  .topbar__theme-btn:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+    color: var(--text);
   }
   .topbar__user-wrap {
     position: relative;
@@ -554,6 +635,94 @@
     background: var(--tint-accent);
   }
 
+  /* Metadata host & bahasa khusus layar mobile di dalam dropdown profil */
+  .topbar__mobile-meta {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-1);
+    margin-bottom: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .topbar__mobile-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1);
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-inset);
+  }
+  .topbar__mobile-ip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+    font-size: var(--text-xs);
+    color: var(--text);
+    text-align: left;
+  }
+  .topbar__mobile-ip-btn i {
+    margin-left: auto;
+    color: var(--text-subtle);
+  }
+  .topbar__mobile-ip-btn:hover,
+  .topbar__mobile-mask-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .topbar__mobile-mask-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-sm);
+    height: var(--control-sm);
+    border-radius: var(--radius-xs);
+    color: var(--text-subtle);
+    flex-shrink: 0;
+  }
+  .topbar__mobile-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-1);
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+    min-width: 0;
+  }
+  .topbar__mobile-info i {
+    flex-shrink: 0;
+    color: var(--accent-strong);
+  }
+  .topbar__mobile-lang {
+    display: none;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    text-align: left;
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+  }
+  .topbar__mobile-lang:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .topbar__mobile-lang .topbar__tz-badge {
+    margin-left: auto;
+  }
+
+  @media (max-width: 1200px) {
+    .topbar__os {
+      display: none;
+    }
+  }
   @media (max-width: 1024px) {
     .topbar__client-time,
     .topbar__time-sep {
@@ -563,6 +732,7 @@
   @media (max-width: 768px) {
     .topbar {
       padding: 0 var(--space-3);
+      gap: var(--space-2);
     }
     .topbar__menu {
       display: inline-flex;
@@ -572,6 +742,51 @@
     .topbar__palette-label,
     .topbar__palette-btn kbd {
       display: none;
+    }
+    .topbar__palette-btn {
+      width: var(--control-md);
+      height: var(--control-md);
+      justify-content: center;
+      padding: 0;
+    }
+    .topbar__lang-btn,
+    .topbar__theme-btn,
+    .topbar__user {
+      height: var(--control-md);
+    }
+    .topbar__theme-btn {
+      width: var(--control-md);
+    }
+    .topbar__mobile-meta {
+      display: flex;
+    }
+    .topbar__user-menu {
+      min-width: 240px;
+      max-width: calc(100vw - var(--space-6));
+    }
+  }
+  @media (max-width: 640px) {
+    .topbar__ip,
+    .topbar__lang-btn {
+      display: none;
+    }
+    .topbar__mobile-brand {
+      display: inline-flex;
+    }
+    .topbar__mobile-lang {
+      display: flex;
+    }
+  }
+  @media (max-width: 480px) {
+    .topbar__env-badge,
+    .topbar__user-name,
+    .topbar__user-caret {
+      display: none;
+    }
+    .topbar__user {
+      width: var(--control-md);
+      padding: 0;
+      justify-content: center;
     }
   }
 

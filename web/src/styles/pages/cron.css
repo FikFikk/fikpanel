@@ -108,6 +108,7 @@
       gap: var(--sp-1-5);
       color: var(--text-subtle);
       font-size: var(--text-2xs);
+      white-space: nowrap;
     }
 
     .spec-next {
@@ -182,12 +183,14 @@
       display: flex;
       align-items: center;
       gap: var(--sp-2-5);
+      min-width: 210px;
     }
 
     .spec-cell {
       display: flex;
       flex-direction: column;
       gap: var(--sp-1);
+      min-width: 190px;
     }
 
     .badge-spec {
@@ -655,6 +658,47 @@
       line-height: 1.45;
       white-space: pre-wrap;
       word-break: break-all;
+    }
+
+    /* Penyesuaian toolbar, pencarian, dan builder cron untuk layar ponsel */
+    @media (max-width: 768px) {
+      .cron-toolbar {
+        align-items: stretch;
+        gap: var(--sp-2-5);
+      }
+
+      .cron-toolbar__left {
+        width: 100%;
+        gap: var(--sp-2);
+      }
+
+      .cron-search-box {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .file-log-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--sp-2);
+      }
+
+      .toolbar-actions {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .crontab-grid-box {
+        gap: var(--sp-1-5);
+        padding: var(--sp-2);
+      }
+
+      .cron-field-input {
+        padding: var(--sp-1-5) var(--sp-1);
+        font-size: var(--text-xs);
+      }
     }
   }
 }

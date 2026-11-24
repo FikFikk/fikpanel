@@ -124,18 +124,25 @@
 </script>
 
 <header class="topbar">
-  <!-- Sisi Kiri: Menu Mobile, IP Host, & OS -->
+  <!-- Sisi Kiri: Menu Mobile, Brand Ringkas Mobile, IP Host, & OS -->
   <div class="topbar__left">
     <button
       type="button"
-      class="btn btn--ghost btn--icon topbar__menu"
+      class="topbar__menu"
       onclick={onToggleMenu}
       aria-label={menuOpen ? 'Tutup menu' : 'Buka menu'}
+      title={menuOpen ? 'Tutup menu' : 'Buka menu'}
       aria-expanded={menuOpen}
       aria-controls="app-sidebar"
     >
       <i class={menuOpen ? 'ri-close-line' : 'ri-menu-line'} aria-hidden="true"></i>
     </button>
+
+    <!-- Identitas ringkas yang hanya tampil pada layar ponsel sempit -->
+    <div class="topbar__mobile-brand">
+      <span class="dot dot--success" aria-hidden="true"></span>
+      <span class="topbar__mobile-brand-name">{appearanceState.brand_name || 'fikpanel'}</span>
+    </div>
 
     <div class="topbar__ip">
       <button type="button" class="topbar__ip-value" onclick={copyIP} title={t('shell.copy_ip')}>
@@ -166,9 +173,9 @@
       </span>
     {/if}
 
-    <span class="badge topbar__os">
+    <span class="topbar__os" title={overview?.system?.os || 'Linux'}>
       <i class="ri-computer-line" aria-hidden="true"></i>
-      {overview?.system?.os || 'Linux'}
+      <span class="topbar__os-text">{overview?.system?.os || 'Linux'}</span>
     </span>
   </div>
 
@@ -221,7 +228,7 @@
     <!-- Toggle Tema (Dark / Light / Auto) -->
     <button
       type="button"
-      class="btn btn--ghost btn--icon btn--sm topbar__theme-btn"
+      class="topbar__theme-btn"
       onclick={cycleTheme}
       aria-label={themeLabel}
       title={themeLabel}
@@ -237,10 +244,11 @@
         onclick={() => (userMenuOpen = !userMenuOpen)}
         aria-expanded={userMenuOpen}
         aria-haspopup="menu"
+        aria-label={user}
         title={user}
       >
         <i class="ri-user-3-line" aria-hidden="true"></i>
-        <span>{user}</span>
+        <span class="topbar__user-name">{user}</span>
         <i class="ri-arrow-down-s-line topbar__user-caret" aria-hidden="true"></i>
       </button>
 
@@ -250,6 +258,55 @@
             <span class="topbar__user-role">{t('shell.signed_in_as')}</span>
             <strong class="mono">{user}</strong>
           </div>
+
+          <!-- Informasi host, jam server, & bahasa khusus layar mobile agar topbar tetap bersih -->
+          <div class="topbar__mobile-meta">
+            <div class="topbar__mobile-row">
+              <button
+                type="button"
+                class="topbar__mobile-ip-btn"
+                onclick={copyIP}
+                title={t('shell.copy_ip')}
+              >
+                <span class="dot dot--success" aria-hidden="true"></span>
+                <span class="mono tabular">{maskIP ? '•••.•••.•••.•••' : ip}</span>
+                <i class="ri-file-copy-line" aria-hidden="true"></i>
+              </button>
+              <button
+                type="button"
+                class="topbar__mobile-mask-btn"
+                onclick={() => (maskIP = !maskIP)}
+                aria-label={maskIP ? t('shell.show_ip') : t('shell.hide_ip')}
+                title={maskIP ? t('shell.show_ip') : t('shell.hide_ip')}
+                aria-pressed={maskIP}
+              >
+                <i class={maskIP ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+              </button>
+            </div>
+
+            <div class="topbar__mobile-info">
+              <i class="ri-computer-line" aria-hidden="true"></i>
+              <span class="truncate">{overview?.system?.os || 'Linux'}</span>
+            </div>
+
+            <div class="topbar__mobile-info">
+              <i class="ri-server-line" aria-hidden="true"></i>
+              <span class="mono tabular">{formatDate(serverNow)}, {formatTime(serverNow)}</span>
+              <span class="topbar__tz-badge">{serverTzName}</span>
+            </div>
+
+            <button
+              type="button"
+              role="menuitem"
+              class="topbar__mobile-lang"
+              onclick={toggleLocale}
+            >
+              <i class="ri-translate-2" aria-hidden="true"></i>
+              <span>{i18nState.lang === 'id' ? 'Bahasa: Indonesia (ID)' : 'Language: English (EN)'}</span>
+              <span class="topbar__tz-badge mono">{i18nState.lang.toUpperCase()}</span>
+            </button>
+          </div>
+
           {#if onLogout}
             <button
               type="button"

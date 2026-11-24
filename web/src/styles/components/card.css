@@ -39,4 +39,23 @@
     border-top: 1px solid var(--border-subtle);
     background: color-mix(in srgb, var(--bg-app) 40%, transparent);
   }
+  /* Hilangkan garis tepi ganda ketika tabel dibungkus langsung oleh kartu */
+  .card > .table-wrap {
+    border: none;
+    border-radius: 0;
+  }
+
+  @media (max-width: 768px) {
+    .card__head {
+      flex-wrap: wrap;
+      padding: var(--space-3);
+    }
+    .card__body {
+      padding: var(--space-3);
+    }
+    .card__foot {
+      padding: var(--space-2) var(--space-3);
+      flex-wrap: wrap;
+    }
+  }
 }
