@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { formatBytes } from '../api';
   import type { MetricPoint } from '../types';
   import { readToken } from '../utils/browser';
   import '../../styles/pages/components/chart.css';
@@ -90,6 +91,7 @@
     const topY = Math.min(cpuY, ramY);
     const tooltipY = Math.max(topY - 12, 68);
 
+    const ts = pt.ts ?? pt.timestamp ?? 0;
     return {
       x,
       cpuY,
@@ -98,20 +100,11 @@
       ramVal,
       ramUsed: pt.ram_used || 0,
       ramTotal: pt.ram_total || 0,
-      timeStr: pt.timestamp ? timeFormatter.format(pt.timestamp * 1000) : '--:--:--',
+      timeStr: ts ? timeFormatter.format(ts * 1000) : '--:--:--',
       tooltipX,
       tooltipY,
     };
   });
-
-  function formatBytes(val: number): string {
-    if (!val || val <= 0) return '';
-    // Deteksi otomatis apakah satuan dalam MB, GB, atau Bytes
-    if (val > 1024 * 1024 * 1024) return `${(val / (1024 * 1024 * 1024)).toFixed(1)}G`;
-    if (val > 1024 * 1024) return `${(val / (1024 * 1024)).toFixed(1)}G`;
-    if (val > 1024) return `${(val / 1024).toFixed(1)}G`;
-    return `${val.toFixed(1)}G`;
-  }
 
   // Ambil warna dari design token aktif agar mendukung mode dark & light
   function getChartPalette() {

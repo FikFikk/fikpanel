@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// Hub mengelola distribusi data metrik secara real-time via Server-Sent Events (SSE)
+// Hub mengelola distribusi data metrik secara real-time via Server-Sent Events (SSE) dan perekaman berkala
 type Hub struct {
 	mu          sync.Mutex
+	collectMu   sync.Mutex
 	ring        *RingBuffer
 	collector   Collector
 	subscribers map[chan Point]struct{}
@@ -27,14 +28,39 @@ func NewHub() *Hub {
 	}
 }
 
-// GetLatest mengembalikan titik data metrik terkini untuk overview dashboard
+// collectSafe menjalankan pengumpulan metrik secara thread-safe agar tidak terjadi race condition pada delta counter
+func (h *Hub) collectSafe() (Point, error) {
+	h.collectMu.Lock()
+	defer h.collectMu.Unlock()
+	return h.collector.Collect()
+}
+
+// GetLatest mengembalikan titik data metrik terkini (menggunakan ring buffer bila masih segar <= 3 detik)
 func (h *Hub) GetLatest() Point {
-	if pt, ok := h.ring.GetLatest(); ok {
+	if pt, ok := h.ring.GetLatest(); ok && time.Now().Unix()-pt.Timestamp <= 3 {
 		return pt
 	}
-	pt, err := h.collector.Collect()
+	return h.CollectFresh()
+}
+
+// CollectFresh selalu menjamin metrik segar dari kernel OS meskipun tidak ada klien SSE yang terhubung
+func (h *Hub) CollectFresh() Point {
+	// Jika ticker SSE aktif dan sampel terakhir < 2 detik, gunakan langsung tanpa double-sampling delta
+	h.mu.Lock()
+	tickerRunning := h.running
+	h.mu.Unlock()
+	if tickerRunning {
+		if pt, ok := h.ring.GetLatest(); ok && time.Now().Unix()-pt.Timestamp <= 2 {
+			return pt
+		}
+	}
+
+	pt, err := h.collectSafe()
 	if err == nil {
 		h.ring.Push(pt)
+		return pt
+	}
+	if pt, ok := h.ring.GetLatest(); ok {
 		return pt
 	}
 	return Point{}
@@ -83,7 +109,7 @@ func (h *Hub) runTicker(done chan struct{}) {
 		case <-done:
 			return
 		case <-ticker.C:
-			pt, err := h.collector.Collect()
+			pt, err := h.collectSafe()
 			if err != nil {
 				continue
 			}

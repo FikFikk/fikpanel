@@ -3,6 +3,7 @@
 package metrics
 
 import (
+	"math"
 	"math/rand"
 	"runtime"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// WindowsCollector membaca metrik sistem nyata dari API kernel Windows
+// WindowsCollector membaca metrik sistem nyata (RAM & Disk) dari API kernel Windows beserta estimasi CPU/IO mode dev
 type WindowsCollector struct {
 	prevTime time.Time
 }
@@ -23,7 +24,7 @@ func NewCollector() Collector {
 	}
 }
 
-// MEMORYSTATUSEX struktur Win32 untuk GlobalMemoryStatusEx
+// memoryStatusEx struktur Win32 untuk GlobalMemoryStatusEx
 type memoryStatusEx struct {
 	Length               uint32
 	MemoryLoad           uint32
@@ -36,7 +37,7 @@ type memoryStatusEx struct {
 	AvailExtendedVirtual uint64
 }
 
-// Collect membaca data metrik sistem nyata dari Windows API
+// Collect membaca data metrik sistem dari Windows API
 func (c *WindowsCollector) Collect() (Point, error) {
 	now := time.Now()
 	p := Point{Timestamp: now.Unix()}
@@ -61,19 +62,38 @@ func (c *WindowsCollector) Collect() (Point, error) {
 		p.DiskUsed = totalBytes - totalFreeBytes
 	}
 
-	// CPU: estimasi dari runtime (tidak ada /proc di Windows)
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	p.CPU = 8.0 + (rand.Float64() * 12.0) // Simulasi fluktuasi CPU realistis
+	// Estimasi CPU & pecahan mode pengembangan non-Linux
+	p.CPU = math.Round((8.0+rand.Float64()*12.0)*10) / 10
+	p.CPUUser = math.Round((p.CPU*0.68)*10) / 10
+	p.CPUSystem = math.Round((p.CPU*0.24)*10) / 10
+	p.CPUIOWait = math.Round((p.CPU*0.08)*10) / 10
+	p.CPUSteal = 0
 
-	// Network: simulasi realistis (tidak ada API sederhana tanpa WMI)
+	cores := runtime.NumCPU()
+	if cores > 16 {
+		cores = 16
+	}
+	p.PerCore = make([]float64, cores)
+	for i := 0; i < cores; i++ {
+		val := p.CPU + (rand.Float64()*8.0 - 4.0)
+		if val < 1 {
+			val = 1
+		}
+		if val > 100 {
+			val = 100
+		}
+		p.PerCore[i] = math.Round(val*10) / 10
+	}
+
+	// Estimasi Disk I/O & Network pada lingkungan pengembangan non-Linux
+	p.DiskRead = uint64(1024*64 + rand.Intn(1024*256))
+	p.DiskWrite = uint64(1024*32 + rand.Intn(1024*128))
 	p.NetIn = uint64(1024*30 + rand.Intn(1024*80))
 	p.NetOut = uint64(1024*10 + rand.Intn(1024*40))
 
-	// Load average tidak ada konsep di Windows, pakai CPU load
-	p.LoadAvg = p.CPU / 100.0 * float64(runtime.NumCPU())
-	p.Load5m = p.LoadAvg * 0.9
-	p.Load15m = p.LoadAvg * 0.8
+	p.LoadAvg = math.Round((p.CPU/100.0*float64(runtime.NumCPU()))*100) / 100
+	p.Load5m = math.Round((p.LoadAvg*0.9)*100) / 100
+	p.Load15m = math.Round((p.LoadAvg*0.8)*100) / 100
 
 	c.prevTime = now
 	return p, nil

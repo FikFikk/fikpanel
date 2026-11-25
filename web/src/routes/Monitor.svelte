@@ -1,15 +1,23 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Chart from '../lib/components/Chart.svelte';
-  import HistoryChart from '../lib/components/HistoryChart.svelte';
+  import PageHeader from '../lib/components/ui/PageHeader.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import type { HistoryChartMode } from '../lib/components/HistoryChart.svelte';
+  import HistoryTab from './monitor/HistoryTab.svelte';
+  import RealtimeTab from './monitor/RealtimeTab.svelte';
+  import UptimeTab from './monitor/UptimeTab.svelte';
+  import AlertsTab from './monitor/AlertsTab.svelte';
   import { formatBytes, apiFetch } from '../lib/api';
   import type {
     MetricPoint,
-    MonitorSnapshot,
+    MonitorAlert,
     MonitorConfig,
+    MonitorHistorySummary,
+    MonitorSnapshot,
+    MonitorThresholds,
+    SystemProcess,
     UptimeMonitor,
-    UptimeCheck,
+    UptimeMonitorHistory,
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
@@ -22,27 +30,47 @@
 
   let { currentMetric, history }: Props = $props();
 
-  // Mode tab: 'history' (persisten), 'realtime' (SSE 60 detik), dan 'uptime' (Uptime & SSL Monitor)
-  let activeTab = $state<'history' | 'realtime' | 'uptime'>('history');
+  type MonitorTabId = 'history' | 'realtime' | 'uptime' | 'alerts';
+  let activeTab = $state<MonitorTabId>('history');
 
-  // State histori persisten
+  // State histori persisten & analitik
   let snapshots = $state<MonitorSnapshot[]>([]);
+  let summary = $state<MonitorHistorySummary | null>(null);
   let loadingHistory = $state(false);
   let timeRange = $state<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
-  let chartMode = $state<'load' | 'resource' | 'network'>('load');
+  let chartMode = $state<HistoryChartMode>('resource');
+  let historyWindowStart = $state(0);
+  let historyWindowEnd = $state(0);
 
-  // Konfigurasi toggle monitoring sistem
+  // Konfigurasi perekaman & ambang batas alert
   let monitorConfig = $state<MonitorConfig>({ enabled: true, save_days: 30 });
   let updatingConfig = $state(false);
+  let thresholds = $state<MonitorThresholds>({
+    alert_cpu_pct: 85,
+    alert_ram_pct: 85,
+    alert_disk_pct: 90,
+    alert_ssl_days: 14,
+    alert_cooldown_min: 15,
+  });
+
+  // State Top 5 proses aktif untuk tab Live Telemetry
+  let topProcesses = $state<SystemProcess[]>([]);
+  let loadingProcs = $state(false);
 
   // State Uptime & SSL Monitor
   let uptimeMonitors = $state<UptimeMonitor[]>([]);
   let loadingUptime = $state(false);
   let importingSites = $state(false);
+  let checkingAll = $state(false);
   let checkingId = $state<number | null>(null);
   let togglingId = $state<number | null>(null);
 
-  // State modal tambah/edit monitor
+  // State Modal Detail & Latensi Uptime
+  let detailOpen = $state(false);
+  let detailLoading = $state(false);
+  let uptimeDetail = $state<UptimeMonitorHistory | null>(null);
+
+  // State Modal Tambah/Edit Uptime Monitor
   let showMonitorModal = $state(false);
   let editingMonitorId = $state<number | null>(null);
   let savingMonitor = $state(false);
@@ -57,64 +85,71 @@
   let formPublicVisible = $state(true);
   let formEnabled = $state(true);
 
-  // Ringkasan metrik Uptime & SSL
-  const uptimeStats = $derived.by(() => {
-    const total = uptimeMonitors.length;
-    let up = 0;
-    let down = 0;
-    let sslWarn = 0;
-    let latSum = 0;
-    let latCount = 0;
-    for (const m of uptimeMonitors) {
-      if (!m.enabled) continue;
-      if (m.last_status === 'up') up++;
-      else if (m.last_status === 'down') down++;
-      if (m.ssl_days_remaining >= 0 && m.ssl_days_remaining <= 14) sslWarn++;
-      if (m.last_latency_ms > 0) {
-        latSum += m.last_latency_ms;
-        latCount++;
-      }
-    }
-    return {
-      total,
-      up,
-      down,
-      sslWarn,
-      avgLatency: latCount > 0 ? Math.round(latSum / latCount) : 0,
-    };
+  // State Alert & Insiden Terpadu
+  let alerts = $state<MonitorAlert[]>([]);
+  let unackedCount = $state(0);
+  let webhooksCount = $state(0);
+  let loadingAlerts = $state(false);
+  let savingThresholds = $state(false);
+
+  // Nilai derivasi KPI global header
+  let ramPct = $derived(
+    currentMetric.ram_total > 0 ? (currentMetric.ram_used / currentMetric.ram_total) * 100 : 0
+  );
+  let diskPct = $derived(
+    currentMetric.disk_total > 0 ? (currentMetric.disk_used / currentMetric.disk_total) * 100 : 0
+  );
+  let load5m = $derived(currentMetric.load_5m ?? currentMetric.load_avg);
+  let downCount = $derived(
+    uptimeMonitors.filter((m) => m.enabled && m.last_status === 'down').length
+  );
+  let exportUrl = $derived(
+    `/api/monitor/history/export?start=${historyWindowStart}&end=${historyWindowEnd}`
+  );
+
+  // Path SVG untuk grafik latensi di modal detail Uptime
+  let detailSvgPaths = $derived.by(() => {
+    const checks = (uptimeDetail?.checks || []).filter((c) => c.latency_ms >= 0);
+    if (checks.length < 2) return null;
+    const w = 520;
+    const h = 110;
+    const pad = 8;
+    const maxLat = Math.max(...checks.map((c) => c.latency_ms), 50) * 1.15;
+    const pts = checks.map((c, i) => {
+      const x = pad + (i / (checks.length - 1)) * (w - pad * 2);
+      const y = h - pad - (c.latency_ms / maxLat) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const line = `M ${pts.join(' L ')}`;
+    const area = `${line} L ${(w - pad).toFixed(1)},${(h - pad).toFixed(1)} L ${pad.toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area, maxLat: Math.round(maxLat) };
   });
+
+  // ── Pengambilan Data ──────────────────────────────────────────────────────
 
   async function loadMonitorConfig() {
     try {
       const res = await apiFetch<{ ok: boolean; config: MonitorConfig }>('/api/monitor/config');
-      if (res?.config) {
-        monitorConfig = res.config;
-      }
+      if (res?.config) monitorConfig = res.config;
     } catch {
-      // Abaikan kesalahan pemuatan awal konfigurasi
+      // Abaikan kegagalan awal agar UI tetap tampil
     }
   }
 
-  async function toggleMonitor() {
+  async function updateMonitorConfig(enabled: boolean, saveDays: number) {
     try {
       updatingConfig = true;
-      const newStatus = !monitorConfig.enabled;
-      await apiFetch('/api/monitor/config', {
-        method: 'POST',
-        body: JSON.stringify({
-          enabled: newStatus,
-          save_days: monitorConfig.save_days,
-        }),
-      });
-      monitorConfig.enabled = newStatus;
-      notify(
-        newStatus
-          ? 'Status Monitoring diaktifkan: Riwayat performa dicatat ke database'
-          : 'Status Monitoring dimatikan: Perekaman dihentikan (kosong/tidak mencatat)',
-        'info'
+      const res = await apiFetch<{ ok: boolean; config?: MonitorConfig; message?: string }>(
+        '/api/monitor/config',
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled, save_days: saveDays }),
+        }
       );
+      monitorConfig = res?.config || { enabled, save_days: saveDays };
+      notify(res?.message || 'Konfigurasi monitoring diperbarui', 'success');
     } catch (err: any) {
-      notify(err.message || 'Gagal mengubah status monitoring', 'error');
+      notify(err?.message || 'Gagal memperbarui konfigurasi monitoring', 'error');
     } finally {
       updatingConfig = false;
     }
@@ -124,19 +159,26 @@
     try {
       loadingHistory = true;
       const now = Math.floor(Date.now() / 1000);
-      let duration = 86400; // 24 jam
+      let duration = 86400;
       if (timeRange === '1h') duration = 3600;
       else if (timeRange === '6h') duration = 21600;
       else if (timeRange === '7d') duration = 86400 * 7;
       else if (timeRange === '30d') duration = 86400 * 30;
 
       const start = now - duration;
-      const res = await apiFetch<{ ok: boolean; history: MonitorSnapshot[] }>(
-        `/api/monitor/history?start=${start}&end=${now}`
-      );
+      historyWindowStart = start;
+      historyWindowEnd = now;
+      const res = await apiFetch<{
+        ok: boolean;
+        history: MonitorSnapshot[];
+        summary?: MonitorHistorySummary;
+        thresholds?: MonitorThresholds;
+      }>(`/api/monitor/history?start=${start}&end=${now}&max_points=360`);
       snapshots = res?.history || [];
+      summary = res?.summary || null;
+      if (res?.thresholds) thresholds = res.thresholds;
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat histori monitoring', 'error');
+      notify(err?.message || 'Gagal memuat histori monitoring', 'error');
     } finally {
       loadingHistory = false;
     }
@@ -145,35 +187,70 @@
   async function clearHistory() {
     const ok = await confirmDialog({
       title: 'Kosongkan Riwayat Monitoring',
-      message: 'Hapus seluruh rekaman histori metrik monitoring yang tersimpan di server?',
-      confirmText: 'Kosongkan',
+      message: 'Hapus seluruh rekaman histori metrik server dari database SQLite?',
+      confirmText: 'Kosongkan Riwayat',
       tone: 'danger',
     });
     if (!ok) return;
 
     try {
       await apiFetch('/api/monitor/history', { method: 'DELETE' });
-      notify('Seluruh data histori monitoring berhasil dikosongkan', 'success');
       snapshots = [];
+      summary = null;
+      notify('Seluruh data histori monitoring berhasil dikosongkan', 'success');
     } catch (err: any) {
-      notify(err.message || 'Gagal menghapus rekaman', 'error');
+      notify(err?.message || 'Gagal mengosongkan histori', 'error');
     }
   }
 
-  // ── Logika Uptime & SSL Monitor ───────────────────────────────────────────
+  async function loadTopProcesses(silent = false) {
+    try {
+      if (!silent) loadingProcs = true;
+      const res = await apiFetch<{ ok: boolean; processes: SystemProcess[] }>(
+        '/api/system/processes?limit=5&sort=cpu'
+      );
+      topProcesses = res?.processes || [];
+    } catch {
+      // Abaikan saat non-Linux atau proses sementara sibuk
+    } finally {
+      if (!silent) loadingProcs = false;
+    }
+  }
+
   async function loadUptimeMonitors(silent = false) {
     try {
       if (!silent) loadingUptime = true;
       const res = await apiFetch<{ ok: boolean; monitors: UptimeMonitor[] }>('/api/uptime/monitors');
       uptimeMonitors = res?.monitors || [];
     } catch (err: any) {
-      if (!silent) {
-        notify(err.message || 'Gagal memuat daftar monitor uptime', 'error');
-      }
+      if (!silent) notify(err?.message || 'Gagal memuat monitor uptime', 'error');
     } finally {
       if (!silent) loadingUptime = false;
     }
   }
+
+  async function loadAlerts(silent = false) {
+    try {
+      if (!silent) loadingAlerts = true;
+      const res = await apiFetch<{
+        ok: boolean;
+        alerts: MonitorAlert[];
+        unacked_count: number;
+        webhooks_count: number;
+        thresholds?: MonitorThresholds;
+      }>('/api/monitor/alerts?limit=100');
+      alerts = res?.alerts || [];
+      unackedCount = res?.unacked_count ?? 0;
+      webhooksCount = res?.webhooks_count ?? 0;
+      if (res?.thresholds) thresholds = res.thresholds;
+    } catch (err: any) {
+      if (!silent) notify(err?.message || 'Gagal memuat riwayat alert', 'error');
+    } finally {
+      if (!silent) loadingAlerts = false;
+    }
+  }
+
+  // ── Aksi Uptime & SSL Monitor ─────────────────────────────────────────────
 
   function openAddMonitor() {
     editingMonitorId = null;
@@ -208,7 +285,7 @@
   async function saveMonitor(e: SubmitEvent) {
     e.preventDefault();
     if (!formName.trim() || !formTarget.trim()) {
-      notify('Nama monitor dan target URL/Host wajib diisi', 'error');
+      notify('Nama layanan dan target URL/Host wajib diisi', 'error');
       return;
     }
     try {
@@ -230,7 +307,7 @@
           method: 'PUT',
           body: JSON.stringify(payload),
         });
-        notify('Konfigurasi monitor diperbarui', 'success');
+        notify('Konfigurasi monitor berhasil diperbarui', 'success');
       } else {
         await apiFetch('/api/uptime/monitors', {
           method: 'POST',
@@ -241,7 +318,7 @@
       showMonitorModal = false;
       await loadUptimeMonitors();
     } catch (err: any) {
-      notify(err.message || 'Gagal menyimpan monitor', 'error');
+      notify(err?.message || 'Gagal menyimpan monitor', 'error');
     } finally {
       savingMonitor = false;
     }
@@ -264,10 +341,28 @@
       } else {
         await loadUptimeMonitors(true);
       }
+      loadAlerts(true);
     } catch (err: any) {
-      notify(err.message || 'Gagal menjalankan pemeriksaan langsung', 'error');
+      notify(err?.message || 'Gagal menjalankan pemeriksaan langsung', 'error');
     } finally {
       checkingId = null;
+    }
+  }
+
+  async function checkAllMonitorsNow() {
+    try {
+      checkingAll = true;
+      const res = await apiFetch<{ ok: boolean; monitors?: UptimeMonitor[]; message?: string }>(
+        '/api/uptime/check-all',
+        { method: 'POST', timeoutMs: 45_000 }
+      );
+      if (res?.monitors) uptimeMonitors = res.monitors;
+      notify(res?.message || 'Seluruh monitor selesai diperiksa', 'success');
+      loadAlerts(true);
+    } catch (err: any) {
+      notify(err?.message || 'Gagal memeriksa seluruh monitor', 'error');
+    } finally {
+      checkingAll = false;
     }
   }
 
@@ -300,7 +395,7 @@
       }
       notify(nextEnabled ? `${m.name} diaktifkan kembali` : `${m.name} dijeda`, 'info');
     } catch (err: any) {
-      notify(err.message || 'Gagal mengubah status monitor', 'error');
+      notify(err?.message || 'Gagal mengubah status monitor', 'error');
     } finally {
       togglingId = null;
     }
@@ -319,7 +414,7 @@
       uptimeMonitors = uptimeMonitors.filter((item) => item.id !== m.id);
       notify(`Monitor "${m.name}" dihapus`, 'success');
     } catch (err: any) {
-      notify(err.message || 'Gagal menghapus monitor', 'error');
+      notify(err?.message || 'Gagal menghapus monitor', 'error');
     }
   }
 
@@ -333,57 +428,101 @@
       notify(res?.message || `${res?.added ?? 0} situs diimpor ke Uptime Monitor`, 'success');
       await loadUptimeMonitors();
     } catch (err: any) {
-      notify(err.message || 'Gagal mengimpor situs', 'error');
+      notify(err?.message || 'Gagal mengimpor situs', 'error');
     } finally {
       importingSites = false;
     }
   }
 
-  // Bangun tepat 30 slot bar heartbeat (kosong di kiri, kronologis terbaru di kanan)
-  function buildHeartbeatSlots(checks: UptimeCheck[] | undefined): Array<UptimeCheck | null> {
-    const list = checks || [];
-    const totalSlots = 30;
-    if (list.length >= totalSlots) {
-      return list.slice(-totalSlots);
+  async function openUptimeDetail(m: UptimeMonitor) {
+    detailOpen = true;
+    detailLoading = true;
+    uptimeDetail = null;
+    try {
+      const res = await apiFetch<{ ok: boolean; detail: UptimeMonitorHistory }>(
+        `/api/uptime/monitors/${m.id}/history?limit=120`
+      );
+      uptimeDetail = res?.detail || null;
+    } catch (err: any) {
+      notify(err?.message || 'Gagal memuat detail latensi monitor', 'error');
+      detailOpen = false;
+    } finally {
+      detailLoading = false;
     }
-    const pad = Array<UptimeCheck | null>(totalSlots - list.length).fill(null);
-    return [...pad, ...list];
   }
 
-  function formatCheckTooltip(c: UptimeCheck | null): string {
-    if (!c) return 'Belum ada data pemeriksaan';
-    const dt = new Date(c.checked_at * 1000).toLocaleString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+  // ── Aksi Alert & Ambang Batas ─────────────────────────────────────────────
+
+  async function saveAlertThresholds(next: MonitorThresholds) {
+    try {
+      savingThresholds = true;
+      const res = await apiFetch<{ ok: boolean; thresholds?: MonitorThresholds; message?: string }>(
+        '/api/monitor/alerts/thresholds',
+        {
+          method: 'POST',
+          body: JSON.stringify(next),
+        }
+      );
+      if (res?.thresholds) thresholds = res.thresholds;
+      notify(res?.message || 'Ambang batas alert diperbarui', 'success');
+    } catch (err: any) {
+      notify(err?.message || 'Gagal menyimpan ambang alert', 'error');
+    } finally {
+      savingThresholds = false;
+    }
+  }
+
+  async function ackAlert(id: number) {
+    try {
+      await apiFetch(`/api/monitor/alerts/${id}/ack`, { method: 'POST' });
+      alerts = alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a));
+      unackedCount = Math.max(0, unackedCount - 1);
+    } catch (err: any) {
+      notify(err?.message || 'Gagal menandai alert', 'error');
+    }
+  }
+
+  async function ackAllAlerts() {
+    try {
+      await apiFetch('/api/monitor/alerts/ack-all', { method: 'POST' });
+      alerts = alerts.map((a) => ({ ...a, acknowledged: true }));
+      unackedCount = 0;
+      notify('Seluruh alert ditandai sudah dibaca', 'success');
+    } catch (err: any) {
+      notify(err?.message || 'Gagal menandai seluruh alert', 'error');
+    }
+  }
+
+  async function clearAllAlerts() {
+    const ok = await confirmDialog({
+      title: 'Kosongkan Riwayat Alert & Insiden',
+      message: 'Hapus seluruh catatan log alert resource dan insiden Uptime/SSL dari database?',
+      confirmText: 'Kosongkan Log',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await apiFetch('/api/monitor/alerts', { method: 'DELETE' });
+      alerts = [];
+      unackedCount = 0;
+      notify('Riwayat alert & insiden berhasil dikosongkan', 'success');
+    } catch (err: any) {
+      notify(err?.message || 'Gagal mengosongkan riwayat alert', 'error');
+    }
+  }
+
+  function formatCheckTime(ts: number): string {
+    if (!ts) return '-';
+    return new Date(ts * 1000).toLocaleString('id-ID', {
       day: '2-digit',
       month: 'short',
-    });
-    const st = c.status === 'up' ? 'ONLINE' : 'OFFLINE';
-    const code = c.status_code > 1 ? ` · HTTP ${c.status_code}` : '';
-    const err = c.error_msg ? ` · ${c.error_msg}` : '';
-    return `${dt} — ${st}${code} (${c.latency_ms} ms)${err}`;
-  }
-
-  function formatLastChecked(ts: number): string {
-    if (!ts) return 'Belum dicek';
-    return new Date(ts * 1000).toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     });
   }
 
-  function sslBadgeClass(days: number): string {
-    if (days <= 3) return 'badge--danger';
-    if (days <= 14) return 'badge--warning';
-    return 'badge--success';
-  }
-
-  const load5m = $derived(
-    (currentMetric as MetricPoint & { load_5m?: number }).load_5m ?? currentMetric.load_avg
-  );
-
+  // Muat ulang histori otomatis saat rentang waktu berubah
   $effect(() => {
     if (activeTab === 'history') {
       const _tr = timeRange;
@@ -391,553 +530,444 @@
     }
   });
 
-  // Segarkan data Uptime otomatis setiap 20 detik selama tab Uptime dibuka
+  // Auto-refresh daftar top proses setiap 5 detik saat tab Live Telemetry dibuka
+  $effect(() => {
+    if (activeTab !== 'realtime') return;
+    loadTopProcesses(topProcesses.length > 0);
+    const id = setInterval(() => loadTopProcesses(true), 5000);
+    return () => clearInterval(id);
+  });
+
+  // Auto-refresh Uptime setiap 20 detik saat tab Uptime dibuka
   $effect(() => {
     if (activeTab !== 'uptime') return;
     loadUptimeMonitors(uptimeMonitors.length > 0);
-    const timer = setInterval(() => {
-      loadUptimeMonitors(true);
-    }, 20000);
-    return () => clearInterval(timer);
+    const id = setInterval(() => loadUptimeMonitors(true), 20000);
+    return () => clearInterval(id);
+  });
+
+  // Muat riwayat alert saat berpindah ke tab Alerts
+  $effect(() => {
+    if (activeTab === 'alerts') {
+      loadAlerts(alerts.length > 0);
+    }
   });
 
   onMount(() => {
     loadMonitorConfig();
-    loadHistory();
     loadUptimeMonitors(true);
+    loadAlerts(true);
   });
 </script>
 
-<div class="pg-monitor monitor-container">
-  <!-- Baris kepala halaman -->
-  <div class="page-header">
-    <div class="page-header__main">
-      <h2 class="page-header__title">Monitor Performa, Uptime &amp; SSL</h2>
-      <p class="page-header__sub">
-        Pelacak metrik histori beban server, streaming real-time, serta pemantau Uptime HTTP/TCP &amp; masa berlaku SSL
-      </p>
-    </div>
+<div class="pg-monitor">
+  <PageHeader
+    title="Observability, Uptime &amp; Alert Hub"
+    subtitle="Analitik histori downsampled, telemetri live CPU/IOWait/Per-Core/Disk I/O, Uptime &amp; SSL, serta mesin alert ambang otomatis."
+    icon="ri-line-chart-line"
+  >
+    {#snippet actions()}
+      <div class="mon-switch-box">
+        <span class="mon-switch-label">Perekaman 60d:</span>
+        <button
+          type="button"
+          class="mon-switch-btn"
+          class:is-on={monitorConfig.enabled}
+          aria-label="Aktifkan atau nonaktifkan perekaman histori monitoring"
+          disabled={updatingConfig}
+          onclick={() => updateMonitorConfig(!monitorConfig.enabled, monitorConfig.save_days)}
+        >
+          <span class="mon-switch-knob"></span>
+        </button>
+        <span class="mon-switch-state {monitorConfig.enabled ? 'text-accent' : 'text-subtle'}">
+          {monitorConfig.enabled ? 'AKTIF' : 'MATI'}
+        </span>
+      </div>
+    {/snippet}
+  </PageHeader>
 
-    <div class="monitor-controls">
-      <!-- Sakelar status monitoring metrik sistem -->
-      {#if activeTab !== 'uptime'}
-        <div class="switch-box">
-          <span class="switch-label">Status Monitoring:</span>
-          <button
-            class="switch-btn {monitorConfig.enabled ? 'active' : ''}"
-            aria-label="Ubah status perekaman monitoring"
-            onclick={toggleMonitor}
-            disabled={updatingConfig}
-          >
-            <span class="switch-knob"></span>
-          </button>
-          <span class="switch-text {monitorConfig.enabled ? 'text-accent' : 'text-subtle'}">
-            {monitorConfig.enabled ? 'MENYALA' : 'MATI'}
+  <!-- Navigasi 4 Tab Terpadu -->
+  <div class="tabs" role="tablist" aria-label="Navigasi Observability Hub">
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      class:is-active={activeTab === 'history'}
+      aria-selected={activeTab === 'history'}
+      onclick={() => (activeTab = 'history')}
+    >
+      <i class="ri-history-line" aria-hidden="true"></i>
+      <span>Rekaman Histori</span>
+    </button>
+
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      class:is-active={activeTab === 'realtime'}
+      aria-selected={activeTab === 'realtime'}
+      onclick={() => (activeTab = 'realtime')}
+    >
+      <i class="ri-pulse-line" aria-hidden="true"></i>
+      <span>Live Telemetry (1s)</span>
+    </button>
+
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      class:is-active={activeTab === 'uptime'}
+      aria-selected={activeTab === 'uptime'}
+      onclick={() => (activeTab = 'uptime')}
+    >
+      <i class="ri-heart-pulse-line" aria-hidden="true"></i>
+      <span>Uptime &amp; SSL</span>
+      {#if downCount > 0}
+        <span class="mon-tab-count mon-tab-count--danger">{downCount}</span>
+      {:else if uptimeMonitors.length > 0}
+        <span class="mon-tab-count">{uptimeMonitors.length}</span>
+      {/if}
+    </button>
+
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      class:is-active={activeTab === 'alerts'}
+      aria-selected={activeTab === 'alerts'}
+      onclick={() => (activeTab = 'alerts')}
+    >
+      <i class="ri-alarm-warning-line" aria-hidden="true"></i>
+      <span>Alert &amp; Insiden</span>
+      {#if unackedCount > 0}
+        <span class="mon-tab-count mon-tab-count--danger">{unackedCount}</span>
+      {/if}
+    </button>
+  </div>
+
+  <!-- Strip 4 Kartu Live Telemetry saat berada di tab Histori atau Live -->
+  {#if activeTab === 'history' || activeTab === 'realtime'}
+    <div class="mon-kpi-grid">
+      <div class="stat-card">
+        <div
+          class="stat-card__icon"
+          class:stat-card__icon--danger={currentMetric.cpu >= thresholds.alert_cpu_pct}
+          class:stat-card__icon--info={currentMetric.cpu < thresholds.alert_cpu_pct}
+        >
+          <i class="ri-cpu-line" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card__body">
+          <span class="stat-card__label">CPU &amp; Load Average</span>
+          <span class="stat-card__value mono">{(currentMetric.cpu || 0).toFixed(1)}%</span>
+          <span class="stat-card__sub">
+            Load {currentMetric.load_avg.toFixed(2)} · {load5m.toFixed(2)} · IOWait {(currentMetric.cpu_iowait || 0).toFixed(1)}%
           </span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div
+          class="stat-card__icon"
+          class:stat-card__icon--danger={ramPct >= thresholds.alert_ram_pct}
+          class:stat-card__icon--violet={ramPct < thresholds.alert_ram_pct}
+        >
+          <i class="ri-ram-line" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card__body">
+          <span class="stat-card__label">Memori RAM Fisik</span>
+          <span class="stat-card__value mono">{ramPct.toFixed(1)}%</span>
+          <span class="stat-card__sub">
+            {formatBytes(currentMetric.ram_used)} / {formatBytes(currentMetric.ram_total)}
+          </span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card__icon">
+          <i class="ri-global-line" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card__body">
+          <span class="stat-card__label">Jaringan (In / Out)</span>
+          <span class="stat-card__value mono">{formatBytes(currentMetric.net_in || 0)}/s</span>
+          <span class="stat-card__sub">Keluar: {formatBytes(currentMetric.net_out || 0)}/s</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div
+          class="stat-card__icon"
+          class:stat-card__icon--danger={diskPct >= thresholds.alert_disk_pct}
+          class:stat-card__icon--warning={diskPct < thresholds.alert_disk_pct}
+        >
+          <i class="ri-hard-drive-2-line" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card__body">
+          <span class="stat-card__label">Disk Root &amp; Throughput</span>
+          <span class="stat-card__value mono">{diskPct.toFixed(1)}%</span>
+          <span class="stat-card__sub">
+            R {formatBytes(currentMetric.disk_read || 0)}/s · W {formatBytes(currentMetric.disk_write || 0)}/s
+          </span>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Konten Tab Aktif -->
+  {#if activeTab === 'history'}
+    <HistoryTab
+      {snapshots}
+      {summary}
+      {thresholds}
+      {monitorConfig}
+      {loadingHistory}
+      {updatingConfig}
+      bind:timeRange
+      bind:chartMode
+      {exportUrl}
+      onRefresh={loadHistory}
+      onClearHistory={clearHistory}
+      onChangeRetention={(days) => updateMonitorConfig(monitorConfig.enabled, days)}
+    />
+  {:else if activeTab === 'realtime'}
+    <RealtimeTab
+      {currentMetric}
+      {history}
+      {topProcesses}
+      {loadingProcs}
+      onRefreshProcs={() => loadTopProcesses(false)}
+    />
+  {:else if activeTab === 'uptime'}
+    <UptimeTab
+      monitors={uptimeMonitors}
+      loading={loadingUptime}
+      importing={importingSites}
+      {checkingAll}
+      {checkingId}
+      {togglingId}
+      onRefresh={() => loadUptimeMonitors(false)}
+      onCheckAll={checkAllMonitorsNow}
+      onImportSites={importSitesToUptime}
+      onAdd={openAddMonitor}
+      onEdit={openEditMonitor}
+      onCheckNow={checkMonitorNow}
+      onToggleEnabled={toggleMonitorEnabled}
+      onDelete={deleteMonitor}
+      onInspect={openUptimeDetail}
+    />
+  {:else}
+    <AlertsTab
+      {alerts}
+      {unackedCount}
+      {webhooksCount}
+      {thresholds}
+      loading={loadingAlerts}
+      {savingThresholds}
+      onRefresh={() => loadAlerts(false)}
+      onSaveThresholds={saveAlertThresholds}
+      onAck={ackAlert}
+      onAckAll={ackAllAlerts}
+      onClearAll={clearAllAlerts}
+    />
+  {/if}
+
+  <!-- Modal Tambah / Edit Uptime Monitor -->
+  <Modal
+    open={showMonitorModal}
+    title={editingMonitorId ? 'Edit Monitor Uptime & SSL' : 'Tambah Monitor Uptime & SSL'}
+    subtitle="Pantau ketersediaan HTTP/HTTPS (termasuk sisa masa aktif SSL) atau port TCP secara otomatis."
+    size="md"
+    onclose={() => (showMonitorModal = false)}
+  >
+    <form id="uptime-monitor-form" class="stack" onsubmit={saveMonitor}>
+      <div class="mon-form-grid">
+        <div class="field">
+          <label class="field__label" for="mon-name">Nama Layanan</label>
+          <input
+            id="mon-name"
+            class="input"
+            type="text"
+            bind:value={formName}
+            placeholder="Contoh: API Produksi / Website Utama"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="mon-type">Tipe Pemeriksaan</label>
+          <select id="mon-type" class="select" bind:value={formType}>
+            <option value="http">HTTP / HTTPS (+ Inspeksi SSL)</option>
+            <option value="tcp">TCP Port Dial</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="mon-target">
+          {formType === 'tcp' ? 'Target Host:Port' : 'Target URL (HTTP/HTTPS)'}
+        </label>
+        <input
+          id="mon-target"
+          class="input input--mono"
+          type="text"
+          bind:value={formTarget}
+          placeholder={formType === 'tcp' ? '127.0.0.1:3306' : 'https://domainanda.com/healthz'}
+          required
+        />
+      </div>
+
+      <div class="mon-form-grid">
+        <div class="field">
+          <label class="field__label" for="mon-interval">Interval Pemeriksaan</label>
+          <select id="mon-interval" class="select" bind:value={formInterval}>
+            <option value={30}>Setiap 30 detik</option>
+            <option value={60}>Setiap 1 menit (Rekomendasi)</option>
+            <option value={180}>Setiap 3 menit</option>
+            <option value={300}>Setiap 5 menit</option>
+            <option value={900}>Setiap 15 menit</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="mon-timeout">Timeout (detik)</label>
+          <input id="mon-timeout" class="input input--mono" type="number" min="2" max="30" bind:value={formTimeout} />
+        </div>
+      </div>
+
+      {#if formType === 'http'}
+        <div class="mon-form-grid">
+          <div class="field">
+            <label class="field__label" for="mon-code">Kode HTTP Diharapkan (0 = 2xx–3xx)</label>
+            <input id="mon-code" class="input input--mono" type="number" min="0" max="599" bind:value={formExpectedStatus} />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="mon-kw">Kata Kunci Respons (Opsional)</label>
+            <input id="mon-kw" class="input" type="text" bind:value={formKeyword} placeholder="Contoh: status:ok" />
+          </div>
         </div>
       {/if}
 
-      <div class="tabs tabs--pill" role="tablist">
-        <button
-          role="tab"
-          aria-selected={activeTab === 'history'}
-          class="tabs__tab"
-          class:is-active={activeTab === 'history'}
-          onclick={() => (activeTab = 'history')}
-        >
-          <i class="ri-history-line"></i> Rekaman Histori
-        </button>
-        <button
-          role="tab"
-          aria-selected={activeTab === 'realtime'}
-          class="tabs__tab"
-          class:is-active={activeTab === 'realtime'}
-          onclick={() => (activeTab = 'realtime')}
-        >
-          <i class="ri-pulse-line"></i> Live Streaming (1s)
-        </button>
-        <button
-          role="tab"
-          aria-selected={activeTab === 'uptime'}
-          class="tabs__tab"
-          class:is-active={activeTab === 'uptime'}
-          onclick={() => (activeTab = 'uptime')}
-        >
-          <i class="ri-heart-pulse-line"></i> Uptime &amp; SSL
-          {#if uptimeStats.down > 0}
-            <span class="badge badge--danger">{uptimeStats.down}</span>
-          {/if}
-        </button>
+      <div class="mon-checks-box">
+        <label class="mon-check-row">
+          <input type="checkbox" bind:checked={formNotifyWebhook} />
+          <span>Kirim peringatan ke Webhook aktif saat DOWN, Pulih, atau SSL mendekati kedaluwarsa</span>
+        </label>
+        <label class="mon-check-row">
+          <input type="checkbox" bind:checked={formPublicVisible} />
+          <span>Tampilkan pada Halaman Status Publik (<code>/status</code>) tanpa perlu login</span>
+        </label>
+        <label class="mon-check-row">
+          <input type="checkbox" bind:checked={formEnabled} />
+          <span>Aktifkan pemantauan segera setelah disimpan</span>
+        </label>
       </div>
-    </div>
-  </div>
+    </form>
 
-  {#if activeTab !== 'uptime'}
-    <!-- Ringkasan kartu metrik sistem -->
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="m-label">CPU Core Usage</div>
-        <div class="m-val m-val--info">{currentMetric.cpu.toFixed(1)}%</div>
-        <div class="m-sub">Load: {currentMetric.load_avg.toFixed(2)} (1m) &middot; {load5m.toFixed(2)} (5m)</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Physical Memory (RAM)</div>
-        <div class="m-val m-val--violet">
-          {currentMetric.ram_total > 0
-            ? ((currentMetric.ram_used / currentMetric.ram_total) * 100).toFixed(1)
-            : '0'}%
-        </div>
-        <div class="m-sub">{formatBytes(currentMetric.ram_used)} / {formatBytes(currentMetric.ram_total)}</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Jaringan Masuk (Inbound)</div>
-        <div class="m-val text-accent">{formatBytes(currentMetric.net_in)}/s</div>
-        <div class="m-sub">Traffic download / request masuk</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Jaringan Keluar (Outbound)</div>
-        <div class="m-val text-warning">{formatBytes(currentMetric.net_out)}/s</div>
-        <div class="m-sub">Traffic upload / respon web</div>
-      </div>
-    </div>
-  {:else}
-    <!-- Ringkasan KPI Uptime & SSL -->
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="m-label">Total Target</div>
-        <div class="m-val m-val--info">{uptimeStats.total}</div>
-        <div class="m-sub">Monitor HTTP/HTTPS &amp; TCP terdaftar</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Layanan Online</div>
-        <div class="m-val m-val--success">{uptimeStats.up}</div>
-        <div class="m-sub">Merespons normal sesuai kriteria</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Sedang Gangguan</div>
-        <div class="m-val {uptimeStats.down > 0 ? 'm-val--danger' : 'm-val--muted'}">{uptimeStats.down}</div>
-        <div class="m-sub">Memicu notifikasi webhook otomatis</div>
-      </div>
-      <div class="metric-card">
-        <div class="m-label">Rata-rata Latensi</div>
-        <div class="m-val m-val--violet">{uptimeStats.avgLatency} ms</div>
-        <div class="m-sub">
-          {#if uptimeStats.sslWarn > 0}
-            <span class="text-warning">{uptimeStats.sslWarn} SSL mendekati kedaluwarsa</span>
-          {:else}
-            Semua sertifikat SSL aman
-          {/if}
-        </div>
-      </div>
-    </div>
-  {/if}
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary btn--sm" onclick={() => (showMonitorModal = false)}>
+        Batal
+      </button>
+      <button type="submit" form="uptime-monitor-form" class="btn btn--primary btn--sm" disabled={savingMonitor}>
+        <i class="ri-save-line" aria-hidden="true"></i>
+        <span>{savingMonitor ? 'Menyimpan...' : 'Simpan Monitor'}</span>
+      </button>
+    {/snippet}
+  </Modal>
 
-  {#if activeTab === 'history'}
-    <!-- Tampilan histori persisten -->
-    <div class="card">
-      <div class="card__head flex-wrap">
-        <div>
-          <h3 class="card__title flex items-center gap-2">
-            <i class="ri-time-line"></i> Grafik Rekaman Histori Server
-          </h3>
-          <p class="panel-sub">
-            {#if monitorConfig.enabled}
-              Mencatat data berkala setiap 60 detik. Retensi penyimpanan: {monitorConfig.save_days} hari.
-            {:else}
-              <span class="text-danger font-bold">Monitoring saat ini non-aktif! Tidak ada data baru yang dicatat selama status mati.</span>
-            {/if}
-          </p>
-        </div>
-
-        <div class="filter-controls">
-          <!-- Filter jenis metrik -->
-          <div class="tabs tabs--pill" role="tablist">
-            <button
-              role="tab"
-              aria-selected={chartMode === 'load'}
-              class="tabs__tab"
-              class:is-active={chartMode === 'load'}
-              onclick={() => (chartMode = 'load')}
-            >
-              Load Average
-            </button>
-            <button
-              role="tab"
-              aria-selected={chartMode === 'resource'}
-              class="tabs__tab"
-              class:is-active={chartMode === 'resource'}
-              onclick={() => (chartMode = 'resource')}
-            >
-              CPU &amp; RAM
-            </button>
-            <button
-              role="tab"
-              aria-selected={chartMode === 'network'}
-              class="tabs__tab"
-              class:is-active={chartMode === 'network'}
-              onclick={() => (chartMode = 'network')}
-            >
-              Network I/O
-            </button>
+  <!-- Modal Detail & Analitik Latensi Uptime Monitor -->
+  <Modal
+    open={detailOpen}
+    title={uptimeDetail?.monitor ? `Detail Latensi: ${uptimeDetail.monitor.name}` : 'Detail Monitor Uptime'}
+    subtitle={uptimeDetail?.monitor?.target || 'Analitik persentil latensi dan histori pemeriksaan terbaru.'}
+    size="lg"
+    onclose={() => (detailOpen = false)}
+  >
+    {#if detailLoading}
+      <div class="state state--loading">
+        <i class="ri-loader-4-line spin" aria-hidden="true"></i>
+        <div class="state__title">Memuat Analitik Latensi &amp; Riwayat Pemeriksaan...</div>
+      </div>
+    {:else if uptimeDetail}
+      <div class="stack">
+        <div class="mon-kpi-grid">
+          <div class="mon-stat-pill">
+            <span class="mon-stat-pill__label">SLA 24 Jam / 7 Hari</span>
+            <span class="mon-stat-pill__val">
+              {uptimeDetail.uptime_24h_pct.toFixed(2)}% · {uptimeDetail.uptime_7d_pct.toFixed(2)}%
+            </span>
+            <span class="mon-stat-pill__sub">{uptimeDetail.down_count_24h} gagal dalam 24j</span>
           </div>
-
-          <!-- Filter rentang waktu -->
-          <div class="tabs tabs--pill" role="tablist">
-            <button role="tab" aria-selected={timeRange === '1h'} class="tabs__tab" class:is-active={timeRange === '1h'} onclick={() => (timeRange = '1h')}>1 Jam</button>
-            <button role="tab" aria-selected={timeRange === '6h'} class="tabs__tab" class:is-active={timeRange === '6h'} onclick={() => (timeRange = '6h')}>6 Jam</button>
-            <button role="tab" aria-selected={timeRange === '24h'} class="tabs__tab" class:is-active={timeRange === '24h'} onclick={() => (timeRange = '24h')}>Hari Ini</button>
-            <button role="tab" aria-selected={timeRange === '7d'} class="tabs__tab" class:is-active={timeRange === '7d'} onclick={() => (timeRange = '7d')}>7 Hari</button>
-            <button role="tab" aria-selected={timeRange === '30d'} class="tabs__tab" class:is-active={timeRange === '30d'} onclick={() => (timeRange = '30d')}>30 Hari</button>
+          <div class="mon-stat-pill">
+            <span class="mon-stat-pill__label">Latensi Min / Avg</span>
+            <span class="mon-stat-pill__val">{uptimeDetail.min_latency_ms} / {uptimeDetail.avg_latency_ms} ms</span>
+            <span class="mon-stat-pill__sub">Dari {uptimeDetail.checks.length} cek terakhir</span>
           </div>
-
-          <button class="btn btn--ghost btn--sm" aria-label="Refresh rekaman histori" onclick={loadHistory} disabled={loadingHistory} title="Refresh Rekaman">
-            <i class="ri-refresh-line {loadingHistory ? 'spin' : ''}"></i>
-          </button>
-          <button class="btn btn--ghost btn--sm btn--danger" aria-label="Kosongkan semua catatan histori" onclick={clearHistory} title="Kosongkan Semua Catatan">
-            <i class="ri-delete-bin-line"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Baris legenda grafik -->
-      <div class="chart-legend-row">
-        {#if chartMode === 'load'}
-          <span class="l-item"><span class="l-dot l-dot--info"></span> 1 Menit Load</span>
-          <span class="l-item"><span class="l-dot l-dot--violet"></span> 5 Menit Load</span>
-          <span class="l-item"><span class="l-dot l-dot--accent"></span> 15 Menit Load</span>
-        {:else if chartMode === 'resource'}
-          <span class="l-item"><span class="l-dot l-dot--info"></span> CPU Utilisasi %</span>
-          <span class="l-item"><span class="l-dot l-dot--violet"></span> RAM Utilisasi %</span>
-        {:else if chartMode === 'network'}
-          <span class="l-item"><span class="l-dot l-dot--accent"></span> Inbound (Download)</span>
-          <span class="l-item"><span class="l-dot l-dot--warning"></span> Outbound (Upload)</span>
-        {/if}
-        <span class="total-badge mono">Total Titik: {snapshots.length} sampel</span>
-      </div>
-
-      <div class="chart-box">
-        <HistoryChart {snapshots} height={280} mode={chartMode} />
-      </div>
-    </div>
-  {:else if activeTab === 'realtime'}
-    <!-- Tampilan live realtime -->
-    <div class="card">
-      <div class="card__head">
-        <div>
-          <h3 class="card__title">Grafik Utilisasi CPU &amp; RAM (Realtime SSE)</h3>
-          <p class="panel-sub">Buffer 60 detik terakhir &middot; Auto-scaling canvas render langsung dari kernel</p>
-        </div>
-        <div class="legend">
-          <span class="l-item"><span class="l-dot l-dot--info"></span> CPU %</span>
-          <span class="l-item"><span class="l-dot l-dot--violet"></span> RAM %</span>
-        </div>
-      </div>
-      <Chart {history} height={260} />
-    </div>
-  {:else}
-    <!-- Tampilan Uptime & SSL Monitor -->
-    <div class="card">
-      <div class="card__head flex-wrap">
-        <div>
-          <h3 class="card__title flex items-center gap-2">
-            <i class="ri-shield-check-line"></i> Pemantau Uptime &amp; Sertifikat SSL
-          </h3>
-          <p class="panel-sub">
-            Pemeriksaan HTTP/HTTPS/TCP terjadwal dengan strip 30-heartbeat, peringatan SSL, webhook Telegram/Discord, dan halaman status publik.
-          </p>
-        </div>
-
-        <div class="filter-controls">
-          <a
-            class="btn btn--ghost btn--sm"
-            href="/status"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Buka halaman status publik tanpa login"
-          >
-            <i class="ri-external-link-line"></i> Status Publik (/status)
-          </a>
-          <button
-            class="btn btn--ghost btn--sm"
-            onclick={importSitesToUptime}
-            disabled={importingSites}
-            title="Impor otomatis seluruh situs aktif FikPanel"
-          >
-            <i class="ri-download-cloud-2-line"></i> {importingSites ? 'Mengimpor...' : 'Impor dari Situs'}
-          </button>
-          <button
-            class="btn btn--ghost btn--sm"
-            aria-label="Segarkan daftar monitor uptime"
-            title="Segarkan"
-            onclick={() => loadUptimeMonitors(false)}
-            disabled={loadingUptime}
-          >
-            <i class="ri-refresh-line {loadingUptime ? 'spin' : ''}"></i>
-          </button>
-          <button class="btn btn--primary btn--sm" onclick={openAddMonitor}>
-            <i class="ri-add-line"></i> Tambah Monitor
-          </button>
-        </div>
-      </div>
-
-      <div class="uptime-body">
-        {#if loadingUptime && uptimeMonitors.length === 0}
-          <div class="uptime-empty">
-            <i class="ri-loader-4-line spin"></i>
-            <p>Memuat daftar monitor uptime...</p>
+          <div class="mon-stat-pill">
+            <span class="mon-stat-pill__label">Latensi P95</span>
+            <span class="mon-stat-pill__val">{uptimeDetail.p95_latency_ms} ms</span>
+            <span class="mon-stat-pill__sub">Persentil ke-95</span>
           </div>
-        {:else if uptimeMonitors.length === 0}
-          <div class="uptime-empty">
-            <i class="ri-heart-pulse-line uptime-empty__icon"></i>
-            <h4>Belum Ada Target Uptime Monitor</h4>
-            <p>
-              Tambahkan URL situs/API atau port TCP untuk mulai memantau ketersediaan 24/7 beserta sisa masa aktif sertifikat SSL.
-            </p>
-            <div class="uptime-empty__actions">
-              <button class="btn btn--primary btn--sm" onclick={openAddMonitor}>
-                <i class="ri-add-line"></i> Tambah Monitor Pertama
-              </button>
-              <button class="btn btn--ghost btn--sm" onclick={importSitesToUptime} disabled={importingSites}>
-                <i class="ri-download-cloud-2-line"></i> Impor dari Daftar Situs
-              </button>
+          <div class="mon-stat-pill">
+            <span class="mon-stat-pill__label">Latensi Puncak (Max)</span>
+            <span class="mon-stat-pill__val">{uptimeDetail.max_latency_ms} ms</span>
+            <span class="mon-stat-pill__sub">
+              {uptimeDetail.monitor.ssl_days_remaining >= 0
+                ? `SSL ${uptimeDetail.monitor.ssl_days_remaining} hari`
+                : 'Tanpa TLS'}
+            </span>
+          </div>
+        </div>
+
+        {#if detailSvgPaths}
+          <div class="mon-lat-svg-wrap">
+            <div class="row-between text-xs text-subtle mono">
+              <span>Tren Latensi ({uptimeDetail.checks.length} pemeriksaan terakhir)</span>
+              <span>Skala Maks: {detailSvgPaths.maxLat} ms</span>
             </div>
-          </div>
-        {:else}
-          <div class="uptime-list">
-            {#each uptimeMonitors as mon (mon.id)}
-              {@const slots = buildHeartbeatSlots(mon.recent_checks)}
-              <div class="uptime-card" class:is-paused={!mon.enabled} class:is-down={mon.enabled && mon.last_status === 'down'}>
-                <!-- Baris header kartu monitor -->
-                <div class="uptime-card__top">
-                  <div class="uptime-card__ident">
-                    <span
-                      class="uptime-status-dot"
-                      class:is-up={mon.enabled && mon.last_status === 'up'}
-                      class:is-down={mon.enabled && mon.last_status === 'down'}
-                      class:is-paused={!mon.enabled}
-                      aria-hidden="true"
-                    ></span>
-                    <div class="uptime-card__titles">
-                      <div class="uptime-card__name-row">
-                        <strong class="uptime-card__name">{mon.name}</strong>
-                        <span class="badge badge--muted">{mon.monitor_type.toUpperCase()}</span>
-                        {#if !mon.enabled}
-                          <span class="badge badge--warning">Dijeda</span>
-                        {:else if mon.last_status === 'up'}
-                          <span class="badge badge--success">Online</span>
-                        {:else if mon.last_status === 'down'}
-                          <span class="badge badge--danger">Offline</span>
-                        {:else}
-                          <span class="badge badge--muted">Menunggu</span>
-                        {/if}
-                        {#if mon.public_visible}
-                          <span class="badge badge--info" title="Tampil di halaman /status">Publik</span>
-                        {/if}
-                        {#if mon.notify_webhook}
-                          <span class="badge badge--muted" title="Notifikasi Webhook aktif">
-                            <i class="ri-notification-3-line"></i> Alert
-                          </span>
-                        {/if}
-                      </div>
-                      <div class="uptime-card__target mono">{mon.target}</div>
-                    </div>
-                  </div>
-
-                  <div class="uptime-card__stats">
-                    {#if mon.ssl_days_remaining >= 0}
-                      <span
-                        class="badge {sslBadgeClass(mon.ssl_days_remaining)}"
-                        title={mon.ssl_issuer ? `Penerbit SSL: ${mon.ssl_issuer}` : 'Masa berlaku sertifikat TLS'}
-                      >
-                        <i class="ri-lock-line"></i> SSL {mon.ssl_days_remaining}h
-                      </span>
-                    {/if}
-                    <span class="uptime-pill mono" title="Persentase uptime 24 jam terakhir">
-                      {mon.uptime_24h_pct.toFixed(2)}%
-                    </span>
-                    <span class="uptime-pill mono" title="Latensi pemeriksaan terakhir">
-                      {mon.last_latency_ms} ms
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Strip 30-bar heartbeat ala Uptime Kuma -->
-                <div class="hb-strip" aria-label="Riwayat 30 pemeriksaan terakhir">
-                  {#each slots as check, idx (check ? check.id : `empty-${mon.id}-${idx}`)}
-                    <span
-                      class="hb-bar"
-                      class:hb-bar--up={check?.status === 'up'}
-                      class:hb-bar--down={check?.status === 'down'}
-                      title={formatCheckTooltip(check)}
-                    ></span>
-                  {/each}
-                </div>
-
-                {#if mon.enabled && mon.last_status === 'down' && mon.last_error}
-                  <div class="uptime-card__error mono">
-                    <i class="ri-error-warning-line"></i> {mon.last_error}
-                  </div>
-                {/if}
-
-                <!-- Baris metadata & aksi cepat -->
-                <div class="uptime-card__foot">
-                  <div class="uptime-card__meta mono">
-                    <span>Interval {mon.interval_sec}d</span>
-                    <span>&middot;</span>
-                    <span>Cek terakhir: {formatLastChecked(mon.last_checked_at)}</span>
-                    {#if mon.avg_latency_ms > 0}
-                      <span>&middot;</span>
-                      <span>Avg 24j: {mon.avg_latency_ms} ms</span>
-                    {/if}
-                    {#if mon.keyword}
-                      <span>&middot;</span>
-                      <span>Keyword: "{mon.keyword}"</span>
-                    {/if}
-                  </div>
-
-                  <div class="uptime-card__actions">
-                    <button
-                      class="btn btn--ghost btn--sm"
-                      onclick={() => checkMonitorNow(mon)}
-                      disabled={checkingId === mon.id}
-                      aria-label="Periksa monitor sekarang"
-                      title="Periksa Sekarang"
-                    >
-                      <i class="ri-flashlight-line {checkingId === mon.id ? 'spin' : ''}"></i>
-                    </button>
-                    <button
-                      class="btn btn--ghost btn--sm"
-                      onclick={() => toggleMonitorEnabled(mon)}
-                      disabled={togglingId === mon.id}
-                      aria-label={mon.enabled ? 'Jeda monitor' : 'Aktifkan monitor'}
-                      title={mon.enabled ? 'Jeda Monitor' : 'Aktifkan Monitor'}
-                    >
-                      <i class={mon.enabled ? 'ri-pause-line' : 'ri-play-line'}></i>
-                    </button>
-                    <button
-                      class="btn btn--ghost btn--sm"
-                      onclick={() => openEditMonitor(mon)}
-                      aria-label="Edit monitor"
-                      title="Edit Monitor"
-                    >
-                      <i class="ri-edit-line"></i>
-                    </button>
-                    <button
-                      class="btn btn--ghost btn--sm btn--danger"
-                      onclick={() => deleteMonitor(mon)}
-                      aria-label="Hapus monitor"
-                      title="Hapus Monitor"
-                    >
-                      <i class="ri-delete-bin-line"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            {/each}
+            <svg viewBox="0 0 520 110" class="mon-lat-svg" preserveAspectRatio="none" aria-label="Grafik tren latensi">
+              <path d={detailSvgPaths.area} class="mon-lat-area"></path>
+              <path d={detailSvgPaths.line} class="mon-lat-path"></path>
+            </svg>
           </div>
         {/if}
-      </div>
-    </div>
-  {/if}
-</div>
 
-<!-- Modal Tambah / Edit Uptime Monitor -->
-<Modal
-  open={showMonitorModal}
-  title={editingMonitorId ? 'Edit Monitor Uptime & SSL' : 'Tambah Monitor Uptime & SSL'}
-  subtitle="Pantau ketersediaan HTTP/HTTPS (termasuk sisa masa aktif SSL) atau port TCP secara otomatis."
-  size="md"
-  onclose={() => (showMonitorModal = false)}
->
-  <form id="uptime-monitor-form" class="uptime-form" onsubmit={saveMonitor}>
-    <div class="uptime-form__grid">
-      <label class="uptime-field">
-        <span class="uptime-field__label">Nama Layanan</span>
-        <input
-          class="input"
-          type="text"
-          bind:value={formName}
-          placeholder="Contoh: API Produksi / Website Utama"
-          required
-        />
-      </label>
-
-      <label class="uptime-field">
-        <span class="uptime-field__label">Tipe Pemeriksaan</span>
-        <select class="input" bind:value={formType}>
-          <option value="http">HTTP / HTTPS (+ Inspeksi SSL)</option>
-          <option value="tcp">TCP Port Dial</option>
-        </select>
-      </label>
-    </div>
-
-    <label class="uptime-field">
-      <span class="uptime-field__label">
-        {formType === 'tcp' ? 'Target Host:Port' : 'Target URL (HTTP/HTTPS)'}
-      </span>
-      <input
-        class="input mono"
-        type="text"
-        bind:value={formTarget}
-        placeholder={formType === 'tcp' ? '127.0.0.1:3306' : 'https://domainanda.com/healthz'}
-        required
-      />
-    </label>
-
-    <div class="uptime-form__grid">
-      <label class="uptime-field">
-        <span class="uptime-field__label">Interval Pemeriksaan</span>
-        <select class="input" bind:value={formInterval}>
-          <option value={30}>Setiap 30 detik</option>
-          <option value={60}>Setiap 1 menit (Rekomendasi)</option>
-          <option value={180}>Setiap 3 menit</option>
-          <option value={300}>Setiap 5 menit</option>
-          <option value={900}>Setiap 15 menit</option>
-        </select>
-      </label>
-
-      <label class="uptime-field">
-        <span class="uptime-field__label">Timeout (detik)</span>
-        <input class="input" type="number" min="2" max="30" bind:value={formTimeout} />
-      </label>
-    </div>
-
-    {#if formType === 'http'}
-      <div class="uptime-form__grid">
-        <label class="uptime-field">
-          <span class="uptime-field__label">Kode HTTP Diharapkan (0 = 2xx–3xx)</span>
-          <input class="input" type="number" min="0" max="599" bind:value={formExpectedStatus} />
-        </label>
-
-        <label class="uptime-field">
-          <span class="uptime-field__label">Kata Kunci Respons (Opsional)</span>
-          <input class="input" type="text" bind:value={formKeyword} placeholder="Contoh: status:ok" />
-        </label>
+        <div class="table-wrap">
+          <table class="table table--dense">
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Status</th>
+                <th class="mon-col-right">Kode</th>
+                <th class="mon-col-right">Latensi</th>
+                <th>Catatan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each [...uptimeDetail.checks].reverse().slice(0, 25) as chk (chk.id)}
+                <tr>
+                  <td class="mono text-xs">{formatCheckTime(chk.checked_at)}</td>
+                  <td>
+                    {#if chk.status === 'up'}
+                      <span class="badge badge--success">ONLINE</span>
+                    {:else}
+                      <span class="badge badge--danger">OFFLINE</span>
+                    {/if}
+                  </td>
+                  <td class="mono mon-col-right">{chk.status_code > 1 ? chk.status_code : '-'}</td>
+                  <td class="mono tabular mon-col-right">{chk.latency_ms} ms</td>
+                  <td class="mono text-xs text-muted">{chk.error_msg || 'OK'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       </div>
     {/if}
 
-    <div class="uptime-checks">
-      <label class="uptime-check">
-        <input type="checkbox" bind:checked={formNotifyWebhook} />
-        <span>Kirim peringatan ke Webhook aktif (Telegram / Discord / Custom) saat DOWN, Pulih, atau SSL kritis</span>
-      </label>
-      <label class="uptime-check">
-        <input type="checkbox" bind:checked={formPublicVisible} />
-        <span>Tampilkan pada Halaman Status Publik (<code>/status</code>) tanpa perlu login</span>
-      </label>
-      <label class="uptime-check">
-        <input type="checkbox" bind:checked={formEnabled} />
-        <span>Aktifkan pemantauan segera setelah disimpan</span>
-      </label>
-    </div>
-  </form>
-
-  {#snippet footer()}
-    <button type="button" class="btn btn--ghost" onclick={() => (showMonitorModal = false)}>
-      Batal
-    </button>
-    <button type="submit" form="uptime-monitor-form" class="btn btn--primary" disabled={savingMonitor}>
-      <i class="ri-save-line"></i> {savingMonitor ? 'Menyimpan...' : 'Simpan Monitor'}
-    </button>
-  {/snippet}
-</Modal>
+    {#snippet footer()}
+      <button type="button" class="btn btn--secondary btn--sm" onclick={() => (detailOpen = false)}>
+        Tutup
+      </button>
+    {/snippet}
+  </Modal>
+</div>

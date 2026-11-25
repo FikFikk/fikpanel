@@ -4,27 +4,42 @@
     position: relative;
     width: 100%;
     user-select: none;
+
     canvas {
       display: block;
       width: 100%;
-      height: var(--hc-h, 260px);
+      height: var(--hc-h, 280px);
     }
+
+    .hc-crosshair {
+      position: absolute;
+      top: var(--hc-top, 20px);
+      bottom: var(--hc-bottom, 28px);
+      left: var(--hc-x, 0px);
+      width: 1px;
+      border-left: 1px dashed var(--text-muted);
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
     .hover-tooltip {
       position: absolute;
-      top: 15px;
-      left: var(--tip-x, 120px);
+      top: 14px;
+      left: var(--tip-x, 125px);
       transform: translateX(-50%);
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      padding: 0.6rem 0.8rem;
+      padding: 0.55rem 0.75rem;
       pointer-events: none;
       box-shadow: var(--shadow-modal);
       z-index: 10;
       font-size: 0.75rem;
       color: var(--text);
-      min-width: 130px;
+      min-width: 145px;
+      white-space: nowrap;
     }
+
     .tip-time {
       color: var(--text-subtle);
       margin-bottom: 0.35rem;
@@ -32,11 +47,25 @@
       border-bottom: 1px solid var(--border-subtle);
       padding-bottom: 0.25rem;
     }
-    .tip-row { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.25rem; }
-    .tip-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+    .tip-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.25rem;
+    }
+
+    .tip-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
     .tip-dot--info { background: var(--info); }
     .tip-dot--violet { background: var(--violet); }
     .tip-dot--accent { background: var(--accent); }
     .tip-dot--warning { background: var(--warning); }
+    .tip-dot--success { background: var(--success); }
   }
 }

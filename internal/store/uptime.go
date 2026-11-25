@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
 	"time"
 )
 
@@ -235,6 +237,75 @@ func (s *Store) RecordUptimeCheck(ctx context.Context, monitorID int64, status s
 	cutoff := now - 7*86400
 	_, _ = s.db.ExecContext(ctx, "DELETE FROM uptime_checks WHERE monitor_id = ? AND checked_at < ?", monitorID, cutoff)
 	return nil
+}
+
+// UptimeMonitorHistory menyajikan detail analitik latensi (Min/Avg/P95/Max) dan riwayat panjang pemeriksaan
+type UptimeMonitorHistory struct {
+	Monitor      *UptimeMonitor `json:"monitor"`
+	Checks       []UptimeCheck  `json:"checks"`
+	Uptime24hPct float64        `json:"uptime_24h_pct"`
+	Uptime7dPct  float64        `json:"uptime_7d_pct"`
+	MinLatencyMs int64          `json:"min_latency_ms"`
+	AvgLatencyMs int64          `json:"avg_latency_ms"`
+	P95LatencyMs int64          `json:"p95_latency_ms"`
+	MaxLatencyMs int64          `json:"max_latency_ms"`
+	DownCount24h int            `json:"down_count_24h"`
+}
+
+// GetUptimeMonitorHistory membaca hingga 120 pemeriksaan terakhir beserta persentil latensi dan SLA 24j/7h
+func (s *Store) GetUptimeMonitorHistory(ctx context.Context, id int64, limit int) (*UptimeMonitorHistory, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 120
+	}
+	mon, err := s.GetUptimeMonitor(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	checks, err := s.listRecentUptimeChecks(ctx, id, limit)
+	if err != nil {
+		checks = []UptimeCheck{}
+	}
+
+	now := time.Now()
+	pct24h, avg24h := s.calcUptimeStats(ctx, id, now.Add(-24*time.Hour).Unix())
+	pct7d, _ := s.calcUptimeStats(ctx, id, now.Add(-7*24*time.Hour).Unix())
+
+	var down24h int
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM uptime_checks WHERE monitor_id = ? AND status = 'down' AND checked_at >= ?`,
+		id, now.Add(-24*time.Hour).Unix()).Scan(&down24h)
+
+	lats := make([]int64, 0, len(checks))
+	for _, c := range checks {
+		if c.Status == "up" && c.LatencyMs > 0 {
+			lats = append(lats, c.LatencyMs)
+		}
+	}
+	var minL, maxL, p95L int64
+	if len(lats) > 0 {
+		sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
+		minL = lats[0]
+		maxL = lats[len(lats)-1]
+		idx95 := int(math.Ceil(float64(len(lats))*0.95)) - 1
+		if idx95 < 0 {
+			idx95 = 0
+		} else if idx95 >= len(lats) {
+			idx95 = len(lats) - 1
+		}
+		p95L = lats[idx95]
+	}
+
+	return &UptimeMonitorHistory{
+		Monitor:      mon,
+		Checks:       checks,
+		Uptime24hPct: pct24h,
+		Uptime7dPct:  pct7d,
+		MinLatencyMs: minL,
+		AvgLatencyMs: avg24h,
+		P95LatencyMs: p95L,
+		MaxLatencyMs: maxL,
+		DownCount24h: down24h,
+	}, nil
 }
 
 func boolToInt(b bool) int {

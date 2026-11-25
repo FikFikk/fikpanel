@@ -125,7 +125,7 @@ func runUptimeProbe(ctx context.Context, m *store.UptimeMonitor) probeOutcome {
 	if err != nil {
 		return probeOutcome{Status: "down", LatencyMs: time.Since(start).Milliseconds(), SSLDays: -1, ErrMsg: err.Error()}
 	}
-	req.Header.Set("User-Agent", "FikPanel-UptimeMonitor/0.7.4")
+	req.Header.Set("User-Agent", "FikPanel-UptimeMonitor/0.7.5")
 
 	resp, err := client.Do(req)
 	lat := time.Since(start).Milliseconds()
@@ -192,16 +192,68 @@ func (s *Server) executeAndRecordProbe(ctx context.Context, m *store.UptimeMonit
 		cooldownSec := int64(clampInt(prefs.AlertCooldownMin, 1, 1440, 15)) * 60
 		canNotify := m.LastNotifiedAt == 0 || (now-m.LastNotifiedAt) >= cooldownSec
 
-		// Kirim notifikasi perubahan status (DOWN / RECOVERED) atau SSL mendekati kedaluwarsa
+		// Kirim notifikasi perubahan status (DOWN / RECOVERED) atau SSL mendekati kedaluwarsa sekaligus rekam ke log insiden
 		if m.LastStatus != "down" && out.Status == "down" {
 			notifiedAt = now
-			go s.broadcastUptimeWebhook(m, "DOWN", fmt.Sprintf("Layanan %s (%s) TIDAK DAPAT DIAKSES. Detail: %s", m.Name, m.Target, out.ErrMsg), true)
+			msg := fmt.Sprintf("Layanan %s (%s) TIDAK DAPAT DIAKSES. Detail: %s", m.Name, m.Target, out.ErrMsg)
+			go s.broadcastUptimeWebhook(m, "DOWN", msg, true)
+			_ = s.store.InsertMonitorAlert(ctx, &store.MonitorAlert{
+				Source:      "uptime",
+				Severity:    "critical",
+				Target:      m.Name,
+				MetricValue: float64(out.LatencyMs),
+				Message:     msg,
+				Notified:    true,
+				CreatedAt:   now,
+			})
 		} else if m.LastStatus == "down" && out.Status == "up" {
 			notifiedAt = now
-			go s.broadcastUptimeWebhook(m, "RECOVERED", fmt.Sprintf("Layanan %s (%s) kembali ONLINE (HTTP %d, %d ms).", m.Name, m.Target, out.Code, out.LatencyMs), false)
+			msg := fmt.Sprintf("Layanan %s (%s) kembali ONLINE (HTTP %d, %d ms).", m.Name, m.Target, out.Code, out.LatencyMs)
+			go s.broadcastUptimeWebhook(m, "RECOVERED", msg, false)
+			_ = s.store.InsertMonitorAlert(ctx, &store.MonitorAlert{
+				Source:      "uptime",
+				Severity:    "recovered",
+				Target:      m.Name,
+				MetricValue: float64(out.LatencyMs),
+				Message:     msg,
+				Notified:    true,
+				CreatedAt:   now,
+			})
 		} else if out.Status == "up" && out.SSLDays >= 0 && out.SSLDays <= prefs.AlertSSLDays && canNotify {
 			notifiedAt = now
-			go s.broadcastUptimeWebhook(m, "SSL EXPIRING", fmt.Sprintf("Sertifikat SSL %s (%s) tersisa %d hari lagi.", m.Name, m.Target, out.SSLDays), true)
+			msg := fmt.Sprintf("Sertifikat SSL %s (%s) tersisa %d hari lagi.", m.Name, m.Target, out.SSLDays)
+			go s.broadcastUptimeWebhook(m, "SSL EXPIRING", msg, true)
+			_ = s.store.InsertMonitorAlert(ctx, &store.MonitorAlert{
+				Source:      "ssl",
+				Severity:    "warning",
+				Target:      m.Name,
+				MetricValue: float64(out.SSLDays),
+				Threshold:   float64(prefs.AlertSSLDays),
+				Message:     msg,
+				Notified:    true,
+				CreatedAt:   now,
+			})
+		}
+	} else {
+		// Tetap catat insiden DOWN/RECOVERED ke timeline panel meskipun webhook dimatikan untuk monitor ini
+		if m.LastStatus != "down" && out.Status == "down" {
+			_ = s.store.InsertMonitorAlert(ctx, &store.MonitorAlert{
+				Source:      "uptime",
+				Severity:    "critical",
+				Target:      m.Name,
+				MetricValue: float64(out.LatencyMs),
+				Message:     fmt.Sprintf("Layanan %s (%s) OFFLINE: %s", m.Name, m.Target, out.ErrMsg),
+				CreatedAt:   now,
+			})
+		} else if m.LastStatus == "down" && out.Status == "up" {
+			_ = s.store.InsertMonitorAlert(ctx, &store.MonitorAlert{
+				Source:      "uptime",
+				Severity:    "recovered",
+				Target:      m.Name,
+				MetricValue: float64(out.LatencyMs),
+				Message:     fmt.Sprintf("Layanan %s (%s) kembali ONLINE (%d ms)", m.Name, m.Target, out.LatencyMs),
+				CreatedAt:   now,
+			})
 		}
 	}
 
@@ -440,6 +492,70 @@ func (s *Server) handleCheckUptimeMonitorNow(w http.ResponseWriter, r *http.Requ
 		"ok":      true,
 		"outcome": out,
 		"monitor": fresh,
+	})
+}
+
+// handleCheckAllUptimeMonitors menjalankan pemeriksaan paralel untuk seluruh monitor uptime yang aktif
+func (s *Server) handleCheckAllUptimeMonitors(w http.ResponseWriter, r *http.Request) {
+	monitors, err := s.store.ListUptimeMonitors(r.Context(), false)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal membaca daftar monitor"})
+		return
+	}
+
+	sem := make(chan struct{}, 6)
+	var wg sync.WaitGroup
+	checked := 0
+	for _, mon := range monitors {
+		if !mon.Enabled {
+			continue
+		}
+		checked++
+		m := mon
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-r.Context().Done():
+				return
+			}
+			probeCtx, cancel := context.WithTimeout(r.Context(), time.Duration(clampInt(m.TimeoutSec, 2, 30, 10)+2)*time.Second)
+			defer cancel()
+			s.executeAndRecordProbe(probeCtx, &m)
+		}()
+	}
+	wg.Wait()
+
+	fresh, _ := s.store.ListUptimeMonitors(r.Context(), false)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":       true,
+		"checked":  checked,
+		"monitors": fresh,
+		"message":  fmt.Sprintf("%d monitor selesai diperiksa", checked),
+	})
+}
+
+// handleGetUptimeMonitorHistory mengembalikan riwayat panjang pemeriksaan beserta statistik latensi (Min/Avg/P95/Max) dan SLA 7 hari
+func (s *Server) handleGetUptimeMonitorHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ID monitor tidak valid"})
+		return
+	}
+	limit := 120
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	detail, err := s.store.GetUptimeMonitorHistory(r.Context(), id, limit)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "monitor tidak ditemukan"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":     true,
+		"detail": detail,
 	})
 }
 

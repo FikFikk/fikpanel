@@ -1,14 +1,24 @@
 // Definisi tipe data untuk metrik sistem, layanan, situs, dan respon API
 export interface MetricPoint {
-  timestamp: number;
+  ts?: number;
+  timestamp?: number;
   cpu: number;
+  cpu_user?: number;
+  cpu_system?: number;
+  cpu_iowait?: number;
+  cpu_steal?: number;
+  per_core?: number[];
   ram_used: number;
   ram_total: number;
   disk_used: number;
   disk_total: number;
+  disk_read?: number;
+  disk_write?: number;
   net_in: number;
   net_out: number;
   load_avg: number;
+  load_5m?: number;
+  load_15m?: number;
 }
 
 export type SiteKind = 'proxy' | 'static' | 'php' | 'node' | 'go' | 'python';
@@ -445,6 +455,8 @@ export interface MonitorSnapshot {
   id: number;
   timestamp: number;
   cpu: number;
+  cpu_iowait: number;
+  cpu_steal: number;
   ram_used: number;
   ram_total: number;
   load_1m: number;
@@ -452,8 +464,62 @@ export interface MonitorSnapshot {
   load_15m: number;
   disk_used: number;
   disk_total: number;
+  disk_read: number;
+  disk_write: number;
   net_in: number;
   net_out: number;
+}
+
+export interface MonitorHistorySummary {
+  raw_count: number;
+  returned_count: number;
+  cpu_avg: number;
+  cpu_max: number;
+  cpu_p95: number;
+  cpu_iowait_avg: number;
+  ram_avg_pct: number;
+  ram_max_pct: number;
+  load_max: number;
+  disk_latest_pct: number;
+  net_in_peak: number;
+  net_out_peak: number;
+  net_in_total_bytes: number;
+  net_out_total_bytes: number;
+  disk_read_peak: number;
+  disk_write_peak: number;
+}
+
+export interface MonitorThresholds {
+  alert_cpu_pct: number;
+  alert_ram_pct: number;
+  alert_disk_pct: number;
+  alert_ssl_days: number;
+  alert_cooldown_min: number;
+}
+
+export interface MonitorAlert {
+  id: number;
+  source: 'cpu' | 'ram' | 'disk' | 'uptime' | 'ssl' | string;
+  severity: 'critical' | 'warning' | 'recovered' | string;
+  target: string;
+  metric_value: number;
+  threshold: number;
+  message: string;
+  notified: boolean;
+  acknowledged: boolean;
+  created_at: number;
+}
+
+export interface UptimeMonitorHistory {
+  monitor: UptimeMonitor;
+  checks: UptimeCheck[];
+  uptime_24h_pct: number;
+  uptime_7d_pct: number;
+  min_latency_ms: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  max_latency_ms: number;
+  down_count_24h: number;
 }
 
 // ── App Store & Toolkit Installer ─────────────────────────────────────────

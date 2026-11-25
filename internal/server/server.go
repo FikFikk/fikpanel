@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.4"
+		return "0.7.5"
 	}
 	return s.version
 }
@@ -469,11 +469,17 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/appstore/uninstall/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUninstallApp)))
 	s.mux.Handle("GET /api/appstore/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetAppTask)))
 
-	// Persistent System Monitor History & Control
+	// Persistent System Monitor History, Analytics, Export & Threshold Alerts
 	s.mux.Handle("GET /api/monitor/config", s.AuthMiddleware(http.HandlerFunc(s.handleGetMonitorConfig)))
 	s.mux.Handle("POST /api/monitor/config", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateMonitorConfig)))
 	s.mux.Handle("GET /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleGetMonitorHistory)))
+	s.mux.Handle("GET /api/monitor/history/export", s.AuthMiddleware(http.HandlerFunc(s.handleExportMonitorHistoryCSV)))
 	s.mux.Handle("DELETE /api/monitor/history", s.AuthMiddleware(http.HandlerFunc(s.handleClearMonitorHistory)))
+	s.mux.Handle("GET /api/monitor/alerts", s.AuthMiddleware(http.HandlerFunc(s.handleListMonitorAlerts)))
+	s.mux.Handle("POST /api/monitor/alerts/thresholds", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateAlertThresholds)))
+	s.mux.Handle("POST /api/monitor/alerts/ack-all", s.AuthMiddleware(http.HandlerFunc(s.handleAckAllMonitorAlerts)))
+	s.mux.Handle("POST /api/monitor/alerts/{id}/ack", s.AuthMiddleware(http.HandlerFunc(s.handleAckMonitorAlert)))
+	s.mux.Handle("DELETE /api/monitor/alerts", s.AuthMiddleware(http.HandlerFunc(s.handleClearMonitorAlerts)))
 
 	// Uptime & SSL Monitor Terintegrasi
 	s.mux.Handle("GET /api/uptime/monitors", s.AuthMiddleware(http.HandlerFunc(s.handleListUptimeMonitors)))
@@ -481,6 +487,8 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("PUT /api/uptime/monitors/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateUptimeMonitor)))
 	s.mux.Handle("DELETE /api/uptime/monitors/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteUptimeMonitor)))
 	s.mux.Handle("POST /api/uptime/monitors/{id}/check", s.AuthMiddleware(http.HandlerFunc(s.handleCheckUptimeMonitorNow)))
+	s.mux.Handle("GET /api/uptime/monitors/{id}/history", s.AuthMiddleware(http.HandlerFunc(s.handleGetUptimeMonitorHistory)))
+	s.mux.Handle("POST /api/uptime/check-all", s.AuthMiddleware(http.HandlerFunc(s.handleCheckAllUptimeMonitors)))
 	s.mux.Handle("POST /api/uptime/import-sites", s.AuthMiddleware(http.HandlerFunc(s.handleImportSitesToUptime)))
 
 	// AI Copilot & Manajemen Provider LLM

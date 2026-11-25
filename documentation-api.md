@@ -1401,7 +1401,7 @@ Semua endpoint di bawah ini membutuhkan sesi autentikasi (`Cookie: panel_session
 | Response | HTTP 200 `{"ok": true, "task": {"id": "app_inst_123", "status": "running", "progress": 80, "log": "..."}}` |
 | Notes | Memeriksa kemajuan eksekusi tugas instalasi aplikasi. |
 
-### Persistent System Monitor History & Control
+### Persistent System Monitor History, Analytics, Export & Alert Engine
 
 | Field | Detail |
 |---|---|
@@ -1410,8 +1410,8 @@ Semua endpoint di bawah ini membutuhkan sesi autentikasi (`Cookie: panel_session
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "retention_days": 30}}` |
-| Notes | Mengambil konfigurasi perekaman metrik persisten historis (mirip fitur aaPanel monitor). |
+| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "save_days": 30}}` |
+| Notes | Mengambil status aktif perekaman 60 detik dan lama retensi penyimpanan metrik historis. |
 
 | Field | Detail |
 |---|---|
@@ -1419,19 +1419,29 @@ Semua endpoint di bawah ini membutuhkan sesi autentikasi (`Cookie: panel_session
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `enabled` (bool, wajib), `retention_days` (int, 1-365) |
-| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "retention_days": 30}}` |
-| Notes | Mengaktifkan/menonaktifkan perekam interval background metrik CPU, RAM, Disk, dan Jaringan. |
+| Request Body | `enabled` (bool, wajib), `save_days` (int, 1–365) |
+| Response | HTTP 200 `{"ok": true, "config": {"enabled": true, "save_days": 30}, "message": "..."}` |
+| Notes | Mengaktifkan/menonaktifkan perekam metrik background serta mengubah masa retensi hari. Mencatat audit `monitor.config_update`. |
 
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `GET /api/monitor/history` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | Tidak ada |
-| Query Params | `range` (string: `"1h"`, `"6h"`, `"24h"`, `"7d"`, `"30d"`) |
+| Query Params | `start` (int64 Unix detik), `end` (int64 Unix detik), `max_points` (int, default `360`, rentang `30`–`1500`) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "snapshots": [{"timestamp": 1740000000, "cpu": 12.4, "ram_used": 1024, "ram_total": 4096, "disk_used": 20480, "disk_total": 81920, "net_in": 10240, "net_out": 20480, "load_1m": 0.45}]}` |
-| Notes | Mengambil deret waktu metrik untuk visualisasi grafik multi-rentang. |
+| Response | HTTP 200 `{"ok": true, "history": [{"timestamp": 1740000000, "cpu": 12.4, "cpu_iowait": 1.2, "cpu_steal": 0, "ram_used": ..., "disk_read": 4096, "disk_write": 2048, "net_in": 10240, "net_out": 20480, "load_1m": 0.45}], "summary": {"raw_count": 1440, "returned_count": 360, "cpu_avg": 14.2, "cpu_max": 82.1, "cpu_p95": 45.0, "ram_avg_pct": 52.1, "net_in_total_bytes": ...}, "thresholds": {...}}` |
+| Notes | Melakukan *peak-preserving downsampling* agar kueri hingga 30 hari tetap ringan dan cepat, disertai analitik ringkasan periode (Avg/Peak/P95/Total Transfer) dan ambang alert aktif. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/monitor/history/export` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `start` (int64 Unix detik), `end` (int64 Unix detik) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `text/csv; charset=utf-8` (attachment `fikpanel-monitor-YYYYMMDD-HHMM.csv`) |
+| Notes | Mengekspor seluruh sampel metrik mentah pada rentang waktu terpilih mencakup CPU/IOWait/Steal, RAM, Load 1/5/15m, Disk Space, Disk Read/Write, dan Network In/Out. |
 
 | Field | Detail |
 |---|---|
@@ -1440,8 +1450,58 @@ Semua endpoint di bawah ini membutuhkan sesi autentikasi (`Cookie: panel_session
 | Headers | `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "message": "Riwayat pemantauan berhasil dibersihkan"}` |
-| Notes | Mengosongkan seluruh tabel rekaman snapshot metrik persisten. |
+| Response | HTTP 200 `{"ok": true, "message": "Seluruh rekaman histori monitoring berhasil dikosongkan"}` |
+| Notes | Mengosongkan tabel `monitor_snapshots` dan mencatat audit `monitor.history_clear`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/monitor/alerts` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, default `80`, maks `200`), `source` (`all`/`cpu`/`ram`/`disk`/`uptime`/`ssl`), `unacked` (`1`/`true`, opsional) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "alerts": [{"id": 1, "source": "cpu", "severity": "critical", "target": "host", "metric_value": 94.2, "threshold": 85, "message": "...", "notified": true, "acknowledged": false, "created_at": 179...}], "unacked_count": 2, "webhooks_count": 1, "thresholds": {...}}` |
+| Notes | Menyajikan log alert ambang resource dan insiden Uptime/SSL terpadu beserta jumlah alert belum dibaca, jumlah webhook aktif, dan nilai ambang saat ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/monitor/alerts/thresholds` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `alert_cpu_pct` (50–99), `alert_ram_pct` (50–99), `alert_disk_pct` (50–99), `alert_ssl_days` (1–90), `alert_cooldown_min` (1–1440) |
+| Response | HTTP 200 `{"ok": true, "message": "...", "thresholds": {...}}` |
+| Notes | Memperbarui ambang batas evaluasi alert langsung dari `/monitor` (tersinkron 1:1 dengan preferensi `/settings`) dan mencatat audit `monitor.thresholds_update`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/monitor/alerts/{id}/ack` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` |
+| Notes | Menandai satu peristiwa alert/insiden sudah dibaca. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/monitor/alerts/ack-all` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Seluruh alert ditandai sudah dibaca"}` |
+| Notes | Menandai seluruh alert belum dibaca menjadi acknowledged sekaligus. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/monitor/alerts` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Riwayat alert & insiden berhasil dikosongkan"}` |
+| Notes | Menghapus seluruh catatan di tabel `monitor_alerts` dan mencatat audit `monitor.alerts_clear`. |
 
 ### Keamanan, Firewall, & SSH Hardening
 
@@ -3410,7 +3470,27 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
 | Response | HTTP 200 `{"ok": true, "outcome": {"Status": "up", "Code": 200, "LatencyMs": 15, "SSLDays": 72}, "monitor": {...}}` |
-| Notes | Menjalankan pemeriksaan probe HTTP/TCP/SSL secara langsung dan mencatat hasilnya ke SQLite serta memicu webhook bila terjadi perubahan status. |
+| Notes | Menjalankan pemeriksaan probe HTTP/TCP/SSL secara langsung, mencatat hasil ke `uptime_checks` serta log insiden `monitor_alerts`, dan memicu webhook bila terjadi perubahan status. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/uptime/monitors/{id}/history` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `limit` (int, default `120`, maks `200`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "detail": {"monitor": {...}, "checks": [...], "uptime_24h_pct": 100, "uptime_7d_pct": 99.95, "min_latency_ms": 14, "avg_latency_ms": 38, "p95_latency_ms": 84, "max_latency_ms": 112, "down_count_24h": 0}}` |
+| Notes | Menyajikan riwayat panjang pemeriksaan beserta kalkulasi persentil latensi (Min/Avg/P95/Max) dan rasio SLA 24 jam serta 7 hari untuk modal detail latensi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/uptime/check-all` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "checked": 5, "monitors": [...], "message": "5 monitor selesai diperiksa"}` |
+| Notes | Menjalankan pemeriksaan paralel (maks 6 worker) pada seluruh monitor aktif secara serentak dan mengembalikan status terkini. |
 
 | Field | Detail |
 |---|---|

@@ -11,13 +11,15 @@ import (
 	"time"
 )
 
-// LinuxCollector mengumpulkan metrik dari virtual filesystem /proc di kernel Linux
+// LinuxCollector mengumpulkan metrik sistem nyata dari virtual filesystem /proc di kernel Linux
 type LinuxCollector struct {
-	prevIdle   uint64
-	prevTotal  uint64
-	prevNetIn  uint64
-	prevNetOut uint64
-	prevTime   time.Time
+	prevAgg       cpuSample
+	prevCores     []cpuSample
+	prevNetIn     uint64
+	prevNetOut    uint64
+	prevDiskRead  uint64
+	prevDiskWrite uint64
+	prevTime      time.Time
 }
 
 // NewCollector membuat instance pengumpul metrik untuk sistem Linux
@@ -31,16 +33,28 @@ func NewCollector() Collector {
 func (c *LinuxCollector) Collect() (Point, error) {
 	now := time.Now()
 	p := Point{Timestamp: now.Unix()}
+	duration := now.Sub(c.prevTime).Seconds()
 
-	// 1. Baca penggunaan CPU dari /proc/stat
-	if idle, total, err := readCPUStat(); err == nil {
-		if c.prevTotal > 0 && total > c.prevTotal {
-			deltaTotal := float64(total - c.prevTotal)
-			deltaIdle := float64(idle - c.prevIdle)
-			p.CPU = ((deltaTotal - deltaIdle) / deltaTotal) * 100.0
+	// 1. Baca penggunaan CPU agregat (User/System/IOWait/Steal) & per-core dari /proc/stat
+	if raw, err := os.ReadFile("/proc/stat"); err == nil {
+		agg, cores := parseProcStatRaw(string(raw))
+		if c.prevAgg.total() > 0 {
+			bd := computeCPUDelta(c.prevAgg, agg)
+			p.CPU = bd.Total
+			p.CPUUser = bd.User
+			p.CPUSystem = bd.System
+			p.CPUIOWait = bd.IOWait
+			p.CPUSteal = bd.Steal
 		}
-		c.prevIdle = idle
-		c.prevTotal = total
+		if len(cores) > 0 && len(c.prevCores) == len(cores) {
+			perCore := make([]float64, len(cores))
+			for i := range cores {
+				perCore[i] = computeCPUDelta(c.prevCores[i], cores[i]).Total
+			}
+			p.PerCore = perCore
+		}
+		c.prevAgg = agg
+		c.prevCores = cores
 	}
 
 	// 2. Baca informasi memori dari /proc/meminfo
@@ -58,49 +72,42 @@ func (c *LinuxCollector) Collect() (Point, error) {
 		p.Load15m = l15
 	}
 
-	// 4. Baca penggunaan disk root via syscall.Statfs
+	// 4. Baca penggunaan ruang disk root via syscall.Statfs
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs("/", &stat); err == nil {
 		p.DiskTotal = stat.Blocks * uint64(stat.Bsize)
 		p.DiskUsed = (stat.Blocks - stat.Bfree) * uint64(stat.Bsize)
 	}
 
-	// 5. Baca trafik jaringan dari /proc/net/dev
+	// 5. Baca kecepatan Disk I/O (Read/Write byte/detik) dari /proc/diskstats
+	if raw, err := os.ReadFile("/proc/diskstats"); err == nil {
+		rd, wr := parseDiskStatsRaw(string(raw))
+		if duration > 0 && (c.prevDiskRead > 0 || c.prevDiskWrite > 0) {
+			if rd >= c.prevDiskRead {
+				p.DiskRead = uint64(float64(rd-c.prevDiskRead) / duration)
+			}
+			if wr >= c.prevDiskWrite {
+				p.DiskWrite = uint64(float64(wr-c.prevDiskWrite) / duration)
+			}
+		}
+		c.prevDiskRead = rd
+		c.prevDiskWrite = wr
+	}
+
+	// 6. Baca trafik jaringan dari /proc/net/dev
 	if netIn, netOut, err := readNetDev(); err == nil {
-		duration := now.Sub(c.prevTime).Seconds()
 		if duration > 0 && c.prevNetIn > 0 && netIn >= c.prevNetIn {
 			p.NetIn = uint64(float64(netIn-c.prevNetIn) / duration)
-			p.NetOut = uint64(float64(netOut-c.prevNetOut) / duration)
+			if netOut >= c.prevNetOut {
+				p.NetOut = uint64(float64(netOut-c.prevNetOut) / duration)
+			}
 		}
 		c.prevNetIn = netIn
 		c.prevNetOut = netOut
-		c.prevTime = now
 	}
 
+	c.prevTime = now
 	return p, nil
-}
-
-func readCPUStat() (idle, total uint64, err error) {
-	file, err := os.Open("/proc/stat")
-	if err != nil {
-		return 0, 0, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	if scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) >= 5 && fields[0] == "cpu" {
-			for i := 1; i < len(fields); i++ {
-				val, _ := strconv.ParseUint(fields[i], 10, 64)
-				total += val
-				if i == 4 {
-					idle = val
-				}
-			}
-		}
-	}
-	return idle, total, nil
 }
 
 func readMemInfo() (total, avail uint64, err error) {
