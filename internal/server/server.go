@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.2"
+		return "0.7.3"
 	}
 	return s.version
 }
@@ -150,7 +150,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 		nginx:            nginx.NewManager(nginx.DefaultPaths(), s, s),
 		tasks:            database.NewTaskManager(s),
 		cronMgr:          cron.NewManager(s),
-		firewall:         security.NewManager(),
+		firewall:         security.NewManager(s, port),
 		pm2:              node.NewManager(),
 		phpMgr:           php.NewManager(),
 		systemMgr:        system.NewManager(),
@@ -360,35 +360,46 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/firewall/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetFirewallStatus)))
 	s.mux.Handle("GET /api/firewall/extended", s.AuthMiddleware(http.HandlerFunc(s.handleGetExtendedFirewallStatus)))
 	s.mux.Handle("POST /api/firewall/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleFirewall)))
+	s.mux.Handle("POST /api/firewall/default-policy", s.AuthMiddleware(http.HandlerFunc(s.handleSetFirewallDefaultPolicy)))
 	s.mux.Handle("POST /api/firewall/rules", s.AuthMiddleware(http.HandlerFunc(s.handleAddFirewallRule)))
 	s.mux.Handle("POST /api/firewall/rules/extended", s.AuthMiddleware(http.HandlerFunc(s.handleAddExtendedPortRule)))
-	s.mux.Handle("POST /api/firewall/rules/batch", s.AuthMiddleware(http.HandlerFunc(s.handleBatchSavePortRules)))
+	s.mux.Handle("POST /api/firewall/rules/batch-delete", s.AuthMiddleware(http.HandlerFunc(s.handleBatchDeleteFirewallRules)))
 	s.mux.Handle("DELETE /api/firewall/rules/{number}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteFirewallRule)))
 	s.mux.Handle("POST /api/firewall/icmp", s.AuthMiddleware(http.HandlerFunc(s.handleToggleICMP)))
 	s.mux.Handle("POST /api/firewall/logs/clear", s.AuthMiddleware(http.HandlerFunc(s.handleClearSiteLogs)))
 
-	// Security Center: Enterprise Overview, SSH, Brute Force & Hardening
+	// Security Center: Overview, SSH & Keys, Brute Force Persisten, Hardening, Fail2Ban, FIM & Audit Scanner
 	s.mux.Handle("GET /api/security/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetSecurityOverview)))
 	s.mux.Handle("GET /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleGetSSHConfig)))
 	s.mux.Handle("POST /api/security/ssh", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSSHConfig)))
 	s.mux.Handle("GET /api/security/ssh/stats", s.AuthMiddleware(http.HandlerFunc(s.handleGetSSHStats)))
 	s.mux.Handle("POST /api/security/ssh/restart", s.AuthMiddleware(http.HandlerFunc(s.handleRestartSSHService)))
+	s.mux.Handle("GET /api/security/ssh/keys", s.AuthMiddleware(http.HandlerFunc(s.handleListSSHKeys)))
+	s.mux.Handle("POST /api/security/ssh/keys", s.AuthMiddleware(http.HandlerFunc(s.handleAddSSHKey)))
+	s.mux.Handle("DELETE /api/security/ssh/keys/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveSSHKey)))
 	s.mux.Handle("GET /api/security/ssh/accounts", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemAccounts)))
 	s.mux.Handle("POST /api/security/ssh/accounts/{user}/toggle", s.AuthMiddleware(http.HandlerFunc(s.handleToggleAccountLock)))
-	s.mux.Handle("GET /api/security/server-security", s.AuthMiddleware(http.HandlerFunc(s.handleGetServerSecurity)))
-	s.mux.Handle("POST /api/security/server-security/fix", s.AuthMiddleware(http.HandlerFunc(s.handleApplySecurityFix)))
+	s.mux.Handle("POST /api/security/fix", s.AuthMiddleware(http.HandlerFunc(s.handleApplySecurityFix)))
 	s.mux.Handle("GET /api/security/bruteforce", s.AuthMiddleware(http.HandlerFunc(s.handleGetBruteForce)))
 	s.mux.Handle("POST /api/security/bruteforce/config", s.AuthMiddleware(http.HandlerFunc(s.handleSaveBruteForceConfig)))
 	s.mux.Handle("POST /api/security/bruteforce/whitelist", s.AuthMiddleware(http.HandlerFunc(s.handleAddWhitelistIP)))
+	s.mux.Handle("POST /api/security/bruteforce/whitelist/remove", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveWhitelistIPBody)))
 	s.mux.Handle("DELETE /api/security/bruteforce/whitelist/{ip}", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveWhitelistIP)))
 	s.mux.Handle("POST /api/security/bruteforce/blacklist", s.AuthMiddleware(http.HandlerFunc(s.handleAddBlacklistIP)))
+	s.mux.Handle("POST /api/security/bruteforce/blacklist/remove", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveBlacklistIPBody)))
 	s.mux.Handle("DELETE /api/security/bruteforce/blacklist/{ip}", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveBlacklistIP)))
 	s.mux.Handle("GET /api/security/hardening", s.AuthMiddleware(http.HandlerFunc(s.handleGetHardeningStatus)))
+	s.mux.Handle("POST /api/security/hardening/sysctl", s.AuthMiddleware(http.HandlerFunc(s.handleToggleSysctlParam)))
 	s.mux.Handle("POST /api/security/hardening/compiler", s.AuthMiddleware(http.HandlerFunc(s.handleToggleCompilerAccess)))
-	s.mux.Handle("POST /api/security/hardening/tamper", s.AuthMiddleware(http.HandlerFunc(s.handleToggleTamperProof)))
+	s.mux.Handle("GET /api/security/hardening/fim", s.AuthMiddleware(http.HandlerFunc(s.handleCheckFIMIntegrity)))
+	s.mux.Handle("POST /api/security/hardening/fim/baseline", s.AuthMiddleware(http.HandlerFunc(s.handleCreateFIMBaseline)))
+	s.mux.Handle("DELETE /api/security/hardening/fim", s.AuthMiddleware(http.HandlerFunc(s.handleDisableFIM)))
 	s.mux.Handle("GET /api/security/fail2ban", s.AuthMiddleware(http.HandlerFunc(s.handleGetFail2BanStatus)))
+	s.mux.Handle("POST /api/security/fail2ban/service", s.AuthMiddleware(http.HandlerFunc(s.handleControlFail2BanService)))
+	s.mux.Handle("POST /api/security/fail2ban/ban", s.AuthMiddleware(http.HandlerFunc(s.handleBanFail2BanIP)))
 	s.mux.Handle("POST /api/security/fail2ban/unban", s.AuthMiddleware(http.HandlerFunc(s.handleUnbanFail2BanIP)))
 	s.mux.Handle("POST /api/security/scan", s.AuthMiddleware(http.HandlerFunc(s.handleRunSecurityScan)))
+	s.mux.Handle("GET /api/security/scan/latest", s.AuthMiddleware(http.HandlerFunc(s.handleGetLatestSecurityScan)))
 
 	// Node.js & PM2 Management
 	s.mux.Handle("GET /api/node/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetNodeStatus)))

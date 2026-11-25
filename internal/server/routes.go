@@ -30,30 +30,57 @@ type LoginResponse struct {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := getIP(r)
-	if !s.limiter.Allow(ip) {
-		http.Error(w, `{"error":"terlalu banyak percobaan gagal, coba lagi nanti"}`, http.StatusTooManyRequests)
+	isWhitelisted := s.firewall != nil && s.firewall.IsIPWhitelisted(r.Context(), ip)
+	if !isWhitelisted && !s.limiter.Allow(ip) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "terlalu banyak percobaan gagal, coba lagi nanti"})
 		return
 	}
 
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload JSON tidak valid"})
 		return
+	}
+
+	// Terapkan kebijakan Brute Force Protection persisten (daftar hitam IP & batas gagal username)
+	if s.firewall != nil {
+		if allowed, reason := s.firewall.CheckLoginAllowed(r.Context(), ip, req.Username); !allowed {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": reason})
+			return
+		}
+	}
+
+	recordFail := func(reason string, userID *int64) {
+		if !isWhitelisted {
+			s.limiter.RecordFailure(ip)
+		}
+		if s.firewall != nil {
+			if autoBanned, banMins := s.firewall.RecordLoginFailure(r.Context(), ip, req.Username, reason, r.UserAgent()); autoBanned {
+				cfg := s.firewall.GetBruteForceConfig(r.Context())
+				if cfg.NotifyOnBan {
+					s.notifySecurityEvent(
+						"BRUTE FORCE BAN",
+						fmt.Sprintf("IP %s diblokir otomatis (%d menit)", ip, banMins),
+						fmt.Sprintf("Target user: `%s`\nAlasan: %s\nDurasi blokir: %d menit", req.Username, reason, banMins),
+						0xF43F5E,
+					)
+				}
+			}
+		}
+		_ = s.store.RecordAudit(r.Context(), "user", "auth.login_fail", req.Username, false, reason+" (IP: "+ip+")", userID)
 	}
 
 	user, err := s.store.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
-		s.limiter.RecordFailure(ip)
-		_ = s.store.RecordAudit(r.Context(), "user", "auth.login_fail", req.Username, false, "Kredensial tidak valid", nil)
-		http.Error(w, `{"error":"kredensial tidak valid"}`, http.StatusUnauthorized)
+		recordFail("Username tidak ditemukan", nil)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "kredensial tidak valid"})
 		return
 	}
 
 	valid, err := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil || !valid {
-		s.limiter.RecordFailure(ip)
-		_ = s.store.RecordAudit(r.Context(), "user", "auth.login_fail", req.Username, false, "Password salah", &user.ID)
-		http.Error(w, `{"error":"kredensial tidak valid"}`, http.StatusUnauthorized)
+		recordFail("Kata sandi tidak cocok", &user.ID)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "kredensial tidak valid"})
 		return
 	}
 
@@ -68,15 +95,25 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !s.verifyUserTOTPOrRecovery(r.Context(), user, req.TOTPCode) {
-			s.limiter.RecordFailure(ip)
-			_ = s.store.RecordAudit(r.Context(), "user", "auth.login_2fa_fail", req.Username, false, "Kode 2FA tidak valid", &user.ID)
-			http.Error(w, `{"error":"kode 2FA tidak valid"}`, http.StatusUnauthorized)
+			recordFail("Kode 2FA tidak valid", &user.ID)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "kode 2FA tidak valid"})
 			return
 		}
 	}
 
 	s.limiter.Reset(ip)
 	_ = s.store.UpdateLastLogin(r.Context(), user.ID)
+	if s.firewall != nil {
+		s.firewall.RecordLoginSuccess(r.Context(), ip, user.Username, r.UserAgent())
+		if cfg := s.firewall.GetBruteForceConfig(r.Context()); cfg.NotifyOnLogin {
+			s.notifySecurityEvent(
+				"PANEL LOGIN",
+				fmt.Sprintf("Login berhasil oleh %s", user.Username),
+				fmt.Sprintf("IP Sumber: `%s`\nUser-Agent: %s", ip, r.UserAgent()),
+				0x10B981,
+			)
+		}
+	}
 
 	prefs := s.loadPanelPreferences(r.Context())
 	sessionDur := time.Duration(prefs.SessionHours) * time.Hour
@@ -287,6 +324,14 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	zoneName, zoneOffset := now.Zone()
 
+	// Hitung jumlah risiko keamanan nyata dari laporan audit terakhir yang tersimpan
+	securityRisks := 0
+	if s.firewall != nil {
+		if latestScan := s.firewall.GetLatestScanReport(r.Context()); latestScan != nil {
+			securityRisks = latestScan.RiskCount + latestScan.MalwareCount + latestScan.VulnCount
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"system": map[string]interface{}{
@@ -312,7 +357,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			"services_active": activeSvcs,
 			"databases_count": 1, // SQLite panel.db internal
 			"database_engine": "SQLite WAL (modernc.org)",
-			"security_risk":   0,
+			"security_risk":   securityRisks,
 		},
 		"latest_metric": latestMetric,
 	})

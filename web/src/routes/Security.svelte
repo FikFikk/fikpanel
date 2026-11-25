@@ -2,206 +2,86 @@
   import { onMount } from 'svelte';
   import { apiFetch } from '../lib/api';
   import type {
-    PortRule,
     FirewallExtendedStatus,
+    FirewallRule,
     SSHStats,
+    SSHAuthorizedKey,
     SystemAccount,
-    ServerSecurityOverview,
     BruteForceConfig,
-    WhitelistIP,
-    BlacklistIP,
-    FailedLoginEvent,
+    SecurityIPRule,
+    SecurityLoginEvent,
     ProtectionOverview,
+    ProtectionItem,
     HardeningStatus,
+    FIMCheckResult,
     SecurityScanReport,
+    ScanFinding,
     Fail2BanStatus,
   } from '../lib/types';
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
-  import SecurityTabs from './security/SecurityTabs.svelte';
+  import PageHeader from '../lib/components/ui/PageHeader.svelte';
+  import SecurityTabs, { type SecurityTabId } from './security/SecurityTabs.svelte';
   import OverviewTab from './security/OverviewTab.svelte';
-  import FirewallTab from './security/FirewallTab.svelte';
-  import SshTab from './security/SshTab.svelte';
-  import ServerSecurityTab from './security/ServerSecurityTab.svelte';
-  import BruteForceTab from './security/BruteForceTab.svelte';
-  import AntiIntrusionTab from './security/AntiIntrusionTab.svelte';
-  import ScanDetectionTab from './security/ScanDetectionTab.svelte';
+  import FirewallTab, { type FirewallSubTab } from './security/FirewallTab.svelte';
+  import SshTab, { type SshSubTab } from './security/SshTab.svelte';
+  import BruteForceTab, { type BruteForceSubTab } from './security/BruteForceTab.svelte';
+  import HardeningTab, { type HardeningSubTab } from './security/HardeningTab.svelte';
   import AddPortModal from './security/AddPortModal.svelte';
   import AddWhitelistModal from './security/AddWhitelistModal.svelte';
   import AddBlacklistModal from './security/AddBlacklistModal.svelte';
   import '../styles/pages/security/shared.css';
 
-  // Tab navigasi aktif
-  let activeTab = $state<'overview' | 'firewall' | 'ssh' | 'server_security' | 'bruteforce' | 'anti_intrusion' | 'scan_detection'>('overview');
+  // Tab & sub-tab aktif
+  let activeTab = $state<SecurityTabId>('overview');
+  let fwSubTab = $state<FirewallSubTab>('inbound');
+  let sshSubTab = $state<SshSubTab>('config');
+  let bruteSubTab = $state<BruteForceSubTab>('config');
+  let hardeningSubTab = $state<HardeningSubTab>('scanner');
+  let scanCategoryFilter = $state<string>('all');
 
-  // State data utama modul keamanan
+  // State data utama Security Center
   let loading = $state(true);
+  let busyKey = $state('');
+  let isScanning = $state(false);
   let protection = $state<ProtectionOverview | null>(null);
   let fwStatus = $state<FirewallExtendedStatus | null>(null);
   let sshStats = $state<SSHStats | null>(null);
+  let sshKeys = $state<SSHAuthorizedKey[]>([]);
   let accounts = $state<SystemAccount[]>([]);
-  let serverSec = $state<ServerSecurityOverview | null>(null);
   let bruteCfg = $state<BruteForceConfig | null>(null);
-  let whitelist = $state<WhitelistIP[]>([]);
-  let blacklist = $state<BlacklistIP[]>([]);
-  let failedEvents = $state<FailedLoginEvent[]>([]);
+  let clientIP = $state('');
+  let isClientWhitelisted = $state(false);
+  let whitelist = $state<SecurityIPRule[]>([]);
+  let blacklist = $state<SecurityIPRule[]>([]);
+  let loginEvents = $state<SecurityLoginEvent[]>([]);
   let hardening = $state<HardeningStatus | null>(null);
   let f2bStatus = $state<Fail2BanStatus | null>(null);
+  let fimResult = $state<FIMCheckResult | null>(null);
   let scanReport = $state<SecurityScanReport | null>(null);
-  let isScanning = $state(false);
 
-  // Subtab per modul
-  let sshSubTab = $state<'basic' | 'accounts' | 'logs'>('basic');
-  let bruteSubTab = $state<'config' | 'whitelist' | 'blacklist' | 'history'>('config');
-  let scanCategoryFilter = $state<string>('all');
+  // Pencarian & pilihan massal Firewall
+  let fwSearch = $state('');
+  let selectedRuleNums = $state<number[]>([]);
 
-  // Filter firewall & Subtab ala AWS EC2 Security Groups
-  let fwDirectionFilter = $state<'all' | 'inbound' | 'outbound'>('all');
-  let fwPortSearch = $state('');
-  let fwSubTab = $state<'inbound' | 'outbound' | 'settings'>('inbound');
-  let isEditingInbound = $state(false);
-  let draftRules = $state<PortRule[]>([]);
-  let showActionsDropdown = $state(false);
+  // Form SSH
+  let sshPortInput = $state(22);
+  let sshPasswordAuth = $state(true);
+  let sshPubkeyAuth = $state(true);
+  let sshPermitRoot = $state('prohibit-password');
+  let sshMaxAuthTries = $state(6);
+  let newPublicKey = $state('');
 
-  // Template preset tipe aturan port ala AWS EC2 Security Group
-  const ruleTypePresets = [
-    { type: 'Custom TCP', proto: 'tcp', port: '', desc: 'Custom TCP port' },
-    { type: 'Custom UDP', proto: 'udp', port: '', desc: 'Custom UDP port' },
-    { type: 'Custom ICMP - IPv4', proto: 'icmp', port: 'All', desc: 'Custom ICMP Ping/Echo' },
-    { type: 'All TCP', proto: 'tcp', port: '0 - 65535', desc: 'All TCP ports' },
-    { type: 'All UDP', proto: 'udp', port: '0 - 65535', desc: 'All UDP ports' },
-    { type: 'All traffic', proto: 'All', port: 'All', desc: 'All inbound traffic' },
-    { type: 'SSH', proto: 'tcp', port: '22', desc: 'SSH remote management' },
-    { type: 'HTTP', proto: 'tcp', port: '80', desc: 'WebServer (HTTP)' },
-    { type: 'HTTPS', proto: 'tcp', port: '443', desc: 'WebServer (HTTPS)' },
-    { type: 'FikPanel Web', proto: 'tcp', port: '1405', desc: 'FikPanel Secure Management Panel' },
-    { type: 'MySQL/Aurora', proto: 'tcp', port: '3306', desc: 'MySQL/MariaDB Database Service' },
-    { type: 'PostgreSQL', proto: 'tcp', port: '5432', desc: 'PostgreSQL Database Service' },
-    { type: 'Redis', proto: 'tcp', port: '6379', desc: 'Redis In-Memory Key-Value Store' },
-    { type: 'DNS (UDP)', proto: 'udp', port: '53', desc: 'DNS Name Resolution Service' },
-    { type: 'DNS (TCP)', proto: 'tcp', port: '53', desc: 'DNS Zone Transfer Service' },
-    { type: 'SMTP', proto: 'tcp', port: '25', desc: 'SMTP Mail Delivery' },
-    { type: 'SMTPS', proto: 'tcp', port: '465', desc: 'Secure SMTPS Email Submission' },
-    { type: 'phpMyAdmin', proto: 'tcp', port: '888', desc: 'phpMyAdmin Web Interface' },
-  ];
-
-  function isPresetFixed(type?: string): boolean {
-    if (!type) return false;
-    return ['SSH', 'HTTP', 'HTTPS', 'MySQL/Aurora', 'PostgreSQL', 'Redis', 'DNS (UDP)', 'DNS (TCP)', 'SMTP', 'SMTPS', 'phpMyAdmin', 'All TCP', 'All UDP', 'All traffic'].includes(type);
-  }
-
-  function isPresetFixedPort(type?: string): boolean {
-    if (!type) return false;
-    return ['SSH', 'HTTP', 'HTTPS', 'MySQL/Aurora', 'PostgreSQL', 'Redis', 'DNS (UDP)', 'DNS (TCP)', 'SMTP', 'SMTPS', 'phpMyAdmin', 'All traffic', 'Custom ICMP - IPv4'].includes(type);
-  }
-
-  function detectTypeFromPort(port: string, proto: string): string {
-    const p = (proto || '').toLowerCase();
-    switch (port) {
-      case '22': return 'SSH';
-      case '80': return 'HTTP';
-      case '443': return 'HTTPS';
-      case '1405': return 'FikPanel Web';
-      case '3306': return 'MySQL/Aurora';
-      case '5432': return 'PostgreSQL';
-      case '6379': return 'Redis';
-      case '53': return p === 'udp' ? 'DNS (UDP)' : 'DNS (TCP)';
-      case '25': return 'SMTP';
-      case '465': return 'SMTPS';
-      case '888': return 'phpMyAdmin';
-      default: return p === 'udp' ? 'Custom UDP' : 'Custom TCP';
-    }
-  }
-
-  function startEditInbound() {
-    if (!fwStatus || !fwStatus.rules) return;
-    draftRules = fwStatus.rules.map(r => ({
-      ...r,
-      rule_id: r.rule_id || `sgr-${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 11)}`,
-      rule_type: r.rule_type || detectTypeFromPort(r.port, r.protocol),
-      ip_version: r.ip_version || 'IPv4',
-      source_ip: r.source_ip || '0.0.0.0/0',
-    }));
-    isEditingInbound = true;
-  }
-
-  function addDraftRule() {
-    draftRules = [
-      ...draftRules,
-      {
-        number: draftRules.length + 1,
-        rule_id: '-',
-        rule_type: 'Custom TCP',
-        ip_version: 'IPv4',
-        protocol: 'tcp',
-        port: '',
-        status: 'Not Listening',
-        strategy: 'Allow',
-        direction: 'Inbound',
-        source_ip: '0.0.0.0/0',
-        remarks: '',
-        add_time: '--',
-      },
-    ];
-  }
-
-  function removeDraftRule(index: number) {
-    draftRules = draftRules.filter((_, i) => i !== index);
-  }
-
-  function handleRuleTypeChange(index: number, newType: string) {
-    const preset = ruleTypePresets.find(p => p.type === newType);
-    if (!preset) return;
-    const rule = draftRules[index];
-    rule.rule_type = preset.type;
-    rule.protocol = preset.proto;
-    if (preset.port !== '') {
-      rule.port = preset.port;
-    }
-    if (!rule.remarks || rule.remarks === 'Custom port rule' || rule.remarks === '') {
-      rule.remarks = preset.desc;
-    }
-  }
-
-  function handleSourceTypeChange(index: number, newType: string) {
-    const rule = draftRules[index];
-    if (newType === 'Anywhere-IPv4') {
-      rule.source_ip = '0.0.0.0/0';
-    } else if (newType === 'My IP') {
-      rule.source_ip = protection?.client_ip ? `${protection.client_ip}/32` : '0.0.0.0/0';
-    }
-  }
-
-  async function saveDraftRules() {
-    try {
-      for (const r of draftRules) {
-        if (!r.port || r.port === '0') {
-          notify('Port range tidak boleh kosong', 'warning');
-          return;
-        }
-      }
-      await apiFetch('/api/firewall/rules/batch', {
-        method: 'POST',
-        body: JSON.stringify({ rules: draftRules }),
-      });
-      notify('Aturan inbound firewall berhasil disimpan', 'success');
-      isEditingInbound = false;
-      await loadFirewall();
-    } catch (err: any) {
-      notify(err.message || 'Gagal menyimpan aturan firewall', 'error');
-    }
-  }
-
-  // Form modal tambah aturan port
+  // Modal Tambah Aturan Firewall
   let showAddPortModal = $state(false);
   let newPort = $state('');
   let newProto = $state('tcp');
-  let newStrategy = $state('Allow');
-  let newDirection = $state('Inbound');
-  let newSourceIP = $state('All');
+  let newAction = $state('allow');
+  let newDirection = $state('in');
+  let newSourceIP = $state('0.0.0.0/0');
   let newRemarks = $state('');
 
-  // Form modal tambah whitelist / blacklist
+  // Modal Whitelist & Blacklist
   let showAddWhitelistModal = $state(false);
   let newWhiteIP = $state('');
   let newWhiteRemarks = $state('');
@@ -209,111 +89,115 @@
   let newBlackIP = $state('');
   let newBlackReason = $state('');
   let newBlackDuration = $state(1440);
+  let newBlackSyncUFW = $state(false);
 
-  // Form SSH Basic
-  let sshPortInput = $state(22);
-  let sshPasswordAuth = $state(true);
-  let sshKeyAuth = $state(false);
-  let sshPermitRoot = $state(true);
+  // Metrik badge untuk bilah tab atas
+  let issuesCount = $derived(
+    scanReport ? scanReport.risk_count + scanReport.malware_count + scanReport.vuln_count : 0
+  );
+  let rulesCount = $derived(
+    fwStatus ? fwStatus.inbound_count + fwStatus.outbound_count : 0
+  );
+  let f2bBannedCount = $derived.by(() => {
+    if (!f2bStatus?.jails) return 0;
+    return f2bStatus.jails.reduce((acc, j) => acc + (j.banned_count || 0), 0);
+  });
 
-  // Memuat data agregat dasbor ikhtisar keamanan
+  // ── Loader API Modular ────────────────────────────────────────────────────
+
   async function loadOverview() {
     try {
       const res = await apiFetch<{ ok: boolean; overview: ProtectionOverview }>('/api/security/overview');
-      if (res && res.overview) {
+      if (res?.overview) {
         protection = res.overview;
+        clientIP = res.overview.client_ip || clientIP;
+        isClientWhitelisted = res.overview.is_client_whitelisted;
+        if (res.overview.latest_scan) {
+          scanReport = res.overview.latest_scan;
+        }
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat ikhtisar perlindungan', 'error');
+      notify(err.message || 'Gagal memuat ikhtisar keamanan', 'error');
     }
   }
 
-  // Memuat status lengkap firewall UFW dan aturan port
   async function loadFirewall() {
     try {
       const res = await apiFetch<{ ok: boolean; status: FirewallExtendedStatus }>('/api/firewall/extended');
-      if (res && res.status) {
+      if (res?.status) {
         fwStatus = res.status;
+        selectedRuleNums = [];
       }
     } catch (err: any) {
       notify(err.message || 'Gagal memuat status firewall', 'error');
     }
   }
 
-  // Memuat metrik SSH dan konfigurasi aktif
   async function loadSSH() {
     try {
-      const [resStats, resAccounts] = await Promise.all([
+      const [resStats, resKeys, resAccounts] = await Promise.all([
         apiFetch<{ ok: boolean; stats: SSHStats }>('/api/security/ssh/stats'),
+        apiFetch<{ ok: boolean; keys: SSHAuthorizedKey[] }>('/api/security/ssh/keys'),
         apiFetch<{ ok: boolean; accounts: SystemAccount[] }>('/api/security/ssh/accounts'),
       ]);
-      if (resStats && resStats.stats) {
+      if (resStats?.stats) {
         sshStats = resStats.stats;
-        sshPortInput = resStats.stats.port;
-        sshPasswordAuth = resStats.stats.password_auth;
-        sshKeyAuth = resStats.stats.key_auth;
-        sshPermitRoot = resStats.stats.permit_root_login;
+        sshPortInput = resStats.stats.config.port;
+        sshPasswordAuth = resStats.stats.config.password_auth;
+        sshPubkeyAuth = resStats.stats.config.pubkey_auth;
+        sshPermitRoot = resStats.stats.config.permit_root_login || 'prohibit-password';
+        sshMaxAuthTries = resStats.stats.config.max_auth_tries || 6;
       }
-      if (resAccounts && resAccounts.accounts) {
+      if (resKeys?.keys) {
+        sshKeys = resKeys.keys;
+      }
+      if (resAccounts?.accounts) {
         accounts = resAccounts.accounts;
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat metrik SSH', 'error');
+      notify(err.message || 'Gagal memuat modul SSH', 'error');
     }
   }
 
-  // Memuat evaluasi 10 poin keamanan server
-  async function loadServerSecurity() {
-    try {
-      const res = await apiFetch<{ ok: boolean; security: ServerSecurityOverview }>('/api/security/server-security');
-      if (res && res.security) {
-        serverSec = res.security;
-      }
-    } catch (err: any) {
-      notify(err.message || 'Gagal memuat audit keamanan server', 'error');
-    }
-  }
-
-  // Memuat data proteksi brute force
   async function loadBruteForce() {
     try {
       const res = await apiFetch<{
         ok: boolean;
+        client_ip: string;
+        is_client_whitelisted: boolean;
         config: BruteForceConfig;
-        whitelist: WhitelistIP[];
-        blacklist: BlacklistIP[];
-        history: FailedLoginEvent[];
+        whitelist: SecurityIPRule[];
+        blacklist: SecurityIPRule[];
+        history: SecurityLoginEvent[];
       }>('/api/security/bruteforce');
       if (res) {
+        clientIP = res.client_ip || clientIP;
+        isClientWhitelisted = res.is_client_whitelisted;
         bruteCfg = res.config;
         whitelist = res.whitelist || [];
         blacklist = res.blacklist || [];
-        failedEvents = res.history || [];
+        loginEvents = res.history || [];
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat modul brute force', 'error');
+      notify(err.message || 'Gagal memuat modul Brute Force', 'error');
     }
   }
 
-  // Memuat modul anti-intrusi dan hardening sistem
-  async function loadHardeningAndF2B() {
+  async function loadHardening() {
     try {
-      const [resF2B, resHard] = await Promise.all([
+      const [resF2B, resHard, resFIM] = await Promise.all([
         apiFetch<{ ok: boolean; fail2ban: Fail2BanStatus }>('/api/security/fail2ban'),
         apiFetch<{ ok: boolean; hardening: HardeningStatus }>('/api/security/hardening'),
+        apiFetch<{ ok: boolean; fim: FIMCheckResult }>('/api/security/hardening/fim'),
       ]);
-      if (resF2B && resF2B.fail2ban) {
-        f2bStatus = resF2B.fail2ban;
-      }
-      if (resHard && resHard.hardening) {
-        hardening = resHard.hardening;
-      }
+      if (resF2B?.fail2ban) f2bStatus = resF2B.fail2ban;
+      if (resHard?.hardening) hardening = resHard.hardening;
+      if (resFIM?.fim) fimResult = resFIM.fim;
     } catch (err: any) {
-      notify(err.message || 'Gagal memuat hardening dan Fail2Ban', 'error');
+      notify(err.message || 'Gagal memuat modul hardening & Fail2Ban', 'error');
     }
   }
 
-  // Memuat seluruh data saat inisialisasi awal
   async function refreshAll() {
     loading = true;
     try {
@@ -321,256 +205,482 @@
         loadOverview(),
         loadFirewall(),
         loadSSH(),
-        loadServerSecurity(),
         loadBruteForce(),
-        loadHardeningAndF2B(),
+        loadHardening(),
       ]);
     } finally {
       loading = false;
     }
   }
 
-  // Menjalankan pemindaian kerentanan mendalam menyeluruh
+  // ── Navigasi Lintas Tab & Lintas Halaman ──────────────────────────────────
+
+  function handleNavigateTarget(target: string) {
+    if (target === 'waf') {
+      window.location.hash = '#/waf';
+      return;
+    }
+    if (target === 'settings') {
+      window.location.hash = '#/settings';
+      return;
+    }
+    if (target === 'overview' || target === 'firewall' || target === 'ssh' || target === 'bruteforce' || target === 'hardening') {
+      activeTab = target;
+    }
+  }
+
+  function handleOpenScanCategory(cat: string) {
+    scanCategoryFilter = cat;
+    hardeningSubTab = 'scanner';
+    activeTab = 'hardening';
+  }
+
+  // ── Aksi Audit & Quick Fix Aman ───────────────────────────────────────────
+
   async function runSecurityScan() {
     isScanning = true;
     try {
       const res = await apiFetch<{ ok: boolean; report: SecurityScanReport }>('/api/security/scan', {
         method: 'POST',
       });
-      if (res && res.report) {
+      if (res?.report) {
         scanReport = res.report;
-        notify('Pemindaian keamanan server selesai dijalankan', 'success');
+        notify(`Audit selesai — Skor keamanan: ${res.report.score}/100 (${res.report.rating})`, 'success');
+        await loadOverview();
       }
     } catch (err: any) {
-      notify(err.message || 'Gagal menjalankan pemindaian keamanan', 'error');
+      notify(err.message || 'Gagal menjalankan audit keamanan', 'error');
     } finally {
       isScanning = false;
     }
   }
 
-  // Mengubah status aktif firewall UFW
-  async function toggleFirewall() {
-    if (!fwStatus) return;
-    const action = fwStatus.enabled ? 'nonaktifkan' : 'aktifkan';
+  async function handleApplyQuickFix(finding: ScanFinding) {
+    if (!finding.action_key) return;
     const ok = await confirmDialog({
-      title: `${action.toUpperCase()} Firewall`,
-      message: `Apakah Anda yakin ingin me-${action} firewall UFW server?`,
-      confirmText: action,
-      tone: fwStatus.enabled ? 'danger' : 'default',
-    });
-    if (!ok) return;
-
-    try {
-      await apiFetch('/api/firewall/toggle', {
-        method: 'POST',
-        body: JSON.stringify({ enabled: !fwStatus.enabled }),
-      });
-      notify(`Firewall berhasil di-${action}`, 'success');
-      await loadFirewall();
-      await loadOverview();
-    } catch (err: any) {
-      notify(err.message || 'Gagal mengubah status firewall', 'error');
-    }
-  }
-
-  // Mengubah status pemblokiran ping ICMP
-  async function toggleICMP() {
-    if (!fwStatus) return;
-    const newBlockState = !fwStatus.block_icmp;
-    try {
-      await apiFetch('/api/firewall/icmp', {
-        method: 'POST',
-        body: JSON.stringify({ block: newBlockState }),
-      });
-      fwStatus.block_icmp = newBlockState;
-      notify(newBlockState ? 'ICMP Ping berhasil diblokir' : 'ICMP Ping diizinkan kembali', 'success');
-    } catch (err: any) {
-      notify(err.message || 'Gagal mengubah pengaturan ICMP', 'error');
-    }
-  }
-
-  // Membersihkan berkas log situs web
-  async function clearSiteLogs() {
-    const ok = await confirmDialog({
-      title: 'Bersihkan Log Situs',
-      message: 'Kosongkan seluruh berkas log akses dan error webserver (/var/log/nginx)?',
-      confirmText: 'Bersihkan',
+      title: 'Terapkan Perbaikan Keamanan',
+      message: `Jalankan perbaikan otomatis untuk "${finding.title}"?`,
+      confirmText: 'Terapkan Perbaikan',
       tone: 'default',
     });
     if (!ok) return;
 
+    busyKey = `fix:${finding.action_key}`;
     try {
-      await apiFetch('/api/firewall/logs/clear', { method: 'POST' });
-      notify('Berkas log web berhasil dikosongkan', 'success');
-      await loadFirewall();
+      const res = await apiFetch<{ ok: boolean; message: string; report?: SecurityScanReport }>('/api/security/fix', {
+        method: 'POST',
+        body: JSON.stringify({ action_key: finding.action_key }),
+      });
+      if (res?.report) scanReport = res.report;
+      notify(res?.message || 'Perbaikan keamanan berhasil diterapkan', 'success');
+      await Promise.all([loadOverview(), loadFirewall(), loadBruteForce(), loadHardening()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal membersihkan log web', 'error');
+      notify(err.message || 'Gagal menerapkan perbaikan', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menambah aturan port firewall baru
-  async function handleAddPortRule() {
-    if (!newPort.trim()) {
-      notify('Nomor port wajib diisi', 'warning');
+  // Toggle langsung pada 6 pilar Overview (hanya pilar yang mendukung toggle nyata)
+  async function handleTogglePillar(pillar: ProtectionItem) {
+    if (pillar.key === 'firewall') {
+      await toggleFirewall();
       return;
     }
+    if (pillar.key === 'waf') {
+      busyKey = 'pillar:waf';
+      try {
+        await apiFetch('/api/waf/global', {
+          method: 'POST',
+          body: JSON.stringify({ enabled: !pillar.enabled }),
+        });
+        notify(!pillar.enabled ? 'Nginx WAF diaktifkan' : 'Nginx WAF dinonaktifkan', 'success');
+        await loadOverview();
+      } catch (err: any) {
+        notify(err.message || 'Gagal mengubah status Nginx WAF', 'error');
+      } finally {
+        busyKey = '';
+      }
+      return;
+    }
+    if (pillar.key === 'bruteforce' && bruteCfg) {
+      bruteCfg.enabled = !pillar.enabled;
+      await handleSaveBruteConfig();
+      await loadOverview();
+      return;
+    }
+    if (pillar.key === 'fail2ban') {
+      await handleControlF2B(pillar.enabled ? 'stop' : 'start');
+    }
+  }
+
+  // ── Aksi Firewall (UFW) ───────────────────────────────────────────────────
+
+  async function toggleFirewall() {
+    if (!fwStatus) return;
+    const enable = !fwStatus.enabled;
+    const ok = await confirmDialog({
+      title: enable ? 'Aktifkan Firewall UFW' : 'Nonaktifkan Firewall UFW',
+      message: enable
+        ? `Aktifkan UFW? FikPanel otomatis memastikan port SSH (${fwStatus.ssh_port}) dan panel (${fwStatus.panel_port}) tetap diizinkan agar Anda tidak terkunci.`
+        : 'Menonaktifkan UFW akan membuka seluruh port jaringan tanpa filter firewall. Lanjutkan?',
+      confirmText: enable ? 'Aktifkan UFW' : 'Nonaktifkan UFW',
+      tone: enable ? 'default' : 'danger',
+    });
+    if (!ok) return;
+
+    busyKey = 'fw:toggle';
+    try {
+      await apiFetch('/api/firewall/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: enable }),
+      });
+      notify(enable ? 'Firewall UFW berhasil diaktifkan' : 'Firewall UFW dinonaktifkan', 'success');
+      await Promise.all([loadFirewall(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengubah status UFW', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleSaveDefaultPolicy(incoming: string, outgoing: string) {
+    busyKey = 'fw:policy';
+    try {
+      await apiFetch('/api/firewall/default-policy', {
+        method: 'POST',
+        body: JSON.stringify({ incoming, outgoing }),
+      });
+      notify('Kebijakan default UFW berhasil diperbarui', 'success');
+      await loadFirewall();
+    } catch (err: any) {
+      notify(err.message || 'Gagal menyimpan kebijakan default UFW', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  function handleOpenAddPortModal(preset?: { port?: string; protocol?: string; direction?: string; remarks?: string }) {
+    newPort = preset?.port || '';
+    newProto = preset?.protocol || 'tcp';
+    newAction = 'allow';
+    newDirection = preset?.direction || 'in';
+    newSourceIP = '0.0.0.0/0';
+    newRemarks = preset?.remarks || '';
+    showAddPortModal = true;
+  }
+
+  async function handleAddPortRule() {
+    busyKey = 'fw:add';
     try {
       await apiFetch('/api/firewall/rules/extended', {
         method: 'POST',
         body: JSON.stringify({
           port: newPort.trim(),
           protocol: newProto,
-          strategy: newStrategy,
+          action: newAction,
           direction: newDirection,
-          source_ip: newSourceIP.trim() || 'All',
-          remarks: newRemarks.trim() || 'Custom port rule',
+          source_ip: newSourceIP.trim() || '0.0.0.0/0',
+          remarks: newRemarks.trim(),
         }),
       });
-      notify(`Aturan port ${newPort}/${newProto} berhasil disimpan`, 'success');
+      notify('Aturan firewall berhasil diterapkan', 'success');
       showAddPortModal = false;
-      newPort = '';
-      newRemarks = '';
-      await loadFirewall();
+      await Promise.all([loadFirewall(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menambah aturan port', 'error');
+      notify(err.message || 'Gagal menambah aturan firewall', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menghapus aturan port firewall
-  async function handleDeletePortRule(rule: PortRule) {
-    const ok = await confirmDialog({
-      title: 'Hapus Aturan Firewall',
-      message: `Hapus aturan port ${rule.port}/${rule.protocol} (${rule.strategy})?`,
-      confirmText: 'Hapus',
-      tone: 'danger',
-    });
-    if (!ok) return;
-
-    try {
-      await apiFetch(`/api/firewall/rules/${rule.number}`, { method: 'DELETE' });
-      notify('Aturan port firewall berhasil dihapus', 'success');
-      await loadFirewall();
-    } catch (err: any) {
-      notify(err.message || 'Gagal menghapus aturan', 'error');
-    }
-  }
-
-  // Menyimpan konfigurasi dasar SSH
-  async function handleSaveSSHConfig() {
-    try {
-      await apiFetch('/api/security/ssh', {
-        method: 'POST',
-        body: JSON.stringify({
-          port: Number(sshPortInput),
-          password_auth: sshPasswordAuth,
-          permit_root_login: sshPermitRoot,
-        }),
+  async function handleDeleteRule(rule: FirewallRule, force = false) {
+    if (!force) {
+      const ok = await confirmDialog({
+        title: `Hapus Aturan Firewall #${rule.number}`,
+        message: rule.protected
+          ? `PERINGATAN: Port ${rule.port} (${rule.service}) adalah port kritikal akses SSH/Panel. Yakin ingin menghapus aturan #${rule.number}?`
+          : `Hapus aturan ${rule.action} port ${rule.port}/${rule.protocol} (${rule.from})?`,
+        confirmText: 'Hapus Aturan',
+        tone: 'danger',
       });
-      notify('Konfigurasi SSH berhasil disimpan dan di-reload', 'success');
-      await loadSSH();
-      await loadOverview();
+      if (!ok) return;
+    }
+
+    busyKey = `fw:del:${rule.number}`;
+    try {
+      const qs = force ? '?force=true' : '';
+      await apiFetch(`/api/firewall/rules/${rule.number}${qs}`, { method: 'DELETE' });
+      notify(`Aturan firewall #${rule.number} berhasil dihapus`, 'success');
+      await Promise.all([loadFirewall(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menyimpan konfigurasi SSH', 'error');
+      const msg = err?.message || 'Gagal menghapus aturan firewall';
+      if (!force && msg.includes('proteksi lockout')) {
+        const forceOk = await confirmDialog({
+          title: 'Konfirmasi Paksa (Risiko Lockout)',
+          message: msg,
+          confirmText: 'Tetap Hapus Paksa',
+          tone: 'danger',
+        });
+        if (forceOk) {
+          busyKey = '';
+          await handleDeleteRule(rule, true);
+          return;
+        }
+      } else {
+        notify(msg, 'error');
+      }
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Memulai ulang layanan daemon SSH
-  async function handleRestartSSH() {
+  async function handleBatchDeleteRules(numbers: number[], force = false) {
+    if (numbers.length === 0) return;
+    if (!force) {
+      const ok = await confirmDialog({
+        title: `Hapus ${numbers.length} Aturan Firewall`,
+        message: `Apakah Anda yakin ingin menghapus ${numbers.length} aturan UFW yang dipilih secara permanen?`,
+        confirmText: `Hapus ${numbers.length} Aturan`,
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
+
+    busyKey = 'fw:batch-del';
+    try {
+      await apiFetch('/api/firewall/rules/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ numbers, force }),
+      });
+      notify(`${numbers.length} aturan firewall berhasil dihapus`, 'success');
+      await Promise.all([loadFirewall(), loadOverview()]);
+    } catch (err: any) {
+      const msg = err?.message || 'Gagal menghapus aturan terpilih';
+      if (!force && msg.includes('proteksi lockout')) {
+        const forceOk = await confirmDialog({
+          title: 'Konfirmasi Paksa (Risiko Lockout)',
+          message: msg,
+          confirmText: 'Tetap Hapus Paksa',
+          tone: 'danger',
+        });
+        if (forceOk) {
+          busyKey = '';
+          await handleBatchDeleteRules(numbers, true);
+          return;
+        }
+      } else {
+        notify(msg, 'error');
+      }
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function toggleICMP() {
+    if (!fwStatus) return;
+    const nextBlock = !fwStatus.block_icmp;
+    busyKey = 'fw:icmp';
+    try {
+      await apiFetch('/api/firewall/icmp', {
+        method: 'POST',
+        body: JSON.stringify({ block: nextBlock }),
+      });
+      notify(nextBlock ? 'ICMP Ping berhasil diblokir (persisten)' : 'ICMP Ping diizinkan kembali', 'success');
+      await Promise.all([loadFirewall(), loadHardening()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengubah pengaturan ICMP', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function clearSiteLogs() {
     const ok = await confirmDialog({
-      title: 'Restart Layanan SSH',
-      message: 'Apakah Anda yakin ingin memulai ulang daemon SSH? Sesi aktif tidak akan terputus.',
-      confirmText: 'Restart',
+      title: 'Kosongkan Log Webserver',
+      message: `Kosongkan seluruh berkas .log di ${fwStatus?.site_logs_path || '/var/log/nginx'}? Operasi ini aman tanpa restart Nginx.`,
+      confirmText: 'Kosongkan Log',
       tone: 'default',
     });
     if (!ok) return;
 
+    busyKey = 'fw:clear-logs';
     try {
-      await apiFetch('/api/security/ssh/restart', { method: 'POST' });
-      notify('Layanan daemon SSH berhasil direstart', 'success');
-      await loadSSH();
+      await apiFetch('/api/firewall/logs/clear', { method: 'POST' });
+      notify('Berkas log webserver berhasil dikosongkan', 'success');
+      await loadFirewall();
     } catch (err: any) {
-      notify(err.message || 'Gagal merestart layanan SSH', 'error');
+      notify(err.message || 'Gagal mengosongkan log web', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Mengubah status kunci akun sistem pengguna Linux
-  async function handleToggleAccountLock(acc: SystemAccount) {
-    const action = acc.locked ? 'Buka Kunci' : 'Kunci Akun';
+  // ── Aksi SSH, Authorized Keys & Akun Sistem ───────────────────────────────
+
+  async function handleSaveSSHConfig(force = false) {
+    if (!force) {
+      const ok = await confirmDialog({
+        title: 'Terapkan Konfigurasi OpenSSH',
+        message: `Simpan konfigurasi (Port ${sshPortInput}, PasswordAuth: ${sshPasswordAuth ? 'Ya' : 'Tidak'}, PermitRootLogin: ${sshPermitRoot})? Sistem akan memvalidasi sintaksis via sshd -t sebelum reload.`,
+        confirmText: 'Validasi & Terapkan',
+        tone: !sshPasswordAuth ? 'danger' : 'default',
+      });
+      if (!ok) return;
+    }
+
+    busyKey = 'ssh:save';
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string }>('/api/security/ssh', {
+        method: 'POST',
+        body: JSON.stringify({
+          port: Number(sshPortInput),
+          password_auth: sshPasswordAuth,
+          pubkey_auth: sshPubkeyAuth,
+          permit_root_login: sshPermitRoot,
+          max_auth_tries: Number(sshMaxAuthTries) || 6,
+          force,
+        }),
+      });
+      notify(res?.message || 'Konfigurasi SSH berhasil diperbarui', 'success');
+      await Promise.all([loadSSH(), loadFirewall(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal menyimpan konfigurasi SSH', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleRestartSSH() {
     const ok = await confirmDialog({
-      title: `${action} Pengguna ${acc.username}`,
-      message: `Apakah Anda yakin ingin me-${action.toLowerCase()} akun ${acc.username}?`,
-      confirmText: action,
-      tone: acc.locked ? 'default' : 'danger',
+      title: 'Restart Layanan SSH',
+      message: 'Mulai ulang daemon OpenSSH sekarang? Sesi terminal aktif saat ini umumnya tetap tersambung.',
+      confirmText: 'Restart SSH',
+      tone: 'default',
     });
     if (!ok) return;
 
+    busyKey = 'ssh:restart';
+    try {
+      await apiFetch('/api/security/ssh/restart', { method: 'POST' });
+      notify('Layanan daemon SSH berhasil dimulai ulang', 'success');
+      await Promise.all([loadSSH(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal merestart SSH', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleAddSSHKey() {
+    if (!newPublicKey.trim()) return;
+    busyKey = 'ssh:add-key';
+    try {
+      await apiFetch('/api/security/ssh/keys', {
+        method: 'POST',
+        body: JSON.stringify({ public_key: newPublicKey.trim() }),
+      });
+      notify('SSH Public Key berhasil ditambahkan ke authorized_keys', 'success');
+      newPublicKey = '';
+      await Promise.all([loadSSH(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal menambahkan SSH Key', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleRemoveSSHKey(key: SSHAuthorizedKey) {
+    const ok = await confirmDialog({
+      title: 'Hapus SSH Public Key',
+      message: `Hapus kunci ${key.comment || key.fingerprint} dari authorized_keys? Perangkat dengan kunci ini tidak lagi bisa login SSH tanpa password.`,
+      confirmText: 'Hapus SSH Key',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    busyKey = `ssh:del-key:${key.id}`;
+    try {
+      await apiFetch(`/api/security/ssh/keys/${key.id}`, { method: 'DELETE' });
+      notify('SSH Public Key berhasil dihapus', 'success');
+      await Promise.all([loadSSH(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal menghapus SSH Key', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleToggleAccountLock(acc: SystemAccount) {
+    const willLock = !acc.locked;
+    const ok = await confirmDialog({
+      title: willLock ? `Kunci Akun ${acc.username}` : `Buka Kunci Akun ${acc.username}`,
+      message: willLock
+        ? `Kunci autentikasi password untuk akun sistem "${acc.username}" (passwd -l)?`
+        : `Buka kembali kunci autentikasi untuk akun sistem "${acc.username}" (passwd -u)?`,
+      confirmText: willLock ? 'Kunci Akun' : 'Buka Kunci',
+      tone: willLock ? 'danger' : 'default',
+    });
+    if (!ok) return;
+
+    busyKey = `ssh:acc:${acc.username}`;
     try {
       await apiFetch(`/api/security/ssh/accounts/${acc.username}/toggle`, {
         method: 'POST',
-        body: JSON.stringify({ lock: !acc.locked }),
+        body: JSON.stringify({ lock: willLock }),
       });
-      notify(`Status akun ${acc.username} berhasil diubah`, 'success');
+      notify(`Status akun ${acc.username} berhasil diperbarui`, 'success');
       await loadSSH();
     } catch (err: any) {
       notify(err.message || 'Gagal mengubah status akun', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menerapkan perbaikan otomatis audit keamanan server
-  async function handleApplySecurityFix(actionKey: string) {
-    try {
-      await apiFetch('/api/security/server-security/fix', {
-        method: 'POST',
-        body: JSON.stringify({ action_key: actionKey }),
-      });
-      notify('Perbaikan audit keamanan berhasil diterapkan', 'success');
-      await loadServerSecurity();
-      await loadOverview();
-    } catch (err: any) {
-      notify(err.message || 'Gagal menerapkan perbaikan', 'error');
-    }
-  }
+  // ── Aksi Brute Force, Whitelist & Blacklist Persisten ─────────────────────
 
-  // Menyimpan konfigurasi brute force
   async function handleSaveBruteConfig() {
     if (!bruteCfg) return;
+    busyKey = 'bf:save';
     try {
-      await apiFetch('/api/security/bruteforce/config', {
+      const res = await apiFetch<{ ok: boolean; config?: BruteForceConfig }>('/api/security/bruteforce/config', {
         method: 'POST',
         body: JSON.stringify(bruteCfg),
       });
-      notify('Konfigurasi proteksi brute force berhasil disimpan', 'success');
-      await loadBruteForce();
+      if (res?.config) bruteCfg = res.config;
+      notify('Konfigurasi Brute Force berhasil disimpan', 'success');
+      await Promise.all([loadBruteForce(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menyimpan konfigurasi brute force', 'error');
+      notify(err.message || 'Gagal menyimpan konfigurasi Brute Force', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menambahkan IP klien saat ini langsung ke whitelist
   async function handleWhitelistCurrentIP() {
-    if (!protection?.client_ip) return;
+    if (!clientIP) return;
+    busyKey = 'bf:wl-self';
     try {
       await apiFetch('/api/security/bruteforce/whitelist', {
         method: 'POST',
-        body: JSON.stringify({
-          ip: protection.client_ip,
-          remarks: 'Alamat IP Pengelola Saat Ini',
-        }),
+        body: JSON.stringify({ ip: clientIP, remarks: 'IP Administrator Saat Ini' }),
       });
-      notify(`IP ${protection.client_ip} berhasil ditambahkan ke whitelist`, 'success');
-      await loadBruteForce();
-      await loadOverview();
+      notify(`IP ${clientIP} berhasil dimasukkan ke Whitelist`, 'success');
+      await Promise.all([loadBruteForce(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menambahkan IP ke whitelist', 'error');
+      notify(err.message || 'Gagal menambahkan IP ke Whitelist', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menambahkan IP baru ke whitelist via form modal
   async function handleAddWhitelist() {
     if (!newWhiteIP.trim()) {
-      notify('Alamat IP wajib diisi', 'warning');
+      notify('Alamat IP atau CIDR wajib diisi', 'warning');
       return;
     }
+    busyKey = 'bf:add-wl';
     try {
       await apiFetch('/api/security/bruteforce/whitelist', {
         method: 'POST',
@@ -579,285 +689,429 @@
           remarks: newWhiteRemarks.trim() || 'Whitelist Operator',
         }),
       });
-      notify('Alamat IP berhasil ditambahkan ke whitelist', 'success');
+      notify('IP berhasil ditambahkan ke Whitelist', 'success');
       showAddWhitelistModal = false;
       newWhiteIP = '';
       newWhiteRemarks = '';
-      await loadBruteForce();
+      await Promise.all([loadBruteForce(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menambahkan IP ke whitelist', 'error');
+      notify(err.message || 'Gagal menambah Whitelist', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menghapus IP dari whitelist
-  async function handleRemoveWhitelist(ip: string) {
+  async function handleRemoveWhitelist(rule: SecurityIPRule) {
+    const ok = await confirmDialog({
+      title: 'Hapus dari Whitelist',
+      message: `Hapus ${rule.ip} dari daftar putih?`,
+      confirmText: 'Hapus',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    busyKey = `bf:del-wl:${rule.id}`;
     try {
-      await apiFetch(`/api/security/bruteforce/whitelist/${ip}`, { method: 'DELETE' });
-      notify('Alamat IP berhasil dihapus dari whitelist', 'success');
-      await loadBruteForce();
-      await loadOverview();
+      await apiFetch('/api/security/bruteforce/whitelist/remove', {
+        method: 'POST',
+        body: JSON.stringify({ id: rule.id, ip: rule.ip }),
+      });
+      notify(`IP ${rule.ip} dihapus dari Whitelist`, 'success');
+      await Promise.all([loadBruteForce(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menghapus IP whitelist', 'error');
+      notify(err.message || 'Gagal menghapus Whitelist', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Menambahkan IP ke blacklist
   async function handleAddBlacklist() {
     if (!newBlackIP.trim()) {
-      notify('Alamat IP wajib diisi', 'warning');
+      notify('Alamat IP atau CIDR wajib diisi', 'warning');
       return;
     }
+    busyKey = 'bf:add-bl';
     try {
       await apiFetch('/api/security/bruteforce/blacklist', {
         method: 'POST',
         body: JSON.stringify({
           ip: newBlackIP.trim(),
-          reason: newBlackReason.trim() || 'Manual block by admin',
-          duration_minutes: Number(newBlackDuration) || 1440,
+          reason: newBlackReason.trim() || 'Pemblokiran manual administrator',
+          duration_minutes: Number(newBlackDuration) || 0,
+          sync_ufw: newBlackSyncUFW,
         }),
       });
-      notify('Alamat IP berhasil diblokir', 'success');
+      notify(`Alamat IP ${newBlackIP.trim()} berhasil diblokir`, 'success');
       showAddBlacklistModal = false;
       newBlackIP = '';
       newBlackReason = '';
-      await loadBruteForce();
+      newBlackSyncUFW = false;
+      await Promise.all([loadBruteForce(), loadFirewall(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal menambahkan IP ke blacklist', 'error');
+      notify(err.message || 'Gagal memblokir IP', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Membuka blokir IP dari blacklist
-  async function handleRemoveBlacklist(ip: string) {
-    try {
-      await apiFetch(`/api/security/bruteforce/blacklist/${ip}`, { method: 'DELETE' });
-      notify('Pemblokiran IP berhasil dicabut', 'success');
-      await loadBruteForce();
-    } catch (err: any) {
-      notify(err.message || 'Gagal mencabut pemblokiran IP', 'error');
-    }
-  }
+  async function handleRemoveBlacklist(rule: SecurityIPRule) {
+    const ok = await confirmDialog({
+      title: 'Cabut Pemblokiran IP',
+      message: `Buka kembali akses untuk ${rule.ip}?`,
+      confirmText: 'Cabut Blokir',
+      tone: 'default',
+    });
+    if (!ok) return;
 
-  // Mengubah pembatasan eksekusi compiler sistem
-  async function handleToggleCompilerAccess() {
-    if (!hardening) return;
-    const newBlock = !hardening.compiler_blocked;
+    busyKey = `bf:del-bl:${rule.id}`;
     try {
-      await apiFetch('/api/security/hardening/compiler', {
+      await apiFetch('/api/security/bruteforce/blacklist/remove', {
         method: 'POST',
-        body: JSON.stringify({ block: newBlock }),
+        body: JSON.stringify({ id: rule.id, ip: rule.ip }),
       });
-      hardening.compiler_blocked = newBlock;
-      notify(newBlock ? 'Akses compiler berhasil dibatasi ke root' : 'Akses compiler dibuka kembali', 'success');
+      notify(`Blokir IP ${rule.ip} berhasil dicabut`, 'success');
+      await Promise.all([loadBruteForce(), loadFirewall(), loadOverview()]);
     } catch (err: any) {
-      notify(err.message || 'Gagal mengubah perizinan compiler', 'error');
+      notify(err.message || 'Gagal mencabut blokir IP', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Membuka blokir IP dari jail Fail2Ban
+  // ── Aksi Fail2Ban, Kernel Sysctl, Compiler & FIM ──────────────────────────
+
+  async function handleControlF2B(action: 'start' | 'stop' | 'restart') {
+    if (action === 'stop') {
+      const ok = await confirmDialog({
+        title: 'Hentikan Fail2Ban',
+        message: 'Hentikan daemon Fail2Ban? Pemblokiran otomatis serangan SSH/Nginx sementara tidak aktif.',
+        confirmText: 'Hentikan Fail2Ban',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
+
+    busyKey = 'f2b:service';
+    try {
+      await apiFetch('/api/security/fail2ban/service', {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      });
+      notify(`Perintah ${action} Fail2Ban berhasil dijalankan`, 'success');
+      await Promise.all([loadHardening(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || `Gagal menjalankan ${action} Fail2Ban`, 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleBanF2B(jail: string, ip: string) {
+    busyKey = 'f2b:ban';
+    try {
+      await apiFetch('/api/security/fail2ban/ban', {
+        method: 'POST',
+        body: JSON.stringify({ jail, ip }),
+      });
+      notify(`IP ${ip} berhasil diblokir pada jail ${jail}`, 'success');
+      await Promise.all([loadHardening(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal memblokir IP di Fail2Ban', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
   async function handleUnbanF2B(jail: string, ip: string) {
+    busyKey = `f2b:unban:${ip}`;
     try {
       await apiFetch('/api/security/fail2ban/unban', {
         method: 'POST',
         body: JSON.stringify({ jail, ip }),
       });
       notify(`IP ${ip} berhasil di-unban dari jail ${jail}`, 'success');
-      await loadHardeningAndF2B();
+      await Promise.all([loadHardening(), loadOverview()]);
     } catch (err: any) {
       notify(err.message || 'Gagal melakukan unban IP', 'error');
+    } finally {
+      busyKey = '';
     }
   }
 
-  // Filter aturan port firewall
-  let filteredPortRules = $derived.by(() => {
-    if (!fwStatus || !fwStatus.rules) return [];
-    return fwStatus.rules.filter((r) => {
-      if (fwDirectionFilter === 'inbound' && r.direction.toLowerCase() !== 'inbound') return false;
-      if (fwDirectionFilter === 'outbound' && r.direction.toLowerCase() !== 'outbound') return false;
-      if (fwPortSearch.trim()) {
-        const q = fwPortSearch.trim().toLowerCase();
-        const matchPort = r.port.toLowerCase().includes(q);
-        const matchType = (r.rule_type || '').toLowerCase().includes(q);
-        const matchID = (r.rule_id || '').toLowerCase().includes(q);
-        const matchDesc = (r.remarks || '').toLowerCase().includes(q);
-        if (!matchPort && !matchType && !matchID && !matchDesc) return false;
-      }
-      return true;
-    });
-  });
+  async function handleToggleSysctl(key: string, enabled: boolean) {
+    busyKey = `sysctl:${key}`;
+    try {
+      await apiFetch('/api/security/hardening/sysctl', {
+        method: 'POST',
+        body: JSON.stringify({ key, enabled }),
+      });
+      notify(`Parameter kernel ${key} berhasil diperbarui secara persisten`, 'success');
+      await Promise.all([loadHardening(), loadFirewall()]);
+    } catch (err: any) {
+      notify(err.message || `Gagal memperbarui ${key}`, 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
 
-  // Filter hasil pemindaian keamanan
-  let filteredScanFindings = $derived.by(() => {
-    if (!scanReport || !scanReport.findings) return [];
-    if (scanCategoryFilter === 'all') return scanReport.findings;
-    return scanReport.findings.filter((f) => f.category === scanCategoryFilter);
-  });
+  async function handleToggleCompiler() {
+    if (!hardening) return;
+    const nextBlock = !hardening.compiler_blocked;
+    busyKey = 'hardening:compiler';
+    try {
+      await apiFetch('/api/security/hardening/compiler', {
+        method: 'POST',
+        body: JSON.stringify({ block: nextBlock }),
+      });
+      notify(nextBlock ? 'Akses compiler dibatasi khusus root (0700)' : 'Akses compiler dikembalikan (0755)', 'success');
+      await loadHardening();
+    } catch (err: any) {
+      notify(err.message || 'Gagal mengubah izin compiler', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleCreateFIMBaseline() {
+    busyKey = 'fim:baseline';
+    try {
+      const res = await apiFetch<{ ok: boolean; fim: FIMCheckResult; message?: string }>(
+        '/api/security/hardening/fim/baseline',
+        { method: 'POST' }
+      );
+      if (res?.fim) fimResult = res.fim;
+      notify(res?.message || 'Baseline SHA-256 FIM berhasil dibuat', 'success');
+      await Promise.all([loadHardening(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal membuat baseline FIM', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleCheckFIM() {
+    busyKey = 'fim:check';
+    try {
+      const res = await apiFetch<{ ok: boolean; fim: FIMCheckResult }>('/api/security/hardening/fim');
+      if (res?.fim) {
+        fimResult = res.fim;
+        const drift = res.fim.modified_count + res.fim.missing_count;
+        notify(
+          drift > 0
+            ? `Peringatan FIM: ${res.fim.modified_count} berkas berubah, ${res.fim.missing_count} hilang`
+            : `Integritas valid: seluruh ${res.fim.total_files} berkas cocok dengan baseline`,
+          drift > 0 ? 'warning' : 'success'
+        );
+      }
+    } catch (err: any) {
+      notify(err.message || 'Gagal memverifikasi integritas FIM', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
+
+  async function handleDisableFIM() {
+    const ok = await confirmDialog({
+      title: 'Nonaktifkan File Integrity Monitor',
+      message: 'Hapus snapshot baseline SHA-256 tersimpan dan hentikan pemantauan FIM?',
+      confirmText: 'Nonaktifkan FIM',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    busyKey = 'fim:disable';
+    try {
+      await apiFetch('/api/security/hardening/fim', { method: 'DELETE' });
+      notify('File Integrity Monitor dinonaktifkan', 'success');
+      await Promise.all([loadHardening(), loadOverview()]);
+    } catch (err: any) {
+      notify(err.message || 'Gagal menonaktifkan FIM', 'error');
+    } finally {
+      busyKey = '';
+    }
+  }
 
   onMount(() => {
     refreshAll();
   });
 </script>
 
-<div class="pg-security sec-page">
-  <!-- Tab Navigasi Atas (7 Modul Keamanan Tingkat Enterprise) -->
-  <SecurityTabs {activeTab} onSelect={(t) => (activeTab = t)} />
+<div class="pg-security">
+  <!-- Header Halaman Standar FikPanel -->
+  <PageHeader
+    title="Security Center"
+    subtitle="Pusat kendali firewall UFW, hardening SSH, proteksi brute force persisten, Fail2Ban, kernel sysctl, dan audit kerentanan host."
+    icon="ri-shield-keyhole-line"
+  >
+    {#snippet actions()}
+      <button
+        type="button"
+        class="btn btn--secondary btn--sm"
+        disabled={loading}
+        onclick={refreshAll}
+      >
+        <i class="ri-refresh-line" aria-hidden="true"></i>
+        <span>Segarkan</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary btn--sm"
+        disabled={isScanning}
+        onclick={runSecurityScan}
+      >
+        <i class={isScanning ? 'ri-loader-4-line spin' : 'ri-radar-line'} aria-hidden="true"></i>
+        <span>{isScanning ? 'Memindai...' : 'Jalankan Audit'}</span>
+      </button>
+    {/snippet}
+  </PageHeader>
 
-  <!-- TAB 1: OVERVIEW -->
-  {#if activeTab === 'overview'}
-    <OverviewTab
-      {isScanning}
-      {scanReport}
-      {protection}
-      {fwStatus}
-      {sshStats}
-      {hardening}
-      {f2bStatus}
-      onRefresh={refreshAll}
-      onRunScan={runSecurityScan}
-      onToggleFirewall={toggleFirewall}
-      onRestartSSH={handleRestartSSH}
-      onToggleTamperProof={async () => {
-        if (!hardening) return;
-        await apiFetch('/api/security/hardening/tamper', {
-          method: 'POST',
-          body: JSON.stringify({ enable: !hardening.tamper_proof_enabled }),
-        });
-        await loadHardeningAndF2B();
-      }}
-      onSelectTab={(t) => (activeTab = t)}
-      onOpenScanCategory={(cat) => {
-        activeTab = 'scan_detection';
-        scanCategoryFilter = cat;
-      }}
-    />
+  <!-- Navigasi 5 Tab Terstruktur -->
+  <SecurityTabs
+    {activeTab}
+    {issuesCount}
+    {rulesCount}
+    blacklistCount={blacklist.length}
+    {f2bBannedCount}
+    onSelect={(t) => (activeTab = t)}
+  />
+
+  {#if loading && !protection}
+    <div class="sec-skeleton-grid" aria-busy="true" aria-label="Memuat data keamanan">
+      <div class="skeleton sec-skeleton-card"></div>
+      <div class="skeleton sec-skeleton-card"></div>
+    </div>
+  {:else}
+    <div class="sec-tab-pane">
+      {#if activeTab === 'overview'}
+        <OverviewTab
+          {protection}
+          {scanReport}
+          {isScanning}
+          {busyKey}
+          onRunScan={runSecurityScan}
+          onTogglePillar={handleTogglePillar}
+          onNavigateTarget={handleNavigateTarget}
+          onOpenScanCategory={handleOpenScanCategory}
+          onApplyQuickFix={handleApplyQuickFix}
+        />
+      {:else if activeTab === 'firewall'}
+        <FirewallTab
+          {fwStatus}
+          {fwSubTab}
+          bind:fwSearch
+          bind:selectedRuleNums
+          {busyKey}
+          onSelectSubTab={(t) => (fwSubTab = t)}
+          onRefresh={loadFirewall}
+          onToggleFirewall={toggleFirewall}
+          onToggleICMP={toggleICMP}
+          onClearSiteLogs={clearSiteLogs}
+          onSaveDefaultPolicy={handleSaveDefaultPolicy}
+          onOpenAddModal={handleOpenAddPortModal}
+          onDeleteRule={(r) => handleDeleteRule(r, false)}
+          onBatchDeleteRules={(nums) => handleBatchDeleteRules(nums, false)}
+        />
+      {:else if activeTab === 'ssh'}
+        <SshTab
+          {sshStats}
+          {sshKeys}
+          {accounts}
+          {sshSubTab}
+          bind:sshPortInput
+          bind:sshPasswordAuth
+          bind:sshPubkeyAuth
+          bind:sshPermitRoot
+          bind:sshMaxAuthTries
+          bind:newPublicKey
+          {busyKey}
+          onSelectSubTab={(t) => (sshSubTab = t)}
+          onRestartSSH={handleRestartSSH}
+          onSaveSSHConfig={() => handleSaveSSHConfig(false)}
+          onAddSSHKey={handleAddSSHKey}
+          onRemoveSSHKey={handleRemoveSSHKey}
+          onToggleAccountLock={handleToggleAccountLock}
+        />
+      {:else if activeTab === 'bruteforce'}
+        <BruteForceTab
+          {clientIP}
+          {isClientWhitelisted}
+          bind:bruteCfg
+          {bruteSubTab}
+          {whitelist}
+          {blacklist}
+          {loginEvents}
+          {busyKey}
+          onSelectSubTab={(t) => (bruteSubTab = t)}
+          onWhitelistCurrentIP={handleWhitelistCurrentIP}
+          onSaveBruteConfig={handleSaveBruteConfig}
+          onOpenAddWhitelist={() => (showAddWhitelistModal = true)}
+          onRemoveWhitelist={handleRemoveWhitelist}
+          onOpenAddBlacklist={() => (showAddBlacklistModal = true)}
+          onRemoveBlacklist={handleRemoveBlacklist}
+        />
+      {:else if activeTab === 'hardening'}
+        <HardeningTab
+          {hardeningSubTab}
+          {scanReport}
+          {scanCategoryFilter}
+          {isScanning}
+          {f2bStatus}
+          {hardening}
+          {fimResult}
+          {busyKey}
+          onSelectSubTab={(t) => (hardeningSubTab = t)}
+          onSelectScanCategory={(c) => (scanCategoryFilter = c)}
+          onRunScan={runSecurityScan}
+          onApplyQuickFix={handleApplyQuickFix}
+          onNavigateTarget={handleNavigateTarget}
+          onControlF2B={handleControlF2B}
+          onBanF2B={handleBanF2B}
+          onUnbanF2B={handleUnbanF2B}
+          onToggleSysctl={handleToggleSysctl}
+          onToggleCompiler={handleToggleCompiler}
+          onCreateFIMBaseline={handleCreateFIMBaseline}
+          onCheckFIM={handleCheckFIM}
+          onDisableFIM={handleDisableFIM}
+        />
+      {/if}
+    </div>
   {/if}
 
-  <!-- TAB 2: FIREWALL (AWS EC2 Security Group Style) -->
-  {#if activeTab === 'firewall'}
-    <FirewallTab
-      {fwStatus}
-      {fwSubTab}
-      bind:fwPortSearch
-      {isEditingInbound}
-      {showActionsDropdown}
-      {filteredPortRules}
-      bind:draftRules
-      {ruleTypePresets}
-      {detectTypeFromPort}
-      {isPresetFixed}
-      {isPresetFixedPort}
-      onSelectSubTab={(t) => (fwSubTab = t)}
-      onToggleActionsDropdown={() => (showActionsDropdown = !showActionsDropdown)}
-      onCloseActionsDropdown={() => (showActionsDropdown = false)}
-      onStartEditInbound={startEditInbound}
-      onCancelEditInbound={() => (isEditingInbound = false)}
-      onToggleFirewall={toggleFirewall}
-      onToggleICMP={toggleICMP}
-      onClearSiteLogs={clearSiteLogs}
-      onLoadFirewall={loadFirewall}
-      onDeletePortRule={handleDeletePortRule}
-      onAddDraftRule={addDraftRule}
-      onRemoveDraftRule={removeDraftRule}
-      onRuleTypeChange={handleRuleTypeChange}
-      onSourceTypeChange={handleSourceTypeChange}
-      onSaveDraftRules={saveDraftRules}
-    />
-  {/if}
-
-  <!-- TAB 3: SSH -->
-  {#if activeTab === 'ssh'}
-    <SshTab
-      {sshStats}
-      {accounts}
-      {sshSubTab}
-      bind:sshPortInput
-      bind:sshPasswordAuth
-      bind:sshKeyAuth
-      bind:sshPermitRoot
-      onSelectSubTab={(t) => (sshSubTab = t)}
-      onRestartSSH={handleRestartSSH}
-      onSaveSSHConfig={handleSaveSSHConfig}
-      onToggleAccountLock={handleToggleAccountLock}
-    />
-  {/if}
-
-  <!-- TAB 4: SERVER SECURITY (10 Poin Evaluasi & Skor) -->
-  {#if activeTab === 'server_security'}
-    <ServerSecurityTab {serverSec} onApplySecurityFix={handleApplySecurityFix} />
-  {/if}
-
-  <!-- TAB 5: BRUTE FORCE PROTECTION -->
-  {#if activeTab === 'bruteforce'}
-    <BruteForceTab
-      {protection}
-      bind:bruteCfg
-      {bruteSubTab}
-      {whitelist}
-      {blacklist}
-      {failedEvents}
-      onSelectSubTab={(t) => (bruteSubTab = t)}
-      onWhitelistCurrentIP={handleWhitelistCurrentIP}
-      onSaveBruteConfig={handleSaveBruteConfig}
-      onOpenAddWhitelist={() => (showAddWhitelistModal = true)}
-      onRemoveWhitelist={handleRemoveWhitelist}
-      onOpenAddBlacklist={() => (showAddBlacklistModal = true)}
-      onRemoveBlacklist={handleRemoveBlacklist}
-    />
-  {/if}
-
-  <!-- TAB 6: ANTI INTRUSION & HARDENING -->
-  {#if activeTab === 'anti_intrusion'}
-    <AntiIntrusionTab
-      {f2bStatus}
-      {hardening}
-      {fwStatus}
-      onUnbanF2B={handleUnbanF2B}
-      onToggleCompilerAccess={handleToggleCompilerAccess}
-      onToggleICMP={toggleICMP}
-    />
-  {/if}
-
-  <!-- TAB 7: SCAN DETECTION -->
-  {#if activeTab === 'scan_detection'}
-    <ScanDetectionTab
-      {isScanning}
-      {scanReport}
-      {scanCategoryFilter}
-      {filteredScanFindings}
-      onRunScan={runSecurityScan}
-      onSelectCategory={(cat) => (scanCategoryFilter = cat)}
-    />
-  {/if}
-
-  <!-- MODAL: ADD PORT RULE -->
+  <!-- Modal Tambah Aturan Firewall -->
   <AddPortModal
     open={showAddPortModal}
-    bind:newPort
-    bind:newProto
-    bind:newStrategy
-    bind:newDirection
-    bind:newSourceIP
-    bind:newRemarks
+    {clientIP}
+    bind:port={newPort}
+    bind:protocol={newProto}
+    bind:action={newAction}
+    bind:direction={newDirection}
+    bind:sourceIP={newSourceIP}
+    bind:remarks={newRemarks}
+    busy={busyKey === 'fw:add'}
     onClose={() => (showAddPortModal = false)}
     onSubmit={handleAddPortRule}
   />
 
-  <!-- MODAL: ADD WHITELIST IP -->
+  <!-- Modal Tambah Whitelist IP -->
   <AddWhitelistModal
     open={showAddWhitelistModal}
+    {clientIP}
     bind:newWhiteIP
     bind:newWhiteRemarks
+    busy={busyKey === 'bf:add-wl'}
     onClose={() => (showAddWhitelistModal = false)}
     onSubmit={handleAddWhitelist}
   />
 
-  <!-- MODAL: ADD BLACKLIST IP -->
+  <!-- Modal Tambah Blacklist IP -->
   <AddBlacklistModal
     open={showAddBlacklistModal}
     bind:newBlackIP
     bind:newBlackReason
     bind:newBlackDuration
+    bind:newBlackSyncUFW
+    busy={busyKey === 'bf:add-bl'}
     onClose={() => (showAddBlacklistModal = false)}
     onSubmit={handleAddBlacklist}
   />
 </div>
-

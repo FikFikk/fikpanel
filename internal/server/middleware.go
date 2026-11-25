@@ -134,15 +134,25 @@ func (s *Server) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// IPAllowlistMiddleware membatasi akses endpoint /api/* sesuai daftar IP/CIDR allowlist yang dikonfigurasi admin
+// IPAllowlistMiddleware membatasi akses endpoint /api/* sesuai IP Blacklist (Brute Force Guard) & IP Allowlist panel
 func (s *Server) IPAllowlistMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") &&
 			r.URL.Path != "/api/settings/public" &&
 			r.URL.Path != "/api/status/public" &&
 			!strings.HasPrefix(r.URL.Path, "/api/webhooks/git/") {
+			clientIP := getIP(r)
+			// Tolak langsung alamat IP yang sedang berada di daftar hitam aktif Security Center
+			if s.firewall != nil {
+				if rule, banned := s.firewall.IsIPBlacklisted(r.Context(), clientIP); banned {
+					writeJSON(w, http.StatusForbidden, map[string]string{
+						"error": "akses ditolak: alamat IP Anda diblokir oleh Security Center (" + rule.Remarks + ")",
+					})
+					return
+				}
+			}
 			prefs := s.loadPanelPreferences(r.Context())
-			if len(prefs.IPAllowlist) > 0 && !ipMatchesAllowlist(getIP(r), prefs.IPAllowlist) {
+			if len(prefs.IPAllowlist) > 0 && !ipMatchesAllowlist(clientIP, prefs.IPAllowlist) {
 				http.Error(w, `{"error":"akses ditolak: alamat IP Anda tidak terdaftar dalam IP Allowlist panel"}`, http.StatusForbidden)
 				return
 			}

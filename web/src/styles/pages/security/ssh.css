@@ -1,93 +1,177 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   SECURITY SSH TAB — metrik, konfigurasi, akun sistem, dan log SSH (.pg-security-ssh)
+   SECURITY SSH TAB — konfigurasi OpenSSH, statistik 7 hari, keys, akun sistem (.pg-security-ssh)
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
   .pg-security-ssh {
-    /* Elemen modul SSH */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+
     .ssh-top-grid {
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 330px 1fr;
       gap: var(--space-4);
-      margin-bottom: var(--space-4);
+      align-items: stretch;
     }
-    @media (max-width: 860px) {
+    @media (max-width: 960px) {
       .ssh-top-grid {
         grid-template-columns: 1fr;
       }
     }
-    .ssh-stat-boxes {
+
+    .ssh-service-meta {
       display: flex;
+      flex-direction: column;
       gap: var(--space-3);
-      padding: var(--space-4);
-      border-bottom: 1px solid var(--border-subtle);
     }
-    .stat-box {
-      flex: 1;
-      padding: var(--space-3);
+    .ssh-meta-kv {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    .ssh-meta-box {
+      padding: var(--space-2) var(--space-3);
       border-radius: var(--radius-md);
-      text-align: center;
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
-    .success-box {
-      background: var(--tint-accent);
-      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    .ssh-meta-label {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
     }
-    .fail-box {
-      background: var(--tint-danger);
-      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    .ssh-meta-val {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+      font-family: var(--font-mono);
     }
-    .stat-big-num {
+
+    /* Ringkasan statistik login SSH & chart batang 7 hari dinamis */
+    .ssh-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .ssh-stat-tile {
+      padding: var(--space-3);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ssh-stat-tile--ok {
+      border-color: color-mix(in srgb, var(--success) 32%, var(--border));
+      background: color-mix(in srgb, var(--tint-success) 35%, var(--bg-inset));
+    }
+    .ssh-stat-tile--fail {
+      border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+      background: color-mix(in srgb, var(--tint-danger) 35%, var(--bg-inset));
+    }
+    .ssh-stat-num {
       font-size: var(--text-xl);
       font-weight: var(--weight-bold);
       font-family: var(--font-mono);
-      display: block;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
     }
-    .success-box .stat-big-num { color: var(--accent-strong); }
-    .fail-box .stat-big-num { color: var(--danger-strong); }
-    .stat-box-label {
-      font-size: var(--text-2xs);
+    .ssh-stat-tile--ok .ssh-stat-num {
+      color: var(--success-strong);
+    }
+    .ssh-stat-tile--fail .ssh-stat-num {
+      color: var(--danger-strong);
+    }
+    .ssh-stat-label {
+      font-size: var(--text-xs);
       color: var(--text-muted);
     }
+    .ssh-stat-sub {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
 
-    .ssh-timeline-wrap {
-      padding: var(--space-3) var(--space-4);
+    /* Grafik batang 7 hari menggunakan CSS custom property --bar-ok / --bar-fail */
+    .ssh-bars {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: var(--space-2);
+      align-items: end;
+      height: 112px;
+      padding-top: var(--space-2);
+    }
+    .ssh-bar-col {
       display: flex;
       flex-direction: column;
-      gap: var(--space-2);
-    }
-    .timeline-row {
-      display: flex;
       align-items: center;
-      gap: var(--space-3);
-      font-size: var(--text-xs);
-    }
-    .timeline-label {
-      width: 70px;
-      color: var(--text-muted);
-    }
-    .timeline-bar-bg {
-      flex: 1;
-      height: 6px;
-      background: var(--bg-inset);
-      border-radius: var(--radius-full);
-      overflow: hidden;
-    }
-    .timeline-bar-fill {
+      gap: var(--space-1);
       height: 100%;
-      background: var(--accent);
-      border-radius: var(--radius-full);
     }
-    .timeline-bar-fill--45 { width: 45%; }
-    .timeline-bar-fill--75 { width: 75%; }
-    .timeline-bar-fill--90 { width: 90%; }
-
-    .port-input-wrap {
+    .ssh-bar-track {
+      flex: 1;
+      width: 100%;
+      max-width: 34px;
       display: flex;
-      gap: var(--space-2);
-      align-items: center;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 3px;
+      padding: 4px 3px 0;
+      border-radius: var(--radius-sm);
+      background: var(--bg-inset);
     }
-    .input-port-w {
-      width: 110px;
+    .ssh-bar-stick {
+      width: 10px;
+      min-height: 2px;
+      border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+      transition: height var(--duration-base) var(--ease-out);
+    }
+    .ssh-bar-stick--ok {
+      height: var(--bar-ok, 2%);
+      background: var(--success);
+    }
+    .ssh-bar-stick--fail {
+      height: var(--bar-fail, 2%);
+      background: var(--danger);
+    }
+    .ssh-bar-day {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+
+    /* Form konfigurasi SSH */
+    .ssh-form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+    @media (max-width: 820px) {
+      .ssh-form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Form tambah SSH Authorized Key */
+    .ssh-key-form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      background: color-mix(in srgb, var(--bg-app) 35%, transparent);
+    }
+    .ssh-key-fp {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--accent-strong);
+      word-break: break-all;
     }
   }
 }

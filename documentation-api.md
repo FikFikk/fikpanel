@@ -1781,8 +1781,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "overview": {"firewall": {...}, "ssh_protection": {...}, "nginx_waf": {...}, "tamper_proof": {...}, "intrusion_detection": {...}, "fail2ban": {...}, "enabled_count": 5, "total_count": 6, "client_ip": "...", "is_client_whitelisted": false}}` |
-| Notes | Mengembalikan agregasi status 6 pilar proteksi sistem, IP klien pengelola, dan status whitelist. |
+| Response | HTTP 200 `{"ok": true, "overview": {"is_linux": true, "hostname": "...", "enabled_count": 5, "total_count": 6, "client_ip": "...", "is_client_whitelisted": true, "last_ssh_login": {...}, "last_panel_login": {...}, "latest_scan": {...}, "pillars": [...]}}` |
+| Notes | Mengembalikan agregasi status aktual 6 pilar proteksi (Firewall UFW, SSH Guard, Nginx WAF real, Brute Force Guard, Fail2Ban IPS, FIM), login SSH/Panel terakhir aktual, dan laporan audit terbaru dari SQLite. |
 
 | Field | Detail |
 |---|---|
@@ -1791,18 +1791,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "status": {"enabled": true, "block_icmp": false, "port_rules_count": 9, "rules": [{"number": 1, "rule_id": "sgr-04e14abc516d37fd5", "rule_type": "SSH", "ip_version": "IPv4", "port": "22", "protocol": "tcp", "strategy": "allow", "direction": "in", "source_ip": "0.0.0.0/0", "remarks": "SSH Port", "status": "Listening"}], "site_logs_path": "/var/log/nginx", "site_logs_size": "573.86 KB"}}` |
-| Notes | Menyajikan daftar aturan port UFW lengkap berformat AWS EC2 Security Groups (`rule_id`, `rule_type`, `ip_version`, `source_ip`), status listening port, arah paket, dan ukuran log web. |
+| Response | HTTP 200 `{"ok": true, "status": {"is_linux": true, "installed": true, "enabled": true, "hostname": "...", "default_incoming": "deny", "default_outgoing": "allow", "block_icmp": false, "ssh_port": 22, "panel_port": 1405, "inbound_count": 4, "outbound_count": 0, "listening_count": 6, "rules": [...], "listening_ports": [...], "site_logs_path": "/var/log/nginx", "site_logs_size": "120.40 KB"}}` |
+| Notes | Menyajikan daftar aturan UFW aktual (IPv4/IPv6, Inbound/Outbound, komentar, status port listening & proses), kebijakan default, daftar soket `ss -tulnp`, dan ukuran log web. |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `POST /api/firewall/rules/batch` |
+| Method + Endpoint | `POST /api/firewall/default-policy` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `rules` (array of `PortRule`: `port`, `protocol`, `strategy`, `direction`, `source_ip`, `remarks`, `rule_type`, `rule_id`, `ip_version`) |
-| Response | HTTP 200 `{"ok": true, "message": "Berhasil menyimpan 4 aturan port firewall"}` |
-| Notes | Menerapkan seluruh aturan port inbound secara massal & atomik (AWS EC2 Security Group "Edit inbound rules" pattern), membersihkan aturan usang yang dihapus pengguna, mencegah lock contention UFW, dan mencatat ringkasan aksi ke audit log `security.port_rules_batch`. |
+| Request Body | `incoming` (`allow` \| `deny` \| `reject`), `outgoing` (`allow` \| `deny` \| `reject`) |
+| Response | HTTP 200 `{"ok": true, "incoming": "deny", "outgoing": "allow"}` |
+| Notes | Mengatur kebijakan bawaan paket masuk dan keluar UFW (`ufw default`). |
 
 | Field | Detail |
 |---|---|
@@ -1810,9 +1810,29 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `port` (string, wajib), `protocol` (string), `strategy` (string), `direction` (string), `source_ip` (string), `remarks` (string) |
-| Response | HTTP 200 `{"ok": true}` |
-| Notes | Menambahkan aturan port firewall UFW baru lengkap dengan arah paket dan catatan keterangan. |
+| Request Body | `port` (string, tunggal/rentang), `protocol` (`tcp` \| `udp` \| `any`), `action` (`allow` \| `deny` \| `reject` \| `limit`), `direction` (`in` \| `out`), `source_ip` (IP/CIDR), `remarks` (komentar UFW) |
+| Response | HTTP 200 `{"ok": true, "message": "Aturan firewall berhasil ditambahkan"}` |
+| Notes | Menambahkan aturan UFW tervalidasi tanpa shell interpolation, mendukung CIDR sumber/tujuan dan komentar asli UFW. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/firewall/rules/batch-delete` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `numbers` (array of int, wajib), `force` (bool, opsional untuk melewati proteksi lockout port SSH/Panel) |
+| Response | HTTP 200 `{"ok": true, "deleted": 2}` atau HTTP 409 jika terkena proteksi lockout |
+| Notes | Menghapus beberapa aturan UFW berurutan dari nomor terbesar ke terkecil agar indeks aturan UFW tidak bergeser. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/firewall/rules/{number}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | `force` (`true` \| `1`, opsional untuk melewati proteksi lockout) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true}` atau HTTP 409 bila aturan adalah satu-satunya izin port SSH/panel aktif |
+| Notes | Menghapus satu aturan UFW berdasarkan nomornya dengan proteksi anti-lockout. |
 
 | Field | Detail |
 |---|---|
@@ -1822,7 +1842,7 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `block` (boolean, wajib: true untuk memblokir ping ICMP) |
 | Response | HTTP 200 `{"ok": true, "blocked": true}` |
-| Notes | Mengatur konfigurasi kernel `net.ipv4.icmp_echo_ignore_all` untuk mematikan atau mengaktifkan respons ping ICMP. |
+| Notes | Mengatur `net.ipv4.icmp_echo_ignore_all` secara live dan persisten ke `/etc/sysctl.d/99-fikpanel-hardening.conf`. |
 
 | Field | Detail |
 |---|---|
@@ -1831,8 +1851,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "message": "Berkas log web berhasil dibersihkan"}` |
-| Notes | Mengosongkan berkas log akses dan kesalahan webserver tanpa menghapus file fisik. |
+| Response | HTTP 200 `{"ok": true, "message": "Berkas log web berhasil dikosongkan"}` |
+| Notes | Mengosongkan berkas `.log` webserver menggunakan `os.Truncate(..., 0)` tanpa memutus handle file Nginx. |
 
 | Field | Detail |
 |---|---|
@@ -1841,8 +1861,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "stats": {"service_active": true, "port": 22, "successful_logins": 46, "failed_logins": 0, "recent_logs": [...]}}` |
-| Notes | Mengembalikan statistik percobaan login sukses dan gagal SSH beserta riwayat sesi terbaru. |
+| Response | HTTP 200 `{"ok": true, "stats": {"config": {...}, "log_source": "journalctl (ssh/sshd)", "successful_logins": 12, "failed_logins": 3, "daily_stats": [...], "recent_logs": [...]}}` |
+| Notes | Mem-parsing konfigurasi OpenSSH efektif (`sshd -T` + deteksi override `cloud-init`) dan statistik autentikasi 7 hari aktual dari `journalctl`/`auth.log`/`secure`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/security/ssh` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `port` (int), `password_auth` (bool), `pubkey_auth` (bool), `permit_root_login` (`yes` \| `prohibit-password` \| `no`), `max_auth_tries` (int 1-20), `force` (bool opsional) |
+| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi SSH berhasil divalidasi (sshd -t), disimpan, dan dimuat ulang"}` |
+| Notes | Menulis ke `/etc/ssh/sshd_config.d/01-fikpanel.conf`, memvalidasi via `sshd -t` (auto-rollback bila gagal), mencegah lockout tanpa SSH key, dan otomatis mengizinkan port baru di UFW. |
 
 | Field | Detail |
 |---|---|
@@ -1851,8 +1881,18 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "message": "Layanan SSH berhasil direstart"}` |
-| Notes | Memulai ulang daemon SSH (`systemctl restart ssh/sshd`) tanpa memutuskan sesi aktif pengguna. |
+| Response | HTTP 200 `{"ok": true, "message": "Layanan SSH berhasil dimulai ulang"}` |
+| Notes | Memulai ulang daemon SSH (`systemctl restart ssh/sshd`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/security/ssh/keys` / `POST /api/security/ssh/keys` / `DELETE /api/security/ssh/keys/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk mutasi) |
+| Query Params | Tidak ada |
+| Request Body | POST: `public_key` (string, satu baris kunci publik SSH valid) |
+| Response | HTTP 200 `{"ok": true, "keys": [...]}` / `{"ok": true, "key": {...}}` |
+| Notes | Mengelola daftar SSH Public Key pada `~/.ssh/authorized_keys` (izin 0600) dengan validasi kriptografis & fingerprint SHA-256. |
 
 | Field | Detail |
 |---|---|
@@ -1861,8 +1901,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "accounts": [{"username": "root", "uid": 0, "gid": 0, "shell": "/bin/bash", "locked": false}]}` |
-| Notes | Membaca daftar pengguna sistem operasi dari `/etc/passwd`. |
+| Response | HTTP 200 `{"ok": true, "accounts": [{"username": "root", "uid": 0, "gid": 0, "shell": "/bin/bash", "locked": false, "lock_reason": "active", "is_protected": true}]}` |
+| Notes | Membaca akun sistem dari `/etc/passwd` sekaligus memverifikasi status kunci sebenarnya dari `/etc/shadow` dan `passwd -S`. |
 
 | Field | Detail |
 |---|---|
@@ -1872,27 +1912,27 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `lock` (boolean, wajib: true untuk mengunci akun) |
 | Response | HTTP 200 `{"ok": true}` |
-| Notes | Mengunci atau membuka kunci akses akun linux pengguna via `passwd -l` atau `passwd -u`. |
+| Notes | Mengunci atau membuka kunci password akun Linux via `passwd -l/-u`; menolak mengunci akun `root`. |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `GET /api/security/server-security` |
+| Method + Endpoint | `POST /api/security/scan` & `GET /api/security/scan/latest` |
 | Auth Required | Yes (Cookie `panel_session`) |
-| Headers | Tidak ada |
+| Headers | `X-Panel-Request: 1` (untuk POST) |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "security": {"score": 80, "rating": "Secure", "last_ssh_login": {...}, "last_panel_login": {...}, "checklist": [...]}}` |
-| Notes | Mengembalikan skor keselamatan server (Safety rating 0-100) dan hasil audit 10 poin evaluasi keamanan. |
+| Response | HTTP 200 `{"ok": true, "report": {"score": 85, "rating": "Aman", "scanned_at": ..., "risk_count": 0, "malware_count": 0, "vuln_count": 1, "baseline_pass": 11, "baseline_total": 12, "findings": [...]}}` |
+| Notes | Menjalankan audit 12-poin (UFW, eksposur DB, SSH, Fail2Ban, TLS panel, 2FA/Passkey, Brute Force, kernel sysctl, FIM, izin `/etc/shadow`, pemindaian webshell/`.env`/`.git` webroot situs DB, SSL expired) dan menyimpannya ke SQLite `security_scan_reports`. |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `POST /api/security/server-security/fix` |
+| Method + Endpoint | `POST /api/security/fix` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `action_key` (string, wajib: misalnya "change_ssh_port", "disable_root_password") |
-| Response | HTTP 200 `{"ok": true, "message": "Tindakan perbaikan keamanan berhasil diterapkan"}` |
-| Notes | Menerapkan perbaikan konfigurasi otomatis 1-klik untuk temuan audit yang bermasalah. |
+| Request Body | `action_key` (allowlist aman: `enable_ufw`, `set_ufw_default_deny`, `start_fail2ban`, `enable_bruteforce`, `apply_kernel_baseline`, `create_fim_baseline`) |
+| Response | HTTP 200 `{"ok": true, "message": "...", "report": {...}}` |
+| Notes | Menerapkan perbaikan otomatis yang aman tanpa risiko lockout SSH, lalu menjalankan ulang pemindaian keamanan secara otomatis. |
 
 | Field | Detail |
 |---|---|
@@ -1901,8 +1941,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "client_ip": "...", "config": {...}, "whitelist": [...], "blacklist": [...], "history": [...]}` |
-| Notes | Mengambil konfigurasi proteksi brute force, daftar whitelist IP, daftar blacklist IP, dan laporan riwayat gagal login. |
+| Response | HTTP 200 `{"ok": true, "client_ip": "...", "is_client_whitelisted": true, "config": {...}, "whitelist": [...], "blacklist": [...], "history": [...]}` |
+| Notes | Membaca konfigurasi brute force, whitelist, blacklist aktif, dan riwayat percobaan login aktual dari SQLite (`security_ip_lists` & `security_login_events`). |
 
 | Field | Detail |
 |---|---|
@@ -1910,59 +1950,39 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `enabled` (bool), `username_protection` (bool), `ip_protection` (bool), `retention_minutes` (int) |
-| Response | HTTP 200 `{"ok": true, "message": "Konfigurasi proteksi brute force berhasil disimpan"}` |
-| Notes | Memperbarui parameter batas percobaan gagal login dan durasi blokir IP. |
+| Request Body | `enabled`, `username_protection`, `username_max_retries`, `ip_protection`, `ip_max_retries`, `ip_ban_duration_minutes`, `retention_minutes`, `notify_on_login`, `notify_on_ban`, `auto_sync_ufw` |
+| Response | HTTP 200 `{"ok": true, "config": {...}, "message": "Konfigurasi proteksi brute force berhasil disimpan"}` |
+| Notes | Menyimpan konfigurasi proteksi brute force secara persisten ke SQLite `settings` dan langsung ditegakkan oleh `handleLogin` serta middleware HTTP. |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `POST /api/security/bruteforce/whitelist` |
+| Method + Endpoint | `POST /api/security/bruteforce/whitelist` & `POST /api/security/bruteforce/whitelist/remove` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `ip` (string, wajib), `remarks` (string) |
+| Request Body | Tambah: `ip` (IP/CIDR), `remarks`; Hapus: `id` (int64) atau `ip` (string) |
 | Response | HTTP 200 `{"ok": true}` |
-| Notes | Menambahkan alamat IP atau subnet ke dalam daftar putih pengecualian pemblokiran. |
+| Notes | Mengelola daftar putih IP/CIDR persisten (endpoint `/remove` berbasis JSON aman untuk subnet CIDR `/24`). |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `DELETE /api/security/bruteforce/whitelist/{ip}` |
-| Auth Required | Yes (Cookie `panel_session`) |
-| Headers | `X-Panel-Request: 1` |
-| Query Params | Tidak ada |
-| Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true}` |
-| Notes | Menghapus alamat IP dari daftar putih. |
-
-| Field | Detail |
-|---|---|
-| Method + Endpoint | `POST /api/security/bruteforce/blacklist` |
+| Method + Endpoint | `POST /api/security/bruteforce/blacklist` & `POST /api/security/bruteforce/blacklist/remove` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `ip` (string, wajib), `reason` (string), `duration_minutes` (int) |
+| Request Body | Tambah: `ip` (IP/CIDR), `reason`, `duration_minutes` (0 = permanen), `sync_ufw` (bool); Hapus: `id` (int64) atau `ip` (string) |
 | Response | HTTP 200 `{"ok": true}` |
-| Notes | Memblokir alamat IP penyerang secara manual dengan batas durasi kadaluarsa blokir. |
+| Notes | Memblokir/membuka blokir IP secara persisten dengan proteksi anti self-lockout dan opsi sinkronisasi ke aturan `ufw insert 1 deny`. |
 
 | Field | Detail |
 |---|---|
-| Method + Endpoint | `DELETE /api/security/bruteforce/blacklist/{ip}` |
+| Method + Endpoint | `GET /api/security/hardening` & `POST /api/security/hardening/sysctl` |
 | Auth Required | Yes (Cookie `panel_session`) |
-| Headers | `X-Panel-Request: 1` |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk POST) |
 | Query Params | Tidak ada |
-| Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true}` |
-| Notes | Mencabut status pemblokiran alamat IP dari daftar hitam. |
-
-| Field | Detail |
-|---|---|
-| Method + Endpoint | `GET /api/security/hardening` |
-| Auth Required | Yes (Cookie `panel_session`) |
-| Headers | Tidak ada |
-| Query Params | Tidak ada |
-| Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "hardening": {"compiler_blocked": false, "icmp_blocked": false, "syn_flood_protected": true, "ip_spoofing_protected": true, "core_dump_disabled": true, "tamper_proof_enabled": false}}` |
-| Notes | Menyajikan status pengerasan kernel OS, pembatasan compiler, dan modul anti-tamper. |
+| Request Body | POST: `key` (salah satu dari 6 parameter sysctl terkelola), `enabled` (bool) |
+| Response | HTTP 200 `{"ok": true, "hardening": {"is_linux": true, "compiler_blocked": false, "compilers_found": [...], "sysctl_params": [...], "fim_enabled": true, "fim_baseline_count": 8}}` |
+| Notes | Membaca nilai kernel live dari `/proc/sys` dan menerapkan perubahan `sysctl -w` secara persisten ke `/etc/sysctl.d/99-fikpanel-hardening.conf`. |
 
 | Field | Detail |
 |---|---|
@@ -1972,7 +1992,27 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Query Params | Tidak ada |
 | Request Body | `block` (boolean, wajib: true untuk membatasi ke root saja) |
 | Response | HTTP 200 `{"ok": true, "blocked": true}` |
-| Notes | Mengubah izin eksekusi biner compiler (`/usr/bin/gcc`, `/usr/bin/make`) menjadi `chmod 700` agar non-root tidak dapat mengompilasi eksploitasi di host. |
+| Notes | Mengubah izin biner compiler (`/usr/bin/gcc`, `g++`, `make`, `as`) menjadi `0700` atau `0755`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/security/hardening/fim` / `POST /api/security/hardening/fim/baseline` / `DELETE /api/security/hardening/fim` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` (untuk POST/DELETE) |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "fim": {"enabled": true, "total_files": 8, "ok_count": 8, "modified_count": 0, "missing_count": 0, "items": [...]}}` |
+| Notes | Mengelola File Integrity Monitor berbasis SHA-256: membuat snapshot baseline, memverifikasi drift/perubahan berkas kritis, atau menonaktifkan FIM. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/security/fail2ban` / `POST /api/security/fail2ban/service` / `POST /api/security/fail2ban/ban` / `POST /api/security/fail2ban/unban` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk POST) |
+| Query Params | Tidak ada |
+| Request Body | Service: `action` (`start` \| `stop` \| `restart`); Ban/Unban: `jail`, `ip` |
+| Response | HTTP 200 `{"ok": true, ...}` |
+| Notes | Membaca status jail Fail2Ban aktual, mengontrol layanan systemd `fail2ban`, serta memblokir/membuka blokir IP secara manual per jail. |
 
 ---
 

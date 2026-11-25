@@ -1,0 +1,48 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY MODALS — gaya form modal aturan port, whitelist, dan blacklist (.pg-security-modal)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+
+    .sec-modal-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    @media (max-width: 520px) {
+      .sec-modal-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .sec-input-inline {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .sec-preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+    .sec-check-box {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .sec-check-box input {
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+  }
+}

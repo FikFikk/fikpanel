@@ -1,12 +1,35 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   SECURITY TABS — navigasi 7 modul keamanan (.pg-security-tabs)
+   SECURITY TABS — bilah navigasi 5 modul keamanan (.pg-security-tabs)
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
   .pg-security-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: var(--radius-full);
+      background: var(--bg-active);
+      color: var(--text-muted);
+      font-size: var(--text-2xs);
+      font-family: var(--font-mono);
+      font-weight: var(--weight-semibold);
+      font-variant-numeric: tabular-nums;
+    }
+    .tab-count--danger {
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+    }
+    .tabs__tab.is-active .tab-count {
+      background: color-mix(in srgb, var(--accent) 22%, transparent);
+      color: var(--accent-strong);
+    }
+    .tabs__tab.is-active .tab-count--danger {
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+    }
   }
 }
-

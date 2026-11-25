@@ -1,0 +1,140 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   SECURITY HARDENING & SCANNER TAB — scanner, Fail2Ban, sysctl, compiler, FIM (.pg-security-hardening)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+@layer pages {
+  .pg-security-hardening {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+
+    /* Daftar temuan pemindaian */
+    .hd-findings {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .hd-finding-card {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .hd-finding-card--critical {
+      border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+      background: color-mix(in srgb, var(--tint-danger) 24%, var(--bg-surface));
+    }
+    .hd-finding-card--warning {
+      border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    }
+    .hd-finding-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .hd-finding-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+    }
+    .hd-finding-cat {
+      margin-left: auto;
+    }
+    .hd-finding-detail {
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      line-height: var(--leading-normal);
+    }
+    .hd-finding-fix {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+    .hd-finding-fix-text {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      min-width: 0;
+    }
+    .hd-finding-fix-text i {
+      color: var(--warning-strong);
+      flex-shrink: 0;
+    }
+
+    /* Fail2Ban ban manual inline & chip IP terblokir */
+    .hd-f2b-ban-bar {
+      display: flex;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      background: color-mix(in srgb, var(--bg-app) 35%, transparent);
+    }
+    .hd-f2b-ban-field {
+      flex: 1;
+      min-width: 170px;
+    }
+    .hd-ip-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+    .hd-ip-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px 6px 2px 8px;
+      border-radius: var(--radius-sm);
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-semibold);
+    }
+    .hd-ip-chip__btn {
+      display: inline-grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      border-radius: var(--radius-xs);
+      color: var(--danger-strong);
+      transition: background var(--duration-fast) ease;
+    }
+    .hd-ip-chip__btn:hover {
+      background: color-mix(in srgb, var(--danger) 25%, transparent);
+    }
+
+    /* Kernel sysctl key & nilai live */
+    .hd-sysctl-key {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      padding: 1px 6px;
+      border-radius: var(--radius-xs);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .hd-compiler-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+      margin-top: var(--space-1);
+    }
+
+    /* File Integrity Monitor (FIM) hash kolom */
+    .hd-fim-hash {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
+  }
+}

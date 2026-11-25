@@ -227,34 +227,33 @@ flowchart TD
     AutoDiscover --> SiapAkses[Panel Aktif di Port 1405 - Software Opsional Dapat Ditambah via Web UI]
 ```
 
-### 1.8 Siklus Manajemen Aturan Firewall Bergaya AWS Security Groups
+### 1.8 Siklus Manajemen Security Center (Firewall UFW, SSH, Brute Force Persisten & FIM)
 
 ```mermaid
 flowchart TD
-    BukaFirewall[Buka Tab Firewall di Security Center] --> LoadExtended[GET /api/firewall/extended]
-    LoadExtended --> ParseRules[Generate Deterministic Rule ID sgr-xxxx & Deteksi Service Type]
-    ParseRules --> RenderAWS[Render UI: Security Group Details, Subtabs, & Inbound Rules Table]
-    
-    RenderAWS --> UserAksi{Aksi Pengguna}
-    UserAksi -- Toggle Status UFW --> ToggleFW[POST /api/firewall/toggle]
-    UserAksi -- Hapus 1 Rule --> DeleteRule[DELETE /api/firewall/rules/{number}]
-    UserAksi -- Kelola Massal --> EditMode[Klik 'Edit inbound rules']
-    
-    EditMode --> MultiRowEditor[Buka Editor Form Multi-Baris]
-    MultiRowEditor --> PresetPilih{Pilih Tipe Layanan / Type}
-    
-    PresetPilih -- Layanan Standar SSH/HTTP/HTTPS/MySQL --> AutoLock[Kunci Protokol TCP & Isi Port Otomatis]
-    PresetPilih -- Custom TCP / Custom UDP --> CustomInput[Buka Input Port Bebas & Protokol]
-    
-    MultiRowEditor --> AddRow[Klik 'Add rule' untuk Baris Baru]
-    MultiRowEditor --> SourceType[Pilih Source Type: Custom / Anywhere IPv4 / My IP]
-    SourceType --> RenderChips[Render Source Chip misal 0.0.0.0/0]
-    
-    MultiRowEditor --> SimpanBatch[Klik 'Save rules']
-    SimpanBatch --> KirimAPI[POST /api/firewall/rules/batch]
-    KirimAPI --> EksekusiAtomik[Terapkan Seluruh Aturan Baru & Bersihkan Aturan Dihapus]
-    EksekusiAtomik --> CatatAudit[Catat Audit Log security.port_rules_batch]
-    CatatAudit --> KembaliView[Kembali ke Tampilan Tabel Inbound Rules & Refresh Data]
+    BukaSec[Buka Halaman Security Center 5-Tab] --> LoadOverview[Muat Status 6 Pilar Aktual, Login Terakhir & Audit Tersimpan]
+    LoadOverview --> PilihModul{Modul Keamanan}
+
+    PilihModul -- Firewall UFW --> LoadFW[Baca ufw status verbose/numbered & ss -tulnp]
+    LoadFW --> AksiFW{Aksi Firewall}
+    AksiFW -- Tambah Aturan --> ValidPort[Validasi Port/Range, IP/CIDR, Arah & Komentar] --> ExecUFW[Eksekusi UFW & Catat Audit]
+    AksiFW -- Hapus / Batch Delete --> LockoutCheck{Cek Proteksi Port SSH/Panel}
+    LockoutCheck -- Terlindung Tanpa Force --> TolakLockout[HTTP 409 Peringatan Lockout]
+    LockoutCheck -- Aman / Force --> DelDesc[Hapus Urut Menurun & Refresh]
+
+    PilihModul -- SSH & Akses --> LoadSSH[Baca sshd -T, Deteksi Cloud-Init, Authorized Keys & Journald/auth.log]
+    LoadSSH --> SimpanSSH[Tulis 01-fikpanel.conf & Validasi sshd -t]
+    SimpanSSH -- Gagal Sintaksis --> RollbackSSH[Auto-Rollback Cadangan]
+    SimpanSSH -- Valid --> ReloadSSH[Auto-Allow Port UFW Baru & Reload sshd]
+
+    PilihModul -- Brute Force & IP --> EnforceBF[Penegakan Middleware HTTP 403 & Login Rate-Limit]
+    EnforceBF --> PersistDB[(SQLite: security_ip_lists & security_login_events)]
+    EnforceBF -- Melebihi Batas Gagal --> AutoBan[Auto-Ban IP + Opsional Sync UFW + Webhook Alert]
+
+    PilihModul -- Hardening & Scanner --> AksiHard{Aksi Hardening}
+    AksiHard -- Sysctl Kernel --> ApplySysctl[Terapkan sysctl -w & Persist ke /etc/sysctl.d/99-fikpanel-hardening.conf]
+    AksiHard -- FIM --> CheckFIM[Bandingkan SHA-256 Disk vs security_fim_baselines]
+    AksiHard -- Audit 12-Poin --> SaveScan[(Simpan Skor ke security_scan_reports & Sinkron Home security_risk)]
 ```
 
 ### 1.8 Siklus Hidup Penjadwal Tugas (Cron Jobs)
@@ -576,11 +575,12 @@ flowchart TD
 | **BR-48** | Deteksi Dinamis Host Runtime PHP Multi-Version | Akses menu PHP Multi-Version & FPM Tuning | Memindai secara dinamis socket `/run/php/php*-fpm.sock`, direktori `/etc/php/*`, dan biner FPM (mendeteksi PHP 8.5, 8.4, 8.3, 8.2, 8.1, dst.) dengan sorting numerik menurun. Versi belum terpasang dapat diinstal 1-klik via paket APT sistem. |
 | **BR-49** | App Store Terpadu & Fleksibilitas Tampilan (Grid / Table Switcher) | Pengguna membuka App Store dan mengelola aplikasi web stack atau paket sistem | Menggabungkan seluruh software katalog dan repositori global Linux (APT) dalam satu antarmuka terpadu tanpa pemisahan tab yang kaku. Menyediakan View Switcher (Tampilan Kartu Modern & Tabel Rinci), bilah pencarian autocomplete fuzzy dengan riwayat pencarian lokal dan rekomendasi populer (Trending), filter kategori (Semua, Terpasang, Web Server, Runtime, Database, Alat & Keamanan), serta tautan langsung ke manajer software terkait. |
 | **BR-50** | Proteksi Auto-Renew SSL Ganda (Cron Task & Background Daemon) | Pemindaian masa aktif sertifikat Let's Encrypt / ACME HTTP-01 seluruh domain | Menggunakan proteksi 2-lapis: (1) Tugas Cron terdaftar `Domain SSL Auto-Renew (Let's Encrypt / ACME)` dieksekusi harian pukul 02:00 via CLI `fikpanel renew-ssl` dengan perekaman log dan eksekusi manual; (2) Goroutine daemon `sites.RunRenewLoop` memeriksa berkala setiap 12 jam (dan saat panel start) untuk sertifikat dengan sisa masa aktif < 30 hari, menulis sertifikat atomik, dan me-reload Nginx tanpa downtime sehingga sertifikat domain tidak pernah expired. |
-| **BR-51** | Arsitektur Keamanan Enterprise 7-Tab & 6 Pilar Proteksi Utama | Pengguna membuka dan mengelola modul Keamanan FikPanel | Antarmuka menyajikan 7 tab utama (Overview, Firewall, SSH, Server Security, Brute Force, Anti Intrusion & Hardening, Scan Detection) dengan pemantauan 6 pilar proteksi (Firewall, SSH Protection, Nginx WAF, Tamper-Proof, Intrusion Detection, Fail2Ban). |
-| **BR-52** | Perlindungan Brute-Force Berbasis Akun & IP dengan Whitelist/Blacklist | Percobaan autentikasi pada panel atau layanan SSH | Melacak frekuensi kegagalan autentikasi berdasarkan nama pengguna dan alamat IP. IP yang terdaftar di Whitelist dikecualikan dari pemblokiran; IP penyerang diblokir secara otomatis dan dimasukkan ke Blacklist dengan durasi retensi tertentu. Menyediakan banner peringatan dan tombol 1-klik untuk mendaftarkan IP aktif pengelola ke Whitelist. |
-| **BR-53** | Evaluasi Keamanan Server 10-Poin & Auto-Remediation | Audit postur keamanan server | Menghitung Safety Rating dinamis (0-100) berdasarkan 10 kriteria evaluasi (Default SSH Port, Password Complexity, Password Length Limit, SSH Login Alert, Root Login Settings, SSH Brute-force, Panel Login Alert, Panel Google Authenticator TOTP, UnAuth Status Code, Panel SSL) dengan tombol perbaikan otomatis 1-klik. |
-| **BR-54** | Hardening Sistem Kernel & Pembatasan Akses Compiler Non-Root | Pengerasan keamanan kernel dan sistem operasi | Mendukung pemblokiran ping ICMP (`net.ipv4.icmp_echo_ignore_all`), mitigasi TCP SYN Flood (`net.ipv4.tcp_syncookies`), verifikasi reverse-path IP spoofing (`net.ipv4.conf.all.rp_filter`), penonaktifan core dump, dan pembatasan izin biner compiler (`/usr/bin/gcc`, `/usr/bin/make` chmod 700) khusus root untuk mencegah eksekusi dan kompilasi malware oleh user web biasa. |
-| **BR-55** | Manajemen Firewall Bergaya AWS EC2 Security Groups & Editor Multi-Row Inbound | Pengguna mengonfigurasi aturan port dan keamanan firewall UFW | Antarmuka mengadopsi format konsol AWS EC2 Security Groups: Security Group Details Card (`sg-...`, hostname, owner, VPC, ringkasan inbound/outbound), Sub-tab switching (`Inbound rules`, `Outbound rules`, `Firewall Settings & Logs`), tabel inbound terperinci dengan Rule ID unik (`sgr-...`), identifikasi preset layanan otomatis (SSH, HTTP, HTTPS, MySQL, Postgres, Redis, FikPanel Web, dll.), badge status listening real-time, serta editor multi-baris interaktif ("Edit inbound rules") dengan tombol "Add rule" dinamis dan penyimpanan massal atomik (`POST /api/firewall/rules/batch`) untuk mengeliminasi UFW race condition. |
+| **BR-51** | Arsitektur Security Center 5-Tab & 6 Pilar Proteksi Aktual | Pengguna membuka dan mengelola modul Keamanan `/security` | Antarmuka mengonsolidasikan seluruh kontrol keamanan ke 5 tab terstruktur (**Overview & Audit**, **Firewall (UFW)**, **SSH & Akses**, **Brute Force & IP**, **Hardening & Scanner**) dengan 6 pilar proteksi nyata (Firewall UFW, SSH Guard, Nginx WAF live dari store/WAF manager, Brute Force Guard, Fail2Ban IPS, dan File Integrity Monitor) tanpa data statis/dummy. |
+| **BR-52** | Proteksi Brute-Force Persisten SQLite, Middleware Enforcement & Webhook Alert | Percobaan autentikasi pada panel atau request ke `/api/*` | Konfigurasi, daftar putih/hitam IP & CIDR (`security_ip_lists`), dan riwayat login (`security_login_events`) disimpan persisten di SQLite. Middleware HTTP langsung menolak IP blacklist aktif (HTTP 403); `handleLogin` mengecualikan IP whitelist, mengunci sementara username yang gagal berulang, dan mengeksekusi auto-ban IP beserta opsi sinkronisasi UFW (`ufw insert 1 deny`) dan pengiriman notifikasi Webhook Alert. Dilengkapi proteksi anti self-lockout (menolak blacklist `127.0.0.1`, IP admin saat ini, dan IP yang sudah masuk whitelist). |
+| **BR-53** | Audit Keamanan Terpadu 12-Poin, Persistensi Skor & Safe Quick-Fix | Eksekusi pemindaian keamanan server di Security Center | Menjalankan 12 pemeriksaan nyata (status & default policy UFW, eksposur port database `3306/5432/6379/27017` publik, hardening SSH, Fail2Ban, TLS panel, 2FA/Passkey, Brute Force, kernel sysctl, integritas FIM, izin `/etc/shadow`, pemindaian webroot situs di tabel `sites` terhadap webshell PHP/`.env`/`.git`, serta sertifikat SSL hampir kedaluwarsa). Hasil disimpan persisten di `security_scan_reports` dan menyuplai metrik `security_risk` real pada dashboard Home. Perbaikan cepat dibatasi pada allowlist aman (tanpa mutasi port/password SSH sepihak yang dapat mengunci admin). |
+| **BR-54** | Hardening Kernel Persisten (`sysctl.d`), Pembatasan Compiler, Fail2Ban & File Integrity Monitor (FIM) | Pengerasan keamanan kernel, IPS, dan integritas berkas sistem | Membaca 6 parameter kernel langsung dari `/proc/sys` (`icmp_echo_ignore_all`, `tcp_syncookies`, `rp_filter`, `suid_dumpable`, `accept_redirects`, `dmesg_restrict`) serta menyimpannya permanen ke `/etc/sysctl.d/99-fikpanel-hardening.conf`; mengelola izin biner compiler (`0700`/`0755`), kontrol layanan & ban/unban Fail2Ban, serta File Integrity Monitor berbasis checksum SHA-256 (`security_fim_baselines`) untuk mendeteksi modifikasi/hilangnya berkas kritis sistem dan konfigurasi Nginx/SSH. |
+| **BR-55** | Manajemen Firewall UFW Real, Inspektor Soket `ss -tulnp` & Proteksi Anti-Lockout | Pengguna mengelola aturan firewall masuk/keluar dan kebijakan default UFW | Parsing penuh `ufw status verbose` & `ufw status numbered` untuk IPv4/IPv6, `ALLOW`/`DENY`/`REJECT`/`LIMIT`, `IN`/`OUT`, CIDR, dan komentar asli; menyajikan tabel Port Listening real dari `ss -tulnp` (alamat bind, proses, PID, status eksposur publik); penghapusan massal berurutan menurun agar nomor UFW tidak bergeser; serta proteksi lockout otomatis untuk port SSH aktif dan port FikPanel saat menyalakan UFW atau menghapus aturan. |
+| **BR-55b** | Hardening OpenSSH Aman (`01-fikpanel.conf`, `sshd -t`), Telemetri 7 Hari, Authorized Keys & Akun Sistem | Pengguna mengelola konfigurasi SSH, kunci publik, dan akun Linux | Membaca konfigurasi efektif via `sshd -T` dan mendeteksi override `cloud-init`; menulis drop-in `/etc/ssh/sshd_config.d/01-fikpanel.conf` (first-match-wins) dengan validasi wajib `sshd -t` + auto-rollback bila sintaksis salah, pencegahan mematikan password login saat belum ada SSH key, serta pembukaan otomatis port SSH baru di UFW. Menyediakan grafik statistik login 7 hari nyata dari `journalctl`/`auth.log`, manajemen `~/.ssh/authorized_keys` tervalidasi kriptografis, dan manajemen kunci akun sistem aktual dari `/etc/shadow`/`passwd -S` dengan proteksi akun `root`. |
 | **BR-56** | Pencatatan Log Berkas Cron Dinamis (Dynamic File Logging) | Pengguna membuat atau mengubah tugas cron dengan opsi simpan berkas log | Mendukung jalur berkas kustom (misal `/var/cronlog/myjob.log` atau `/var/log/cron/...`). Sistem secara otomatis membuat hierarki direktori induk (`os.MkdirAll`) saat eksekusi tugas berjalan, menyematkan timestamp eksekusi beserta stdout dan stderr. Pada tabel Cron antarmuka, pill tautan log berkas ditampilkan secara dinamis. Modal penampil log menyediakan tab ganda: pembaca berkas disk langsung dengan tombol pengosongan log ("Kosongkan Log") dan riwayat eksekusi database SQLite standar. |
 | **BR-57** | Modul WAF (Web Application Firewall) & Peta Serangan Dunia Zero-Dependency | Pengguna memantau dan mengelola mitigasi serangan web di menu WAF | Menyediakan arsitektur perlindungan 5 sub-tab: Overview, WebSite, Attack Map, Black/White List, dan Cloudflare Hub. Visualisasi peta dunia interaktif dibangun murni berbasis standar SVG dan proyeksi koordinat bawaan tanpa dependensi pihak ketiga atau file geo eksternal; menampilkan animasi sinar laser dari negara penyerang menuju server terlindungi, statistik QPS, ranking Top 10 domain dan URL yang diserang, serta perlindungan CC bertingkat. |
 | **BR-58** | Integrasi Cloudflare Hub Dual-Auth, Auto-Discovery Subdomain Publik & Lokal Ber-Cache, Diagnostik Izin Token Collapsible (`Read` vs `Edit`), & Manajemen Edge/DNS Lengkap | Pengguna menghubungkan FikPanel dengan akun Cloudflare via API Token atau Global API Key dan mengelola zona/DNS | Mendukung autentikasi ganda: **Custom API Token** (`Authorization: Bearer`) dan **Global API Key + Email** (`X-Auth-Key` + `X-Auth-Email`). Memprioritaskan IPv4 publik server (`!ip.IsPrivate()`) di atas IP privat VPC/Docker (`172.31.x.x`) saat memverifikasi apakah rekaman `A`/`AAAA` mengarah ke server ini. Jika token aktif namun `/client/v4/zones` mengembalikan 0 zona (karena token belum diberi izin `Zone -> Zone -> Read` atau `Zone Resources: Include All Zones`), sistem secara otomatis menjalankan **Multi-Source Subdomain DNS Auto-Discovery** ber-cache memori 10 menit (menggabungkan tabel `sites` FikPanel, passive DNS publik `api.hackertarget.com`, Certificate Transparency log `crt.sh`, serta kamus prefix populer dan me-resolve secara paralel) sehingga seluruh domain/subdomain yang mengarah ke server ini (baik yang sudah terdaftar di Website seperti `yuha.fikfikk.my.id` maupun yang belum terdaftar seperti `yuhu.fikfikk.my.id`) langsung tampil instan (`<200ms`) beserta tag statusnya (`Terdaftar di Website` vs `Belum di Website`) dan dipisahkan secara tegas dari subdomain Cloudflare Tunnel (`main-tunnel`). Banner diagnostik izin `Read` vs `Edit` disajikan secara **collapsible** dengan 4 kartu langkah terstruktur, sedangkan kolom aksi disajikan dalam **Grid 2×2** (`Kelola DNS`, `Edge Config`, `Point IP`, `Purge Cache`) tanpa luapan horizontal. |

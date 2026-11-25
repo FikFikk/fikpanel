@@ -373,11 +373,26 @@ export interface SystemTask {
 
 // ── Security Center & Scanner ─────────────────────────────────────────────
 export interface SSHConfig {
+  is_linux: boolean;
+  installed: boolean;
+  active_service: boolean;
   port: number;
   password_auth: boolean;
-  permit_root_login: boolean;
   pubkey_auth: boolean;
-  active_service: boolean;
+  permit_root_login: 'yes' | 'prohibit-password' | 'no' | string;
+  max_auth_tries: number;
+  cloud_init_override: boolean;
+  cloud_init_file?: string;
+  config_source: string;
+  authorized_key_count: number;
+}
+
+export interface SSHAuthorizedKey {
+  id: string;
+  type: string;
+  fingerprint: string;
+  comment: string;
+  preview: string;
 }
 
 export interface Fail2BanJail {
@@ -389,22 +404,28 @@ export interface Fail2BanJail {
 }
 
 export interface Fail2BanStatus {
+  is_linux: boolean;
   installed: boolean;
   running: boolean;
   jails: Fail2BanJail[];
 }
 
 export interface ScanFinding {
+  id: string;
   category: 'baseline' | 'risk' | 'malware' | 'vuln';
   severity: 'critical' | 'warning' | 'safe';
   title: string;
   detail: string;
   fix_hint: string;
-  fixHint?: string;
+  target_tab: string;
+  action_key?: string;
+  fixable: boolean;
 }
 
 export interface SecurityScanReport {
+  id?: number;
   score: number;
+  rating: string;
   scanned_at: number;
   risk_count: number;
   malware_count: number;
@@ -630,41 +651,50 @@ export interface FirewallStatus {
 }
 
 // ── Enterprise Security Center & Firewall Guard ───────────────────────────
-export interface PortRule {
+export interface FirewallRule {
   number: number;
-  rule_id?: string;
-  rule_type?: string;
-  ip_version?: string;
-  protocol: string;
+  to: string;
   port: string;
-  status: string;
-  strategy: string;
-  direction: string;
-  source_ip: string;
+  protocol: string;
+  action: 'ALLOW' | 'DENY' | 'REJECT' | 'LIMIT' | string;
+  direction: 'Inbound' | 'Outbound' | string;
+  from: string;
+  ip_version: string;
+  service: string;
   remarks: string;
-  add_time: string;
+  listening: boolean;
+  process: string;
+  protected: boolean;
 }
 
-export interface IPRule {
-  number: number;
-  ip: string;
-  strategy: string;
-  direction: string;
-  remarks: string;
-  add_time: string;
+export interface FirewallListeningPort {
+  protocol: string;
+  address: string;
+  port: string;
+  process: string;
+  pid: number;
+  exposed_public: boolean;
+  service: string;
 }
 
 export interface FirewallExtendedStatus {
+  is_linux: boolean;
+  installed: boolean;
   enabled: boolean;
+  hostname: string;
+  default_incoming: string;
+  default_outgoing: string;
   block_icmp: boolean;
-  port_rules_count: number;
-  ip_rules_count: number;
-  port_forward_count: number;
-  area_rules_count: number;
-  rules: PortRule[];
-  ip_rules: IPRule[];
+  ssh_port: number;
+  panel_port: number;
+  inbound_count: number;
+  outbound_count: number;
+  listening_count: number;
+  rules: FirewallRule[];
+  listening_ports: FirewallListeningPort[];
   site_logs_path: string;
   site_logs_size: string;
+  site_logs_bytes: number;
   raw: string;
 }
 
@@ -676,27 +706,31 @@ export interface BruteForceConfig {
   ip_max_retries: number;
   ip_ban_duration_minutes: number;
   retention_minutes: number;
+  notify_on_login: boolean;
+  notify_on_ban: boolean;
+  auto_sync_ufw: boolean;
 }
 
-export interface WhitelistIP {
+export interface SecurityIPRule {
+  id: number;
+  list_type: 'whitelist' | 'blacklist';
   ip: string;
   remarks: string;
-  added_at: number;
-}
-
-export interface BlacklistIP {
-  ip: string;
-  reason: string;
+  source: string;
+  sync_ufw: boolean;
   added_at: number;
   expires_at: number;
 }
 
-export interface FailedLoginEvent {
+export interface SecurityLoginEvent {
+  id: number;
   time: number;
   ip: string;
   username: string;
+  source: 'panel' | 'ssh' | string;
+  status: 'failed' | 'success' | 'banned' | string;
   reason: string;
-  source: 'panel' | 'ssh';
+  user_agent?: string;
 }
 
 export interface SystemAccount {
@@ -706,6 +740,8 @@ export interface SystemAccount {
   shell: string;
   home_dir: string;
   locked: boolean;
+  lock_reason: string;
+  is_protected: boolean;
 }
 
 export interface SSHLog {
@@ -714,76 +750,104 @@ export interface SSHLog {
   ip: string;
   port: number;
   status: 'success' | 'failed';
+  method: string;
   message: string;
 }
 
+export interface SSHDayStat {
+  date: string;
+  label: string;
+  success: number;
+  failed: number;
+}
+
 export interface SSHStats {
-  service_active: boolean;
-  port: number;
-  password_auth: boolean;
-  key_auth: boolean;
-  permit_root_login: boolean;
+  config: SSHConfig;
+  log_source: string;
   successful_logins: number;
   failed_logins: number;
   today_success: number;
   today_fail: number;
   yesterday_success: number;
   yesterday_fail: number;
-  seven_days_success: number[];
-  seven_days_fail: number[];
+  daily_stats: SSHDayStat[];
   recent_logs: SSHLog[];
 }
 
-export interface SecurityChecklistItem {
-  id: string;
-  title: string;
-  description: string;
-  status: 'safe' | 'warning' | 'danger';
-  fixable: boolean;
-  action_key: string;
-}
-
 export interface LastLoginInfo {
+  available: boolean;
   ip: string;
+  user: string;
   time: string;
-  port: number;
+  timestamp: number;
+  port?: number;
   success: boolean;
 }
 
-export interface ServerSecurityOverview {
-  score: number;
-  rating: string;
-  last_ssh_login: LastLoginInfo;
-  last_panel_login: LastLoginInfo;
-  checklist: SecurityChecklistItem[];
-}
-
 export interface ProtectionItem {
+  key: string;
+  name: string;
   installed: boolean;
   enabled: boolean;
+  status_text: string;
   summary: string;
+  target_tab: string;
+  toggleable: boolean;
 }
 
 export interface ProtectionOverview {
-  firewall: ProtectionItem;
-  ssh_protection: ProtectionItem;
-  nginx_waf: ProtectionItem;
-  tamper_proof: ProtectionItem;
-  intrusion_detection: ProtectionItem;
-  fail2ban: ProtectionItem;
+  is_linux: boolean;
+  hostname: string;
   enabled_count: number;
   total_count: number;
   client_ip: string;
   is_client_whitelisted: boolean;
+  last_ssh_login: LastLoginInfo;
+  last_panel_login: LastLoginInfo;
+  latest_scan: SecurityScanReport | null;
+  pillars: ProtectionItem[];
+}
+
+export interface SysctlParam {
+  key: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  current_value: string;
+  recommended_value: string;
+  persisted: boolean;
 }
 
 export interface HardeningStatus {
+  is_linux: boolean;
   compiler_blocked: boolean;
+  compilers_found: string[];
   icmp_blocked: boolean;
-  syn_flood_protected: boolean;
-  ip_spoofing_protected: boolean;
-  core_dump_disabled: boolean;
-  tamper_proof_enabled: boolean;
+  sysctl_params: SysctlParam[];
+  fim_enabled: boolean;
+  fim_baseline_count: number;
+  fim_last_updated: number;
+}
+
+export interface FIMEntryStatus {
+  path: string;
+  status: 'ok' | 'modified' | 'missing';
+  expected_hash: string;
+  actual_hash: string;
+  size: number;
+  mode: string;
+  mod_time: number;
+}
+
+export interface FIMCheckResult {
+  enabled: boolean;
+  total_files: number;
+  ok_count: number;
+  modified_count: number;
+  missing_count: number;
+  last_baseline_at: number;
+  checked_at: number;
+  items: FIMEntryStatus[];
 }
 
 // ── Node & PM2 Management ─────────────────────────────────────────────────

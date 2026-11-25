@@ -1,189 +1,329 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   SECURITY OVERVIEW TAB — dasbor ikhtisar postur keamanan (.pg-security-overview)
+   SECURITY OVERVIEW TAB — skor audit, 6 pilar proteksi, login terakhir (.pg-security-overview)
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
   .pg-security-overview {
-    /* Grid atas Overview */
-    .overview-top-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+
+    /* Grid utama atas: Kartu Skor + Kartu 6 Pilar */
+    .ov-hero-grid {
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 330px 1fr;
       gap: var(--space-4);
-      margin-bottom: var(--space-6);
+      align-items: stretch;
     }
-    @media (max-width: 960px) {
-      .overview-top-grid {
+    @media (max-width: 1024px) {
+      .ov-hero-grid {
         grid-template-columns: 1fr;
       }
     }
 
-    .scan-posture-card {
+    /* Kartu Skor Keamanan (radial gauge) */
+    .ov-score-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      text-align: center;
+      padding: var(--space-5);
+      gap: var(--space-4);
+    }
+    .ov-gauge {
+      position: relative;
+      width: 136px;
+      height: 136px;
+      display: grid;
+      place-items: center;
+    }
+    .ov-gauge__svg {
+      width: 136px;
+      height: 136px;
+      transform: rotate(-90deg);
+    }
+    .ov-gauge__track {
+      fill: none;
+      stroke: var(--bg-active);
+      stroke-width: 10;
+    }
+    .ov-gauge__fill {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 10;
+      stroke-linecap: round;
+      transition: stroke-dashoffset var(--duration-slow) var(--ease-out), stroke var(--duration-base) ease;
+    }
+    .ov-gauge__fill--safe {
+      stroke: var(--success);
+    }
+    .ov-gauge__fill--warn {
+      stroke: var(--warning);
+    }
+    .ov-gauge__fill--danger {
+      stroke: var(--danger);
+    }
+    .ov-gauge__center {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      text-align: center;
-      padding: var(--space-6);
+      gap: 2px;
     }
-    .radar-visual {
-      margin-bottom: var(--space-4);
-    }
-    .radar-circle {
-      width: 88px;
-      height: 88px;
-      border-radius: var(--radius-full);
-      border: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--tint-accent);
-    }
-    .radar-circle.spinning {
-      animation: fp-spin 2s linear infinite;
-    }
-    .radar-icon {
-      font-size: 2.2rem;
-      color: var(--accent-strong);
-    }
-    .posture-title {
-      font-size: var(--text-lg);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-      margin-bottom: var(--space-1);
-    }
-    .posture-desc {
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-      margin-bottom: var(--space-4);
-      line-height: var(--leading-normal);
-    }
-    .scan-score-badge {
-      margin-bottom: var(--space-2);
-    }
-    .score-number {
+    .ov-gauge__value {
       font-size: var(--text-2xl);
       font-weight: var(--weight-bold);
-      color: var(--accent-strong);
       font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      line-height: 1;
     }
-    .score-total {
-      font-size: var(--text-sm);
+    .ov-gauge__label {
+      font-size: var(--text-2xs);
       color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-
-    /* Daftar proteksi 6 modul */
-    .protection-list {
+    .ov-gauge--scanning .ov-gauge__svg {
+      animation: fp-spin 2.2s linear infinite;
+    }
+    .ov-score-meta {
       display: flex;
       flex-direction: column;
-      gap: var(--space-3);
-    }
-    .prot-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-2) var(--space-1);
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .prot-row:last-child {
-      border-bottom: none;
-    }
-    .prot-title-wrap {
-      display: flex;
       align-items: center;
       gap: var(--space-2);
     }
-    .prot-name {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-    }
-    .prot-sub {
-      font-size: var(--text-2xs);
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-    .prot-actions {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-    }
-
-    /* Ringkasan 4 kartu pemindaian */
-    .scan-summary-section {
-      margin-bottom: var(--space-6);
-    }
-    .sec-subhead {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      margin-bottom: var(--space-3);
-    }
-    .sec-subtitle {
+    .ov-score-title {
       font-size: var(--text-md);
       font-weight: var(--weight-bold);
       color: var(--text);
     }
-    .scan-cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: var(--space-3);
-    }
-    .stat-category-title {
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semibold);
-      color: var(--text-secondary);
-    }
-    .stat-status-text {
+    .ov-score-sub {
       font-size: var(--text-xs);
       color: var(--text-muted);
-      margin-bottom: var(--space-3);
+      line-height: var(--leading-normal);
     }
-    .link-btn {
-      background: transparent;
-      border: none;
-      color: var(--accent-strong);
-      font-size: var(--text-xs);
-      font-weight: var(--weight-semibold);
-      cursor: pointer;
-      padding: 0;
-    }
-    .link-btn:hover {
-      text-decoration: underline;
-    }
-
-    /* Rekomendasi tindakan */
-    .recommendations-list {
+    .ov-score-actions {
+      width: 100%;
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
     }
-    .rec-card {
+
+    /* Daftar 6 pilar proteksi nyata */
+    .ov-pillars-list {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-3) var(--space-4);
+      flex-direction: column;
     }
-    .rec-title-wrap {
+    .ov-pillar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-3) 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .ov-pillar-row:first-child {
+      padding-top: 0;
+    }
+    .ov-pillar-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .ov-pillar-info {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+    }
+    .ov-pillar-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .ov-pillar-name {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+    }
+    .ov-pillar-summary {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ov-pillar-ctrl {
       display: flex;
       align-items: center;
       gap: var(--space-2);
-      margin-bottom: 2px;
+      flex-shrink: 0;
     }
-    .rec-title {
-      font-size: var(--text-sm);
+
+    /* Ringkasan login terakhir (SSH & Panel) */
+    .ov-login-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-4);
+    }
+    @media (max-width: 768px) {
+      .ov-login-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .ov-login-kv {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    .ov-kv-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .ov-kv-label {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .ov-kv-val {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Ringkasan 4 kategori pemindaian */
+    .ov-scan-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    @media (max-width: 1024px) {
+      .ov-scan-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 560px) {
+      .ov-scan-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .ov-scan-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+    }
+    .ov-scan-card:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .ov-scan-card__top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+    }
+    .ov-scan-card__title {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--text-secondary);
+    }
+    .ov-scan-card__num {
+      font-size: var(--text-xl);
       font-weight: var(--weight-bold);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
       color: var(--text);
     }
-    .rec-desc {
+    .ov-scan-card__foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: var(--text-xs);
+      color: var(--accent-strong);
+      font-weight: var(--weight-medium);
+    }
+
+    /* Daftar temuan & rekomendasi aksi */
+    .ov-rec-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .ov-rec-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--bg-surface);
+    }
+    .ov-rec-item--critical {
+      border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
+      background: color-mix(in srgb, var(--tint-danger) 28%, var(--bg-surface));
+    }
+    .ov-rec-item--warning {
+      border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    }
+    .ov-rec-main {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+      flex: 1;
+    }
+    .ov-rec-title-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .ov-rec-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+    }
+    .ov-rec-detail {
       font-size: var(--text-xs);
       color: var(--text-muted);
+      line-height: var(--leading-normal);
     }
-    .rec-hint {
+    .ov-rec-hint {
       font-size: var(--text-2xs);
       color: var(--text-subtle);
       font-family: var(--font-mono);
-      margin-top: 2px;
+    }
+    .ov-rec-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    @media (max-width: 720px) {
+      .ov-rec-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .ov-rec-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
     }
   }
 }
-

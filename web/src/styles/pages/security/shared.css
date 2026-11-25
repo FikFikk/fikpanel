@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   SECURITY — pusat keamanan server 7 modul (.pg-security)
+   SECURITY CENTER — tata letak dasar & utilitas modul keamanan (.pg-security)
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
@@ -8,65 +8,139 @@
     flex-direction: column;
     gap: var(--space-4);
 
-    /* Header halaman / pane */
-    .pane-header {
+    .sec-tab-pane {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-3);
-      margin-bottom: var(--space-4);
-    }
-    .pane-title {
-      font-size: var(--text-xl);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-    }
-    .pane-subtitle {
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-      margin-top: var(--space-1);
-    }
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
+      flex-direction: column;
+      gap: var(--space-4);
     }
 
-    /* Pembatas garis vertikal antar kontrol */
-    .fw-divider {
-      width: 1px;
-      height: 20px;
-      background: var(--border);
+    /* Grid metrik 4 kolom responsif */
+    .sec-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    @media (max-width: 1120px) {
+      .sec-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 640px) {
+      .sec-kpi-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
-    /* Baris pengaturan bersama antar tab (SSH & Hardening) */
-    .section-title {
-      font-size: var(--text-sm);
-      font-weight: var(--weight-bold);
-      color: var(--text);
-      margin-bottom: var(--space-3);
-    }
-    .setting-item-row {
+    /* Baris pengaturan umum pada seluruh tab */
+    .sec-setting-list {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+    }
+    .sec-setting-row {
+      display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
       padding: var(--space-3) 0;
       border-bottom: 1px solid var(--border-subtle);
     }
-    .setting-item-row:last-child {
-      border-bottom: none;
+    .sec-setting-row:first-child {
+      padding-top: 0;
     }
-    .setting-name {
+    .sec-setting-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .sec-setting-info {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      flex: 1;
+    }
+    .sec-setting-title {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
       font-size: var(--text-sm);
       font-weight: var(--weight-semibold);
       color: var(--text);
     }
-    .setting-desc {
+    .sec-setting-desc {
       font-size: var(--text-xs);
       color: var(--text-muted);
-      margin-top: 2px;
+      line-height: var(--leading-normal);
+    }
+    .sec-setting-ctrl {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+    @media (max-width: 680px) {
+      .sec-setting-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .sec-setting-ctrl {
+        width: 100%;
+        justify-content: flex-start;
+      }
+    }
+
+    /* Toolbar aksi di atas tabel */
+    .sec-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .sec-toolbar-left,
+    .sec-toolbar-right {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .sec-search {
+      width: 240px;
+      max-width: 100%;
+    }
+    @media (max-width: 640px) {
+      .sec-search {
+        width: 100%;
+      }
+    }
+
+    /* Penjajaran kolom kanan di tabel */
+    .col-right {
+      text-align: right;
+    }
+    .col-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-1);
+    }
+
+    /* Skeleton blok saat memuat awal */
+    .sec-skeleton-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: var(--space-4);
+    }
+    .sec-skeleton-card {
+      height: 260px;
+      border-radius: var(--radius-xl);
+    }
+    @media (max-width: 960px) {
+      .sec-skeleton-grid {
+        grid-template-columns: 1fr;
+      }
     }
   }
 }
-
