@@ -1,96 +1,403 @@
-/* Styling halaman SystemManager pada layer pages */
+/* ════════════════════════════════════════════════════════════════════════════
+   SYSTEM OPERATIONS CONSOLE — telemetri host, proses, jaringan, swap, cleaner, diagnostik (.pg-systemmanager)
+   ════════════════════════════════════════════════════════════════════════════ */
+
 @layer pages {
   .pg-systemmanager {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--space-4);
 
-    .cleaner-body {
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-      max-width: 640px;
-    }
-
-    .stat-banner {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 1.25rem;
-      text-align: center;
-    }
-
-    .stat-value {
-      font-size: 2.2rem;
-      font-weight: 800;
-      color: var(--accent);
-      font-family: var(--font-mono);
-    }
-
-    .stat-desc {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-top: 0.25rem;
-    }
-
-    .junk-items {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .junk-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.6rem 0.85rem;
-      background: var(--bg-raised);
-      border-radius: var(--radius-md);
-      font-size: 0.82rem;
-    }
-
-    .clean-opts {
+    /* Grid KPI 4 kolom responsif */
+    .sys-kpi-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-      padding: 1rem;
-      background: var(--bg-inset);
-      border-radius: var(--radius-md);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-3);
     }
-
-    .custom-chk {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      color: var(--text);
-      cursor: pointer;
+    @media (max-width: 1120px) {
+      .sys-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
-
-    .clean-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.75rem;
-    }
-
-    .text-right {
-      text-align: right;
-    }
-
-    .cmd-cell {
-      max-width: 28rem;
-    }
-
-    .table-empty {
-      text-align: center;
-      padding: 2.5rem;
-      color: var(--text-subtle);
-    }
-
-    @media (max-width: 768px) {
-      .clean-opts {
+    @media (max-width: 640px) {
+      .sys-kpi-grid {
         grid-template-columns: 1fr;
       }
+    }
+
+    /* Grid 2 kolom seimbang */
+    .sys-two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-4);
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .sys-two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Kontainer konten tab */
+    .sys-pane {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    /* Toolbar pencarian & filter di dalam kartu */
+    .sys-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .sys-toolbar-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .sys-search {
+      width: 240px;
+      max-width: 100%;
+    }
+    @media (max-width: 640px) {
+      .sys-search {
+        width: 100%;
+      }
+    }
+
+    /* Badge jumlah di tab */
+    .sys-tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: var(--radius-full);
+      background: var(--bg-active);
+      color: var(--text-muted);
+      font-size: var(--text-2xs);
+      font-family: var(--font-mono);
+      font-weight: var(--weight-semibold);
+      font-variant-numeric: tabular-nums;
+    }
+    .sys-tab-count--danger {
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+    }
+
+    /* Key-value info hardware host */
+    .sys-spec-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    @media (max-width: 780px) {
+      .sys-spec-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 480px) {
+      .sys-spec-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .sys-spec-item {
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .sys-spec-label {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .sys-spec-val {
+      font-size: var(--text-xs);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Bilah pecahan RAM bertumpuk (Used + Buffer/Cache + Free) */
+    .sys-mem-bar {
+      display: flex;
+      width: 100%;
+      height: 12px;
+      border-radius: var(--radius-full);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .sys-mem-seg {
+      height: 100%;
+      transition: width var(--duration-base) var(--ease-out);
+    }
+    .sys-mem-seg--used {
+      width: var(--seg-used, 0%);
+      background: var(--accent);
+    }
+    .sys-mem-seg--cache {
+      width: var(--seg-cache, 0%);
+      background: var(--info);
+    }
+    .sys-mem-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-4);
+      margin-top: var(--space-3);
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+    .sys-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    /* Bilah progres mikro di tabel disk, proses, dan disk hogs */
+    .sys-mini-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      min-width: 110px;
+    }
+    .sys-mini-bar {
+      flex: 1;
+      height: 6px;
+      border-radius: var(--radius-full);
+      background: var(--bg-inset);
+      overflow: hidden;
+    }
+    .sys-mini-bar__fill {
+      height: 100%;
+      width: var(--bar-w, 0%);
+      border-radius: var(--radius-full);
+      background: var(--accent);
+      transition: width var(--duration-base) var(--ease-out);
+    }
+    .sys-mini-bar__fill--warn {
+      background: var(--warning);
+    }
+    .sys-mini-bar__fill--danger {
+      background: var(--danger);
+    }
+    .sys-mini-bar__fill--info {
+      background: var(--info);
+    }
+
+    /* Sel tabel proses & aksi */
+    .sys-cmd-cell {
+      max-width: 26rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .sys-cmd-cell:hover {
+      color: var(--accent-strong);
+      text-decoration: underline;
+    }
+    .sys-col-right {
+      text-align: right;
+    }
+    .sys-row-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-1);
+    }
+
+    /* Chip ringkasan state koneksi TCP */
+    .sys-conn-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .sys-conn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      font-size: var(--text-xs);
+    }
+    .sys-conn-pill__label {
+      color: var(--text-muted);
+      font-weight: var(--weight-medium);
+    }
+    .sys-conn-pill__num {
+      font-family: var(--font-mono);
+      font-weight: var(--weight-bold);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+
+    /* Kartu swap preset & tuning memori */
+    .sys-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    @media (max-width: 560px) {
+      .sys-preset-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    .sys-preset-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: var(--space-3) var(--space-2);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-weight: var(--weight-bold);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+    }
+    .sys-preset-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: var(--tint-accent);
+      color: var(--accent-strong);
+    }
+    .sys-preset-btn.is-selected {
+      border-color: var(--accent);
+      background: var(--tint-accent);
+      color: var(--accent-strong);
+    }
+    .sys-preset-btn small {
+      font-family: var(--font-sans);
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-regular);
+      color: var(--text-muted);
+    }
+
+    /* Daftar kategori cleaner dengan checkbox terstruktur */
+    .sys-cleaner-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .sys-cleaner-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-inset);
+      cursor: pointer;
+      transition: border-color var(--duration-fast) ease;
+    }
+    .sys-cleaner-row:hover {
+      border-color: var(--border-strong);
+    }
+    .sys-cleaner-left {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      min-width: 0;
+      flex: 1;
+    }
+    .sys-cleaner-left input {
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+    .sys-cleaner-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .sys-cleaner-title {
+      font-size: var(--text-sm);
+      font-weight: var(--weight-semibold);
+      color: var(--text);
+    }
+    .sys-cleaner-desc {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+    .sys-cleaner-size {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-bold);
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    /* Log diagnostik kernel & OOM killer */
+    .sys-diag-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      max-height: 460px;
+      overflow-y: auto;
+    }
+    .sys-diag-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-inset);
+      font-size: var(--text-xs);
+    }
+    .sys-diag-row--oom {
+      border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+      background: color-mix(in srgb, var(--tint-danger) 30%, var(--bg-inset));
+    }
+    .sys-diag-msg {
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+      word-break: break-word;
+      line-height: var(--leading-normal);
+    }
+
+    /* Modal Process Inspector & Reboot */
+    .sys-inspector-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-3);
+    }
+    @media (max-width: 560px) {
+      .sys-inspector-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .sys-code-box {
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      word-break: break-all;
     }
   }
 }

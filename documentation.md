@@ -36,11 +36,11 @@ flowchart TD
 ```mermaid
 flowchart TD
     Req[Pengunjung Mengakses URL yang Galat: 403, 404, 502, 503] --> DeteksiStatus{Kode Status Nginx}
-    
+
     DeteksiStatus --> CekFileProyek{Ada Berkas di Root Proyek? /error/404.html atau /404.html}
     CekFileProyek -- Ya --> LayaniProyek[Layani Berkas Kustom Milik Proyek Pengguna]
     CekFileProyek -- Tidak Ada --> FallbackSistem[Arahkan ke /var/lib/fikpanel/error_pages/*.html]
-    
+
     FallbackSistem --> RenderDark[Render Template Pitch Black dengan Telemetri Diagnostik]
     RenderDark --> InfoPengunjung[Tampilkan Pesan Ramah Pengunjung & Tombol Muat Ulang/Kembali]
     RenderDark --> TelemetriOwner[Sediakan Payload Diagnostik Host, Path, Trace ID, & Solusi Teknis]
@@ -61,14 +61,14 @@ flowchart TD
     CekTOTP -- Tidak --> TerbitkanSesi
     TerbitkanSesi --> SimpanHashSesi[Simpan SHA-256 Token ke DB]
     SimpanHashSesi --> SesiAktif[Sesi Berjalan Standar]
-    
+
     SesiAktif --> AksesSensitif{Akses Aksi Sensitif / Root?}
     AksesSensitif -- Ya --> CekSudoWindow{Window Sudo <= 5 Menit?}
     CekSudoWindow -- Tidak --> MintaReAuth[Minta Password Ulang]
     MintaReAuth --> VerifikasiArgon2
     CekSudoWindow -- Ya --> BukaPTY[Minta Agent Buka PTY / Jalankan Aksi]
     AksesSensitif -- Tidak --> OperasiBiasa[Jalankan Request Read-Only]
-    
+
     SesiAktif --> TimeoutLogout{Idle 15 Menit / Expired?}
     TimeoutLogout -- Ya --> HapusSesi[Hapus Sesi dari DB & Invalidate Cookie]
 ```
@@ -80,16 +80,16 @@ flowchart TD
     ReqFile[Permintaan Operasi Berkas] --> ValPath{Validasi & Sanitasi Path}
     ValPath -- Path Traversal / Ilegal --> TolakReq[Tolak HTTP 400 Bad Request]
     ValPath -- Path Valid --> CekAksi{Jenis Aksi}
-    
+
     CekAksi -- Baca / List --> CekExist{Berkas / Folder Ada?}
     CekExist -- Tidak --> Ret404[Kembalikan HTTP 404]
     CekExist -- Ya --> RenderResp[Kirim Metadata / Konten]
-    
+
     CekAksi -- Tulis / Edit / Unggah --> CekBatasUkuran{Ukuran <= Batas?}
     CekBatasUkuran -- Terlalu Besar --> TolakUkuran[Tolak HTTP 400 Ukuran Melebihi Batas]
     CekBatasUkuran -- Lolos --> TulisDisk[Tulis Berkas ke Disk]
     TulisDisk --> CatatAudit[Rekam Riwayat ke Audit Log]
-    
+
     CekAksi -- Hapus / Chmod --> CekProteksiRoot{Target Root Drive?}
     CekProteksiRoot -- Ya --> TolakAksiRoot[Blokir Operasi Demi Integritas Sistem]
     CekProteksiRoot -- Tidak --> EksekusiOS[Eksekusi via OS File System]
@@ -101,7 +101,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     PilihEngine[Pilih Tab Engine: MySQL / Postgres / MongoDB / Redis] --> CekTerpasang{Engine Terpasang & Aktif?}
-    
+
     CekTerpasang -- Belum Terpasang --> EmptyState[Tampilkan Banner Edukatif Belum Terkonfigurasi]
     EmptyState --> KlikInstall[Klik Quick Install]
     KlikInstall --> ModalVersi[Pilih Versi misal 7.0 & Mode Native/Docker]
@@ -112,7 +112,7 @@ flowchart TD
     StreamLog --> SelesaiInstall{Instalasi Sukses?}
     SelesaiInstall -- Ya --> UpdateState[Set Engine Installed & Refresh UI]
     UpdateState --> DashboardDB
-    
+
     CekTerpasang -- Sudah Terpasang --> DashboardDB[Tampilkan Dashboard & Tabel Database]
     DashboardDB --> TambahDB[Tambah DB + Generate Password Acak 16 Karakter]
     DashboardDB --> KelolaPass[Lihat / Sensor / Salin Password User & Root]
@@ -139,30 +139,30 @@ flowchart TD
 ```mermaid
 flowchart TD
     BukaMenuDocker[Buka Menu Docker] --> DeteksiEngine{Engine Docker & Compose Terpasang?}
-    
+
     DeteksiEngine -- Belum Terpasang --> TampilBanner[Tampilkan Floating Banner: Docker or Compose not installed]
     TampilBanner --> KlikInstallEngine[Klik Install Docker Suite]
     KlikInstallEngine --> AntreanDocker[Kirim Tugas docker_install ke Messages Box]
     AntreanDocker --> EksekusiInstall[Unduh GPG, Setup Repo, Pasang docker-ce & compose-plugin]
     EksekusiInstall --> SelesaiEngine[Status Engine Berubah Aktif / Running]
     SelesaiEngine --> TampilSuite
-    
+
     DeteksiEngine -- Sudah Terpasang --> TampilSuite[Tampilkan 10 Tab Manajemen Kontainerisasi]
     TampilSuite --> PilihAksi{Pilih Operasi Kontainer}
-    
+
     PilihAksi -- Template 1-Klik --> PilihAplikasi[Pilih WordPress, Redis, Postgres, Nginx, Portainer, dll.]
     PilihAplikasi --> KonfigurasiForm[Isi Port Host, Path Mount, Variabel Lingkungan]
     KonfigurasiForm --> DeployTemplate[POST /api/docker/templates/deploy]
     DeployTemplate --> KontainerBerjalan[Kontainer Aktif & Port Terpetakan]
-    
+
     PilihAksi -- Docker Compose --> TulisYAML[Definisikan Stack pada Editor YAML]
     TulisYAML --> ComposeUp[POST /api/docker/compose/up]
     ComposeUp --> MultiKontainer[Seluruh Service Stack Berjalan Bersama]
-    
+
     PilihAksi -- Cloud Hub Image --> CariHub[Cari Citra Resmi di Docker Hub]
     CariHub --> TarikCitra[Tarik Citra dengan Tag Tertentu]
     TarikCitra --> SimpanLokal[Tersimpan di Daftar Citra Lokal]
-    
+
     KontainerBerjalan --> Kontrol{Start / Stop / Restart / Pause / Delete}
     Kontrol --> UpdateKontainer[Eksekusi via Socket Docker / CLI]
 ```
@@ -172,18 +172,18 @@ flowchart TD
 ```mermaid
 flowchart TD
     Mulai[Pemicu: install.sh / CLI discover / UI Dashboard] --> ScanHost[Pindai Host Server: Nginx, Docker, PM2, K8s]
-    
+
     ScanHost --> NginxScan[Pindai /etc/nginx/sites-* & conf.d/]
     ScanHost --> DockerScan[Pindai Compose Files di /var/www, /opt, /home/**]
     ScanHost --> PM2Scan[Pindai Proses PM2 jlist]
     ScanHost --> K8sScan[Deteksi K3s / MicroK8s / Kubectl]
-    
+
     NginxScan --> BandingDB{Ada di Database FikPanel?}
     BandingDB -- Belum Ada --> Unadopted[Tandai Belum Diadopsi]
     Unadopted --> AksiAdopsi[User / Skrip Pilih Adopsi]
     AksiAdopsi --> SimpanSite[Daftarkan ke SQLite dengan Web Root Asli]
     BandingDB -- Sudah Ada --> Adopted[Tandai Terdaftar & Kelola Normal]
-    
+
     K8sScan -- K3s / K8s Aktif --> K8sReady[Orkestrator K8s Aktif]
     K8sReady --> KelolaK8s[Pantau Pods, Deployments, Services, Scale, YAML Apply, Logs]
     K8sScan -- K8s Belum Ada --> K8sNotReady[Tampilkan Banner Edukatif & 1-Klik Install K3s]
@@ -197,32 +197,32 @@ flowchart TD
 flowchart TD
     RunInstall[Jalankan scripts/install.sh sebagai Root] --> PreCheck[Pre-Deteksi RAM, Swap, & Software Host]
     PreCheck --> StatusBanner[Tampilkan Status Deteksi Software Host]
-    
+
     StatusBanner --> PisahkanKomponen{Identifikasi Prasyarat}
     PisahkanKomponen --> CoreWajib[WAJIB: FikPanel Core Daemon + Embedded SQLite]
     PisahkanKomponen --> OpsiStack[OPSIONAL: Nginx, MySQL, PHP, Node.js, Docker, Fail2ban]
-    
+
     CoreWajib --> PilihProfil[Pilih Profil Instalasi 1-5]
     OpsiStack --> PilihProfil
-    
+
     PilihProfil -- 1) Full LNMP --> SetLNMP[Aktifkan Nginx + MySQL 8.0 + PHP 8.3 FPM]
     PilihProfil -- 2) Node.js & Web --> SetNode[Aktifkan Nginx + Node.js 20 + PM2]
     PilihProfil -- 3) Reverse Proxy --> SetProxy[Aktifkan Nginx Saja]
     PilihProfil -- 4) Minimal Core --> SetMinimal[Hanya FikPanel Core & SQLite - Bebas Beban]
     PilihProfil -- 5) Kustom --> TanyaManual[Tanya Konfirmasi Tiap Komponen yang Belum Ada]
-    
+
     SetLNMP --> EksekusiInstall[Eksekusi Pemasangan Paket]
     SetNode --> EksekusiInstall
     SetProxy --> EksekusiInstall
     SetMinimal --> PasangDaemon[Pasang Biner & Aktifkan Systemd fikpanel]
     TanyaManual --> EksekusiInstall
-    
+
     EksekusiInstall --> CekExisting{Komponen Sudah Terpasang di Server?}
     CekExisting -- Ya --> SmartSkip[Lewati Pemasangan - Amankan Konfigurasi & Data Existing]
     CekExisting -- Belum --> InstallPkg[Pasang via Package Manager APT / DNF]
     SmartSkip --> PasangDaemon
     InstallPkg --> PasangDaemon
-    
+
     PasangDaemon --> AutoDiscover[Pindai Otomatis & Adopsi Vhost, Docker, PM2, K8s ke DB]
     AutoDiscover --> SiapAkses[Panel Aktif di Port 1405 - Software Opsional Dapat Ditambah via Web UI]
 ```
@@ -266,14 +266,14 @@ flowchart TD
     FormatCrontab --> KonversiWaktu[Konversi Jam Lokal WIB ke Jam Server UTC]
     KonversiWaktu --> SimpanDB[(Simpan / Perbarui Baris DB di cron_jobs)]
     SimpanDB --> CatatAudit[Catat Audit Log cron.create / cron.update]
-    
+
     SimpanDB --> SchedulerLoop{Daemon Cron Manager Cek Tiap 60 Detik}
     SchedulerLoop --> CekStatus{Tugas Aktif enabled == 1?}
     CekStatus -- Dijeda / Paused --> Lewati[Lewati Pengecekan Menit Ini]
     CekStatus -- Aktif --> EvaluasiSpec{Waktu Server Saat Ini Cocok dengan Pola Crontab?}
     EvaluasiSpec -- Tidak Cocok --> Lewati
     EvaluasiSpec -- Cocok --> EksekusiPerintah[Spawn Subproses Shell dengan Batas Waktu Timeout]
-    
+
     EksekusiPerintah --> HasilEksekusi[Perintah Selesai: Ambil Output, Status, Exit Code, Durasi]
     HasilEksekusi --> UpdateStatusJob[Perbarui last_run_at & last_status di cron_jobs]
     UpdateStatusJob --> OpsiLogDB{Simpan Log ke Database save_log == 1?}
@@ -292,16 +292,16 @@ flowchart TD
     ScanUnits[Pindai Host Server: systemctl list-units] --> FilterScope{Scope Filter: running vs all}
     FilterScope -- running --> RunningUnits[Ambil Unit Berstatus running]
     FilterScope -- all --> AllUnits[Ambil Seluruh Unit Loaded & Installed]
-    
+
     RunningUnits --> MergeManaged[Gabungkan Allowlist managed_services SQLite]
     AllUnits --> MergeManaged
-    
+
     MergeManaged --> BatchShow[Batch Query: systemctl show unit1 unit2... per 40 unit]
     BatchShow --> ParseProps[Ekstraksi PID, RSS Memori, Peak RAM, Threads, Uptime, ExecStart, Boot State]
     ParseProps --> Categorize[Klasifikasi Otomatis: web, database, security, supervisor, system]
     Categorize --> EnrichProtected[Tandai Flag Protected: fikpanel, sshd, ssh]
     EnrichProtected --> RenderUI[Sajikan ke UI dengan Statistik Kartu & Filter Kategori]
-    
+
     RenderUI --> UserAction{Aksi Pengguna}
     UserAction -- Start / Restart / Reload --> ExecSystemctl[Eksekusi systemctl action unit]
     UserAction -- Stop / Disable --> CekProteksi{Unit Protected?}
@@ -309,9 +309,49 @@ flowchart TD
     CekProteksi -- Tidak --> ExecSystemctl
     UserAction -- Buka Log --> FetchJournal[journalctl -u unit -n lines --no-pager]
     UserAction -- Inspeksi Teknis --> FetchInspect[systemctl show unit]
-    
+
     ExecSystemctl --> CatatAudit[Catat Riwayat ke Audit Log]
     CatatAudit --> RefreshStatus[Perbarui Status Runtime Unit]
+```
+
+### 1.10 Siklus Operasi System & Performance Console (`/system`)
+
+```mermaid
+flowchart TD
+    BukaSys[Buka Halaman System Console 6-Tab] --> LoadOv[Muat Telemetri Host /proc, Partisi Disk & Inode, Sinyal OOM & Reboot]
+    LoadOv --> PilihTab{Pilih Modul Operasional}
+
+    PilihTab -- Ringkasan & Disk --> AksiHost{Aksi Host}
+    AksiHost -- Inspeksi Disk/Inode --> TampilDisk[Tampilkan Penggunaan Blok & Inode Fisik Tanpa Pseudo-FS]
+    AksiHost -- Reboot Server --> CekHost{Ketik Hostname Persis?}
+    CekHost -- Tidak Cocok --> TolakReboot[Tolak HTTP 400]
+    CekHost -- Cocok --> JadwalReboot[Catat Audit & Jadwalkan Reboot Jeda 2 Detik]
+
+    PilihTab -- Task Manager --> ListProc[Baca ps + Sort CPU/RAM/PID + Filter Non-Root/Zombie + Live Polling]
+    ListProc --> InspeksiProc[Buka Process Inspector /proc/pid: FD, Threads, OOM Score, Cwd, Exe]
+    InspeksiProc --> AksiProc{Renice / Sinyal HUP, TERM, KILL}
+    AksiProc -- PID <= 1 / Self / sshd / systemd --> BlokirVital[Tolak HTTP 400 Proteksi Proses Vital]
+    AksiProc -- Proses Non-Vital --> EksekusiProc[Eksekusi Sinyal/Renice & Catat Audit]
+
+    PilihTab -- Jaringan & Port --> ScanNet[Baca ss -tulnp & Distribusi State TCP ss -tan]
+    ScanNet --> FreePort[1-Klik Bebaskan Port Non-Vital via SIGTERM]
+
+    PilihTab -- Swap & Memori --> AksiMem{Operasi Memori}
+    AksiMem -- 1-Klik Swapfile --> CekRuang{Sisa Root >= 2 GB?}
+    CekRuang -- Tidak Cukup --> TolakSwap[Tolak HTTP 400]
+    CekRuang -- Cukup --> BuatSwap[fallocate/dd + chmod 0600 + mkswap + swapon + /etc/fstab]
+    AksiMem -- Tuning Kernel --> SimpanSysctl[sysctl -w + Persist /etc/sysctl.d/99-fikpanel-memory.conf]
+    AksiMem -- Drop RAM Cache --> DropCache[sync + drop_caches + Ukur Byte RAM Dibebaskan]
+
+    PilihTab -- Disk Cleaner & Hogs --> AksiClean{Pembersihan / Analisis}
+    AksiClean -- Smart Cleaner 6 Kategori --> ExecClean[Bersihkan APT, Journald, Log, Temp >72j, Dev Cache, Docker + Hitung Reclaimed Bytes]
+    AksiClean -- Disk Hogs Analyzer --> CekRoot{Root Masuk Allowlist?}
+    CekRoot -- Tidak --> TolakRoot[Tolak HTTP 400 Anti Path Traversal]
+    CekRoot -- Ya --> JalankanDu[du -x -B1 --max-depth=1 Timeout 15 Detik Top 15]
+
+    PilihTab -- Updates & Diagnostik --> AksiDiag{Pembaruan & Log}
+    AksiDiag -- APT Security Updates --> ApplySec[apt-get install --only-upgrade --force-confold Non-Interaktif]
+    AksiDiag -- Kernel & Systemd Log --> KlasifikasiLog[Baca dmesg & journalctl -p err + Sorot Insiden OOM Killer]
 ```
 
 ---
@@ -320,123 +360,123 @@ flowchart TD
 
 ### 2.1 Entitas `users`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `id` | Primary Key, Auto Increment | Identitas unik akun pengguna |
-| `username` | Panjang 3-32 karakter, alphanumeric, wajib unik | Nama akun login operator panel |
-| `password_hash` | Wajib string ter-encode Argon2id valid | Hash menggunakan parameter memori 19 MiB |
-| `totp_secret` | BLOB terenkripsi AES-256-GCM, opsional (bisa NULL) | Kunci rahasia 2FA, hanya didekripsi saat validasi |
-| `role` | Wajib bernilai `'admin'` atau `'viewer'` | Viewer hanya memiliki akses read-only |
-| `created_at` | Timestamp Unix integer, tidak boleh null | Waktu pendaftaran akun |
-| `last_login_at` | Timestamp Unix integer, nullable | Diperbarui saat proses autentikasi berhasil |
+| Kolom           | Aturan Validasi                                    | Catatan Bisnis                                    |
+| --------------- | -------------------------------------------------- | ------------------------------------------------- |
+| `id`            | Primary Key, Auto Increment                        | Identitas unik akun pengguna                      |
+| `username`      | Panjang 3-32 karakter, alphanumeric, wajib unik    | Nama akun login operator panel                    |
+| `password_hash` | Wajib string ter-encode Argon2id valid             | Hash menggunakan parameter memori 19 MiB          |
+| `totp_secret`   | BLOB terenkripsi AES-256-GCM, opsional (bisa NULL) | Kunci rahasia 2FA, hanya didekripsi saat validasi |
+| `role`          | Wajib bernilai `'admin'` atau `'viewer'`           | Viewer hanya memiliki akses read-only             |
+| `created_at`    | Timestamp Unix integer, tidak boleh null           | Waktu pendaftaran akun                            |
+| `last_login_at` | Timestamp Unix integer, nullable                   | Diperbarui saat proses autentikasi berhasil       |
 
 ### 2.2 Entitas `sites`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `id` | Primary Key, Auto Increment | Identifikasi unik site |
-| `domain` | Wajib RFC1123, non-wildcard, unik (termasuk terhadap alias situs lain) | Domain utama = baris non-wildcard pertama; juga nama file vhost |
-| `aliases` | JSON Array domain valid, tanpa duplikat | Boleh wildcard (`*.x.com`); `www.` ditambahkan otomatis untuk domain apex bila opsi aktif |
-| `kind` | Wajib salah satu: `'php'`, `'node'`, `'go'`, `'python'`, `'static'`, `'proxy'` | Standar multi-runtime resmi FikPanel |
-| `upstream` | Wajib URL `http(s)://host[:port]` jika `kind` bernilai `'proxy'`, `'node'`, `'go'`, atau `'python'` | Karakter `; { } ' "` dan spasi ditolak |
-| `root_path` | Wajib path absolut untuk kind selain `'proxy'` | Standar FikPanel: `/home/<user>/web/<domain>/public` (PHP), `/home/<user>/node/<domain>` (Node.js), `/home/<user>/go/<domain>` (Go), `/home/<user>/python/<domain>` (Python), `/home/<user>/static/<domain>/public` (Static). Direktori sistem (`/`, `/etc`, `/usr`, `/root`, dst.) ditolak |
-| `php_version` | Format `X.Y`, hanya untuk `kind='php'` | Menentukan socket `/run/php/phpX.Y-fpm.sock` |
-| `framework` | String (misal: `'Laravel'`, `'Nuxt'`, `'Next.js'`, `'Hono'`, `'Express'`, `'Go Service'`, `'Python'`, dsb.) | Metadata framework proyek hasil inspeksi manifest direktori/proses untuk label badge informatif |
-| `description` | Maks 200 karakter, opsional | Catatan bebas untuk operator |
-| `ssl_mode` | Wajib salah satu: `'none'`, `'letsencrypt'`, `'custom'`, `'cloudflare'` | Mendukung mode Let's Encrypt ACME, sertifikat manual/kustom, serta mode Cloudflare Flexible / Cloudflare Tunnel |
-| `force_https` | Boolean (0/1), default 1 | Redirect 301 ke HTTPS, aktif hanya bila sertifikat `issued` |
-| `hsts` | Boolean (0/1), default 0 | Hanya bisa 1 bila `force_https=1`; header `max-age=31536000` |
-| `extra_conf` | String konfigurasi Nginx bebas | Snippet wajib lolos uji sintaks `nginx -t` |
-| `enabled` | Boolean (0 atau 1), default 1 | 0 = file vhost di-rename menjadi `.conf.disabled` |
-| `request_count` | Integer (terhitung otomatis saat query API) | Jumlah riil permintaan HTTP dari baris log akses Nginx (`/var/log/nginx/<domain>.access.log`, `.log.1`, dan `.log.*.gz`) |
-| `has_git` | Boolean (terdeteksi otomatis dari direktori `.git`) | Menentukan ketersediaan badge repositori Git & tombol operasi **Git Pull** khusus situs yang di-clone dari Git |
-| `has_cicd` | Boolean (terdeteksi otomatis dari berkas alur kerja CI/CD) | Menandai proyek memiliki alur integrasi otomatis (GitHub Actions, Action Runner, GitLab CI, Jenkins) |
-| `cicd_provider` | String (`github-actions`, `actions-runner`, `gitlab-ci`, `jenkins`) | Menentukan penyedia alur kerja otomatisasi CI/CD untuk menampilkan lencana visual |
-| `updated_at` | Timestamp Unix integer | Waktu perubahan konfigurasi terakhir |
+| Kolom           | Aturan Validasi                                                                                             | Catatan Bisnis                                                                                                                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | Primary Key, Auto Increment                                                                                 | Identifikasi unik site                                                                                                                                                                                                                                                                      |
+| `domain`        | Wajib RFC1123, non-wildcard, unik (termasuk terhadap alias situs lain)                                      | Domain utama = baris non-wildcard pertama; juga nama file vhost                                                                                                                                                                                                                             |
+| `aliases`       | JSON Array domain valid, tanpa duplikat                                                                     | Boleh wildcard (`*.x.com`); `www.` ditambahkan otomatis untuk domain apex bila opsi aktif                                                                                                                                                                                                   |
+| `kind`          | Wajib salah satu: `'php'`, `'node'`, `'go'`, `'python'`, `'static'`, `'proxy'`                              | Standar multi-runtime resmi FikPanel                                                                                                                                                                                                                                                        |
+| `upstream`      | Wajib URL `http(s)://host[:port]` jika `kind` bernilai `'proxy'`, `'node'`, `'go'`, atau `'python'`         | Karakter `; { } ' "` dan spasi ditolak                                                                                                                                                                                                                                                      |
+| `root_path`     | Wajib path absolut untuk kind selain `'proxy'`                                                              | Standar FikPanel: `/home/<user>/web/<domain>/public` (PHP), `/home/<user>/node/<domain>` (Node.js), `/home/<user>/go/<domain>` (Go), `/home/<user>/python/<domain>` (Python), `/home/<user>/static/<domain>/public` (Static). Direktori sistem (`/`, `/etc`, `/usr`, `/root`, dst.) ditolak |
+| `php_version`   | Format `X.Y`, hanya untuk `kind='php'`                                                                      | Menentukan socket `/run/php/phpX.Y-fpm.sock`                                                                                                                                                                                                                                                |
+| `framework`     | String (misal: `'Laravel'`, `'Nuxt'`, `'Next.js'`, `'Hono'`, `'Express'`, `'Go Service'`, `'Python'`, dsb.) | Metadata framework proyek hasil inspeksi manifest direktori/proses untuk label badge informatif                                                                                                                                                                                             |
+| `description`   | Maks 200 karakter, opsional                                                                                 | Catatan bebas untuk operator                                                                                                                                                                                                                                                                |
+| `ssl_mode`      | Wajib salah satu: `'none'`, `'letsencrypt'`, `'custom'`, `'cloudflare'`                                     | Mendukung mode Let's Encrypt ACME, sertifikat manual/kustom, serta mode Cloudflare Flexible / Cloudflare Tunnel                                                                                                                                                                             |
+| `force_https`   | Boolean (0/1), default 1                                                                                    | Redirect 301 ke HTTPS, aktif hanya bila sertifikat `issued`                                                                                                                                                                                                                                 |
+| `hsts`          | Boolean (0/1), default 0                                                                                    | Hanya bisa 1 bila `force_https=1`; header `max-age=31536000`                                                                                                                                                                                                                                |
+| `extra_conf`    | String konfigurasi Nginx bebas                                                                              | Snippet wajib lolos uji sintaks `nginx -t`                                                                                                                                                                                                                                                  |
+| `enabled`       | Boolean (0 atau 1), default 1                                                                               | 0 = file vhost di-rename menjadi `.conf.disabled`                                                                                                                                                                                                                                           |
+| `request_count` | Integer (terhitung otomatis saat query API)                                                                 | Jumlah riil permintaan HTTP dari baris log akses Nginx (`/var/log/nginx/<domain>.access.log`, `.log.1`, dan `.log.*.gz`)                                                                                                                                                                    |
+| `has_git`       | Boolean (terdeteksi otomatis dari direktori `.git`)                                                         | Menentukan ketersediaan badge repositori Git & tombol operasi **Git Pull** khusus situs yang di-clone dari Git                                                                                                                                                                              |
+| `has_cicd`      | Boolean (terdeteksi otomatis dari berkas alur kerja CI/CD)                                                  | Menandai proyek memiliki alur integrasi otomatis (GitHub Actions, Action Runner, GitLab CI, Jenkins)                                                                                                                                                                                        |
+| `cicd_provider` | String (`github-actions`, `actions-runner`, `gitlab-ci`, `jenkins`)                                         | Menentukan penyedia alur kerja otomatisasi CI/CD untuk menampilkan lencana visual                                                                                                                                                                                                           |
+| `updated_at`    | Timestamp Unix integer                                                                                      | Waktu perubahan konfigurasi terakhir                                                                                                                                                                                                                                                        |
 
 ### 2.3 Entitas `certificates`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `site_id` | Foreign Key ke `sites(id)`, Unik, On Delete Cascade | Satu sertifikat per site |
-| `status` | `'none'`, `'pending'`, `'issued'`, `'failed'` | Hanya `issued` yang mengaktifkan blok 443 |
-| `issuer` | String | Penerbit (misal: Let's Encrypt E6) |
-| `domains` | JSON Array | SAN yang tercakup sertifikat (Issued To) |
-| `not_before` / `not_after` | Timestamp Unix integer | Masa berlaku sertifikat |
-| `signature` / `key_type` | String | Algoritma tanda tangan & jenis kunci (ECDSA P-256) |
-| `last_error` | Text, nullable | Pesan kegagalan penerbitan / renew terakhir |
-| `renewed_at` | Timestamp Unix integer, nullable | Waktu terakhir penerbitan berhasil |
+| Kolom                      | Aturan Validasi                                     | Catatan Bisnis                                     |
+| -------------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| `site_id`                  | Foreign Key ke `sites(id)`, Unik, On Delete Cascade | Satu sertifikat per site                           |
+| `status`                   | `'none'`, `'pending'`, `'issued'`, `'failed'`       | Hanya `issued` yang mengaktifkan blok 443          |
+| `issuer`                   | String                                              | Penerbit (misal: Let's Encrypt E6)                 |
+| `domains`                  | JSON Array                                          | SAN yang tercakup sertifikat (Issued To)           |
+| `not_before` / `not_after` | Timestamp Unix integer                              | Masa berlaku sertifikat                            |
+| `signature` / `key_type`   | String                                              | Algoritma tanda tangan & jenis kunci (ECDSA P-256) |
+| `last_error`               | Text, nullable                                      | Pesan kegagalan penerbitan / renew terakhir        |
+| `renewed_at`               | Timestamp Unix integer, nullable                    | Waktu terakhir penerbitan berhasil                 |
 
 ### 2.4 Entitas `managed_services`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `unit` | Primary Key, pola `*.service`, regex aman | Allowlist unit systemd yang diizinkan dikontrol; didaftarkan otomatis via dynamic discovery dari unit file yang terpasang di host Linux |
-| `label` | String deskriptif, nullable | Nama manusia untuk unit layanan (misal: "MySQL Database Server", "PHP 8.5 FastCGI (FPM)") |
-| `protected` | Boolean (0 atau 1), default 0 | Nilai 1 (seperti sshd, panel) wajib konfirmasi ganda sebelum modifikasi |
+| Kolom       | Aturan Validasi                           | Catatan Bisnis                                                                                                                          |
+| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit`      | Primary Key, pola `*.service`, regex aman | Allowlist unit systemd yang diizinkan dikontrol; didaftarkan otomatis via dynamic discovery dari unit file yang terpasang di host Linux |
+| `label`     | String deskriptif, nullable               | Nama manusia untuk unit layanan (misal: "MySQL Database Server", "PHP 8.5 FastCGI (FPM)")                                               |
+| `protected` | Boolean (0 atau 1), default 0             | Nilai 1 (seperti sshd, panel) wajib konfirmasi ganda sebelum modifikasi                                                                 |
 
 ### 2.5 Entitas `audit_log`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `id` | Primary Key, Auto Increment | Urutan peristiwa audit |
-| `ts` | Timestamp Unix integer, wajib terindeks | Waktu presisi eksekusi perintah |
-| `user_id` | Foreign Key ke `users(id)`, On Delete Set Null | Operator yang melakukan aksi (NULL jika system/AI) |
-| `actor` | Wajib salah satu: `'user'`, `'system'`, `'ai'` | Pengklasifikasi sumber pemicu aksi |
-| `action` | String nama aksi terformat (`kategori.verb`) | Nama operasi, misal `site.create`, `service.restart` |
-| `target` | String identifier target | Nama unit service, domain site, atau PID |
-| `ok` | Boolean (0 atau 1) | Hasil status keberhasilan aksi |
-| `detail` | String teks maks 4096 byte | Rangkuman output atau pesan galat |
+| Kolom     | Aturan Validasi                                | Catatan Bisnis                                       |
+| --------- | ---------------------------------------------- | ---------------------------------------------------- |
+| `id`      | Primary Key, Auto Increment                    | Urutan peristiwa audit                               |
+| `ts`      | Timestamp Unix integer, wajib terindeks        | Waktu presisi eksekusi perintah                      |
+| `user_id` | Foreign Key ke `users(id)`, On Delete Set Null | Operator yang melakukan aksi (NULL jika system/AI)   |
+| `actor`   | Wajib salah satu: `'user'`, `'system'`, `'ai'` | Pengklasifikasi sumber pemicu aksi                   |
+| `action`  | String nama aksi terformat (`kategori.verb`)   | Nama operasi, misal `site.create`, `service.restart` |
+| `target`  | String identifier target                       | Nama unit service, domain site, atau PID             |
+| `ok`      | Boolean (0 atau 1)                             | Hasil status keberhasilan aksi                       |
+| `detail`  | String teks maks 4096 byte                     | Rangkuman output atau pesan galat                    |
 
 ### 2.6 Entitas Docker & Kontainerisasi
 
-| Entitas | Parameter Wajib | Catatan Bisnis |
-|---|---|---|
-| `Container` | `name`, `image`, `ports`, `volumes`, `restart_policy` | Kontainer wajib memiliki nama unik; pemetaan port divalidasi agar tidak bentrok dengan port servis host |
-| `Image` | `repository`, `tag` | Citra ditarik dari Docker Hub atau registri privat terdaftar; penghapusan citra yang sedang dipakai kontainer wajib konfirmasi force |
-| `Volume` | `name`, `driver` | Volume persisten lokal di `/var/lib/docker/volumes`; pembersihan massal (prune) hanya menghapus volume tak terikat |
-| `Network` | `name`, `driver`, `subnet`, `gateway` | Jaringan terisolasi untuk komunikasi antarkontainer; jaringan bawaan host (`bridge`, `host`, `none`) diproteksi dari penghapusan |
-| `Compose Stack`| `name`, `yaml` | Berkas disimpan di `/www/dk_project/<name>/docker-compose.yml`; mendukung kontrol siklus hidup up/down terpadu |
-| `Daemon Config`| `registry_mirrors`, `log-opts`, `live-restore` | Konfigurasi disimpan di `/etc/docker/daemon.json`; perubahan memerlukan reload atau restart daemon Docker |
+| Entitas         | Parameter Wajib                                       | Catatan Bisnis                                                                                                                       |
+| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Container`     | `name`, `image`, `ports`, `volumes`, `restart_policy` | Kontainer wajib memiliki nama unik; pemetaan port divalidasi agar tidak bentrok dengan port servis host                              |
+| `Image`         | `repository`, `tag`                                   | Citra ditarik dari Docker Hub atau registri privat terdaftar; penghapusan citra yang sedang dipakai kontainer wajib konfirmasi force |
+| `Volume`        | `name`, `driver`                                      | Volume persisten lokal di `/var/lib/docker/volumes`; pembersihan massal (prune) hanya menghapus volume tak terikat                   |
+| `Network`       | `name`, `driver`, `subnet`, `gateway`                 | Jaringan terisolasi untuk komunikasi antarkontainer; jaringan bawaan host (`bridge`, `host`, `none`) diproteksi dari penghapusan     |
+| `Compose Stack` | `name`, `yaml`                                        | Berkas disimpan di `/www/dk_project/<name>/docker-compose.yml`; mendukung kontrol siklus hidup up/down terpadu                       |
+| `Daemon Config` | `registry_mirrors`, `log-opts`, `live-restore`        | Konfigurasi disimpan di `/etc/docker/daemon.json`; perubahan memerlukan reload atau restart daemon Docker                            |
 
 ### 2.7 Entitas `cron_jobs` & `cron_logs`
 
-| Kolom | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `id` | Primary Key, Auto Increment | Identitas unik tugas terjadwal |
-| `name` | String 1-255 karakter, tidak boleh kosong | Nama deskriptif tugas, misal Backup MySQL atau Laravel Artisan |
-| `schedule_type` | Wajib salah satu: `'minutes'`, `'hourly'`, `'daily'`, `'weekly'`, `'monthly'`, `'custom'` | Jenis preset interval antarmuka generator crontab |
-| `spec` | Format 5 kolom crontab (`m h dom mon dow`), valid | Pola jadwal eksekusi Linux crontab |
-| `command` | String shell command tidak boleh kosong | Perintah Linux yang dieksekusi; dilarang menjalankan perintah perusak fatal (misal `shutdown`, `init 0`, `mkfs`) |
-| `enabled` | Integer boolean (0 atau 1) | Menandakan status aktif (1) atau jeda sementara (0) |
-| `save_log` | Integer boolean (0 atau 1) | Menyimpan histori eksekusi ke tabel `cron_logs` |
-| `log_file` | String path file `.log`, opsional | Jalur berkas log fisik kustom pada disk (misal `/var/cronlog/task.log`) |
-| `timeout_sec` | Integer > 0 (default 3600) | Batas waktu maksimal eksekusi sebelum subproses dihentikan paksa (SIGKILL) |
-| `last_run_at` | Timestamp Unix, nullable | Waktu terakhir tugas berhasil atau gagal dieksekusi |
-| `last_status` | String (`'success'`, `'failed'`, `'running'`), nullable | Status eksekusi terakhir |
+| Kolom           | Aturan Validasi                                                                           | Catatan Bisnis                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `id`            | Primary Key, Auto Increment                                                               | Identitas unik tugas terjadwal                                                                                   |
+| `name`          | String 1-255 karakter, tidak boleh kosong                                                 | Nama deskriptif tugas, misal Backup MySQL atau Laravel Artisan                                                   |
+| `schedule_type` | Wajib salah satu: `'minutes'`, `'hourly'`, `'daily'`, `'weekly'`, `'monthly'`, `'custom'` | Jenis preset interval antarmuka generator crontab                                                                |
+| `spec`          | Format 5 kolom crontab (`m h dom mon dow`), valid                                         | Pola jadwal eksekusi Linux crontab                                                                               |
+| `command`       | String shell command tidak boleh kosong                                                   | Perintah Linux yang dieksekusi; dilarang menjalankan perintah perusak fatal (misal `shutdown`, `init 0`, `mkfs`) |
+| `enabled`       | Integer boolean (0 atau 1)                                                                | Menandakan status aktif (1) atau jeda sementara (0)                                                              |
+| `save_log`      | Integer boolean (0 atau 1)                                                                | Menyimpan histori eksekusi ke tabel `cron_logs`                                                                  |
+| `log_file`      | String path file `.log`, opsional                                                         | Jalur berkas log fisik kustom pada disk (misal `/var/cronlog/task.log`)                                          |
+| `timeout_sec`   | Integer > 0 (default 3600)                                                                | Batas waktu maksimal eksekusi sebelum subproses dihentikan paksa (SIGKILL)                                       |
+| `last_run_at`   | Timestamp Unix, nullable                                                                  | Waktu terakhir tugas berhasil atau gagal dieksekusi                                                              |
+| `last_status`   | String (`'success'`, `'failed'`, `'running'`), nullable                                   | Status eksekusi terakhir                                                                                         |
 
 ### 2.8 Entitas `managed_services` & Runtime Systemd Units
 
-| Atribut / Field | Aturan Validasi | Catatan Bisnis |
-|---|---|---|
-| `unit` | Format nama unit systemd valid (berakhiran `.service`), unik | Pengidentifikasi unik unit layanan di tingkat sistem operasi |
-| `name` | String nama pendek tanpa ekstensi `.service` | Nama singkat untuk pemfilteran dan label internal |
-| `label` | String deskriptif ramah pengguna | Judul layanan yang ditampilkan pada antarmuka pengguna |
-| `description` | String metadata asli dari berkas unit systemd | Deskripsi teknis yang disediakan oleh pengembang paket daemon |
-| `category` | Enum: `'web'`, `'database'`, `'security'`, `'supervisor'`, `'system'` | Pengelompokan cerdas fungsional layanan pada arsitektur server |
-| `category_label` | String label Bahasa Indonesia | Label tab dan pill kategori ("Web & App", "Database & Cache", dll.) |
-| `protected` | Boolean (true/false) | Flag proteksi unit kritis (`fikpanel.service`, `sshd.service`, `ssh.service`); dilarang dihentikan (`stop`) atau dinonaktifkan (`disable`) |
-| `load_state` | Nilai status muat systemd (`'loaded'`, `'not-found'`, `'masked'`) | Mengonfirmasi apakah berkas definisi unit tersedia di filesystem host |
-| `active_state` | Nilai status aktivitas (`'active'`, `'inactive'`, `'failed'`, `'activating'`) | Status operasional runtime utama |
-| `sub_state` | Nilai status spesifik (`'running'`, `'exited'`, `'dead'`, `'failed'`) | Status detil cgroup kernel subproses |
-| `unit_file_state` | Nilai startup boot (`'enabled'`, `'disabled'`, `'static'`, `'masked'`) | Konfigurasi apakah layanan otomatis berjalan saat server dinyalakan |
-| `main_pid` | Integer positif atau 0 | Nomor Process ID utama dari daemon yang aktif |
-| `memory_current` | Angka byte unsigned 64-bit | Penggunaan memori RAM aktual yang dikonsumsi cgroup |
-| `memory_peak` | Angka byte unsigned 64-bit | Puncak memori tertinggi yang pernah tercatat sejak unit berjalan |
-| `tasks_current` | Integer jumlah task / threads | Jumlah subproses atau worker threads aktif di dalam cgroup |
-| `uptime` | String durasi ramah manusia | Lama layanan aktif dihitung dari `ActiveEnterTimestamp` |
-| `exec_start` | String perintah bersih | Perintah dan argumen biner yang dieksekusi saat daemon diinisialisasi |
-| `restart` | String policy (`'always'`, `'on-failure'`, `'no'`, dll.) | Kebijakan restart otomatis systemd jika terjadi kegagalan proses |
+| Atribut / Field   | Aturan Validasi                                                               | Catatan Bisnis                                                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `unit`            | Format nama unit systemd valid (berakhiran `.service`), unik                  | Pengidentifikasi unik unit layanan di tingkat sistem operasi                                                                               |
+| `name`            | String nama pendek tanpa ekstensi `.service`                                  | Nama singkat untuk pemfilteran dan label internal                                                                                          |
+| `label`           | String deskriptif ramah pengguna                                              | Judul layanan yang ditampilkan pada antarmuka pengguna                                                                                     |
+| `description`     | String metadata asli dari berkas unit systemd                                 | Deskripsi teknis yang disediakan oleh pengembang paket daemon                                                                              |
+| `category`        | Enum: `'web'`, `'database'`, `'security'`, `'supervisor'`, `'system'`         | Pengelompokan cerdas fungsional layanan pada arsitektur server                                                                             |
+| `category_label`  | String label Bahasa Indonesia                                                 | Label tab dan pill kategori ("Web & App", "Database & Cache", dll.)                                                                        |
+| `protected`       | Boolean (true/false)                                                          | Flag proteksi unit kritis (`fikpanel.service`, `sshd.service`, `ssh.service`); dilarang dihentikan (`stop`) atau dinonaktifkan (`disable`) |
+| `load_state`      | Nilai status muat systemd (`'loaded'`, `'not-found'`, `'masked'`)             | Mengonfirmasi apakah berkas definisi unit tersedia di filesystem host                                                                      |
+| `active_state`    | Nilai status aktivitas (`'active'`, `'inactive'`, `'failed'`, `'activating'`) | Status operasional runtime utama                                                                                                           |
+| `sub_state`       | Nilai status spesifik (`'running'`, `'exited'`, `'dead'`, `'failed'`)         | Status detil cgroup kernel subproses                                                                                                       |
+| `unit_file_state` | Nilai startup boot (`'enabled'`, `'disabled'`, `'static'`, `'masked'`)        | Konfigurasi apakah layanan otomatis berjalan saat server dinyalakan                                                                        |
+| `main_pid`        | Integer positif atau 0                                                        | Nomor Process ID utama dari daemon yang aktif                                                                                              |
+| `memory_current`  | Angka byte unsigned 64-bit                                                    | Penggunaan memori RAM aktual yang dikonsumsi cgroup                                                                                        |
+| `memory_peak`     | Angka byte unsigned 64-bit                                                    | Puncak memori tertinggi yang pernah tercatat sejak unit berjalan                                                                           |
+| `tasks_current`   | Integer jumlah task / threads                                                 | Jumlah subproses atau worker threads aktif di dalam cgroup                                                                                 |
+| `uptime`          | String durasi ramah manusia                                                   | Lama layanan aktif dihitung dari `ActiveEnterTimestamp`                                                                                    |
+| `exec_start`      | String perintah bersih                                                        | Perintah dan argumen biner yang dieksekusi saat daemon diinisialisasi                                                                      |
+| `restart`         | String policy (`'always'`, `'on-failure'`, `'no'`, dll.)                      | Kebijakan restart otomatis systemd jika terjadi kegagalan proses                                                                           |
 
 ---
 
@@ -444,80 +484,80 @@ flowchart TD
 
 ### 3.1 Transisi Status Site
 
-| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
-|---|---|---|---|
-| `None` | User membuat site & `nginx -t` lolos | `Active` | Web root + vhost port 80 dibuat, Nginx di-reload |
-| `None` | Web root / vhost gagal diterapkan | `None` | Snapshot file dipulihkan dan baris DB dihapus |
-| `Active` | User klik Nonaktifkan | `Disabled` | File di-rename `.conf.disabled`, Nginx di-reload |
-| `Disabled`| User klik Aktifkan | `Active` | File vhost dipulihkan dan Nginx di-reload |
-| `Active` | User mengubah pengaturan (PUT) | `Active` | Gagal uji sintaks = data DB & file dikembalikan |
-| `Active`/`Disabled` | User menghapus site | `Deleted` | Vhost & sertifikat dihapus; isi web root dipertahankan |
+| Status Awal         | Pemicu (Trigger)                     | Status Akhir | Aturan Bisnis & Efek Samping                           |
+| ------------------- | ------------------------------------ | ------------ | ------------------------------------------------------ |
+| `None`              | User membuat site & `nginx -t` lolos | `Active`     | Web root + vhost port 80 dibuat, Nginx di-reload       |
+| `None`              | Web root / vhost gagal diterapkan    | `None`       | Snapshot file dipulihkan dan baris DB dihapus          |
+| `Active`            | User klik Nonaktifkan                | `Disabled`   | File di-rename `.conf.disabled`, Nginx di-reload       |
+| `Disabled`          | User klik Aktifkan                   | `Active`     | File vhost dipulihkan dan Nginx di-reload              |
+| `Active`            | User mengubah pengaturan (PUT)       | `Active`     | Gagal uji sintaks = data DB & file dikembalikan        |
+| `Active`/`Disabled` | User menghapus site                  | `Deleted`    | Vhost & sertifikat dihapus; isi web root dipertahankan |
 
 ### 3.2 Transisi Status Sertifikat SSL
 
-| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
-|---|---|---|---|
-| `none` | User aktifkan SSL & DNS siap / dilewati | `pending` | Job ACME HTTP-01 berjalan di background |
-| `none`/`failed` | Domain wildcard terdaftar | (ditolak) | HTTP-01 tidak mendukung wildcard |
-| `pending` | Job sedang berjalan & request baru | (ditolak) | HTTP 409, satu job per site |
-| `pending` | Validasi & penerbitan sukses | `issued` | File cert ditulis atomik, blok 443 + redirect + HSTS diterapkan |
-| `pending` | Validasi gagal | `failed` | `last_error` disimpan, situs tetap HTTP |
-| `failed` | User klik terbitkan ulang | `pending` | Sama seperti penerbitan pertama |
-| `issued` | Sisa masa aktif < 30 hari (loop 12 jam) | `pending` → `issued` | Perpanjangan otomatis, Nginx di-reload |
-| `issued` | Domain / alias situs diubah | `none` | Record sertifikat dihapus, HTTPS nonaktif sampai terbit ulang |
-| `issued` | User nonaktifkan SSL | `issued` | `ssl_mode=none`, blok 443 dilepas; sertifikat tetap tersimpan |
+| Status Awal     | Pemicu (Trigger)                        | Status Akhir         | Aturan Bisnis & Efek Samping                                    |
+| --------------- | --------------------------------------- | -------------------- | --------------------------------------------------------------- |
+| `none`          | User aktifkan SSL & DNS siap / dilewati | `pending`            | Job ACME HTTP-01 berjalan di background                         |
+| `none`/`failed` | Domain wildcard terdaftar               | (ditolak)            | HTTP-01 tidak mendukung wildcard                                |
+| `pending`       | Job sedang berjalan & request baru      | (ditolak)            | HTTP 409, satu job per site                                     |
+| `pending`       | Validasi & penerbitan sukses            | `issued`             | File cert ditulis atomik, blok 443 + redirect + HSTS diterapkan |
+| `pending`       | Validasi gagal                          | `failed`             | `last_error` disimpan, situs tetap HTTP                         |
+| `failed`        | User klik terbitkan ulang               | `pending`            | Sama seperti penerbitan pertama                                 |
+| `issued`        | Sisa masa aktif < 30 hari (loop 12 jam) | `pending` → `issued` | Perpanjangan otomatis, Nginx di-reload                          |
+| `issued`        | Domain / alias situs diubah             | `none`               | Record sertifikat dihapus, HTTPS nonaktif sampai terbit ulang   |
+| `issued`        | User nonaktifkan SSL                    | `issued`             | `ssl_mode=none`, blok 443 dilepas; sertifikat tetap tersimpan   |
 
 ### 3.3 Transisi Status Layanan (Systemd & Supervisor Units)
 
-| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
-|---|---|---|---|
-| `inactive` / `dead` | Permintaan `start` | `active` (`running`) | Eksekusi `systemctl start <unit>`, Main PID dan cgroup memory dialokasikan |
-| `active` (`running`) | Permintaan `stop` pada unit biasa | `inactive` (`dead`) | Eksekusi `systemctl stop <unit>`, memory dilepas, PID dinonaktifkan |
-| `active` (`running`) | Permintaan `stop` pada unit dilindungi (`fikpanel.service`, `sshd.service`, `ssh.service`) | (DITOLAK) | Ditolak HTTP 400; perlindungan sistem mutlak agar akses web panel dan remote SSH tidak terputus |
-| `active` / `failed` | Permintaan `restart` | `active` (`running`) | Eksekusi `systemctl restart <unit>`, menyegarkan subproses dan memuat ulang konfigurasi baru |
-| `active` (`running`) | Permintaan `reload` | `active` (`running`) | Eksekusi `systemctl reload <unit>`, sinyal SIGHUP dikirim ke master daemon tanpa memutus koneksi klien aktif |
-| `disabled` (Boot) | Permintaan `enable` | `enabled` | Eksekusi `systemctl enable <unit>`, membuat symlink di `/etc/systemd/system/multi-user.target.wants/` agar berjalan otomatis saat boot |
-| `enabled` (Boot) | Permintaan `disable` pada unit biasa | `disabled` | Eksekusi `systemctl disable <unit>`, melepas symlink startup boot |
-| `enabled` (Boot) | Permintaan `disable` pada unit dilindungi | (DITOLAK) | Ditolak HTTP 400; layanan vital wajib tetap aktif saat server dinyalakan kembali |
-| `active` (`running`) | Proses daemon mengalami crash atau SIGKILL | `failed` | Terdeteksi otomatis via status systemctl show; diprioritaskan di baris teratas antarmuka pengguna |
-| `failed` | Permintaan `restart` pemulihan | `active` (`running`) | Subproses diinisialisasi ulang dari kondisi crash |
+| Status Awal          | Pemicu (Trigger)                                                                           | Status Akhir         | Aturan Bisnis & Efek Samping                                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `inactive` / `dead`  | Permintaan `start`                                                                         | `active` (`running`) | Eksekusi `systemctl start <unit>`, Main PID dan cgroup memory dialokasikan                                                             |
+| `active` (`running`) | Permintaan `stop` pada unit biasa                                                          | `inactive` (`dead`)  | Eksekusi `systemctl stop <unit>`, memory dilepas, PID dinonaktifkan                                                                    |
+| `active` (`running`) | Permintaan `stop` pada unit dilindungi (`fikpanel.service`, `sshd.service`, `ssh.service`) | (DITOLAK)            | Ditolak HTTP 400; perlindungan sistem mutlak agar akses web panel dan remote SSH tidak terputus                                        |
+| `active` / `failed`  | Permintaan `restart`                                                                       | `active` (`running`) | Eksekusi `systemctl restart <unit>`, menyegarkan subproses dan memuat ulang konfigurasi baru                                           |
+| `active` (`running`) | Permintaan `reload`                                                                        | `active` (`running`) | Eksekusi `systemctl reload <unit>`, sinyal SIGHUP dikirim ke master daemon tanpa memutus koneksi klien aktif                           |
+| `disabled` (Boot)    | Permintaan `enable`                                                                        | `enabled`            | Eksekusi `systemctl enable <unit>`, membuat symlink di `/etc/systemd/system/multi-user.target.wants/` agar berjalan otomatis saat boot |
+| `enabled` (Boot)     | Permintaan `disable` pada unit biasa                                                       | `disabled`           | Eksekusi `systemctl disable <unit>`, melepas symlink startup boot                                                                      |
+| `enabled` (Boot)     | Permintaan `disable` pada unit dilindungi                                                  | (DITOLAK)            | Ditolak HTTP 400; layanan vital wajib tetap aktif saat server dinyalakan kembali                                                       |
+| `active` (`running`) | Proses daemon mengalami crash atau SIGKILL                                                 | `failed`             | Terdeteksi otomatis via status systemctl show; diprioritaskan di baris teratas antarmuka pengguna                                      |
+| `failed`             | Permintaan `restart` pemulihan                                                             | `active` (`running`) | Subproses diinisialisasi ulang dari kondisi crash                                                                                      |
 
 ---
 
 ### 3.4 Transisi Status Antrean Tugas (Task Queue / Quick Install)
 
-| Status Awal | Kejadian (Trigger) | Status Akhir | Keterangan / Efek Samping |
-|---|---|---|---|
-| `pending` | Worker backend mengambil task dari antrean | `running` | Proses subprocess bash/apt/docker dimulai; output log dibuka untuk streaming SSE |
-| `running` | Subprocess instalasi keluar dengan kode 0 & service aktif | `success` | Status engine diperbarui ke `installed: true`; log ditutup dengan penanda selesai |
-| `running` | Subprocess menghasilkan kode != 0 atau timeout | `failed` | Catat error ringkas ke task log; sediakan opsi retry kepada user |
-| `running` | User membatalkan proses instalasi | `cancelled` | Sinyal `SIGTERM`/`SIGKILL` dikirim ke grup proses |
+| Status Awal | Kejadian (Trigger)                                        | Status Akhir | Keterangan / Efek Samping                                                         |
+| ----------- | --------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------- |
+| `pending`   | Worker backend mengambil task dari antrean                | `running`    | Proses subprocess bash/apt/docker dimulai; output log dibuka untuk streaming SSE  |
+| `running`   | Subprocess instalasi keluar dengan kode 0 & service aktif | `success`    | Status engine diperbarui ke `installed: true`; log ditutup dengan penanda selesai |
+| `running`   | Subprocess menghasilkan kode != 0 atau timeout            | `failed`     | Catat error ringkas ke task log; sediakan opsi retry kepada user                  |
+| `running`   | User membatalkan proses instalasi                         | `cancelled`  | Sinyal `SIGTERM`/`SIGKILL` dikirim ke grup proses                                 |
 
 ---
 
 ### 3.5 Transisi Status Kontainer Docker
 
-| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
-|---|---|---|---|
-| `created` | Eksekusi start kontainer | `running` | Alokasi port, isolasi cgroup, dan proses utama kontainer dijalankan |
-| `running` | Permintaan stop (`POST .../stop`) | `exited` | Mengirim sinyal `SIGTERM` lalu `SIGKILL` setelah grace period (10 detik) |
-| `running` | Permintaan pause (`POST .../pause`) | `paused` | Proses dibekukan menggunakan cgroups freezer tanpa melepas alokasi memori |
-| `paused` | Permintaan unpause (`POST .../unpause`)| `running` | Proses dicairkan kembali dan melanjutkan eksekusi |
-| `running` | Kontainer mengalami crash / OOM | `exited` | Jika kebijakan restart `always` atau `unless-stopped`, daemon akan menyalakan ulang otomatis |
-| `exited` / `created` | Permintaan hapus kontainer | `deleted` | Kontainer dihapus; volume persisten yang di-mount tetap aman di host |
+| Status Awal          | Pemicu (Trigger)                        | Status Akhir | Aturan Bisnis & Efek Samping                                                                 |
+| -------------------- | --------------------------------------- | ------------ | -------------------------------------------------------------------------------------------- |
+| `created`            | Eksekusi start kontainer                | `running`    | Alokasi port, isolasi cgroup, dan proses utama kontainer dijalankan                          |
+| `running`            | Permintaan stop (`POST .../stop`)       | `exited`     | Mengirim sinyal `SIGTERM` lalu `SIGKILL` setelah grace period (10 detik)                     |
+| `running`            | Permintaan pause (`POST .../pause`)     | `paused`     | Proses dibekukan menggunakan cgroups freezer tanpa melepas alokasi memori                    |
+| `paused`             | Permintaan unpause (`POST .../unpause`) | `running`    | Proses dicairkan kembali dan melanjutkan eksekusi                                            |
+| `running`            | Kontainer mengalami crash / OOM         | `exited`     | Jika kebijakan restart `always` atau `unless-stopped`, daemon akan menyalakan ulang otomatis |
+| `exited` / `created` | Permintaan hapus kontainer              | `deleted`    | Kontainer dihapus; volume persisten yang di-mount tetap aman di host                         |
 
 ### 3.6 Transisi Status Tugas Terjadwal (Cron Job)
 
-| Status Awal | Pemicu (Trigger) | Status Akhir | Aturan Bisnis & Efek Samping |
-|---|---|---|---|
-| `None` | User membuat tugas baru (`POST /api/cron/jobs`) | `active` | Jadwal dicatat di database, diikutsertakan dalam loop pengecekan tiap menit |
-| `active` | User klik jeda tugas (`POST .../toggle` enabled=false) | `paused` | Tugas dilewati oleh scheduler; riwayat eksekusi dan konfigurasi tetap aman |
-| `paused` | User klik aktifkan (`POST .../toggle` enabled=true) | `active` | Tugas kembali dievaluasi setiap menit oleh scheduler daemon |
-| `active`/`paused` | User mengedit konfigurasi (`PUT /api/cron/jobs/{id}`) | `active`/`paused` | Nilai `spec`, `command`, `timeout_sec`, dan opsi log diperbarui in-place tanpa mengubah ID tugas |
-| `active`/`paused` | Pemicu jadwal tiba atau user klik 'Jalankan Sekarang' | `running` | Perintah dieksekusi di background thread; status UI menampilkan animasi loader |
-| `running` | Eksekusi selesai dengan exit code 0 | `success` | Durasi dan output dicatat; status diperbarui menjadi 'Berhasil' |
-| `running` | Eksekusi selesai dengan exit code != 0 atau timeout | `failed` | Error code dan pesan stderr dicatat; status diperbarui menjadi 'Gagal' |
-| `active`/`paused` | User menghapus tugas (`DELETE /api/cron/jobs/{id}`) | `deleted` | Data tugas dan riwayat di `cron_logs` dihapus permanen |
+| Status Awal       | Pemicu (Trigger)                                       | Status Akhir      | Aturan Bisnis & Efek Samping                                                                     |
+| ----------------- | ------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `None`            | User membuat tugas baru (`POST /api/cron/jobs`)        | `active`          | Jadwal dicatat di database, diikutsertakan dalam loop pengecekan tiap menit                      |
+| `active`          | User klik jeda tugas (`POST .../toggle` enabled=false) | `paused`          | Tugas dilewati oleh scheduler; riwayat eksekusi dan konfigurasi tetap aman                       |
+| `paused`          | User klik aktifkan (`POST .../toggle` enabled=true)    | `active`          | Tugas kembali dievaluasi setiap menit oleh scheduler daemon                                      |
+| `active`/`paused` | User mengedit konfigurasi (`PUT /api/cron/jobs/{id}`)  | `active`/`paused` | Nilai `spec`, `command`, `timeout_sec`, dan opsi log diperbarui in-place tanpa mengubah ID tugas |
+| `active`/`paused` | Pemicu jadwal tiba atau user klik 'Jalankan Sekarang'  | `running`         | Perintah dieksekusi di background thread; status UI menampilkan animasi loader                   |
+| `running`         | Eksekusi selesai dengan exit code 0                    | `success`         | Durasi dan output dicatat; status diperbarui menjadi 'Berhasil'                                  |
+| `running`         | Eksekusi selesai dengan exit code != 0 atau timeout    | `failed`          | Error code dan pesan stderr dicatat; status diperbarui menjadi 'Gagal'                           |
+| `active`/`paused` | User menghapus tugas (`DELETE /api/cron/jobs/{id}`)    | `deleted`         | Data tugas dan riwayat di `cron_logs` dihapus permanen                                           |
 
 ---
 
@@ -561,8 +601,8 @@ flowchart TD
 | **BR-34** | Manajemen Konfigurasi Atomik `daemon.json` | Pengguna mengubah pengaturan Accelerate URL, Log Rotation, atau konfigurasi JSON | Memvalidasi sintaks JSON sebelum disimpan, mencatat audit log, dan mengizinkan modifikasi langsung via editor modal |
 | **BR-35** | Proteksi Jaringan Inti Sistem Docker | Pengguna mencoba menghapus jaringan `bridge`, `host`, atau `none` | Sistem menolak aksi penghapusan demi menjaga integritas konektivitas jaringan kontainer host |
 | **BR-36** | Katalog Aplikasi 1-Klik Terisolasi | Pemasangan aplikasi populer (WordPress, Redis, Postgres, MySQL, Portainer, dll.) | Mempersiapkan direktori data persisten `/www/dk_project/<app>/data`, menyuntikkan variabel lingkungan aman, dan memetakan port host default |
-| **BR-37** | Manajemen Proses & Port Sistem | Pengguna menginspeksi atau menghentikan proses OS | Menampilkan daftar proses CPU/memori tertinggi; penghentian proses mengirim SIGTERM/SIGKILL dengan larangan keras menghentikan proses vital PID 1 |
-| **BR-38** | Pembersihan Sampah & Sinkronisasi Cache OS | Eksekusi System Cleaner | Memindai dan menghapus berkas usang APT, log lama terkompresi, dan berkas temporer `/tmp`; opsi `drop_caches` wajib menjalankan sinkronisasi disk (`sync`) sebelum mengosongkan cache RAM |
+| **BR-37** | Manajemen Proses `/proc`, Renice & Port Jaringan (`ss`) | Pengguna menginspeksi, mengubah prioritas, menghentikan proses OS, atau membebaskan port | Menyajikan Task Manager real (`ps`) dengan sort `cpu`/`mem`/`pid`, pencarian, filter `nonroot`/`zombie`, auto-refresh live, inspeksi mendalam `/proc/<pid>` (exe, cwd, cmdline, open FD, threads, OOM score, swap), pengaturan prioritas `renice` (`-10..19`), sinyal aman (`SIGHUP`/`SIGTERM`/`SIGKILL`), serta pemetaan port listening (`ss -tulnp`) dan distribusi state koneksi TCP (`ss -tan`) dengan aksi 1-klik **Bebaskan Port**. Melindungi secara mutlak PID ≤ 1, proses daemon FikPanel sendiri (`os.Getpid()`), serta daemon vital (`init`, `systemd`, `systemd-journald`, `systemd-udevd`, `sshd`) dari penghentian. |
+| **BR-38** | Smart Disk Cleaner 6-Kategori, Disk Hogs Analyzer & Sinkronisasi Cache OS | Eksekusi System Cleaner atau analisis direktori penyedot disk | Memindai dan membersihkan secara selektif 6 kategori sampah nyata: cache APT, Systemd Journald (`--vacuum-size=100M`), arsip log rotasi (`*.gz`/`*.1`/`*.old`), berkas temporer yang hanya berumur > 72 jam di `/tmp` & `/var/tmp`, cache build developer (Composer/NPM/Pip), serta Docker reclaimable (`docker system prune -f`), sambil melaporkan selisih `reclaimed_bytes` aktual dan `ram_freed_bytes` bila opsi `drop_caches` (`sync` + `/proc/sys/vm/drop_caches`) dipilih. Analisis Top 15 Disk Hogs (`du -x -B1 --max-depth=1`, timeout 15 detik) dibatasi ketat pada allowlist root (`/`, `/var`, `/var/log`, `/www`, `/home`, `/opt`, `/usr`) guna mencegah path traversal. |
 | **BR-39** | Perekaman Metrik Persisten aaPanel-Style | Pengguna mengaktifkan fitur Monitoring Historis | Daemon background merekam snapshot penggunaan CPU, RAM, Disk, Load, dan Jaringan setiap 60 detik ke SQLite; data melebihi batas retensi dibersihkan setiap 24 jam |
 | **BR-40** | Hardening SSH & Proteksi Fail2Ban | Modifikasi konfigurasi SSH atau penanganan IP terblokir | Perubahan port dan otentikasi kata sandi memodifikasi `sshd_config` lalu me-reload daemon `sshd`; pembukaan blokir IP mengeksekusi unban terarah pada jail Fail2Ban |
 | **BR-41** | Software App Store & Toolkit Linux | Instalasi paket aplikasi sistem operasi | Menggunakan antrean worker asinkron (`system_tasks`) dengan streaming kemajuan log real-time agar tidak memblokir UI panel |
@@ -642,16 +682,4 @@ flowchart TD
 | **BR-114** | Hardening Produksi Cron Manager: Scheduler Presisi Batas Menit (`:00`), Isolasi Process-Group Anti-Orphan, Validasi Keamanan & Spec, Alert Webhook Gagal, Retensi Log Otomatis & Inspeksi OS Crontab | Daemon `cronMgr.Start` berjalan, pengguna membuat/mengedit/menjalankan/menghentikan tugas cron pada `#/cron`, atau tugas cron gagal/timeout | Memastikan modul Penjadwal Tugas siap produksi 24/7: (1) **Minute-Boundary Scheduler (`:00.200`) + Deduplikasi `(jobID, minuteKey)`** menghilangkan drift ticker 60s sehingga tidak pernah melompati menit atau mengeksekusi ganda akibat pergeseran jam NTP; (2) **Isolasi Process-Group (`Setpgid: true` + `syscall.Kill(-pid, SIGKILL)`)**, pemulihan otomatis status `"running"` → `"interrupted"` saat panel restart (`RecoverStaleRunningCronJobs`), eksekusi manual terlepas (*detached* via `TriggerJobAsync` agar tidak mati saat pengguna pindah menu), serta tombol/endpoint **Stop Paksa** (`POST /api/cron/jobs/{id}/stop`); (3) **Parser Crontab 5-Field Penuh + `NextRunAt`** mendukung `*`, `*/S`, `A-B`, `A-B/S`, `A/S`, list koma, `L` (hari terakhir bulan kabisat), `JAN`–`DEC`, `SUN`–`SAT`, `@hourly`/`@daily`/`@weekly`/`@monthly`, semantik Vixie DOM/DOW OR, validasi server keras pada `POST`/`PUT`, serta kalkulasi jadwal berikutnya (`next_run_at`); (4) **Hardening Keamanan & Retensi**: validasi blokir perintah berbahaya (`shutdown`, `reboot`, `init 0/6`, `mkfs`, `rm -rf /`, `passwd`, fork bomb), whitelist prefix `log_file` (`/var/log/`, `/var/cronlog/`, `/tmp/`, `/home/`, `/www/`, `/opt/fikpanel/logs/`, bebas `..`), redaksi rahasia `ai.RedactSecrets`, pemangkasan otomatis `cron_logs` maksimal 100 riwayat/tugas, serta rotasi otomatis file `.log` > 10 MB; (5) **Alert Webhook Kegagalan (`notify_on_fail`)** menyiarkan kegagalan/`timeout` ke Telegram/Discord/Custom Webhook aktif, plus tab read-only **Cron Sistem OS** (`GET /api/cron/system` dari `crontab -l`, `/etc/crontab`, `/etc/cron.d/*`), input Timeout & Direktori Kerja (migrasi `021_cron_hardening.sql`), filter/pencarian, dan polling otomatis 3 detik saat tugas sedang berjalan. |
 | **BR-115** | Responsivitas Mobile & Resolusi Bentrok Cascade Layer Topbar (`@layer components` → `@layer layout`) | Pengguna mengakses panel melalui viewport ponsel (`320px`–`768px`) atau layar laptop sempit (`≤ 1200px`) | Menata ulang urutan CSS Cascade Layers pada `index.css` menjadi `vendor → tokens → base → components → layout → utilities → pages` serta memindahkan gaya elemen dasar `kbd` dari `components/button.css` ke `base.css`, sehingga aturan responsif `@layer layout` tidak pernah lagi tertimpa oleh `.btn`, `.badge`, maupun `kbd` (menyembunyikan tombol hamburger di desktop, menyembunyikan lencana OS pada `≤ 1200px`, menyembunyikan `<kbd>Ctrl K</kbd>` Topbar di mobile dan Sidebar di tablet, serta mengganti `<kbd>Esc</kbd>` Command Palette dengan tombol tutup sentuh di mobile). Pada layar ponsel (`≤ 640px`), Topbar muat hingga lebar `320px` tanpa luapan horizontal dengan brand ringkas di sisi kiri dan metadata host (IP 1-tap salin/sensor, info OS, jam server live, pengalih bahasa `ID/EN`) di dalam dropdown profil. Melengkapi ketahanan tata letak mobile lintas halaman: `min-width: 0; max-width: 100%` pada `.app-shell__main`, tabel bergulir horizontal halus (`min-width: 640px` + penghilangan garis tepi ganda `.card > .table-wrap`), tajuk halaman & modal (`92dvh`) adaptif, toolbar/pencarian lebar penuh pada Cron dan Website, serta pelindung grid `minmax(min(..., 100%), 1fr)` pada Pengaturan, App Store, Layanan, dan PHP Manager. |
 | **BR-116** | Hardening Produksi PHP Manager Multi-Version: Validasi Sintaks `php-fpm -t` + Rollback Otomatis, Switcher CLI Default, Pengurutan Runtime Aktif & Pembenahan Suite Instalasi FPM | Pengguna membuka halaman PHP Manager (`#/php`), mengedit konfigurasi `php.ini`/`www.conf`, memasang versi PHP atau ekstensi, atau mengganti versi CLI default | Menyelesaikan seluruh celah fungsional dan UI pada modul PHP Manager: (1) **Validasi Input & Uji Sintaks + Rollback**: setiap operasi memvalidasi format versi `X.Y` dan nama ekstensi (`^[a-z0-9][a-z0-9_+-]{0,39}$`), menyimpan perubahan `php.ini`/`www.conf` dengan pembaruan direktif presisi `applyIniUpdates` (meng-uncomment baris `;key = ...` di seksi aslinya serta memblokir injeksi baris baru), menguji sintaks via `php-fpm<ver> -t` sebelum reload dengan rollback otomatis dari `.bak` bila gagal, serta mengembalikan respons galat JSON ter-escape (`writeJSONErr`) dan batas waktu tulis 5 menit untuk instalasi ekstensi APT; (2) **Suite FPM Anti-Apache2**: menambah `php8.4` ke katalog AppStore dan memastikan instalasi versi PHP apapun (`php8.4`, `php8.1`, `php8.0`, `php7.4`) selalu memasang paket `php<ver>-fpm` + ekstensi web inti tanpa menarik `libapache2-mod-php`; (3) **Pengurutan & Deteksi CLI Default**: menyortir versi PHP terpasang/berjalan di bagian teratas (`Runtime Terpasang`) terpisah dari `Tersedia untuk Dipasang`, menambahkan deteksi & tombol 1-klik **CLI Default** (`POST /api/php/versions/{version}/set-default` via `update-alternatives`), pembacaan real `MemoryCurrent` cgroup + OPcache `conf.d`, serta tombol quick restart FPM per kartu; (4) **Perbaikan UI & State Frontend**: memperbaiki ketidakcocokan field `snake_case` (`service_status.pid`, `fpm_socket`, `ini_path`), menyelaraskan seluruh tombol ke kelas BEM standar (`.btn--primary`/`.btn--ghost`/`.btn--danger`/`.btn--sm`/`.btn--xs`), memperbaiki tautan `#/sites` → `#/website` + tautan cerdas `https://`/`http://`, mereset state editor saat berpindah versi PHP agar tidak bocor antar versi, menghapus bilah pencarian mati pada editor CodeMirror `php.ini`, dan menata ulang formulir/modal PHP Manager agar responsif di layar mobile. |
-
-
-
-
-
-
-
-
-
-
-
-
-
+| **BR-117** | System & Performance Console 6-Tab: Telemetri Host & Inode, 1-Klik Swapfile Manager, Tuning Kernel Memori, APT Security Updates, OOM Killer Diagnostics & Safe Reboot | Pengguna mengelola operasional sistem pada halaman `/system` | Menggantikan modul sistem lama dengan 6 tab operasional real tanpa data dummy: (1) **Ringkasan & Disk** menyajikan spesifikasi hardware (`/etc/os-release`, `/proc/cpuinfo`, `/proc/uptime`, `/proc/loadavg`), pecahan RAM bertumpuk (`Used`/`Buffers+Cache`/`Available`), status partisi blok sekaligus persentase **Inode** (`df -B1` + `df -i`, menyaring pseudo-fs), deteksi `/var/run/reboot-required`, peringatan OOM Killer, serta **Safe Reboot** yang mewajibkan pengetikan hostname persis sebelum menjadwalkan reboot jeda 2 detik; (2) **Task Manager** & **Process Inspector `/proc/<pid>`** dengan `renice` (`-10..19`) dan sinyal aman (`HUP`/`TERM`/`KILL`); (3) **Jaringan & Port** dengan distribusi state koneksi TCP (`ESTABLISHED`, `TIME-WAIT`, `LISTEN`, `SYN-RECV`, `CLOSE-WAIT`) dan aksi 1-klik Bebaskan Port; (4) **Swap & Memori** menyediakan 1-klik pembuatan/pengubahan/penghapusan `/swapfile.fikpanel` (512 MB–16 GB, wajib menyisakan ruang root ≥ 2 GB, `fallocate` dengan fallback `dd`, `chmod 0600`, `mkswap`, `swapon`, entri idempoten `/etc/fstab`), tuning persisten `vm.swappiness` (`0..100`) & `vm.vfs_cache_pressure` (`10..500`) di `/etc/sysctl.d/99-fikpanel-memory.conf`, serta Drop RAM Cache dengan pelaporan byte aktual yang dibebaskan; (5) **Disk Cleaner & Top Disk Hogs**; dan (6) **Updates & Diagnostik** untuk memeriksa/memasang patch keamanan OS secara non-interaktif (`--only-upgrade --force-confold`) dan memantau log error/warning kernel (`dmesg`) & systemd (`journalctl -p err`) dengan penyorotan insiden OOM Killer. Seluruh aksi mutasi dicatat ke Audit Log. |

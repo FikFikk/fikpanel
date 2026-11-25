@@ -1185,27 +1185,79 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Response | HTTP 200 `{"ok": true, "message": "Registri berhasil dihapus"}` |
 | Notes | Menghapus registri privat terdaftar. |
 
-### System Process & Task Manager
+### System & Performance Console (Host, Process, Network, Swap/Memory, Cleaner, Updates & Diagnostics)
+
+Semua endpoint di bawah ini membutuhkan sesi autentikasi (`Cookie: panel_session`), dan seluruh permintaan mutasi (`POST`/`DELETE`) wajib menyertakan header `X-Panel-Request: 1` (serta `Content-Type: application/json` jika membawa payload JSON).
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/overview` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "overview": {"is_linux": true, "hostname": "vps01", "os": "Ubuntu 24.04", "kernel": "6.8.0", "cpu_cores": 4, "load_1": 0.42, "mem_used_pct": 54.1, "swap_used_pct": 4.2, "zombie_procs": 0, "oom_kills_recent": 0, "needs_reboot": false, "disks": [{"mountpoint": "/", "used_pct": 42.3, "inodes_pct": 12.1}]}}` |
+| Notes | Menyajikan telemetri host real dari `/etc/os-release`, `/proc/*`, status proses, deteksi `/var/run/reboot-required`, hitungan OOM Killer terbaru, serta partisi blok dan inode fisik (tanpa pseudo-fs). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/disk-hogs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `path` (string, wajib, allowlist: `/`, `/var`, `/var/log`, `/www`, `/home`, `/opt`, `/usr`) |
+| Response | HTTP 200 `{"ok": true, "result": {"target_path": "/var", "total_bytes": 5368709120, "entries": [{"path": "/var/lib", "size_bytes": 2147483648, "percent": 40.0}]}}`; HTTP 400 bila path di luar allowlist |
+| Notes | Menjalankan `du -x -B1 --max-depth=1` dengan batas waktu 15 detik untuk mengembalikan 15 subdirektori terbesar tanpa melintas ke pseudo-filesystem. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/reboot` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `confirm_hostname` (string, wajib persis sama dengan hostname host) |
+| Response | HTTP 200 `{"ok": true, "message": "Server akan reboot dalam 2 detik"}`; HTTP 400 bila hostname tidak cocok atau host non-Linux |
+| Notes | Mencatat audit `system.reboot` lalu menjadwalkan `systemctl reboot` (fallback `shutdown -r now`) setelah jeda 2 detik agar respons HTTP terkirim utuh. |
 
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `GET /api/system/processes` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | Tidak ada |
-| Query Params | `limit` (int, opsional, default: 30) |
+| Query Params | `limit` (int, default `60`, maks `200`), `sort` (`cpu`/`mem`/`pid`), `search` (string), `filter` (`all`/`nonroot`/`zombie`) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "processes": [{"pid": 1234, "user": "www-data", "cpu": 1.5, "memory": 45.2, "command": "php-fpm: pool www"}]}` |
-| Notes | Mengambil daftar proses sistem aktif yang diurutkan berdasarkan konsumsi CPU tertinggi. |
+| Response | HTTP 200 `{"ok": true, "processes": [{"pid": 1234, "ppid": 1, "user": "www-data", "state": "R", "cpu": 1.5, "mem_pct": 2.3, "memory": 45.2, "threads": 4, "elapsed": "02:15:10", "command": "php-fpm: pool www", "protected": false}]}` |
+| Notes | Mengambil proses aktual dari `ps` dengan dukungan pengurutan, pencarian, filter kategori, dan flag `protected` untuk daemon vital. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/processes/{pid}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "process": {"pid": 1234, "name": "node", "user": "www-data", "exe": "/usr/bin/node", "cwd": "/www/app", "cmdline": "...", "rss_bytes": 134217728, "swap_bytes": 0, "threads": 6, "fd_count": 28, "nice": 0, "oom_score": 14, "protected": false}}`; HTTP 400 bila PID tidak ditemukan |
+| Notes | Membaca metadata proses mendalam langsung dari `/proc/<pid>/{status,cmdline,exe,cwd,fd,oom_score,stat}`. |
 
 | Field | Detail |
 |---|---|
 | Method + Endpoint | `POST /api/system/processes/{pid}/kill` |
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `X-Panel-Request: 1` |
-| Query Params | `force` (bool, opsional, default: false) |
+| Query Params | `signal` (`TERM`/`KILL`/`HUP`, default `TERM`) atau legacy `force=true` (`KILL`) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "pid": 1234}` |
-| Notes | Mengirim sinyal SIGTERM atau SIGKILL (`force=true`) untuk menghentikan proses target. |
+| Response | HTTP 200 `{"ok": true, "pid": 1234, "signal": "TERM"}`; HTTP 400 bila PID dilindungi atau sinyal tidak valid |
+| Notes | Memblokir keras penghentian PID ≤ 1, proses daemon FikPanel sendiri, serta daemon vital (`init`, `systemd`, `sshd`). Mencatat audit `system.process_kill`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/processes/{pid}/renice` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `priority` (int, wajib, rentang `-10` sampai `19`) |
+| Response | HTTP 200 `{"ok": true, "pid": 1234, "priority": 5}`; HTTP 400 bila PID ≤ 1 atau nilai di luar rentang |
+| Notes | Mengubah prioritas penjadwalan CPU proses via `renice` dan mencatat audit `system.process_renice`. |
 
 | Field | Detail |
 |---|---|
@@ -1214,10 +1266,58 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "ports": [{"proto": "tcp", "port": "80", "address": "0.0.0.0", "program": "nginx", "pid": 800}]}` |
-| Notes | Memeriksa seluruh soket jaringan aktif dan layanan yang mendengarkan (listening). |
+| Response | HTTP 200 `{"ok": true, "is_linux": true, "ports": [{"proto": "tcp", "port": "80", "address": "0.0.0.0", "program": "nginx", "pid": 800, "exposed_public": true, "service": "HTTP", "can_kill": true}], "connections": {"ESTABLISHED": 14, "LISTEN": 8, "TIME-WAIT": 3, "SYN-RECV": 0, "CLOSE-WAIT": 0, "TOTAL": 25}}` |
+| Notes | Memindai soket listening (`ss -tulnp`) lengkap dengan deteksi IPv6, status eksposur publik/lokal, flag proteksi `can_kill`, serta ringkasan distribusi state koneksi TCP (`ss -tan`). |
 
-### System Cleaner & Optimization
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/memory` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "memory": {"is_linux": true, "mem_total_bytes": 4294967296, "mem_avail_bytes": 2147483648, "mem_cache_bytes": 1073741824, "swap_total_bytes": 2147483648, "swappiness": 30, "vfs_cache_pressure": 50, "swaps": [...], "has_fikpanel_swap": true, "root_free_bytes": 21474836480}}` |
+| Notes | Membaca pecahan RAM (`/proc/meminfo`), daftar perangkat swap aktif (`/proc/swaps`), nilai live `vm.swappiness`/`vm.vfs_cache_pressure`, dan kapasitas kosong partisi root. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/memory/swap` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `size_mb` (int, wajib, rentang `512` sampai `16384`) |
+| Response | HTTP 200 `{"ok": true, "message": "Swapfile 2048 MB berhasil diaktifkan dan disimpan ke /etc/fstab"}`; HTTP 400 bila ruang root tidak cukup |
+| Notes | Memvalidasi sisa ruang kosong root ≥ 2 GB, mengalokasikan `/swapfile.fikpanel` (`fallocate` dengan fallback `dd`), `chmod 0600`, `mkswap`, `swapon`, mencatat entri idempoten di `/etc/fstab`, dan mencatat audit `system.swap_create`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `DELETE /api/system/memory/swap` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Swapfile FikPanel berhasil dinonaktifkan dan dihapus"}`; HTTP 400 bila gagal `swapoff` atau berkas tidak ada |
+| Notes | Menjalankan `swapoff`, menghapus `/swapfile.fikpanel`, membersihkan baris terkait di `/etc/fstab`, dan mencatat audit `system.swap_remove`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/memory/tuning` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `swappiness` (int, wajib `0`–`100`), `vfs_cache_pressure` (int, wajib `10`–`500`) |
+| Response | HTTP 200 `{"ok": true, "message": "Tuning memori kernel berhasil diterapkan secara persisten"}` |
+| Notes | Menerapkan `sysctl -w` secara live dan menyimpan persisten ke `/etc/sysctl.d/99-fikpanel-memory.conf`. Mencatat audit `system.memory_tuning`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/memory/drop-cache` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "freed_bytes": 314572800, "avail_after": 2462056448}` |
+| Notes | Menjalankan `sync` lalu menulis `3` ke `/proc/sys/vm/drop_caches`, mengukur selisih RAM tersedia aktual, dan mencatat audit `system.drop_caches`. |
 
 | Field | Detail |
 |---|---|
@@ -1226,8 +1326,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Headers | Tidak ada |
 | Query Params | Tidak ada |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "scan": {"apt_cache_bytes": 104857600, "system_log_bytes": 52428800, "tmp_bytes": 20971520, "docker_reclaim_bytes": 0, "total_bytes": 178257920}}` |
-| Notes | Memindai estimasi ruang disk yang dapat dibebaskan dari APT cache, rotasi berkas log usang, dan berkas `/tmp`. |
+| Response | HTTP 200 `{"ok": true, "scan": {"is_linux": true, "apt_cache_bytes": 104857600, "journal_bytes": 268435456, "system_log_bytes": 52428800, "tmp_bytes": 20971520, "dev_cache_bytes": 83886080, "docker_reclaim_bytes": 0, "total_bytes": 530579456, "categories": [...]}}` |
+| Notes | Memindai 6 kategori sampah nyata: cache APT, Systemd Journald (`journalctl --disk-usage`), arsip log rotasi, berkas `/tmp` & `/var/tmp` yang berumur > 72 jam, cache developer (Composer/NPM/Pip), dan Docker reclaimable (`docker system df`). |
 
 | Field | Detail |
 |---|---|
@@ -1235,9 +1335,39 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); request mutasi waj
 | Auth Required | Yes (Cookie `panel_session`) |
 | Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
 | Query Params | Tidak ada |
-| Request Body | `clean_apt` (bool), `clean_logs` (bool), `clean_tmp` (bool), `drop_caches` (bool) |
-| Response | HTTP 200 `{"ok": true, "message": "Pembersihan sistem berhasil diselesaikan"}` |
-| Notes | Mengeksekusi pembersihan selektif dan sinkronisasi disk cache (`drop_caches`). |
+| Request Body | `clean_apt` (bool), `clean_journal` (bool), `clean_logs` (bool), `clean_tmp` (bool), `clean_dev_cache` (bool), `clean_docker` (bool), `drop_caches` (bool) |
+| Response | HTTP 200 `{"ok": true, "report": {"before_total": 530579456, "after_total": 120000000, "reclaimed_bytes": 410579456, "ram_freed_bytes": 0, "actions": [...], "errors": []}, "message": "Pembersihan sistem berhasil diselesaikan"}` |
+| Notes | Mengeksekusi pembersihan selektif, menghitung byte disk dan RAM aktual yang direklamasi, serta mencatat audit `system.cleaner_run`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/updates` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `refresh` (bool `1`/`true`, opsional, menjalankan `apt-get update -qq` terlebih dahulu) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "updates": {"is_linux": true, "package_manager": "apt", "total_count": 5, "security_count": 2, "needs_reboot": false, "checked_at": 1793160893, "updates": [{"name": "openssl", "current_version": "...", "new_version": "...", "source": "jammy-security", "is_security": true}]}}` |
+| Notes | Mem-parsing daftar paket upgradable APT beserta klasifikasi patch keamanan (`security`) dan indikator `/var/run/reboot-required`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/system/updates/apply-security` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Berhasil memperbarui 2 paket keamanan."}` |
+| Notes | Memasang hanya paket bertanda keamanan via `DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade -o Dpkg::Options::=--force-confold` (timeout 180 detik) dan mencatat audit `system.security_updates`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/system/diagnostics` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "diagnostics": {"is_linux": true, "oom_count": 1, "error_count": 4, "warn_count": 6, "entries": [{"timestamp": "...", "level": "oom", "source": "kernel", "message": "Out of memory: Killed process ...", "is_oom": true}]}}` |
+| Notes | Menggabungkan pesan galat/peringatan kernel (`dmesg -T --level=emerg,alert,crit,err,warn`) dan galat layanan systemd (`journalctl -p err -n 40`) dengan deteksi serta penyorotan khusus insiden OOM Killer. |
 
 ### Software App Store & Toolkit Installer
 

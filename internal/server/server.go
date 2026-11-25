@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.3"
+		return "0.7.4"
 	}
 	return s.version
 }
@@ -442,14 +442,25 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/webhooks", s.AuthMiddleware(http.HandlerFunc(s.handleCreateWebhook)))
 	s.mux.Handle("DELETE /api/webhooks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteWebhook)))
 
-	// System Process & Task Manager
+	// System Operations Console: Host Overview, Processes, Network, Swap/Memory, Cleaner, Updates & Diagnostics
+	s.mux.Handle("GET /api/system/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemOverview)))
+	s.mux.Handle("POST /api/system/disk-hogs", s.AuthMiddleware(http.HandlerFunc(s.handleAnalyzeDiskHogs)))
+	s.mux.Handle("POST /api/system/reboot", s.AuthMiddleware(http.HandlerFunc(s.handleRebootHost)))
 	s.mux.Handle("GET /api/system/processes", s.AuthMiddleware(http.HandlerFunc(s.handleListSystemProcesses)))
+	s.mux.Handle("GET /api/system/processes/{pid}", s.AuthMiddleware(http.HandlerFunc(s.handleInspectSystemProcess)))
 	s.mux.Handle("POST /api/system/processes/{pid}/kill", s.AuthMiddleware(http.HandlerFunc(s.handleKillSystemProcess)))
+	s.mux.Handle("POST /api/system/processes/{pid}/renice", s.AuthMiddleware(http.HandlerFunc(s.handleReniceSystemProcess)))
 	s.mux.Handle("GET /api/system/ports", s.AuthMiddleware(http.HandlerFunc(s.handleListListeningPorts)))
-
-	// System Cleaner & Optimization
+	s.mux.Handle("GET /api/system/memory", s.AuthMiddleware(http.HandlerFunc(s.handleGetMemoryStatus)))
+	s.mux.Handle("POST /api/system/memory/swap", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSwapfile)))
+	s.mux.Handle("DELETE /api/system/memory/swap", s.AuthMiddleware(http.HandlerFunc(s.handleRemoveSwapfile)))
+	s.mux.Handle("POST /api/system/memory/tuning", s.AuthMiddleware(http.HandlerFunc(s.handleSetMemoryTuning)))
+	s.mux.Handle("POST /api/system/memory/drop-cache", s.AuthMiddleware(http.HandlerFunc(s.handleDropRAMCaches)))
 	s.mux.Handle("GET /api/system/cleaner/scan", s.AuthMiddleware(http.HandlerFunc(s.handleScanSystemJunk)))
 	s.mux.Handle("POST /api/system/cleaner/clean", s.AuthMiddleware(http.HandlerFunc(s.handleCleanSystemJunk)))
+	s.mux.Handle("GET /api/system/updates", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemUpdates)))
+	s.mux.Handle("POST /api/system/updates/apply-security", s.AuthMiddleware(http.HandlerFunc(s.handleApplySecurityUpdates)))
+	s.mux.Handle("GET /api/system/diagnostics", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemDiagnostics)))
 
 	// Software App Store & Toolkit Installer
 	s.mux.Handle("GET /api/appstore/catalog", s.AuthMiddleware(http.HandlerFunc(s.handleListAppStore)))

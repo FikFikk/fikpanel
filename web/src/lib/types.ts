@@ -476,13 +476,78 @@ export interface InstallTask {
   started_at: number;
 }
 
-// ── System Process & Cleaner ──────────────────────────────────────────────
+// ── System Operations Console (Host, Process, Network, Swap/Memory, Cleaner, Updates & Diagnostics) ──
+export interface DiskPartition {
+  device: string;
+  mountpoint: string;
+  fs_type: string;
+  total_bytes: number;
+  used_bytes: number;
+  avail_bytes: number;
+  used_pct: number;
+  inodes_total: number;
+  inodes_used: number;
+  inodes_pct: number;
+}
+
+export interface HostOverview {
+  is_linux: boolean;
+  hostname: string;
+  os: string;
+  kernel: string;
+  arch: string;
+  cpu_model: string;
+  cpu_cores: number;
+  uptime_sec: number;
+  load_1: number;
+  load_5: number;
+  load_15: number;
+  mem_total_bytes: number;
+  mem_used_bytes: number;
+  mem_avail_bytes: number;
+  mem_cache_bytes: number;
+  mem_used_pct: number;
+  swap_total_bytes: number;
+  swap_used_bytes: number;
+  swap_used_pct: number;
+  total_procs: number;
+  running_procs: number;
+  zombie_procs: number;
+  oom_kills_recent: number;
+  needs_reboot: boolean;
+  disks: DiskPartition[];
+}
+
 export interface SystemProcess {
   pid: number;
+  ppid: number;
   user: string;
+  state: string;
   cpu: number;
+  mem_pct: number;
   memory: number;
+  threads: number;
+  elapsed: string;
   command: string;
+  protected: boolean;
+}
+
+export interface SystemProcessDetail {
+  pid: number;
+  ppid: number;
+  user: string;
+  name: string;
+  state: string;
+  cmdline: string;
+  exe: string;
+  cwd: string;
+  rss_bytes: number;
+  swap_bytes: number;
+  threads: number;
+  fd_count: number;
+  nice: number;
+  oom_score: number;
+  protected: boolean;
 }
 
 export interface PortListening {
@@ -491,14 +556,111 @@ export interface PortListening {
   address: string;
   program: string;
   pid: number;
+  exposed_public: boolean;
+  service: string;
+  can_kill: boolean;
+}
+
+export interface SwapDevice {
+  filename: string;
+  type: string;
+  size_bytes: number;
+  used_bytes: number;
+  priority: number;
+}
+
+export interface MemoryOptimizationStatus {
+  is_linux: boolean;
+  mem_total_bytes: number;
+  mem_used_bytes: number;
+  mem_avail_bytes: number;
+  mem_cache_bytes: number;
+  swap_total_bytes: number;
+  swap_used_bytes: number;
+  swappiness: number;
+  vfs_cache_pressure: number;
+  swaps: SwapDevice[];
+  fikpanel_swap_path: string;
+  has_fikpanel_swap: boolean;
+  root_free_bytes: number;
+}
+
+export interface CleanerCategory {
+  key: string;
+  label: string;
+  path: string;
+  bytes: number;
+  description: string;
+  available: boolean;
 }
 
 export interface CleanerScanResult {
+  is_linux: boolean;
   apt_cache_bytes: number;
+  journal_bytes: number;
   system_log_bytes: number;
   tmp_bytes: number;
+  dev_cache_bytes: number;
   docker_reclaim_bytes: number;
   total_bytes: number;
+  scanned_at: number;
+  categories: CleanerCategory[];
+}
+
+export interface CleanReport {
+  before_total: number;
+  after_total: number;
+  reclaimed_bytes: number;
+  ram_freed_bytes: number;
+  actions: string[];
+  errors: string[];
+}
+
+export interface DiskHogEntry {
+  path: string;
+  size_bytes: number;
+  percent: number;
+}
+
+export interface DiskHogsResult {
+  is_linux: boolean;
+  target_path: string;
+  total_bytes: number;
+  entries: DiskHogEntry[];
+}
+
+export interface PackageUpdate {
+  name: string;
+  current_version: string;
+  new_version: string;
+  source: string;
+  is_security: boolean;
+}
+
+export interface UpdatesOverview {
+  is_linux: boolean;
+  package_manager: string;
+  total_count: number;
+  security_count: number;
+  needs_reboot: boolean;
+  checked_at: number;
+  updates: PackageUpdate[];
+}
+
+export interface DiagnosticLogEntry {
+  timestamp: string;
+  level: 'oom' | 'error' | 'warning' | string;
+  source: string;
+  message: string;
+  is_oom: boolean;
+}
+
+export interface DiagnosticsReport {
+  is_linux: boolean;
+  oom_count: number;
+  error_count: number;
+  warn_count: number;
+  entries: DiagnosticLogEntry[];
 }
 
 // ── DNS Management ────────────────────────────────────────────────────────
