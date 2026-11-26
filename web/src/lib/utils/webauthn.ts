@@ -198,3 +198,59 @@ export async function loginWithPasskeyFlow(): Promise<{ ok: boolean; user?: { us
     }),
   });
 }
+
+// Alur verifikasi step-up Vault menggunakan Passkey / Biometrik (Windows Hello, Touch ID, Face ID, QR HP)
+export async function unlockVaultWithPasskeyFlow(): Promise<{
+  ok: boolean;
+  unlocked: boolean;
+  expires_at: number;
+  remaining_sec: number;
+  message?: string;
+}> {
+  const begin = await apiFetch<{ ok: boolean; session_id: string; publicKey: any }>('/api/auth/vault/unlock/passkey/begin', {
+    method: 'POST',
+  });
+
+  const pk = begin.publicKey;
+  const requestOptions: PublicKeyCredentialRequestOptions = {
+    ...pk,
+    challenge: b64urlToBuf(pk.challenge),
+    allowCredentials: (pk.allowCredentials || []).map((c: any) => ({
+      ...c,
+      id: b64urlToBuf(c.id),
+    })),
+  };
+
+  let cred: PublicKeyCredential | null = null;
+  try {
+    cred = (await navigator.credentials.get({ publicKey: requestOptions })) as PublicKeyCredential | null;
+  } catch (err) {
+    throw mapWebAuthnError(err);
+  }
+  if (!cred) {
+    throw new Error('Verifikasi Passkey dibatalkan');
+  }
+
+  const resp = cred.response as AuthenticatorAssertionResponse;
+  const serialized = {
+    id: cred.id,
+    rawId: bufToB64url(cred.rawId),
+    type: cred.type,
+    authenticatorAttachment: (cred as any).authenticatorAttachment || undefined,
+    clientExtensionResults: cred.getClientExtensionResults?.() || {},
+    response: {
+      authenticatorData: bufToB64url(resp.authenticatorData),
+      clientDataJSON: bufToB64url(resp.clientDataJSON),
+      signature: bufToB64url(resp.signature),
+      userHandle: resp.userHandle ? bufToB64url(resp.userHandle) : undefined,
+    },
+  };
+
+  return apiFetch('/api/auth/vault/unlock/passkey/finish', {
+    method: 'POST',
+    body: JSON.stringify({
+      session_id: begin.session_id,
+      credential: serialized,
+    }),
+  });
+}

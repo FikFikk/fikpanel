@@ -24,11 +24,12 @@ import (
 
 const fikpanelBackupDir = "/var/backups/fikpanel"
 
-// DatabaseEnrichedItem memperluas DatabaseRecord dengan metadata proteksi sistem & kuota
+// DatabaseEnrichedItem memperluas DatabaseRecord dengan metadata proteksi sistem, kuota, dan status kata sandi vault
 type DatabaseEnrichedItem struct {
 	store.DatabaseRecord
-	IsSystem bool `json:"is_system"`
-	QuotaMB  int  `json:"quota_mb"`
+	IsSystem    bool `json:"is_system"`
+	QuotaMB     int  `json:"quota_mb"`
+	HasPassword bool `json:"has_password"`
 }
 
 // DatabaseBackupFileItem merepresentasikan satu arsip cadangan SQL milik database tertentu

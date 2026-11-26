@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.10"
+		return "0.7.11"
 	}
 	return s.version
 }
@@ -540,6 +540,13 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/files/symlink", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSymlink)))
 	s.mux.Handle("POST /api/files/search-content", s.AuthMiddleware(http.HandlerFunc(s.handleSearchContent)))
 
+	// Vault Step-Up Authentication (Biometrik/Passkey & Password Admin untuk membuka rahasia sensitif)
+	s.mux.Handle("GET /api/auth/vault/status", s.AuthMiddleware(http.HandlerFunc(s.handleVaultStatus)))
+	s.mux.Handle("POST /api/auth/vault/unlock/password", s.AuthMiddleware(http.HandlerFunc(s.handleVaultUnlockPassword)))
+	s.mux.Handle("POST /api/auth/vault/unlock/passkey/begin", s.AuthMiddleware(http.HandlerFunc(s.handleVaultUnlockPasskeyBegin)))
+	s.mux.Handle("POST /api/auth/vault/unlock/passkey/finish", s.AuthMiddleware(http.HandlerFunc(s.handleVaultUnlockPasskeyFinish)))
+	s.mux.Handle("POST /api/auth/vault/lock", s.AuthMiddleware(http.HandlerFunc(s.handleVaultLock)))
+
 	// Manajemen Database & Engine Terkelola (Database Command Center)
 	s.mux.Handle("GET /api/databases/engines", s.AuthMiddleware(http.HandlerFunc(s.handleListEngines)))
 	s.mux.Handle("POST /api/databases/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallDatabase)))
@@ -560,6 +567,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("GET /api/databases/{engine}/auto-backup", s.AuthMiddleware(http.HandlerFunc(s.handleGetAutoBackup)))
 	s.mux.Handle("POST /api/databases/{engine}/auto-backup", s.AuthMiddleware(http.HandlerFunc(s.handleSetAutoBackup)))
 	s.mux.Handle("DELETE /api/databases/{engine}/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDatabase)))
+	s.mux.Handle("GET /api/databases/{engine}/{name}/secret", s.AuthMiddleware(http.HandlerFunc(s.handleRevealDatabaseSecret)))
 	s.mux.Handle("PUT /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
 	s.mux.Handle("POST /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
 	s.mux.Handle("PUT /api/databases/{engine}/{name}/quota", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabaseQuota)))

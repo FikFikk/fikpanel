@@ -4,6 +4,7 @@
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import { notify } from '../lib/stores/toast.svelte';
   import PageHeader from '../lib/components/ui/PageHeader.svelte';
+  import VaultUnlockModal from '../lib/components/ui/VaultUnlockModal.svelte';
   import type {
     AutoBackupStatus,
     DatabaseEngineInfo,
@@ -11,6 +12,7 @@
     DatabaseProcessItem,
     DatabaseTelemetry,
     SystemTask,
+    VaultStatus,
   } from '../lib/types';
   import Backup from './Backup.svelte';
   import EngineTabs from './databases/EngineTabs.svelte';
@@ -57,8 +59,24 @@
   let selectedNames = $state<string[]>([]);
   let bulkWorking = $state(false);
 
-  // Peta visibilitas password per ID database
+  // Peta visibilitas password per ID database & state Step-Up Vault Security Lock
   let visiblePasswords = $state<Record<number, boolean>>({});
+  let vaultUnlocked = $state(false);
+  let vaultExpiresAt = $state(0);
+  let vaultRemainingSec = $state(0);
+  let vaultHasPasskeys = $state(false);
+  let vaultUsername = $state('');
+  let showVaultModal = $state(false);
+  let vaultReason = $state('');
+  let pendingVaultAction: (() => Promise<void> | void) | null = null;
+  let vaultTimer: ReturnType<typeof setInterval> | null = null;
+
+  let vaultCountdownText = $derived.by(() => {
+    const s = Math.max(0, vaultRemainingSec);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r.toString().padStart(2, '0')}`;
+  });
 
   // State modal
   let showInstallModal = $state(false);
@@ -273,14 +291,98 @@
     if (window.location.hash.includes('backup')) {
       mainView = 'backup';
     }
-    await fetchEngines();
+    await Promise.all([fetchEngines(), fetchVaultStatus()]);
     await loadEngineData(activeEngine);
     await fetchTasks();
+
+    // Hitung mundur status buka kunci Vault setiap 1 detik dan kunci otomatis bila kedaluwarsa
+    vaultTimer = setInterval(() => {
+      if (vaultUnlocked && vaultExpiresAt > 0) {
+        const rem = Math.max(0, vaultExpiresAt - Math.floor(Date.now() / 1000));
+        vaultRemainingSec = rem;
+        if (rem === 0) {
+          vaultUnlocked = false;
+          vaultExpiresAt = 0;
+          visiblePasswords = {};
+          databases = databases.map((d) => ({ ...d, password: '' }));
+        }
+      }
+    }, 1000);
   });
 
   onDestroy(() => {
     closeLogStream();
+    if (vaultTimer) {
+      clearInterval(vaultTimer);
+      vaultTimer = null;
+    }
   });
+
+  // Periksa status kunci Vault dan ketersediaan Passkey/Biometrik untuk akun aktif
+  async function fetchVaultStatus() {
+    try {
+      const res = await apiFetch<VaultStatus & { ok: boolean }>('/api/auth/vault/status');
+      vaultUnlocked = Boolean(res.unlocked);
+      vaultExpiresAt = res.expires_at || 0;
+      vaultRemainingSec = res.remaining_sec || 0;
+      vaultHasPasskeys = Boolean(res.has_passkeys);
+      vaultUsername = res.username || '';
+    } catch {
+      vaultUnlocked = false;
+    }
+  }
+
+  // Jalankan aksi rahasia setelah Vault dipastikan terbuka via Passkey/Biometrik atau Password Admin
+  function ensureVaultUnlocked(reason: string, action: () => Promise<void> | void) {
+    if (vaultUnlocked && vaultExpiresAt > Math.floor(Date.now() / 1000)) {
+      action();
+      return;
+    }
+    vaultReason = reason;
+    pendingVaultAction = action;
+    showVaultModal = true;
+  }
+
+  async function handleVaultUnlocked(expiresAt: number) {
+    vaultUnlocked = true;
+    vaultExpiresAt = expiresAt;
+    vaultRemainingSec = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+    showVaultModal = false;
+    notify('Vault keamanan terbuka selama 5 menit', 'success');
+
+    const next = pendingVaultAction;
+    pendingVaultAction = null;
+    if (next) {
+      await next();
+    }
+    if (activeEngine !== 'redis') {
+      await fetchDatabases(activeEngine);
+    }
+  }
+
+  async function lockVaultNow() {
+    try {
+      await apiFetch('/api/auth/vault/lock', { method: 'POST' });
+    } catch {
+      // Tetap kunci state lokal
+    }
+    vaultUnlocked = false;
+    vaultExpiresAt = 0;
+    vaultRemainingSec = 0;
+    visiblePasswords = {};
+    databases = databases.map((d) => ({ ...d, password: '' }));
+    notify('Vault keamanan dikunci kembali', 'info');
+  }
+
+  function handleToggleVaultPill() {
+    if (vaultUnlocked) {
+      lockVaultNow();
+    } else {
+      vaultReason = 'Verifikasi identitas Anda untuk membuka akses sementara ke kata sandi & .env database.';
+      pendingVaultAction = null;
+      showVaultModal = true;
+    }
+  }
 
   // Muat seluruh data untuk satu engine (daftar DB, telemetri, status auto-backup) secara paralel
   async function loadEngineData(eng: 'mysql' | 'postgresql' | 'mongodb' | 'redis') {
@@ -311,8 +413,18 @@
   async function fetchDatabases(eng: string) {
     loadingDatabases = true;
     try {
-      const data = await apiFetch<{ databases: DatabaseItem[] }>(`/api/databases/${eng}/list`);
+      const data = await apiFetch<{
+        databases: DatabaseItem[];
+        vault_unlocked?: boolean;
+        vault_expires_at?: number;
+      }>(`/api/databases/${eng}/list`);
       databases = data.databases || [];
+      if (typeof data.vault_unlocked === 'boolean') {
+        vaultUnlocked = data.vault_unlocked;
+        vaultExpiresAt = data.vault_expires_at || 0;
+        vaultRemainingSec = vaultUnlocked ? Math.max(0, vaultExpiresAt - Math.floor(Date.now() / 1000)) : 0;
+        if (!vaultUnlocked) visiblePasswords = {};
+      }
     } catch {
       databases = [];
     } finally {
@@ -407,40 +519,93 @@
     await loadEngineData(eng);
   }
 
-  // Salin blok .env & URL koneksi 1-klik untuk Laravel / Node / Go
+  // Ambil kredensial rahasia database langsung dari server setelah Vault terbuka (HTTP 423 jika terkunci)
+  async function fetchDbSecret(db: DatabaseItem) {
+    return apiFetch<{
+      ok: boolean;
+      username: string;
+      password: string;
+      has_password: boolean;
+      env_block: string;
+      dsn_url: string;
+    }>(`/api/databases/${activeEngine}/${encodeURIComponent(db.name)}/secret`);
+  }
+
+  // Salin blok .env & URL koneksi 1-klik dengan proteksi Vault Lock (Biometrik/Passkey atau Password Admin)
   function copyConnectionEnv(db: DatabaseItem) {
-    const hasPass = Boolean(db.password && db.password.trim());
-    const pass = hasPass ? db.password : '';
-    const host = db.location === '%' || !db.location ? '127.0.0.1' : db.location;
-    let snippet = '';
-    if (activeEngine === 'postgresql') {
-      snippet = [
-        `DB_CONNECTION=pgsql`,
-        `DB_HOST=${host}`,
-        `DB_PORT=5432`,
-        `DB_DATABASE=${db.name}`,
-        `DB_USERNAME=${db.username}`,
-        `DB_PASSWORD=${pass}`,
-        `# DATABASE_URL=postgresql://${db.username}:${encodeURIComponent(pass)}@${host}:5432/${db.name}`,
-      ].join('\n');
-    } else {
-      snippet = [
-        `DB_CONNECTION=mysql`,
-        `DB_HOST=${host}`,
-        `DB_PORT=3306`,
-        `DB_DATABASE=${db.name}`,
-        `DB_USERNAME=${db.username}`,
-        `DB_PASSWORD=${pass}`,
-        `# DATABASE_URL=mysql://${db.username}:${encodeURIComponent(pass)}@${host}:3306/${db.name}`,
-      ].join('\n');
+    ensureVaultUnlocked(
+      `Verifikasi identitas Anda untuk membuka dan menyalin konfigurasi .env database "${db.name}".`,
+      async () => {
+        try {
+          const secret = await fetchDbSecret(db);
+          await copyText(secret.env_block, `Konfigurasi .env (${db.name})`);
+          if (!secret.has_password) {
+            notify(
+              `Password "${db.name}" belum tercatat di vault. Klik "Sinkron Host" untuk memindai dari konfigurasi proyek, atau catat via tombol Sandi (mode Vault).`,
+              'warning'
+            );
+          }
+        } catch (e: any) {
+          if (e.status === 423) {
+            vaultUnlocked = false;
+            ensureVaultUnlocked(`Vault terkunci — verifikasi ulang untuk menyalin .env "${db.name}".`, () => copyConnectionEnv(db));
+            return;
+          }
+          notify(e.message || 'Gagal membuka kredensial database', 'error');
+        }
+      }
+    );
+  }
+
+  // Lihat/sembunyikan kata sandi database pada tabel dengan proteksi Vault Lock
+  function togglePasswordVisibility(db: DatabaseItem) {
+    if (vaultUnlocked && visiblePasswords[db.id]) {
+      visiblePasswords[db.id] = false;
+      return;
     }
-    copyText(snippet, `Konfigurasi .env (${db.name})`);
-    if (!hasPass) {
-      notify(
-        `Password "${db.name}" belum tercatat di vault (MySQL menyimpan hash satu arah). Klik "Sinkron Host" untuk memindai otomatis dari file .env proyek di server, atau catat via tombol Sandi (mode Vault).`,
-        'warning'
-      );
-    }
+    ensureVaultUnlocked(
+      `Verifikasi identitas Anda untuk menampilkan kata sandi database "${db.name}".`,
+      async () => {
+        try {
+          const secret = await fetchDbSecret(db);
+          databases = databases.map((item) =>
+            item.id === db.id ? { ...item, password: secret.password, has_password: secret.has_password } : item
+          );
+          visiblePasswords[db.id] = true;
+        } catch (e: any) {
+          if (e.status === 423) {
+            vaultUnlocked = false;
+            togglePasswordVisibility(db);
+            return;
+          }
+          notify(e.message || 'Gagal menampilkan kata sandi database', 'error');
+        }
+      }
+    );
+  }
+
+  // Salin kata sandi database ke papan klip dengan proteksi Vault Lock
+  function copyDbPassword(db: DatabaseItem) {
+    ensureVaultUnlocked(
+      `Verifikasi identitas Anda untuk menyalin kata sandi database "${db.name}".`,
+      async () => {
+        try {
+          const secret = await fetchDbSecret(db);
+          if (!secret.password) {
+            notify(`Password "${db.name}" belum disetel di vault`, 'warning');
+            return;
+          }
+          await copyText(secret.password, `Password ${db.name}`);
+        } catch (e: any) {
+          if (e.status === 423) {
+            vaultUnlocked = false;
+            copyDbPassword(db);
+            return;
+          }
+          notify(e.message || 'Gagal menyalin kata sandi database', 'error');
+        }
+      }
+    );
   }
 
   // Aksi seleksi massal (Bulk Actions)
@@ -880,9 +1045,9 @@
   function openUserPasswordModal(db: DatabaseItem) {
     selectedUserPassDb = db;
     userPassUsername = db.username || db.name;
-    userPassValue = db.password || '';
-    // Default ke mode aman (vault_only) bila password sebelumnya kosong agar tidak memutus aplikasi produksi
-    userPassVaultOnly = !db.password;
+    userPassValue = vaultUnlocked ? (db.password || '') : '';
+    // Default ke mode aman (vault_only) bila password belum tercatat sama sekali di vault
+    userPassVaultOnly = !(db.has_password || db.password);
     showUserPassModal = true;
   }
 
@@ -1292,9 +1457,12 @@
         {autoBackupStatus}
         {togglingAutoBackup}
         {syncingHost}
+        {vaultUnlocked}
+        {vaultCountdownText}
         bind:searchQuery
         {currentEngine}
         onToggleAutoBackup={toggleAutoBackup}
+        onToggleVault={handleToggleVaultPill}
         onAddDb={openAddModal}
         onOpenRootPass={() => {
           rootPassword = '';
@@ -1305,11 +1473,12 @@
         onOpenEngineManager={() => openEngineManager('service')}
       />
 
-      <!-- Tabel Database dengan SQL Studio, Backup/Import, .env & Bulk Actions -->
+      <!-- Tabel Database dengan SQL Studio, Backup/Import, .env Terkunci Vault & Bulk Actions -->
       <DbTable
         {loadingDatabases}
         {filteredDatabases}
         {currentEngine}
+        {vaultUnlocked}
         {visiblePasswords}
         {selectedNames}
         {bulkWorking}
@@ -1318,8 +1487,8 @@
         onClearSelection={() => (selectedNames = [])}
         onBulkBackup={bulkBackupSelected}
         onBulkDelete={bulkDeleteSelected}
-        onTogglePassword={(id) => (visiblePasswords[id] = !visiblePasswords[id])}
-        onCopyText={copyText}
+        onTogglePassword={togglePasswordVisibility}
+        onCopyPassword={copyDbPassword}
         onCopyEnv={copyConnectionEnv}
         onOpenSqlStudio={(db) => {
           sqlStudioDb = db;
@@ -1472,6 +1641,19 @@
     onGenerate={() => (rootPassword = randomStrongPassword())}
     onClose={() => (showRootPassModal = false)}
     onSave={saveRootPassword}
+  />
+
+  <!-- Modal Verifikasi Step-Up Keamanan Vault (Biometrik Passkey / Password Admin) -->
+  <VaultUnlockModal
+    open={showVaultModal}
+    reason={vaultReason}
+    hasPasskeys={vaultHasPasskeys}
+    username={vaultUsername}
+    onUnlocked={handleVaultUnlocked}
+    onClose={() => {
+      showVaultModal = false;
+      pendingVaultAction = null;
+    }}
   />
 
   <!-- Modal Ubah / Catat Kredensial Pengguna -->

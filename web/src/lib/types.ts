@@ -367,6 +367,7 @@ export interface DatabaseItem {
   name: string;
   username: string;
   password: string;
+  has_password?: boolean;
   size_bytes: number;
   backup_count: number;
   location: string;
@@ -375,6 +376,15 @@ export interface DatabaseItem {
   timestamp?: number;
   is_system?: boolean;
   quota_mb?: number;
+}
+
+export interface VaultStatus {
+  unlocked: boolean;
+  expires_at: number;
+  remaining_sec: number;
+  has_passkeys: boolean;
+  passkey_count?: number;
+  username?: string;
 }
 
 export interface DatabaseBackupFile {

@@ -1,7 +1,11 @@
 package server
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +13,9 @@ import (
 	"time"
 
 	"fikpanel/internal/database"
+	"fikpanel/internal/metrics"
+	"fikpanel/internal/services"
+	"fikpanel/internal/store"
 )
 
 // TestParseEngineVersion memverifikasi ekstraksi versi server database agar tidak tertukar dengan versi pustaka klien
@@ -228,5 +235,123 @@ $dbserver='localhost';
 	pgCred, ok := found["postgresql:analytics_db"]
 	if !ok || pgCred.Username != "pguser" || pgCred.Password != "pg#pass" {
 		t.Fatalf("DiscoverLocalDBCredentials gagal membaca postgresql:analytics_db: %+v", found)
+	}
+
+	// 5. Parser Go MySQL DSN (user:pass@tcp(host:port)/dbname) & Go Postgres key-value DSN
+	goMysql, ok := database.ParseDatabaseURL("wa_user:WaPass!77@tcp(127.0.0.1:3306)/wa_bot?charset=utf8mb4&parseTime=True")
+	if !ok || goMysql.Engine != "mysql" || goMysql.DBName != "wa_bot" || goMysql.Username != "wa_user" || goMysql.Password != "WaPass!77" {
+		t.Fatalf("parsing Go MySQL DSN gagal: %+v (ok=%v)", goMysql, ok)
+	}
+	goPg, ok := database.ParseDatabaseURL("host=localhost user=vault_usr password=VaultPass99 dbname=fikvault port=5432 sslmode=disable")
+	if !ok || goPg.Engine != "postgresql" || goPg.DBName != "fikvault" || goPg.Username != "vault_usr" || goPg.Password != "VaultPass99" {
+		t.Fatalf("parsing Go Postgres DSN gagal: %+v (ok=%v)", goPg, ok)
+	}
+
+	// 6. Parser ecosystem.config.cjs / config.json terstruktur
+	pm2Sample := `module.exports = { apps: [{ name: 'api', env: { DB_DATABASE: 'api_user_crud', DB_USERNAME: 'crud_usr', DB_PASSWORD: 'CrudSecret88' } }] }`
+	pm2Creds := database.ParseStructuredConfigCredentials(pm2Sample, "/var/www/api/ecosystem.config.cjs")
+	if len(pm2Creds) == 0 || pm2Creds[0].DBName != "api_user_crud" || pm2Creds[0].Password != "CrudSecret88" {
+		t.Fatalf("parsing ecosystem.config.cjs gagal: %+v", pm2Creds)
+	}
+}
+
+// TestVaultLockEnforcement memverifikasi sensor password saat Vault terkunci dan pembukaan via kata sandi administrator
+func TestVaultLockEnforcement(t *testing.T) {
+	tempDir := t.TempDir()
+	st, err := store.Open(filepath.Join(tempDir, "vault_test.db"))
+	if err != nil {
+		t.Fatalf("gagal membuka store: %v", err)
+	}
+	defer st.Close()
+
+	usr, err := st.EnsureDevUser("admin_vault", "AdminVaultPass#2026")
+	if err != nil || usr == nil {
+		t.Fatalf("gagal membuat user uji: %v", err)
+	}
+
+	_, err = st.CreateDatabase(context.Background(), store.DatabaseRecord{
+		Engine:   "mysql",
+		Name:     "kostash",
+		Username: "kostash",
+		Password: "SuperSecretDBPassword",
+		Location: "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("gagal membuat DB uji: %v", err)
+	}
+
+	srv, err := NewServer(st, metrics.NewHub(), services.NewManager(st.DB()), 8889)
+	if err != nil {
+		t.Fatalf("gagal inisialisasi server: %v", err)
+	}
+
+	cookie := &http.Cookie{Name: "panel_session", Value: "test_vault_session_token_abc"}
+	withUser := func(req *http.Request) *http.Request {
+		req.AddCookie(cookie)
+		return req.WithContext(context.WithValue(req.Context(), userContextKey, usr))
+	}
+
+	// 1. Saat Vault terkunci: GET /list harus menyensor password & tetap set has_password = true
+	reqList := withUser(httptest.NewRequest(http.MethodGet, "/api/databases/mysql/list", nil))
+	reqList.SetPathValue("engine", "mysql")
+	wList := httptest.NewRecorder()
+	srv.handleListDatabases(wList, reqList)
+	var listResp struct {
+		VaultUnlocked bool                   `json:"vault_unlocked"`
+		Databases     []DatabaseEnrichedItem `json:"databases"`
+	}
+	if err := json.Unmarshal(wList.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("gagal parse list: %v", err)
+	}
+	if listResp.VaultUnlocked || len(listResp.Databases) != 1 || listResp.Databases[0].Password != "" || !listResp.Databases[0].HasPassword {
+		t.Fatalf("password seharusnya disensor saat Vault terkunci: %+v", listResp)
+	}
+
+	// 2. Saat Vault terkunci: GET /secret harus menolak dengan HTTP 423 Locked
+	reqSecretLocked := withUser(httptest.NewRequest(http.MethodGet, "/api/databases/mysql/kostash/secret", nil))
+	reqSecretLocked.SetPathValue("engine", "mysql")
+	reqSecretLocked.SetPathValue("name", "kostash")
+	wLocked := httptest.NewRecorder()
+	srv.handleRevealDatabaseSecret(wLocked, reqSecretLocked)
+	if wLocked.Code != http.StatusLocked {
+		t.Fatalf("diharapkan HTTP 423 Locked saat Vault terkunci, didapat %d", wLocked.Code)
+	}
+
+	// 3. Buka Vault dengan kata sandi admin salah -> HTTP 401
+	badBody, _ := json.Marshal(map[string]string{"password": "salah"})
+	reqBad := withUser(httptest.NewRequest(http.MethodPost, "/api/auth/vault/unlock/password", bytes.NewReader(badBody)))
+	wBad := httptest.NewRecorder()
+	srv.handleVaultUnlockPassword(wBad, reqBad)
+	if wBad.Code != http.StatusUnauthorized {
+		t.Fatalf("kata sandi salah seharusnya 401, didapat %d", wBad.Code)
+	}
+
+	// 4. Buka Vault dengan kata sandi admin benar -> HTTP 200
+	okBody, _ := json.Marshal(map[string]string{"password": "AdminVaultPass#2026"})
+	reqOk := withUser(httptest.NewRequest(http.MethodPost, "/api/auth/vault/unlock/password", bytes.NewReader(okBody)))
+	wOk := httptest.NewRecorder()
+	srv.handleVaultUnlockPassword(wOk, reqOk)
+	if wOk.Code != http.StatusOK {
+		t.Fatalf("buka Vault seharusnya 200, didapat %d: %s", wOk.Code, wOk.Body.String())
+	}
+
+	// 5. Setelah Vault terbuka: GET /secret mengembalikan password & env_block lengkap
+	reqSecretOpen := withUser(httptest.NewRequest(http.MethodGet, "/api/databases/mysql/kostash/secret", nil))
+	reqSecretOpen.SetPathValue("engine", "mysql")
+	reqSecretOpen.SetPathValue("name", "kostash")
+	wOpen := httptest.NewRecorder()
+	srv.handleRevealDatabaseSecret(wOpen, reqSecretOpen)
+	if wOpen.Code != http.StatusOK || !strings.Contains(wOpen.Body.String(), "SuperSecretDBPassword") {
+		t.Fatalf("reveal secret gagal setelah Vault dibuka: %d %s", wOpen.Code, wOpen.Body.String())
+	}
+
+	// 6. Kunci kembali Vault secara manual -> GET /secret kembali 423 Locked
+	reqLock := withUser(httptest.NewRequest(http.MethodPost, "/api/auth/vault/lock", nil))
+	wLock := httptest.NewRecorder()
+	srv.handleVaultLock(wLock, reqLock)
+	wAfterLock := httptest.NewRecorder()
+	srv.handleRevealDatabaseSecret(wAfterLock, reqSecretLocked)
+	if wAfterLock.Code != http.StatusLocked {
+		t.Fatalf("setelah manual lock seharusnya 423 Locked, didapat %d", wAfterLock.Code)
 	}
 }

@@ -10,6 +10,7 @@
     loadingDatabases: boolean;
     filteredDatabases: DatabaseItem[];
     currentEngine: DatabaseEngineInfo;
+    vaultUnlocked: boolean;
     visiblePasswords: Record<number, boolean>;
     selectedNames: string[];
     bulkWorking: boolean;
@@ -18,8 +19,8 @@
     onClearSelection: () => void;
     onBulkBackup: () => void;
     onBulkDelete: () => void;
-    onTogglePassword: (id: number) => void;
-    onCopyText: (text: string, label: string) => void;
+    onTogglePassword: (db: DatabaseItem) => void;
+    onCopyPassword: (db: DatabaseItem) => void;
     onCopyEnv: (db: DatabaseItem) => void;
     onOpenSqlStudio: (db: DatabaseItem) => void;
     onOpenBackupModal: (db: DatabaseItem) => void;
@@ -33,6 +34,7 @@
     loadingDatabases,
     filteredDatabases,
     currentEngine,
+    vaultUnlocked,
     visiblePasswords,
     selectedNames,
     bulkWorking,
@@ -42,7 +44,7 @@
     onBulkBackup,
     onBulkDelete,
     onTogglePassword,
-    onCopyText,
+    onCopyPassword,
     onCopyEnv,
     onOpenSqlStudio,
     onOpenBackupModal,
@@ -160,25 +162,25 @@
               <td class="col-mono">{db.username}</td>
               <td class="col-mono">
                 <div class="pass-wrap">
-                  {#if db.password}
-                    <span>{visiblePasswords[db.id] ? db.password : '••••••••'}</span>
+                  {#if db.has_password || db.password}
+                    <span>{vaultUnlocked && visiblePasswords[db.id] && db.password ? db.password : '••••••••'}</span>
                     <button
                       type="button"
                       class="btn-icon"
-                      onclick={() => onTogglePassword(db.id)}
-                      title={visiblePasswords[db.id] ? 'Sembunyikan' : 'Lihat'}
-                      aria-label={visiblePasswords[db.id] ? 'Sembunyikan password' : 'Lihat password'}
+                      onclick={() => onTogglePassword(db)}
+                      title={vaultUnlocked && visiblePasswords[db.id] ? 'Sembunyikan' : 'Verifikasi Vault & Lihat password'}
+                      aria-label={vaultUnlocked && visiblePasswords[db.id] ? 'Sembunyikan password' : 'Lihat password'}
                     >
-                      <i class={visiblePasswords[db.id] ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                      <i class={vaultUnlocked && visiblePasswords[db.id] ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
                     </button>
                     <button
                       type="button"
                       class="btn-icon"
-                      onclick={() => onCopyText(db.password, 'Password')}
-                      title="Salin password"
+                      onclick={() => onCopyPassword(db)}
+                      title={vaultUnlocked ? 'Salin password' : 'Verifikasi Vault & Salin password'}
                       aria-label="Salin password"
                     >
-                      <i class="ri-file-copy-line" aria-hidden="true"></i>
+                      <i class={vaultUnlocked ? 'ri-file-copy-line' : 'ri-lock-line'} aria-hidden="true"></i>
                     </button>
                   {:else}
                     <span class="text-muted">Belum disetel</span>
@@ -186,7 +188,7 @@
                       type="button"
                       class="btn-icon"
                       onclick={() => onOpenPasswordModal(db)}
-                      title="Atur kata sandi sekarang"
+                      title="Catat atau atur kata sandi sekarang"
                       aria-label={`Atur kata sandi ${db.name}`}
                     >
                       <i class="ri-key-line" aria-hidden="true"></i>
@@ -230,10 +232,12 @@
                     type="button"
                     class="op-chip"
                     onclick={() => onCopyEnv(db)}
-                    title="Salin blok konfigurasi .env (Laravel / DSN)"
+                    title={vaultUnlocked
+                      ? 'Salin blok konfigurasi .env (Laravel / DSN)'
+                      : 'Verifikasi Biometrik/Passkey atau Password Admin untuk menyalin .env'}
                     aria-label={`Salin konfigurasi .env untuk ${db.name}`}
                   >
-                    <i class="ri-code-s-slash-line" aria-hidden="true"></i>
+                    <i class={vaultUnlocked ? 'ri-code-s-slash-line' : 'ri-lock-line'} aria-hidden="true"></i>
                     <span>.env</span>
                   </button>
 

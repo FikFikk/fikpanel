@@ -4072,6 +4072,60 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.27 Vault Step-Up Security Lock (Biometrik Passkey / Password Admin) & Reveal Secret
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/auth/vault/status` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "unlocked": false, "expires_at": 0, "remaining_sec": 0, "has_passkeys": true, "passkey_count": 1, "username": "admin"}` |
+| Notes | Memeriksa apakah sesi aktif telah membuka Vault kredensial (durasi 5 menit) serta apakah akun memiliki Passkey/Biometrik terdaftar. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/vault/unlock/password` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `password` (string, wajib — kata sandi login akun admin aktif) |
+| Response | HTTP 200 `{"ok": true, "unlocked": true, "expires_at": 179..., "remaining_sec": 300}`; HTTP 401 bila kata sandi salah |
+| Notes | Dilindungi rate limiter anti brute-force; membuka Vault 5 menit untuk hash sesi saat ini dan mencatat audit `auth.vault_unlock_password`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/vault/unlock/passkey/begin` & `POST /api/auth/vault/unlock/passkey/finish` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `finish`: `{"session_id": "...", "credential": {...}}` |
+| Response | `begin`: HTTP 200 `{"ok": true, "session_id": "...", "publicKey": {...}}`; `finish`: HTTP 200 `{"ok": true, "unlocked": true, "expires_at": 179..., "remaining_sec": 300}` |
+| Notes | Memakai WebAuthn FIDO2 dengan `UserVerification: required` (wajib biometrik/PIN perangkat atau QR HP) pada Passkey milik akun aktif; menolak `CloneWarning` dan mencatat audit `auth.vault_unlock_passkey`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/auth/vault/lock` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "unlocked": false, "message": "Vault kredensial telah dikunci kembali"}` |
+| Notes | Mengunci kembali Vault sesi aktif secara instan dan mencatat audit `auth.vault_lock`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/{engine}/{name}/secret` |
+| Auth Required | Yes (Cookie `panel_session`) + Vault Unlocked |
+| Headers | Tidak ada |
+| Query Params | Path param `{engine}`, `{name}` |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "username": "...", "password": "...", "has_password": true, "host": "127.0.0.1", "port": 3306, "env_block": "...", "dsn_url": "..."}`; HTTP 423 `{"ok": false, "vault_locked": true, "error": "..."}` bila Vault terkunci |
+| Notes | Satu-satunya jalur untuk mengambil kredensial plaintext & blok `.env` database saat Vault terkunci (`GET /api/databases/{engine}/list` menyensor `password` menjadi `""` ketika Vault terkunci). Mencatat audit `database.reveal_secret`. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |

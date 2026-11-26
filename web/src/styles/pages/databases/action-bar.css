@@ -143,6 +143,31 @@
       color: var(--text-muted);
     }
 
+    .vault-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.72rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+    .vault-status-pill:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .vault-status-pill.unlocked {
+      background: var(--tint-success);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
     .search-box {
       position: relative;
       display: flex;

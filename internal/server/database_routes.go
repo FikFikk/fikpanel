@@ -100,6 +100,7 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 
 	// Kalkulasi ukuran aktual database secara dinamis dari host engine
 	sizes, errSizes := database.GetDatabaseSizes(r.Context(), engine)
+	vaultUnlocked, vaultExpiresAt := s.isVaultUnlocked(r)
 	enriched := make([]DatabaseEnrichedItem, 0, len(list))
 	for i := range list {
 		if errSizes == nil && len(sizes) > 0 {
@@ -115,16 +116,25 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 		quotaStr, _ := s.store.GetSetting(r.Context(), fmt.Sprintf("db_quota:%s:%s", engine, list[i].Name))
 		quotaMB, _ := strconv.Atoi(quotaStr)
 
+		hasPass := strings.TrimSpace(list[i].Password) != ""
+		// Proteksi Zero-Leak: sensor password plaintext dari respons API selama Vault sedang terkunci
+		if !vaultUnlocked {
+			list[i].Password = ""
+		}
+
 		enriched = append(enriched, DatabaseEnrichedItem{
 			DatabaseRecord: list[i],
 			IsSystem:       database.IsSystemDatabase(engine, list[i].Name),
 			QuotaMB:        quotaMB,
+			HasPassword:    hasPass,
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"databases": enriched,
+		"databases":        enriched,
+		"vault_unlocked":   vaultUnlocked,
+		"vault_expires_at": vaultExpiresAt,
 	})
 }
 

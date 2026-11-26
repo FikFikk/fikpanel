@@ -9,9 +9,12 @@
     autoBackupStatus: AutoBackupStatus;
     togglingAutoBackup: boolean;
     syncingHost: boolean;
+    vaultUnlocked: boolean;
+    vaultCountdownText: string;
     searchQuery: string;
     currentEngine: DatabaseEngineInfo;
     onToggleAutoBackup: (enabled: boolean) => void;
+    onToggleVault: () => void;
     onAddDb: () => void;
     onOpenRootPass: () => void;
     onOpenWebGui: () => void;
@@ -23,9 +26,12 @@
     autoBackupStatus,
     togglingAutoBackup,
     syncingHost,
+    vaultUnlocked,
+    vaultCountdownText,
     searchQuery = $bindable(),
     currentEngine,
     onToggleAutoBackup,
+    onToggleVault,
     onAddDb,
     onOpenRootPass,
     onOpenWebGui,
@@ -101,6 +107,19 @@
     </div>
 
     <div class="btn-group-right">
+      <button
+        type="button"
+        class="vault-status-pill"
+        class:unlocked={vaultUnlocked}
+        onclick={onToggleVault}
+        title={vaultUnlocked
+          ? 'Vault terbuka — klik untuk mengunci kembali segera'
+          : 'Vault terkunci — klik untuk verifikasi Biometrik/Passkey atau Password Admin'}
+      >
+        <i class={vaultUnlocked ? 'ri-lock-unlock-line' : 'ri-lock-2-line'} aria-hidden="true"></i>
+        <span>{vaultUnlocked ? `Vault Terbuka (${vaultCountdownText})` : 'Vault Terkunci'}</span>
+      </button>
+
       <button
         type="button"
         class="engine-status-badge is-clickable"
