@@ -6,7 +6,66 @@
   .pg-databases {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
+
+    /* Grid 4 Kartu KPI Telemetri Engine */
+    .telemetry-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .kpi-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding: 0.875rem 1rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    .kpi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .kpi-icon {
+      font-size: 1rem;
+      color: var(--accent);
+    }
+
+    .kpi-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-sub {
+      font-size: 0.73rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 1024px) {
+      .telemetry-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+      .telemetry-kpi-grid {
+        grid-template-columns: 1fr;
+      }
+    }
 
     /* Elemen formulir di dalam modal */
     .modal-title-with-icon {
@@ -71,4 +130,3 @@
     }
   }
 }
-

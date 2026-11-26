@@ -1,14 +1,17 @@
 <script lang="ts">
   /**
-   * Subkomponen Bilah Aksi & Pencarian Database.
+   * Subkomponen Bilah Aksi, Auto Backup Terjadwal & Pencarian Database.
    */
-  import type { DatabaseEngineInfo } from '../../lib/types';
+  import type { AutoBackupStatus, DatabaseEngineInfo } from '../../lib/types';
   import '../../styles/pages/databases/action-bar.css';
 
   interface Props {
-    autoBackup: boolean;
+    autoBackupStatus: AutoBackupStatus;
+    togglingAutoBackup: boolean;
+    syncingHost: boolean;
     searchQuery: string;
     currentEngine: DatabaseEngineInfo;
+    onToggleAutoBackup: (enabled: boolean) => void;
     onAddDb: () => void;
     onOpenRootPass: () => void;
     onOpenWebGui: () => void;
@@ -17,9 +20,12 @@
   }
 
   let {
-    autoBackup = $bindable(),
+    autoBackupStatus,
+    togglingAutoBackup,
+    syncingHost,
     searchQuery = $bindable(),
     currentEngine,
+    onToggleAutoBackup,
     onAddDb,
     onOpenRootPass,
     onOpenWebGui,
@@ -29,55 +35,81 @@
 </script>
 
 <div class="action-bar-card pg-databases-action-bar">
-  <!-- Toggle Auto Backup (ala aaPanel) -->
+  <!-- Toggle Auto Backup Terintegrasi dengan Cron Manager -->
   <div class="auto-backup-row">
-    <label class="toggle-switch">
-      <input type="checkbox" bind:checked={autoBackup} />
-      <span class="slider"></span>
-    </label>
-    <span class="auto-backup-label">
-      <strong>Auto Backup Database:</strong>
-      Setelah menambahkan database, Anda dapat mengaktifkan backup otomatis terjadwal untuk keamanan data.
-    </span>
+    <div class="auto-backup-left">
+      <label class="toggle-switch">
+        <input
+          type="checkbox"
+          checked={autoBackupStatus.enabled}
+          disabled={togglingAutoBackup}
+          aria-label="Aktifkan auto backup terjadwal"
+          onchange={(e) => onToggleAutoBackup((e.currentTarget as HTMLInputElement).checked)}
+        />
+        <span class="slider"></span>
+      </label>
+      <span class="auto-backup-label">
+        <strong>Auto Backup Terjadwal ({currentEngine.display_name}):</strong>
+        {#if autoBackupStatus.enabled}
+          Dump otomatis terkompresi aktif via Cron Manager setiap hari (retensi {autoBackupStatus.keep_days} hari).
+        {:else}
+          Aktifkan untuk menjadwalkan dump otomatis harian (.sql.gz) dengan pembersihan retensi otomatis.
+        {/if}
+      </span>
+    </div>
+
+    {#if autoBackupStatus.enabled}
+      <span class="auto-backup-pill" title="Terhubung dengan Cron Manager FikPanel">
+        <i class="ri-time-line" aria-hidden="true"></i>
+        <span>Cron: {autoBackupStatus.schedule} · Simpan {autoBackupStatus.keep_days}h</span>
+      </span>
+    {/if}
   </div>
 
-  <!-- Action Buttons -->
+  <!-- Baris Tombol Aksi -->
   <div class="action-buttons-row">
     <div class="btn-group-left">
-      <button class="btn btn-primary" onclick={onAddDb}>
+      <button type="button" class="btn btn-primary" onclick={onAddDb}>
         <i class="ri-add-line" aria-hidden="true"></i>
         <span>Tambah DB</span>
       </button>
-      <button class="btn btn-outline" onclick={onOpenRootPass}>
+      <button type="button" class="btn btn-outline" onclick={onOpenRootPass}>
         <i class="ri-key-2-line" aria-hidden="true"></i>
         <span>Password Root</span>
       </button>
+      {#if currentEngine.name === 'mysql'}
+        <button
+          type="button"
+          class="btn btn-outline"
+          onclick={onOpenWebGui}
+          title="Kelola akses phpMyAdmin / SSO"
+        >
+          <i class="ri-external-link-line" aria-hidden="true"></i>
+          <span>Web GUI</span>
+        </button>
+      {/if}
       <button
+        type="button"
         class="btn btn-outline"
-        onclick={onOpenWebGui}
-        title="Kelola akses web GUI database (phpMyAdmin / Adminer)"
-      >
-        <i class="ri-external-link-line" aria-hidden="true"></i>
-        <span>Web GUI</span>
-      </button>
-      <button
-        class="btn btn-outline"
+        disabled={syncingHost}
         onclick={onSync}
+        title="Pindai database langsung dari server host dan sinkronkan ke panel"
       >
-        <i class="ri-refresh-line" aria-hidden="true"></i>
-        <span>Sinkronisasi</span>
+        <i class={syncingHost ? 'ri-loader-4-line spin' : 'ri-refresh-line'} aria-hidden="true"></i>
+        <span>{syncingHost ? 'Menyinkronkan...' : 'Sinkron Host'}</span>
       </button>
     </div>
 
     <div class="btn-group-right">
       <button
+        type="button"
         class="engine-status-badge is-clickable"
         onclick={onOpenEngineManager}
-        title="Kelola status layanan, alih versi, dan berkas konfigurasi"
+        title="Kelola layanan, Processlist, RAM Tuner, konfigurasi, dan log"
       >
-        <span class="status-indicator-dot"></span>
-        <span>{currentEngine.display_name} {currentEngine.version || 'Aktif'}</span>
-        <i class="ri-play-fill badge-play-icon" aria-hidden="true"></i>
+        <span class="status-indicator-dot {currentEngine.running ? 'running' : 'stopped'}"></span>
+        <span>{currentEngine.display_name} {currentEngine.version || (currentEngine.running ? 'Aktif' : 'Berhenti')}</span>
+        <i class="ri-settings-3-line badge-settings-icon" aria-hidden="true"></i>
       </button>
 
       <div class="search-box">
@@ -85,11 +117,11 @@
         <input
           type="text"
           class="search-input"
-          placeholder="Cari database..."
+          placeholder="Cari database atau user..."
+          aria-label="Cari database atau username"
           bind:value={searchQuery}
         />
       </div>
     </div>
   </div>
 </div>
-

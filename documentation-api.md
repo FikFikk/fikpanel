@@ -3958,6 +3958,120 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.26 Database Command Center, SQL Studio, Redis Live Console, RAM Tuner & Backup S3 SigV4
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/{engine}/sync` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}` (`mysql`, `postgresql`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "discovered": 2, "updated": 6, "total_host": 8, "message": "..."}` |
+| Notes | Memindai skema fisik dari server host (`information_schema` / `pg_database`), mengimpor database baru ke panel, dan memperbarui ukuran disk aktual tanpa menimpa sandi/catatan eksisting. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/{engine}/root-password` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}` (`mysql`, `postgresql`, `redis`) |
+| Request Body | `password` (string, wajib, minimal 6 karakter) |
+| Response | HTTP 200 `{"ok": true, "message": "Kata sandi root untuk mysql berhasil diperbarui di server"}` |
+| Notes | Menerapkan pembaruan kata sandi administrator langsung ke daemon (`ALTER USER 'root'`, `ALTER USER postgres`, atau `redis-cli CONFIG SET requirepass` + `redis.conf`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `PUT /api/databases/{engine}/{name}/quota` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}`, `{name}` |
+| Request Body | `quota_mb` (int, `0` = tanpa batas) |
+| Response | HTTP 200 `{"ok": true, "quota_mb": 500, "message": "..."}` |
+| Notes | Menyimpan batas kuota kapasitas per database secara persisten di tabel `settings` (`db_quota:<engine>:<name>`). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/{engine}/{name}/dump` & `GET /api/databases/{engine}/{name}/backups` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `POST`: `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}` (`mysql`, `postgresql`), `{name}` |
+| Request Body | Tidak ada |
+| Response | `POST`: HTTP 200 `{"ok": true, "file_name": "db_mysql_app_20261126-120000.sql.gz", "size_bytes": 128400}`; `GET`: HTTP 200 `{"ok": true, "backups": [...]}` |
+| Notes | Mengekspor cadangan konsisten terkompresi gzip (`mysqldump --single-transaction --routines --triggers` / `pg_dump`) ke `/var/backups/fikpanel/` dan menghitung daftar arsip per database. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/databases/{engine}/{name}/restore` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1`, `Content-Type: application/json` atau `multipart/form-data` |
+| Query Params | Path param `{engine}`, `{name}` |
+| Request Body | JSON `{"file_name": "db_...sql.gz"}` ATAU multipart field `file` (`.sql`/`.sql.gz`, maks 128 MB) |
+| Response | HTTP 200 `{"ok": true, "message": "Berkas ... berhasil diimpor ke database ..."}` |
+| Notes | Melakukan dekompresi gzip murni Go secara aman tanpa shell injection lalu mengalirkan SQL langsung ke `mariadb`/`mysql` atau `psql`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/backups/download` & `DELETE /api/databases/backups/file` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `DELETE`: `X-Panel-Request: 1` |
+| Query Params | `file` (string nama basename arsip `.sql`/`.sql.gz`/`.tar.gz`) |
+| Request Body | Tidak ada |
+| Response | `GET`: binary attachment; `DELETE`: HTTP 200 `{"ok": true, "message": "..."}` |
+| Notes | Memvalidasi nama berkas secara ketat (`filepath.Base`, menolak `..`, `/`, `\`, dan ekstensi tidak sah) di dalam direktori backup panel. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/{engine}/{name}/tables`, `POST .../tables/optimize` & `POST .../query` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `POST`: `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}` (`mysql`, `postgresql`), `{name}` |
+| Request Body | `optimize`: `{"table": ""}` (kosong = semua tabel); `query`: `{"query": "SELECT ..."}` |
+| Response | `tables`: `{"ok": true, "tables": [{"name": "users", "engine": "InnoDB", "rows": 148, "size_bytes": 65536}]}`; `query`: `{"ok": true, "columns": [...], "rows": [[...]], "row_count": 50, "truncated": false, "time_ms": 4.2}` |
+| Notes | SQL Studio terautentikasi langsung ke database target (timeout 15 detik, batas aman 500 baris). Endpoint lama `/pma/api/tables` dan `/pma/api/query` dinonaktifkan (`HTTP 410`) demi keamanan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/{engine}/telemetry`, `GET .../processlist`, `POST .../processlist/{pid}/kill` & `POST .../tune` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `POST`: `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}`, `{pid}` |
+| Request Body | `tune`: `{"profile": "1gb" | "2gb" | "4gb" | "8gb"}` |
+| Response | `telemetry`: HTTP 200 `{"ok": true, "telemetry": {"uptime_sec": ..., "connections_active": ..., "cache_hit_pct": 99.4, "qps": 42.1, "slow_queries": 0}}`; `tune`: HTTP 200 `{"ok": true, "preset": {...}}` |
+| Notes | Menyediakan metrik real-time engine, penampil koneksi aktif + 1-klik Kill Query (`KILL <id>` / `pg_terminate_backend`), dan 1-klik RAM Tuner yang menulis drop-in config optimal lalu me-restart layanan. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/redis/keys`, `GET .../redis/key`, `DELETE .../redis/key` & `POST /api/databases/redis/flush` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `POST`/`DELETE`: `X-Panel-Request: 1` |
+| Query Params | `db` (`0`–`15`), `pattern` (default `*`), `count` (maks `100`), `key` (nama kunci) |
+| Request Body | `flush`: `{"db": 0}` |
+| Response | `keys`: `{"ok": true, "db": 0, "keys": [{"key": "...", "type": "string", "ttl": 3540}]}`; `key`: `{"ok": true, "key": "...", "type": "...", "ttl": 3540, "value": "..."}` |
+| Notes | Menggunakan `redis-cli --scan` non-blocking serta pipeline batch `TYPE`/`TTL` untuk inspeksi aman pada server produksi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/databases/{engine}/auto-backup` & `POST /api/databases/{engine}/auto-backup` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `POST`: `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{engine}` |
+| Request Body | `POST`: `{"enabled": true, "schedule": "0 2 * * *", "keep_days": 7}` |
+| Response | HTTP 200 `{"ok": true, "enabled": true, "schedule": "0 2 * * *", "keep_days": 7, "cron_job_id": 4}` |
+| Notes | Terintegrasi penuh dengan Cron Manager (`cron_jobs`) untuk menjalankan dump harian terkompresi seluruh database engine beserta pembersihan otomatis berkas melebihi masa retensi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/backups/records/{record_id}/download` & `DELETE /api/backups/records/{record_id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `DELETE`: `X-Panel-Request: 1` |
+| Query Params | Path param `{record_id}` |
+| Request Body | Tidak ada |
+| Response | `GET`: binary attachment; `DELETE`: HTTP 200 `{"ok": true, "message": "..."}` |
+| Notes | Melengkapi modul Backup & S3 Cloud (yang kini mendukung unggah AWS Signature v4 murni Go ke S3/MinIO/R2 dan pemangkasan retensi `keep_copies`). |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |

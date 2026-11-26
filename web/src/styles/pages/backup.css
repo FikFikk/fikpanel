@@ -81,13 +81,26 @@
     }
 
     .rec-badge.success {
-      background: var(--tint-accent);
-      color: var(--accent);
+      background: var(--tint-success);
+      color: var(--success);
     }
 
     .rec-badge.failed {
       background: var(--tint-danger);
       color: var(--danger);
+    }
+
+    .rec-right {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+
+    .rec-error {
+      font-size: 0.72rem;
+      color: var(--danger);
+      margin-top: 0.15rem;
     }
 
     .table-empty {

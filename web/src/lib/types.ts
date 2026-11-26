@@ -373,6 +373,72 @@ export interface DatabaseItem {
   note: string;
   created_at: number;
   timestamp?: number;
+  is_system?: boolean;
+  quota_mb?: number;
+}
+
+export interface DatabaseBackupFile {
+  file_name: string;
+  size_bytes: number;
+  created_at: number;
+}
+
+export interface DatabaseTableInfo {
+  name: string;
+  engine: string;
+  rows: number;
+  size_bytes: number;
+  collation: string;
+}
+
+export interface DatabaseProcessItem {
+  pid: number;
+  user: string;
+  host: string;
+  db: string;
+  command: string;
+  time_sec: number;
+  state: string;
+  query: string;
+}
+
+export interface RedisDBSpaceInfo {
+  db: number;
+  name: string;
+  keys: number;
+  expires: number;
+}
+
+export interface DatabaseTelemetry {
+  engine: string;
+  status: string;
+  uptime_sec: number;
+  connections_active: number;
+  connections_max: number;
+  queries_total: number;
+  qps: number;
+  slow_queries: number;
+  cache_hit_pct: number;
+  memory_used_bytes: number;
+  memory_limit_bytes: number;
+  threads_running: number;
+  total_keys: number;
+  redis_databases?: RedisDBSpaceInfo[];
+}
+
+export interface RedisKeySummary {
+  key: string;
+  type: string;
+  ttl: number;
+}
+
+export interface AutoBackupStatus {
+  enabled: boolean;
+  schedule: string;
+  keep_days: number;
+  cron_job_id: number;
+  last_status: string;
+  last_run_at: number;
 }
 
 export interface SystemTask {

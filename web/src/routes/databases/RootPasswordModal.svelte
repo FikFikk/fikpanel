@@ -9,7 +9,9 @@
     currentEngine: DatabaseEngineInfo;
     rootPassword: string;
     showRootPass: boolean;
+    saving?: boolean;
     onCopyText: (text: string, label: string) => void;
+    onGenerate: () => void;
     onSave: () => void;
     onClose: () => void;
   }
@@ -19,33 +21,47 @@
     currentEngine,
     rootPassword = $bindable(),
     showRootPass = $bindable(),
+    saving = false,
     onCopyText,
+    onGenerate,
     onSave,
     onClose,
   }: Props = $props();
 </script>
 
-<!-- Modal Password Root -->
+<!-- Modal Password Root / Administrator -->
 <Modal
   {open}
-  title="Password Root / Administrator"
+  title={currentEngine.name === 'redis' ? 'Password Auth Redis (requirepass)' : 'Password Root / Administrator'}
   size="md"
-  onclose={onClose}
+  onclose={() => { if (!saving) onClose(); }}
 >
   <div class="pg-databases-root-password-modal">
     <p class="modal__subtitle">
-      Kredensial root administrator digunakan untuk menghubungkan panel dengan layanan engine {currentEngine.display_name}.
+      Perubahan ini langsung diterapkan ke daemon <strong>{currentEngine.display_name}</strong> di server host (minimal 6 karakter). Pastikan Anda menyalin sandi baru sebelum menutup modal.
     </p>
 
     <div class="form-group">
-      <label for="root-pass" class="form-label">Password Root Saat Ini</label>
+      <label for="root-pass" class="form-label">Password Baru Administrator</label>
       <div class="input-with-button">
         <input
           id="root-pass"
           type={showRootPass ? 'text' : 'password'}
           class="form-input"
+          placeholder="Masukkan kata sandi baru (min. 6 karakter)"
           bind:value={rootPassword}
+          disabled={saving}
         />
+        <button
+          type="button"
+          class="btn btn-outline"
+          aria-label="Buat kata sandi acak"
+          title="Buat kata sandi acak kuat"
+          onclick={onGenerate}
+          disabled={saving}
+        >
+          <i class="ri-refresh-line" aria-hidden="true"></i>
+        </button>
         <button
           type="button"
           class="btn btn-outline"
@@ -66,11 +82,11 @@
   </div>
 
   {#snippet footer()}
-    <button class="btn btn-outline" onclick={onClose}>
+    <button type="button" class="btn btn-outline" disabled={saving} onclick={onClose}>
       Tutup
     </button>
-    <button class="btn btn-primary" onclick={onSave}>
-      Simpan Perubahan
+    <button type="button" class="btn btn-primary" disabled={saving || rootPassword.trim().length < 6} onclick={onSave}>
+      {saving ? 'Menerapkan...' : 'Terapkan ke Server'}
     </button>
   {/snippet}
 </Modal>

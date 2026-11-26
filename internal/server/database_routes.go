@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,18 +97,31 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 
 	// Kalkulasi ukuran aktual database secara dinamis dari host engine
 	sizes, errSizes := database.GetDatabaseSizes(r.Context(), engine)
-	if errSizes == nil && len(sizes) > 0 {
-		for i := range list {
+	enriched := make([]DatabaseEnrichedItem, 0, len(list))
+	for i := range list {
+		if errSizes == nil && len(sizes) > 0 {
 			if sz, ok := sizes[list[i].Name]; ok && sz > 0 {
 				list[i].SizeBytes = sz
 				_ = s.store.UpdateDatabaseSize(r.Context(), engine, list[i].Name, sz)
 			}
 		}
+		// Hitung jumlah berkas cadangan aktual di disk untuk database ini
+		list[i].BackupCount = len(listDbBackupFiles(engine, list[i].Name))
+
+		// Ambil batas kuota tersimpan bila ada
+		quotaStr, _ := s.store.GetSetting(r.Context(), fmt.Sprintf("db_quota:%s:%s", engine, list[i].Name))
+		quotaMB, _ := strconv.Atoi(quotaStr)
+
+		enriched = append(enriched, DatabaseEnrichedItem{
+			DatabaseRecord: list[i],
+			IsSystem:       database.IsSystemDatabase(engine, list[i].Name),
+			QuotaMB:        quotaMB,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"databases": list,
+		"databases": enriched,
 	})
 }
 
@@ -184,6 +198,16 @@ func (s *Server) handleDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if engine == "" || name == "" {
 		http.Error(w, `{"error":"parameter engine dan nama database wajib diisi"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Proteksi database sistem inti agar tidak terhapus secara tidak sengaja
+	if database.IsHardProtectedDatabase(engine, name) {
+		http.Error(w, fmt.Sprintf(`{"error":"database sistem inti '%s' dilindungi dan tidak dapat dihapus"}`, name), http.StatusBadRequest)
+		return
+	}
+	if database.IsSystemDatabase(engine, name) && r.URL.Query().Get("force") != "1" {
+		http.Error(w, fmt.Sprintf(`{"error":"database utilitas sistem '%s' dilindungi dari penghapusan tidak sengaja"}`, name), http.StatusBadRequest)
 		return
 	}
 
@@ -391,9 +415,14 @@ func (s *Server) handleEngineService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update status running
-	isRunning := req.Action != "stop"
-	database.SetEngineRunning(engine, isRunning)
+	// Eksekusi aksi layanan nyata via systemd di Linux (atau state lokal di non-Linux)
+	isRunning, err := database.ControlEngineService(r.Context(), engine, req.Action)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("gagal mengeksekusi %s pada %s: %v", req.Action, engine, err),
+		})
+		return
+	}
 
 	_ = s.store.RecordAudit(r.Context(), "user", "database.service", fmt.Sprintf("%s:%s", engine, req.Action), true,
 		fmt.Sprintf("Mengeksekusi aksi %s pada layanan database %s", req.Action, engine), nil)
@@ -452,98 +481,22 @@ func (s *Server) handleEngineSwitchVersion(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// handleEngineGetConfig menyajikan berkas konfigurasi bawaan atau aktual (mis. my.cnf)
+// handleEngineGetConfig membaca berkas konfigurasi aktual engine dari disk (dengan fallback template)
 func (s *Server) handleEngineGetConfig(w http.ResponseWriter, r *http.Request) {
 	engine := strings.ToLower(r.PathValue("engine"))
-	var path, content string
-
-	switch engine {
-	case "mysql":
-		path = "/etc/mysql/my.cnf"
-		content = `[client]
-port = 3306
-socket = /var/run/mysqld/mysqld.sock
-default-character-set = utf8mb4
-
-[mysqld]
-port = 3306
-bind-address = 127.0.0.1
-socket = /var/run/mysqld/mysqld.sock
-pid-file = /var/run/mysqld/mysqld.pid
-datadir = /var/lib/mysql
-tmpdir = /tmp
-
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-
-# Performa & Memori Cache
-max_connections = 150
-table_open_cache = 400
-innodb_buffer_pool_size = 256M
-innodb_log_file_size = 64M
-innodb_file_per_table = 1
-innodb_flush_log_at_trx_commit = 2
-
-# Slow Query Log
-slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow.log
-long_query_time = 2
-`
-	case "postgresql":
-		path = "/etc/postgresql/postgresql.conf"
-		content = `# Konfigurasi Utama PostgreSQL
-listen_addresses = 'localhost'
-port = 5432
-max_connections = 100
-shared_buffers = 128MB
-effective_cache_size = 512MB
-work_mem = 4MB
-maintenance_work_mem = 64MB
-logging_collector = on
-log_directory = 'log'
-log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
-`
-	case "mongodb":
-		path = "/etc/mongod.conf"
-		content = `# Konfigurasi Daemon MongoDB
-storage:
-  dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
-systemLog:
-  destination: file
-  logAppend: true
-  path: /var/log/mongodb/mongod.log
-net:
-  port: 27017
-  bindIp: 127.0.0.1
-`
-	case "redis":
-		path = "/etc/redis/redis.conf"
-		content = `# Konfigurasi Redis In-Memory Cache
-bind 127.0.0.1 ::1
-port 6379
-protected-mode yes
-timeout 0
-tcp-keepalive 300
-daemonize yes
-supervised systemd
-loglevel notice
-logfile /var/log/redis/redis-server.log
-maxmemory 256mb
-maxmemory-policy allkeys-lru
-`
-	default:
-		path = "/etc/database.conf"
-		content = "# Konfigurasi mesin database\n"
+	path, content, fromDisk, err := database.ReadEngineConfig(engine)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"engine":  engine,
-		"path":    path,
-		"content": content,
+		"ok":        true,
+		"engine":    engine,
+		"path":      path,
+		"content":   content,
+		"from_disk": fromDisk,
 	})
 }
 
@@ -552,7 +505,7 @@ type SaveConfigRequest struct {
 	Content string `json:"content"`
 }
 
-// handleEngineSaveConfig menyimpan konfigurasi mesin database
+// handleEngineSaveConfig menulis berkas konfigurasi mesin database ke disk secara aman dengan salinan .bak
 func (s *Server) handleEngineSaveConfig(w http.ResponseWriter, r *http.Request) {
 	engine := strings.ToLower(r.PathValue("engine"))
 	var req SaveConfigRequest
@@ -561,28 +514,47 @@ func (s *Server) handleEngineSaveConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "database.config_save", engine, true,
-		fmt.Sprintf("Memperbarui berkas konfigurasi mesin database %s", engine), nil)
+	path, backupPath, err := database.WriteEngineConfig(engine, req.Content)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
+	_ = s.store.RecordAudit(r.Context(), "user", "database.config_save", engine, true,
+		fmt.Sprintf("Memperbarui berkas konfigurasi %s (%s)", engine, path), nil)
+
+	msg := fmt.Sprintf("Konfigurasi %s berhasil disimpan ke %s", engine, path)
+	if backupPath != "" {
+		msg += fmt.Sprintf(" (cadangan: %s)", backupPath)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"message": fmt.Sprintf("Konfigurasi untuk %s berhasil disimpan", engine),
+		"ok":          true,
+		"path":        path,
+		"backup_path": backupPath,
+		"message":     msg,
 	})
 }
 
-// handleEngineLogs menyajikan cuplikan log galat terkini mesin database
+// handleEngineLogs membaca cuplikan log nyata dari journalctl atau file error log daemon
 func (s *Server) handleEngineLogs(w http.ResponseWriter, r *http.Request) {
 	engine := strings.ToLower(r.PathValue("engine"))
-	now := time.Now().Format("2006-01-02 15:04:05")
+	lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
+	if lines <= 0 {
+		lines = 150
+	}
 
-	logs := fmt.Sprintf("[%s] [Note] Starting %s daemon...\n[%s] [Note] Ready for connections. Version: %s\n[%s] [Note] TCP socket listening on port %s\n[%s] [Note] Auto-optimization workers initialized.\n",
-		now, engine, now, "aktif", now, "3306", now)
+	source, logs, err := database.ReadEngineLogs(r.Context(), engine, lines)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":     true,
 		"engine": engine,
+		"source": source,
 		"logs":   logs,
 	})
 }
@@ -783,102 +755,17 @@ func (s *Server) handleWebGuiTogglePublic(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// handleBuiltinWebGuiTables menyajikan daftar tabel yang tersedia dalam database aktif
+// handleBuiltinWebGuiTables dinonaktifkan untuk mencegah eksposur SQLite internal panel; arahkan ke SQL Studio terautentikasi
 func (s *Server) handleBuiltinWebGuiTables(w http.ResponseWriter, r *http.Request) {
-	db := s.store.DB()
-	rows, err := db.QueryContext(r.Context(), "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC")
-	if err != nil {
-		http.Error(w, `{"error":"gagal mengambil daftar tabel"}`, http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err == nil {
-			tables = append(tables, name)
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":     true,
-		"tables": tables,
+	writeJSON(w, http.StatusGone, map[string]string{
+		"error": "Endpoint lama telah digantikan oleh SQL Studio terautentikasi (/api/databases/{engine}/{name}/tables)",
 	})
 }
 
-// handleBuiltinWebGuiQuery mengeksekusi perintah SQL secara interaktif dari Web Client FikPanel
+// handleBuiltinWebGuiQuery dinonaktifkan demi keamanan; arahkan ke SQL Studio terautentikasi
 func (s *Server) handleBuiltinWebGuiQuery(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"metode tidak diizinkan"}`, http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		Query string `json:"query"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
-		return
-	}
-
-	q := strings.TrimSpace(req.Query)
-	if q == "" {
-		http.Error(w, `{"error":"query SQL tidak boleh kosong"}`, http.StatusBadRequest)
-		return
-	}
-
-	start := time.Now()
-	db := s.store.DB()
-	rows, err := db.QueryContext(r.Context(), q)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
-		return
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	var resultRows [][]interface{}
-	for rows.Next() {
-		colVals := make([]interface{}, len(cols))
-		colPointers := make([]interface{}, len(cols))
-		for i := range colVals {
-			colPointers[i] = &colVals[i]
-		}
-		if err := rows.Scan(colPointers...); err != nil {
-			continue
-		}
-		cleanRow := make([]interface{}, len(cols))
-		for i, v := range colVals {
-			if b, ok := v.([]byte); ok {
-				cleanRow[i] = string(b)
-			} else {
-				cleanRow[i] = v
-			}
-		}
-		resultRows = append(resultRows, cleanRow)
-	}
-
-	elapsed := float64(time.Since(start).Microseconds()) / 1000.0
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"columns": cols,
-		"rows":    resultRows,
-		"count":   len(resultRows),
-		"time_ms": elapsed,
+	writeJSON(w, http.StatusGone, map[string]string{
+		"error": "Endpoint lama telah digantikan oleh SQL Studio terautentikasi (/api/databases/{engine}/{name}/query)",
 	})
 }
 

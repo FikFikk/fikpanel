@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.8"
+		return "0.7.9"
 	}
 	return s.version
 }
@@ -363,6 +363,8 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("DELETE /api/backups/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteBackupConfig)))
 	s.mux.Handle("POST /api/backups/{id}/run", s.AuthMiddleware(http.HandlerFunc(s.handleRunBackupNow)))
 	s.mux.Handle("GET /api/backups/{id}/records", s.AuthMiddleware(http.HandlerFunc(s.handleListBackupRecords)))
+	s.mux.Handle("GET /api/backups/records/{record_id}/download", s.AuthMiddleware(http.HandlerFunc(s.handleDownloadBackupRecord)))
+	s.mux.Handle("DELETE /api/backups/records/{record_id}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteBackupRecord)))
 
 	// Firewall UFW Guard & Extended Port Rules
 	s.mux.Handle("GET /api/firewall/status", s.AuthMiddleware(http.HandlerFunc(s.handleGetFirewallStatus)))
@@ -538,14 +540,35 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/files/symlink", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSymlink)))
 	s.mux.Handle("POST /api/files/search-content", s.AuthMiddleware(http.HandlerFunc(s.handleSearchContent)))
 
-	// Manajemen Database & Engine Terkelola
+	// Manajemen Database & Engine Terkelola (Database Command Center)
 	s.mux.Handle("GET /api/databases/engines", s.AuthMiddleware(http.HandlerFunc(s.handleListEngines)))
 	s.mux.Handle("POST /api/databases/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallDatabase)))
+	s.mux.Handle("GET /api/databases/backups/download", s.AuthMiddleware(http.HandlerFunc(s.handleDownloadDbBackup)))
+	s.mux.Handle("DELETE /api/databases/backups/file", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDbBackup)))
+	s.mux.Handle("GET /api/databases/redis/keys", s.AuthMiddleware(http.HandlerFunc(s.handleRedisKeys)))
+	s.mux.Handle("GET /api/databases/redis/key", s.AuthMiddleware(http.HandlerFunc(s.handleRedisInspectKey)))
+	s.mux.Handle("DELETE /api/databases/redis/key", s.AuthMiddleware(http.HandlerFunc(s.handleRedisDeleteKey)))
+	s.mux.Handle("POST /api/databases/redis/flush", s.AuthMiddleware(http.HandlerFunc(s.handleRedisFlushDB)))
 	s.mux.Handle("GET /api/databases/{engine}/list", s.AuthMiddleware(http.HandlerFunc(s.handleListDatabases)))
 	s.mux.Handle("POST /api/databases/{engine}/create", s.AuthMiddleware(http.HandlerFunc(s.handleCreateDatabase)))
+	s.mux.Handle("POST /api/databases/{engine}/sync", s.AuthMiddleware(http.HandlerFunc(s.handleSyncDatabases)))
+	s.mux.Handle("POST /api/databases/{engine}/root-password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateRootPassword)))
+	s.mux.Handle("GET /api/databases/{engine}/telemetry", s.AuthMiddleware(http.HandlerFunc(s.handleDatabaseTelemetry)))
+	s.mux.Handle("GET /api/databases/{engine}/processlist", s.AuthMiddleware(http.HandlerFunc(s.handleDatabaseProcesslist)))
+	s.mux.Handle("POST /api/databases/{engine}/processlist/{pid}/kill", s.AuthMiddleware(http.HandlerFunc(s.handleKillDatabaseProcess)))
+	s.mux.Handle("POST /api/databases/{engine}/tune", s.AuthMiddleware(http.HandlerFunc(s.handleTuneDatabaseEngine)))
+	s.mux.Handle("GET /api/databases/{engine}/auto-backup", s.AuthMiddleware(http.HandlerFunc(s.handleGetAutoBackup)))
+	s.mux.Handle("POST /api/databases/{engine}/auto-backup", s.AuthMiddleware(http.HandlerFunc(s.handleSetAutoBackup)))
 	s.mux.Handle("DELETE /api/databases/{engine}/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleDeleteDatabase)))
 	s.mux.Handle("PUT /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
 	s.mux.Handle("POST /api/databases/{engine}/{name}/password", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabasePassword)))
+	s.mux.Handle("PUT /api/databases/{engine}/{name}/quota", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateDatabaseQuota)))
+	s.mux.Handle("POST /api/databases/{engine}/{name}/dump", s.AuthMiddleware(http.HandlerFunc(s.handleDumpDatabase)))
+	s.mux.Handle("GET /api/databases/{engine}/{name}/backups", s.AuthMiddleware(http.HandlerFunc(s.handleListDbBackups)))
+	s.mux.Handle("POST /api/databases/{engine}/{name}/restore", s.AuthMiddleware(http.HandlerFunc(s.handleRestoreDatabase)))
+	s.mux.Handle("GET /api/databases/{engine}/{name}/tables", s.AuthMiddleware(http.HandlerFunc(s.handleListDatabaseTables)))
+	s.mux.Handle("POST /api/databases/{engine}/{name}/tables/optimize", s.AuthMiddleware(http.HandlerFunc(s.handleOptimizeDatabaseTables)))
+	s.mux.Handle("POST /api/databases/{engine}/{name}/query", s.AuthMiddleware(http.HandlerFunc(s.handleExecuteDatabaseQuery)))
 	s.mux.Handle("POST /api/databases/{engine}/service", s.AuthMiddleware(http.HandlerFunc(s.handleEngineService)))
 	s.mux.Handle("POST /api/databases/{engine}/switch-version", s.AuthMiddleware(http.HandlerFunc(s.handleEngineSwitchVersion)))
 	s.mux.Handle("GET /api/databases/{engine}/config", s.AuthMiddleware(http.HandlerFunc(s.handleEngineGetConfig)))

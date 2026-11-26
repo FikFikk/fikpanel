@@ -13,7 +13,7 @@
     onOpenPalette?: () => void;
   }
 
-  let { current, open, version = '0.7.8', onNavigate, onPrefetch, onLogout, onOpenPalette }: Props = $props();
+  let { current, open, version = '0.7.9', onNavigate, onPrefetch, onLogout, onOpenPalette }: Props = $props();
 
   let isCustomBrand = $derived(
     Boolean(appearanceState.brand_name && appearanceState.brand_name.trim().toLowerCase() !== 'fikpanel')

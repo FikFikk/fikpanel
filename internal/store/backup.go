@@ -151,3 +151,57 @@ func (s *Store) ListBackupRecords(ctx context.Context, configID int64, limit int
 	}
 	return records, nil
 }
+
+// GetBackupRecord mengambil satu catatan riwayat arsip backup berdasarkan ID
+func (s *Store) GetBackupRecord(ctx context.Context, recordID int64) (*BackupRecord, error) {
+	query := `SELECT id, config_id, file_name, file_size_bytes, storage_type, storage_path, status, coalesce(error_message, ''), created_at 
+	          FROM backup_records WHERE id = ? LIMIT 1`
+	var r BackupRecord
+	if err := s.db.QueryRowContext(ctx, query, recordID).Scan(
+		&r.ID, &r.ConfigID, &r.FileName, &r.FileSizeBytes, &r.StorageType, &r.StoragePath, &r.Status, &r.ErrorMessage, &r.CreatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &r, nil
+}
+
+// DeleteBackupRecord menghapus satu catatan riwayat arsip backup berdasarkan ID
+func (s *Store) DeleteBackupRecord(ctx context.Context, recordID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM backup_records WHERE id = ?`, recordID)
+	return err
+}
+
+// PruneBackupRecords menghapus catatan backup terlama melebihi batas retensi keepCopies dan mengembalikan path lokal yang perlu dibersihkan
+func (s *Store) PruneBackupRecords(ctx context.Context, configID int64, keepCopies int) ([]string, error) {
+	if keepCopies <= 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, storage_path FROM backup_records WHERE config_id = ? AND status = 'success' ORDER BY created_at DESC LIMIT -1 OFFSET ?`,
+		configID, keepCopies,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	var paths []string
+	for rows.Next() {
+		var id int64
+		var p string
+		if err := rows.Scan(&id, &p); err == nil {
+			ids = append(ids, id)
+			if p != "" {
+				paths = append(paths, p)
+			}
+		}
+	}
+	for _, id := range ids {
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM backup_records WHERE id = ?`, id)
+	}
+	return paths, nil
+}
