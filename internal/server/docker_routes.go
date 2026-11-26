@@ -4,311 +4,572 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"fikpanel/internal/docker"
-	"fikpanel/internal/store"
 )
 
-// handleDockerStatus menyajikan status terkini ketersediaan engine Docker
+const dockerRegistriesSettingKey = "docker.registries"
+
+// initDockerPersistence memuat daftar registri Docker tersimpan dari SQLite dan menghubungkan callback simpannya
+func (s *Server) initDockerPersistence() {
+	mgr := docker.GetManager()
+	var saved []docker.DockerRegistry
+	if raw, err := s.store.GetSetting(context.Background(), dockerRegistriesSettingKey); err == nil && strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &saved)
+	}
+	mgr.SetRegistryPersistence(saved, func(regs []docker.DockerRegistry) error {
+		b, err := json.Marshal(regs)
+		if err != nil {
+			return err
+		}
+		return s.store.SetSetting(context.Background(), dockerRegistriesSettingKey, string(b))
+	})
+}
+
+func writeDockerJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// handleDockerStatus menyajikan status terkini ketersediaan engine Docker & pemakaian disk
 func (s *Server) handleDockerStatus(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	st := mgr.DetectStatus(r.Context())
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(st)
+	writeDockerJSON(w, http.StatusOK, st)
 }
 
-// handleDockerSystemInfo menyajikan spesifikasi host sistem untuk tab Settings
+// handleDockerDiskUsage menyajikan rincian pemakaian ruang disk (`docker system df`)
+func (s *Server) handleDockerDiskUsage(w http.ResponseWriter, r *http.Request) {
+	mgr := docker.GetManager()
+	df, err := mgr.GetDiskUsage(r.Context())
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, df)
+}
+
+// handleDockerSystemPrune membersihkan ruang disk Docker secara selektif
+func (s *Server) handleDockerSystemPrune(w http.ResponseWriter, r *http.Request) {
+	var req docker.SystemPruneRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "payload JSON tidak valid"})
+		return
+	}
+
+	mgr := docker.GetManager()
+	res, err := mgr.SystemPrune(r.Context(), req)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.system.prune", "system", true, fmt.Sprintf("Pembersihan disk Docker selesai (bebas %s)", res.ReclaimedHuman), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"result":  res,
+		"message": fmt.Sprintf("Ruang disk dibebaskan: %s", res.ReclaimedHuman),
+	})
+}
+
+// handleDockerSystemInfo menyajikan spesifikasi perangkat keras dan versi Docker host
 func (s *Server) handleDockerSystemInfo(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	info := mgr.GetSystemInfo(r.Context())
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(info)
+	writeDockerJSON(w, http.StatusOK, info)
 }
 
-// handleDockerConfig mengambil konfigurasi daemon.json
+// handleDockerGetConfig mengambil konfigurasi /etc/docker/daemon.json
 func (s *Server) handleDockerGetConfig(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	cfg := mgr.GetDaemonConfig()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	writeDockerJSON(w, http.StatusOK, cfg)
 }
 
-// handleDockerSaveConfig menyimpan konfigurasi daemon.json
+// handleDockerSaveConfig menyimpan konfigurasi /etc/docker/daemon.json
 func (s *Server) handleDockerSaveConfig(w http.ResponseWriter, r *http.Request) {
 	var req docker.DockerDaemonConfig
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "payload JSON tidak valid"})
 		return
 	}
 
 	mgr := docker.GetManager()
 	if err := mgr.SaveDaemonConfig(req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
 	_ = s.store.RecordAudit(r.Context(), "user", "docker.config", "daemon.json", true, "Menyimpan konfigurasi Docker daemon.json", nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Konfigurasi Docker berhasil disimpan"})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Konfigurasi Docker berhasil disimpan"})
 }
 
-// handleDockerServiceControl mengontrol service daemon (start, stop, restart, repair)
+// handleDockerServiceControl mengontrol layanan sistem Docker (start, stop, restart, repair)
 func (s *Server) handleDockerServiceControl(w http.ResponseWriter, r *http.Request) {
-	action := strings.ToLower(r.PathValue("action"))
+	action := r.PathValue("action")
 	mgr := docker.GetManager()
-
 	if err := mgr.ControlService(r.Context(), action); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.service", action, true, fmt.Sprintf("Mengontrol service Docker (%s)", action), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": fmt.Sprintf("Layanan Docker berhasil di-%s", action)})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.service."+action, "docker.service", true, fmt.Sprintf("Aksi %s pada layanan Docker berhasil", action), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": fmt.Sprintf("Layanan Docker berhasil di-%s", action)})
 }
 
-// handleDockerListContainers mengambil daftar seluruh kontainer
+// handleDockerInstall menjalankan instalasi resmi Docker CE & Compose secara streaming SSE
+func (s *Server) handleDockerInstall(w http.ResponseWriter, r *http.Request) {
+	mgr := docker.GetManager()
+	taskID, err := mgr.StartInstallDockerTask()
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.install", "docker-ce", true, "Memulai instalasi resmi Docker Engine & Compose", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"task_id": taskID,
+		"message": "Instalasi Docker Engine resmi dimulai secara real-time",
+	})
+}
+
+// handleDockerStreamTask mengalirkan log tugas Docker jangka panjang (pull, build, install) melalui SSE
+func (s *Server) handleDockerStreamTask(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.Error(w, "ID tugas wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming SSE tidak didukung", http.StatusInternalServerError)
+		return
+	}
+
+	mgr := docker.GetManager()
+	snap, ch, cleanup, found := mgr.Tasks().Subscribe(id)
+	if !found {
+		http.Error(w, "Tugas streaming Docker tidak ditemukan", http.StatusNotFound)
+		return
+	}
+	defer cleanup()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Kirim seluruh log yang telah tercatat sebelum koneksi SSE terhubung
+	for _, line := range snap.Logs {
+		enc, _ := json.Marshal(line)
+		fmt.Fprintf(w, "data: %s\n\n", enc)
+	}
+	flusher.Flush()
+
+	if snap.Status != "running" || ch == nil {
+		donePayload, _ := json.Marshal(map[string]string{"status": snap.Status, "error": snap.Error})
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", donePayload)
+		flusher.Flush()
+		return
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case line, open := <-ch:
+			if !open {
+				finalSnap, _ := mgr.Tasks().GetSnapshot(id)
+				donePayload, _ := json.Marshal(map[string]string{"status": finalSnap.Status, "error": finalSnap.Error})
+				fmt.Fprintf(w, "event: done\ndata: %s\n\n", donePayload)
+				flusher.Flush()
+				return
+			}
+			enc, _ := json.Marshal(line)
+			fmt.Fprintf(w, "data: %s\n\n", enc)
+			flusher.Flush()
+		}
+	}
+}
+
+// ── KONTAINER ────────────────────────────────────────────────────────────────
+
 func (s *Server) handleDockerListContainers(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	list, err := mgr.ListContainers(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusOK, map[string]interface{}{"containers": []docker.DockerContainer{}, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "containers": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"containers": list})
 }
 
-// handleDockerCreateContainer membuat kontainer baru
 func (s *Server) handleDockerCreateContainer(w http.ResponseWriter, r *http.Request) {
 	var req docker.CreateContainerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "payload JSON tidak valid"})
 		return
 	}
 
 	mgr := docker.GetManager()
-	if err := mgr.CreateContainer(r.Context(), req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	id, err := mgr.CreateContainer(r.Context(), req)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.container.create", req.Name, true, fmt.Sprintf("Membuat kontainer Docker %s dari citra %s", req.Name, req.Image), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Kontainer berhasil dibuat dan dijalankan"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.container.create", req.Name, true, fmt.Sprintf("Membuat kontainer dari citra %s", req.Image), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "id": id, "message": "Kontainer berhasil dibuat & dijalankan"})
 }
 
-// handleDockerControlContainer mengeksekusi kontrol kontainer (start, stop, restart, pause, delete)
 func (s *Server) handleDockerControlContainer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	action := strings.ToLower(r.PathValue("action"))
-	mgr := docker.GetManager()
+	action := r.PathValue("action")
 
+	mgr := docker.GetManager()
 	if err := mgr.ControlContainer(r.Context(), id, action); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.container.control", id, true, fmt.Sprintf("Aksi %s pada kontainer %s", action, id), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": fmt.Sprintf("Aksi %s pada kontainer berhasil", action)})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.container."+action, id, true, fmt.Sprintf("Aksi %s pada kontainer %s berhasil", action, id), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": fmt.Sprintf("Kontainer berhasil di-%s", action)})
 }
 
-// handleDockerContainerLogs mengambil riwayat log kontainer
+func (s *Server) handleDockerBulkContainers(w http.ResponseWriter, r *http.Request) {
+	var req docker.BulkContainerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "pilih minimal satu kontainer"})
+		return
+	}
+	mgr := docker.GetManager()
+	res := mgr.BulkControlContainers(r.Context(), req)
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.container.bulk_"+req.Action, fmt.Sprintf("%d containers", len(req.IDs)), len(res.Failed) == 0, fmt.Sprintf("Aksi massal %s: %d berhasil, %d gagal", req.Action, len(res.Succeeded), len(res.Failed)), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "result": res})
+}
+
+func (s *Server) handleDockerInspectContainer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	mgr := docker.GetManager()
+	insp, err := mgr.InspectContainer(r.Context(), id)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, insp)
+}
+
+func (s *Server) handleDockerRecreateContainer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		PullLatest bool `json:"pull_latest"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	mgr := docker.GetManager()
+	newID, err := mgr.RecreateContainer(r.Context(), id, req.PullLatest)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.container.recreate", id, true, fmt.Sprintf("Kontainer dibuat ulang (pull_latest=%v)", req.PullLatest), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "id": newID, "message": "Kontainer berhasil dibuat ulang"})
+}
+
 func (s *Server) handleDockerContainerLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
-	if lines <= 0 {
-		lines = 200
+	lines := 200
+	if lStr := r.URL.Query().Get("lines"); lStr != "" {
+		if n, err := strconv.Atoi(lStr); err == nil && n > 0 {
+			lines = n
+		}
 	}
+	timestamps := r.URL.Query().Get("timestamps") == "1" || r.URL.Query().Get("timestamps") == "true"
 
 	mgr := docker.GetManager()
-	logs, err := mgr.GetContainerLogs(r.Context(), id, lines)
+	logs, err := mgr.GetContainerLogsWithOptions(r.Context(), id, lines, timestamps)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "logs": logs})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"logs": logs})
 }
 
-// handleDockerListImages mengambil daftar citra lokal
+// ── CITRA (IMAGES), DOCKER HUB & BUILDER ────────────────────────────────────
+
 func (s *Server) handleDockerListImages(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	list, err := mgr.ListImages(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusOK, map[string]interface{}{"images": []docker.DockerImage{}, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "images": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"images": list})
 }
 
-// handleDockerPullImage mengunduh citra dari registri
 func (s *Server) handleDockerPullImage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Image string `json:"image"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Image == "" {
-		http.Error(w, `{"error":"nama citra wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Image) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama citra wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
 	if err := mgr.PullImage(r.Context(), req.Image); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.pull", req.Image, true, fmt.Sprintf("Mengunduh citra %s", req.Image), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": fmt.Sprintf("Citra %s berhasil diunduh", req.Image)})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.pull", req.Image, true, "Menarik citra Docker dari registry", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Citra berhasil ditarik"})
 }
 
-// handleDockerRemoveImage menghapus citra lokal
+func (s *Server) handleDockerPullImageStream(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Image string `json:"image"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Image) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama citra wajib diisi"})
+		return
+	}
+
+	mgr := docker.GetManager()
+	taskID, err := mgr.StartPullImageTask(req.Image)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.pull", req.Image, true, "Memulai pull citra streaming", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "task_id": taskID})
+}
+
+func (s *Server) handleDockerBuildImage(w http.ResponseWriter, r *http.Request) {
+	var req docker.BuildImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "payload JSON tidak valid"})
+		return
+	}
+
+	mgr := docker.GetManager()
+	taskID, err := mgr.StartBuildImageTask(req)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.build", req.Tag, true, "Memulai build citra dari Dockerfile", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "task_id": taskID})
+}
+
 func (s *Server) handleDockerRemoveImage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	force := r.URL.Query().Get("force") == "1"
+	force := r.URL.Query().Get("force") == "true" || r.URL.Query().Get("force") == "1"
 
 	mgr := docker.GetManager()
 	if err := mgr.RemoveImage(r.Context(), id, force); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.delete", id, true, fmt.Sprintf("Menghapus citra %s", id), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Citra berhasil dihapus"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.remove", id, true, "Menghapus citra Docker lokal", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Citra lokal berhasil dihapus"})
 }
 
-// handleDockerSearchImages mencari citra resmi di Docker Hub
+func (s *Server) handleDockerImageHistory(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	mgr := docker.GetManager()
+	items, err := mgr.GetImageHistory(r.Context(), id)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"history": items})
+}
+
+func (s *Server) handleDockerTagImage(w http.ResponseWriter, r *http.Request) {
+	var req docker.TagImageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "payload JSON tidak valid"})
+		return
+	}
+	mgr := docker.GetManager()
+	if err := mgr.TagImage(r.Context(), req.Source, req.Target); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.tag", req.Target, true, fmt.Sprintf("Retag citra %s -> %s", req.Source, req.Target), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Tag citra berhasil dibuat"})
+}
+
+func (s *Server) handleDockerPruneImages(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		All bool `json:"all"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	mgr := docker.GetManager()
+	out, err := mgr.PruneImages(r.Context(), req.All)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.prune", "images", true, "Membersihkan citra Docker usang", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "output": out, "message": "Citra usang berhasil dibersihkan"})
+}
+
+func (s *Server) handleDockerExportImage(w http.ResponseWriter, r *http.Request) {
+	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	if ref == "" {
+		ref = strings.TrimSpace(r.PathValue("id"))
+	}
+	if !docker.IsValidDockerRef(ref) {
+		http.Error(w, "Referensi citra tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	safeName := strings.NewReplacer("/", "_", ":", "_", "@", "_").Replace(ref)
+	w.Header().Set("Content-Type", "application/x-tar")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.tar"`, filepath.Base(safeName)))
+
+	mgr := docker.GetManager()
+	if err := mgr.ExportImageTar(r.Context(), ref, w); err != nil {
+		// Header sudah terkirim jika streaming sudah berjalan, hentikan saja
+		return
+	}
+}
+
+func (s *Server) handleDockerLoadImage(w http.ResponseWriter, r *http.Request) {
+	// Batasi ukuran unggahan arsip tar citra maksimal 2 GB
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<30)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "gagal membaca berkas unggahan tar"})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "berkas .tar wajib disertakan"})
+		return
+	}
+	defer file.Close()
+
+	mgr := docker.GetManager()
+	out, err := mgr.LoadImageTar(r.Context(), io.LimitReader(file, 2<<30))
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.image.load", header.Filename, true, "Mengimpor arsip tar citra Docker", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "output": out, "message": "Citra dari arsip tar berhasil diimpor"})
+}
+
 func (s *Server) handleDockerSearchImages(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page <= 0 {
+		page = 1
+	}
+
 	mgr := docker.GetManager()
-	results, err := mgr.SearchImages(r.Context(), q)
+	results, err := mgr.SearchDockerHub(r.Context(), q, page)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"results": []docker.DockerHubSearchItem{}, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+}
+
+func (s *Server) handleDockerHubTags(w http.ResponseWriter, r *http.Request) {
+	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
+	filter := strings.TrimSpace(r.URL.Query().Get("q"))
+	if repo == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"tags": []docker.DockerHubTagItem{}, "error": "parameter repo wajib diisi"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "results": results})
+	mgr := docker.GetManager()
+	tags, err := mgr.ListDockerHubTags(r.Context(), repo, filter)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"tags": []docker.DockerHubTagItem{}, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"repo": repo, "tags": tags})
 }
 
-// handleDockerListVolumes mengambil daftar volume
+// ── VOLUME ───────────────────────────────────────────────────────────────────
+
 func (s *Server) handleDockerListVolumes(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	list, err := mgr.ListVolumes(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusOK, map[string]interface{}{"volumes": []docker.DockerVolume{}, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "volumes": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"volumes": list})
 }
 
-// handleDockerCreateVolume membuat volume baru
 func (s *Server) handleDockerCreateVolume(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name   string `json:"name"`
 		Driver string `json:"driver"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		http.Error(w, `{"error":"nama volume wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama volume wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
 	if err := mgr.CreateVolume(r.Context(), req.Name, req.Driver); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.create", req.Name, true, fmt.Sprintf("Membuat volume %s", req.Name), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Volume berhasil dibuat"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.create", req.Name, true, "Membuat volume Docker baru", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Volume berhasil dibuat"})
 }
 
-// handleDockerRemoveVolume menghapus volume
 func (s *Server) handleDockerRemoveVolume(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	mgr := docker.GetManager()
-
 	if err := mgr.RemoveVolume(r.Context(), name); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.delete", name, true, fmt.Sprintf("Menghapus volume %s", name), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Volume berhasil dihapus"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.remove", name, true, "Menghapus volume Docker", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Volume berhasil dihapus"})
 }
 
-// handleDockerPruneVolumes membersihkan seluruh volume tak terpakai
 func (s *Server) handleDockerPruneVolumes(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
-	if err := mgr.PruneVolumes(r.Context()); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	out, err := mgr.PruneVolumes(r.Context())
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.prune", "volumes", true, "Membersihkan seluruh volume Docker tak terpakai", nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Volume tak terpakai berhasil dibersihkan"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.volume.prune", "volumes", true, "Membersihkan volume tak terpakai", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "output": out, "message": "Volume usang berhasil dibersihkan"})
 }
 
-// handleDockerListNetworks mengambil daftar jaringan virtual
+// ── JARINGAN (NETWORKS) ─────────────────────────────────────────────────────
+
 func (s *Server) handleDockerListNetworks(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	list, err := mgr.ListNetworks(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusOK, map[string]interface{}{"networks": []docker.DockerNetwork{}, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "networks": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"networks": list})
 }
 
-// handleDockerCreateNetwork membuat jaringan virtual baru
 func (s *Server) handleDockerCreateNetwork(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name    string `json:"name"`
@@ -316,146 +577,167 @@ func (s *Server) handleDockerCreateNetwork(w http.ResponseWriter, r *http.Reques
 		Subnet  string `json:"subnet"`
 		Gateway string `json:"gateway"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		http.Error(w, `{"error":"nama network wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama jaringan wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
 	if err := mgr.CreateNetwork(r.Context(), req.Name, req.Driver, req.Subnet, req.Gateway); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.network.create", req.Name, true, fmt.Sprintf("Membuat network %s", req.Name), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Network berhasil dibuat"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.network.create", req.Name, true, "Membuat jaringan virtual Docker", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Jaringan berhasil dibuat"})
 }
 
-// handleDockerRemoveNetwork menghapus jaringan virtual
 func (s *Server) handleDockerRemoveNetwork(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	mgr := docker.GetManager()
-
 	if err := mgr.RemoveNetwork(r.Context(), id); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.network.delete", id, true, fmt.Sprintf("Menghapus network %s", id), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Network berhasil dihapus"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.network.remove", id, true, "Menghapus jaringan Docker", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Jaringan berhasil dihapus"})
 }
 
-// handleDockerListCompose mengambil daftar proyek Docker Compose
+func (s *Server) handleDockerPruneNetworks(w http.ResponseWriter, r *http.Request) {
+	mgr := docker.GetManager()
+	out, err := mgr.PruneNetworks(r.Context())
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.network.prune", "networks", true, "Membersihkan jaringan Docker tak terpakai", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "output": out, "message": "Jaringan tak terpakai berhasil dibersihkan"})
+}
+
+// ── DOCKER COMPOSE ──────────────────────────────────────────────────────────
+
 func (s *Server) handleDockerListCompose(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
 	list, err := mgr.ListComposeProjects(r.Context())
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeDockerJSON(w, http.StatusOK, map[string]interface{}{"projects": []docker.DockerComposeProject{}, "error": err.Error()})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "projects": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"projects": list})
 }
 
-// handleDockerComposeUp mengeksekusi stack docker compose up
 func (s *Server) handleDockerComposeUp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
-		Yaml string `json:"yaml"`
+		Name        string `json:"name"`
+		YAMLContent string `json:"yaml_content"`
+		YAML        string `json:"yaml"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Yaml == "" {
-		http.Error(w, `{"error":"nama proyek dan berkas YAML wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama proyek dan konfigurasi YAML wajib diisi"})
 		return
+	}
+	yamlBody := req.YAMLContent
+	if strings.TrimSpace(yamlBody) == "" {
+		yamlBody = req.YAML
 	}
 
 	mgr := docker.GetManager()
-	if err := mgr.ComposeUp(r.Context(), req.Name, req.Yaml); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	if err := mgr.ComposeUp(r.Context(), req.Name, yamlBody); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.compose.up", req.Name, true, fmt.Sprintf("Menjalankan stack compose %s", req.Name), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Stack Compose berhasil dijalankan"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.compose.up", req.Name, true, "Menjalankan stack Docker Compose", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Stack Compose berhasil dijalankan"})
 }
 
-// handleDockerComposeDown menghentikan stack compose
 func (s *Server) handleDockerComposeDown(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name       string `json:"name"`
+		ConfigPath string `json:"config_path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		http.Error(w, `{"error":"nama proyek wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama proyek wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
-	if err := mgr.ComposeDown(r.Context(), req.Name); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	if err := mgr.ComposeAction(r.Context(), docker.ComposeActionRequest{
+		Name:       req.Name,
+		ConfigPath: req.ConfigPath,
+		Action:     "down",
+	}); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.compose.down", req.Name, true, fmt.Sprintf("Menghentikan stack compose %s", req.Name), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Stack Compose berhasil dihentikan"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.compose.down", req.Name, true, "Menghentikan stack Docker Compose", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Stack Compose berhasil dihentikan"})
 }
 
-// handleDockerGetTemplates menyajikan katalog template aplikasi One-Click
+func (s *Server) handleDockerComposeAction(w http.ResponseWriter, r *http.Request) {
+	var req docker.ComposeActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama proyek dan aksi wajib diisi"})
+		return
+	}
+
+	mgr := docker.GetManager()
+	if err := mgr.ComposeAction(r.Context(), req); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.compose."+req.Action, req.Name, true, fmt.Sprintf("Aksi Compose %s berhasil", req.Action), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": fmt.Sprintf("Stack %s berhasil di-%s", req.Name, req.Action)})
+}
+
+func (s *Server) handleDockerComposeLogs(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	configPath := strings.TrimSpace(r.URL.Query().Get("config_path"))
+	lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
+
+	mgr := docker.GetManager()
+	logs, err := mgr.ComposeLogs(r.Context(), name, configPath, lines)
+	if err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"logs": logs})
+}
+
+// ── ONE-CLICK TEMPLATES & REGISTRIES ────────────────────────────────────────
+
 func (s *Server) handleDockerGetTemplates(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
-	list := mgr.GetTemplates()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "templates": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"templates": mgr.GetTemplates()})
 }
 
-// handleDockerDeployTemplate memasang template aplikasi instan
 func (s *Server) handleDockerDeployTemplate(w http.ResponseWriter, r *http.Request) {
 	var req docker.DeployTemplateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TemplateID == "" {
-		http.Error(w, `{"error":"ID template wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.TemplateID) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "ID template wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
 	if err := mgr.DeployTemplate(r.Context(), req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.template.deploy", req.TemplateID, true, fmt.Sprintf("Deploy aplikasi instan %s", req.TemplateID), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Aplikasi berhasil dipasang dan berjalan"})
+	targetName := req.ProjectName
+	if targetName == "" {
+		targetName = req.Name
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.template.deploy", req.TemplateID, true, fmt.Sprintf("Memasang aplikasi 1-Klik (%s)", targetName), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Aplikasi 1-Klik berhasil dipasang dan dijalankan"})
 }
 
-// handleDockerListRegistries mengambil daftar kredensial registri
 func (s *Server) handleDockerListRegistries(w http.ResponseWriter, r *http.Request) {
 	mgr := docker.GetManager()
-	list := mgr.ListRegistries()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "registries": list})
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"registries": mgr.ListRegistries()})
 }
 
-// handleDockerAddRegistry mendaftarkan registri privat
 func (s *Server) handleDockerAddRegistry(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name     string `json:"name"`
@@ -463,80 +745,28 @@ func (s *Server) handleDockerAddRegistry(w http.ResponseWriter, r *http.Request)
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.URL == "" {
-		http.Error(w, `{"error":"nama dan URL registri wajib diisi"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.URL) == "" {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "nama dan URL registri wajib diisi"})
 		return
 	}
 
 	mgr := docker.GetManager()
-	if err := mgr.AddRegistry(req.Name, req.URL, req.Username, req.Password); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	if err := mgr.AddRegistry(r.Context(), req.Name, req.URL, req.Username, req.Password); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.registry.add", req.Name, true, fmt.Sprintf("Mendaftarkan registri Docker %s (%s)", req.Name, req.URL), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Registri berhasil ditambahkan"})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.registry.add", req.URL, true, fmt.Sprintf("Menambahkan & login ke registri %s", req.Name), nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Registri berhasil ditambahkan"})
 }
 
-// handleDockerRemoveRegistry menghapus registri privat
 func (s *Server) handleDockerRemoveRegistry(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	mgr := docker.GetManager()
-	if err := mgr.RemoveRegistry(id); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+	if err := mgr.RemoveRegistry(r.Context(), id); err != nil {
+		writeDockerJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.registry.delete", id, true, fmt.Sprintf("Menghapus registri %s", id), nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "message": "Registri berhasil dihapus"})
-}
-
-// handleDockerInstall memulai instalasi otomatis Docker & Compose via antrean tugas
-func (s *Server) handleDockerInstall(w http.ResponseWriter, r *http.Request) {
-	taskID := fmt.Sprintf("task_docker_install_%d", time.Now().Unix())
-	_ = s.store.CreateTask(r.Context(), store.SystemTask{
-		ID:        taskID,
-		Type:      "docker_install",
-		Target:    "docker-engine",
-		Status:    "running",
-		Log:       "Menyiapkan instalasi otomatis paket Docker CE dan Docker Compose...\n",
-		CreatedAt: time.Now().Unix(),
-		UpdatedAt: time.Now().Unix(),
-	})
-
-	go func() {
-		ctx := context.Background()
-		steps := []string{
-			"Langkah 1/6: Memeriksa dependensi sistem host (curl, gnupg, ca-certificates)... Selesai.",
-			"Langkah 2/6: Mengunduh kunci GPG resmi Docker dari https://download.docker.com/linux/ubuntu/gpg...",
-			"Langkah 3/6: Mendaftarkan repositori resmi Docker CE ke /etc/apt/sources.list.d/docker.list...",
-			"Langkah 4/6: Memperbarui cache indeks paket sistem (apt-get update)... Selesai.",
-			"Langkah 5/6: Memasang paket docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin...",
-			"Langkah 6/6: Mengaktifkan dan memulai layanan daemon Docker (systemctl enable --now docker)...",
-			"==> [SELESAI] Docker CE dan Docker Compose berhasil dipasang dan berjalan aktif di server!",
-		}
-
-		for _, step := range steps {
-			time.Sleep(500 * time.Millisecond)
-			_ = s.store.AppendTaskLog(ctx, taskID, "running", fmt.Sprintf("[%s] %s\n", time.Now().Format("15:04:05"), step))
-		}
-		_ = s.store.AppendTaskLog(ctx, taskID, "success", "")
-	}()
-
-	_ = s.store.RecordAudit(r.Context(), "user", "docker.install", "docker", true, "Memulai tugas instalasi otomatis Docker & Compose", nil)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":      true,
-		"task_id": taskID,
-		"message": "Tugas instalasi Docker telah dikirim ke antrean tugas (Messages Box)",
-	})
+	_ = s.store.RecordAudit(r.Context(), "user", "docker.registry.remove", id, true, "Menghapus registri Docker", nil)
+	writeDockerJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Registri berhasil dihapus"})
 }

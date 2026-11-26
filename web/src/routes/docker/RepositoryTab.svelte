@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Subkomponen tab Repository (Private Registry) pada halaman Docker Management Suite
+  // Subkomponen tab Registries pada Docker Studio: daftar registri persisten dengan status autentikasi docker login
   import '../../styles/pages/docker/repository.css';
   import type { DockerRegistry } from '../../lib/types';
 
@@ -25,13 +25,14 @@
 <div class="pg-docker-repository tab-pane">
   <div class="toolbar">
     <div class="toolbar-left">
-      <button class="btn btn--primary btn--sm" onclick={onOpenAddRegistry}>
+      <button type="button" class="btn btn--primary btn--sm" onclick={onOpenAddRegistry}>
         <i class="ri-add-line" aria-hidden="true"></i>
-        <span>Tambah Registri Privat</span>
+        <span>Hubungkan Registri Privat</span>
       </button>
     </div>
     <div class="toolbar-right">
       <button
+        type="button"
         class="btn btn--secondary btn--sm btn--icon"
         title="Segarkan registri"
         aria-label="Segarkan registri"
@@ -49,7 +50,7 @@
           <th>Nama Registri</th>
           <th>URL Host</th>
           <th>Username</th>
-          <th>Status Default</th>
+          <th>Status</th>
           <th class="col-w-100 text-right">Aksi</th>
         </tr>
       </thead>
@@ -67,12 +68,12 @@
               <div class="empty-state">
                 <i class="ri-shield-keyhole-line empty-icon" aria-hidden="true"></i>
                 <p class="empty-title">Tidak ada registri privat terdaftar</p>
-                <p class="empty-desc">Docker Hub resmi digunakan secara default.</p>
+                <p class="empty-desc">Hubungkan GHCR, GitLab Registry, Harbor, atau akun Docker Hub privat Anda.</p>
               </div>
             </td>
           </tr>
         {:else}
-          {#each registries as reg}
+          {#each registries as reg (reg.id)}
             <tr>
               <td>
                 <strong class="text-sm font-semibold">{reg.name}</strong>
@@ -81,20 +82,23 @@
                 <span class="font-mono text-xs text-muted">{reg.url}</span>
               </td>
               <td>
-                <span class="text-xs">{reg.username || '-'}</span>
+                <span class="text-xs font-mono">{reg.username || '-'}</span>
               </td>
               <td>
                 {#if reg.is_default}
-                  <span class="badge badge--success">Default</span>
+                  <span class="badge badge--info">Default Publik</span>
+                {:else if reg.logged_in}
+                  <span class="badge badge--success">Terautentikasi</span>
                 {:else}
-                  <span class="badge badge--secondary">Alternatif</span>
+                  <span class="badge badge--secondary">Terdaftar</span>
                 {/if}
               </td>
               <td class="text-right">
                 {#if !reg.is_default}
                   <button
+                    type="button"
                     class="btn btn--ghost btn--sm btn--icon"
-                    title="Hapus Registri"
+                    title="Logout & Hapus Registri"
                     aria-label="Hapus Registri"
                     disabled={actionLoading}
                     onclick={() => onDeleteRegistry(reg)}
@@ -112,4 +116,3 @@
     </table>
   </div>
 </div>
-

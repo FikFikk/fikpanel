@@ -76,10 +76,16 @@
   let currentUser = $state('');
   let passkeysAvailable = $state(false);
 
+  // Periksa apakah hash URL meminta mode Docker Studio layar penuh (seperti Cloudflare Zero Trust)
+  function isStudioFullscreenHash(hash: string): boolean {
+    return routeFromHash(hash) === 'docker' && /[?&]studio=1(&|$)/.test(hash);
+  }
+
   // State navigasi & command palette (ActivePage diganti hanya setelah chunk siap agar bebas kedip)
   const initialRoute = routeFromHash(window.location.hash);
   let currentRoute = $state(initialRoute);
   let activeRoute = $state(initialRoute);
+  let dockerStudioFullscreen = $state(isStudioFullscreenHash(window.location.hash));
   let ActivePage = $state<Component<any> | null>(loaded.get(initialRoute) ?? null);
   let routeError = $state('');
   let routeLoading = $state(!loaded.has(initialRoute));
@@ -102,7 +108,11 @@
 
   $effect(() => {
     const item = NAV_ITEMS.find((n) => n.id === currentRoute);
-    const label = item ? t(`nav.item.${item.id}` as any) : t('nav.item.home');
+    const label = dockerStudioFullscreen
+      ? 'Docker Studio'
+      : item
+        ? t(`nav.item.${item.id}` as any)
+        : t('nav.item.home');
     const brand = appearanceState.brand_name || 'fikpanel';
     document.title = `${label} · ${brand}`;
   });
@@ -156,6 +166,7 @@
   }
 
   function onHashChange() {
+    dockerStudioFullscreen = isStudioFullscreenHash(window.location.hash);
     const nextRoute = routeFromHash(window.location.hash);
     activateRoute(nextRoute);
   }
@@ -261,6 +272,8 @@
         return { onSvcAction: handleSvcAction, onNotify: notify };
       case 'settings':
         return { overview, onNotify: notify };
+      case 'docker':
+        return { onNotify: notify, studioFullscreen: dockerStudioFullscreen, currentUser };
       case 'terminal':
       case 'security':
         return {};
@@ -336,6 +349,32 @@
   </div>
 {:else if !authenticated}
   <Login {passkeysAvailable} onSuccess={(u) => { enterPanel(u); notify(`Selamat datang, ${u}`, 'success'); }} />
+{:else if dockerStudioFullscreen && currentRoute === 'docker'}
+  <div class="app-shell app-shell--studio">
+    <main class="app-shell__studio-content" id="main-content" tabindex="-1">
+      {#if routeError}
+        <div class="empty-state" role="alert">
+          <i class="ri-wifi-off-line" aria-hidden="true"></i>
+          <p class="empty-state__title">Docker Studio gagal dimuat</p>
+          <p>{routeError}</p>
+          <button class="btn btn--primary" onclick={retryRoute}>
+            <i class="ri-refresh-line" aria-hidden="true"></i> Coba lagi
+          </button>
+        </div>
+      {:else if routeLoading}
+        <div class="app-shell__loading" role="status">
+          <div class="skeleton app-shell__sk-title"></div>
+          <div class="skeleton app-shell__sk-panel"></div>
+          <span class="sr-only">Memuat Docker Studio…</span>
+        </div>
+      {:else if ActivePage}
+        {@const Page = ActivePage}
+        {#key `${activeRoute}:${routeAttempt}`}
+          <Page {...routeProps(activeRoute)} />
+        {/key}
+      {/if}
+    </main>
+  </div>
 {:else}
   <a href="#main-content" class="skip-link">Lewati ke konten</a>
   <div class="app-shell">

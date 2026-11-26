@@ -1278,7 +1278,29 @@ export interface SystemCronEntry {
   command: string;
 }
 
-// ── Docker & Kontainerisasi (10 Modul) ──────────────────────────────────────
+// ── Docker Studio & Kontainerisasi Lengkap ──────────────────────────────────
+export interface DockerDiskUsageCategory {
+  type: string;
+  total_count: number;
+  active_count: number;
+  size_bytes: number;
+  size_human: string;
+  reclaimable_bytes: number;
+  reclaimable_human: string;
+  reclaimable_pct: number;
+}
+
+export interface DockerDiskUsage {
+  images: DockerDiskUsageCategory;
+  containers: DockerDiskUsageCategory;
+  volumes: DockerDiskUsageCategory;
+  build_cache: DockerDiskUsageCategory;
+  total_size_bytes: number;
+  total_size_human: string;
+  total_reclaimable_bytes: number;
+  total_reclaimable_human: string;
+}
+
 export interface DockerContainerPort {
   ip: string;
   private_port: number;
@@ -1288,16 +1310,81 @@ export interface DockerContainerPort {
 
 export interface DockerContainer {
   id: string;
+  name: string;
   names: string[];
   image: string;
+  image_id?: string;
   command: string;
   created: number;
+  created_since?: string;
   state: string;
   status: string;
+  ip_address?: string;
   ports: DockerContainerPort[];
+  networks?: string[];
+  mounts_count?: number;
+  compose_project?: string;
+  restart_policy?: string;
   cpu_percent: number;
+  mem_usage_bytes?: number;
+  mem_limit_bytes?: number;
   mem_usage: string;
+  net_io?: string;
+  block_io?: string;
   size_rw: string;
+}
+
+export interface DockerEnvItem {
+  key: string;
+  value: string;
+  secret: boolean;
+}
+
+export interface DockerMountItem {
+  type: string;
+  name: string;
+  source: string;
+  destination: string;
+  mode: string;
+  rw: boolean;
+}
+
+export interface DockerNetworkAttachment {
+  name: string;
+  network_id: string;
+  ip_address: string;
+  gateway: string;
+  mac_address: string;
+}
+
+export interface DockerContainerInspect {
+  id: string;
+  name: string;
+  image: string;
+  image_id: string;
+  state: string;
+  status: string;
+  running: boolean;
+  paused: boolean;
+  restarting: boolean;
+  pid: number;
+  started_at: string;
+  created_at: string;
+  restart_policy: string;
+  restart_count: number;
+  platform: string;
+  driver: string;
+  hostname: string;
+  working_dir: string;
+  cmd: string[];
+  entrypoint: string[];
+  env: DockerEnvItem[];
+  ports: DockerContainerPort[];
+  mounts: DockerMountItem[];
+  networks: DockerNetworkAttachment[];
+  labels: Record<string, string>;
+  compose_project: string;
+  health_status: string;
 }
 
 export interface DockerImage {
@@ -1306,9 +1393,38 @@ export interface DockerImage {
   tag: string;
   digest: string;
   created: number;
+  created_since?: string;
   size: number;
   size_human: string;
   containers: number;
+  dangling?: boolean;
+}
+
+export interface DockerImageHistoryItem {
+  id: string;
+  created_since: string;
+  created_by: string;
+  size_bytes: number;
+  size_human: string;
+  comment: string;
+}
+
+export interface DockerHubSearchItem {
+  name: string;
+  description: string;
+  star_count: number;
+  pull_count: number;
+  is_official: boolean;
+  is_automated: boolean;
+}
+
+export interface DockerHubTagItem {
+  name: string;
+  full_size: number;
+  size_human: string;
+  last_updated: string;
+  digest: string;
+  architectures: string[];
 }
 
 export interface DockerVolume {
@@ -1317,6 +1433,7 @@ export interface DockerVolume {
   scope: string;
   mountpoint: string;
   created_at: string;
+  size_bytes?: number;
   size_human: string;
   ref_count: number;
 }
@@ -1329,15 +1446,22 @@ export interface DockerNetwork {
   subnet: string;
   gateway: string;
   internal: boolean;
+  attachable?: boolean;
   containers_count: number;
+  containers?: string[];
 }
 
 export interface DockerComposeProject {
   name: string;
   status: string;
+  raw_status?: string;
   config_path: string;
+  working_dir?: string;
   containers_count: number;
+  running_count?: number;
   yaml_content: string;
+  managed?: boolean;
+  services?: string[];
 }
 
 export interface DockerAppTemplate {
@@ -1361,8 +1485,12 @@ export interface OneClickTemplate {
   description: string;
   image: string;
   default_port: number;
+  default_ports?: string[];
+  default_volumes?: string[];
+  default_env?: Record<string, string>;
   env_params: Array<{ key: string; label: string; default: string; type: string }>;
   volume_mount: string;
+  docker_compose_yaml?: string;
   readme: string;
 }
 
@@ -1372,6 +1500,7 @@ export interface DockerRegistry {
   url: string;
   username: string;
   is_default: boolean;
+  logged_in?: boolean;
 }
 
 export interface DockerStatus {
@@ -1379,6 +1508,7 @@ export interface DockerStatus {
   compose_installed: boolean;
   running: boolean;
   version: string;
+  docker_version?: string;
   compose_version: string;
   containers_total: number;
   containers_running: number;
@@ -1387,22 +1517,29 @@ export interface DockerStatus {
   images_total: number;
   volumes_total: number;
   networks_total: number;
+  compose_stacks_total?: number;
   server_version: string;
   storage_driver: string;
   memory_limit: boolean;
   swap_limit: boolean;
   root_dir: string;
+  data_dir?: string;
+  unix_socket?: string;
+  disk_usage?: DockerDiskUsage;
 }
 
 export interface DockerSystemInfo {
   hostname: string;
   os_version: string;
+  system_version?: string;
   architecture: string;
   kernel_version: string;
   cpu_cores: number;
+  memory_total_bytes?: number;
   memory_size: string;
   docker_version: string;
   compose_version: string;
+  storage_driver?: string;
   unix_address: string;
   data_directory: string;
 }

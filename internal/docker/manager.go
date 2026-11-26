@@ -10,19 +10,21 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Manager mengelola seluruh interaksi dengan Docker Engine dan Docker Compose
+// Manager mengelola seluruh interaksi dengan Docker Engine, Docker Compose, dan Docker Hub
 type Manager struct {
 	mu           sync.RWMutex
 	oneClickDir  string
 	configPath   string
 	registries   []DockerRegistry
-	composeCache map[string]DockerComposeProject
+	saveRegsFunc func([]DockerRegistry) error
+	tasks        *StreamTaskRegistry
 }
 
 var (
@@ -30,10 +32,22 @@ var (
 	once           sync.Once
 )
 
+func defaultRegistries() []DockerRegistry {
+	return []DockerRegistry{
+		{
+			ID:        "reg_dockerhub",
+			Name:      "Docker Hub (Official)",
+			URL:       "https://index.docker.io/v1/",
+			Username:  "",
+			IsDefault: true,
+			LoggedIn:  false,
+		},
+	}
+}
+
 // GetManager mengembalikan singleton instance Manager Docker
 func GetManager() *Manager {
 	once.Do(func() {
-		// Tentukan direktori default proyek One-Click Apps dan berkas daemon.json
 		baseDir := "/www/dk_project"
 		cfgPath := "/etc/docker/daemon.json"
 		if runtime.GOOS == "windows" {
@@ -46,1214 +60,1996 @@ func GetManager() *Manager {
 		_ = os.MkdirAll(filepath.Dir(cfgPath), 0755)
 
 		defaultManager = &Manager{
-			oneClickDir:  baseDir,
-			configPath:   cfgPath,
-			composeCache: make(map[string]DockerComposeProject),
-			registries: []DockerRegistry{
-				{
-					ID:        "reg_dockerhub",
-					Name:      "Docker Hub (Official)",
-					URL:       "https://index.docker.io/v1/",
-					Username:  "",
-					IsDefault: true,
-				},
-			},
+			oneClickDir: baseDir,
+			configPath:  cfgPath,
+			registries:  defaultRegistries(),
+			tasks:       newStreamTaskRegistry(),
 		}
 	})
 	return defaultManager
 }
 
-// isCommandAvailable memeriksa ketersediaan biner di sistem PATH
+// Tasks mengembalikan registri tugas streaming Docker untuk konsumsi handler SSE
+func (m *Manager) Tasks() *StreamTaskRegistry {
+	return m.tasks
+}
+
+// SetRegistryPersistence menghubungkan penyimpanan registri Docker ke basis data persisten panel (SQLite)
+func (m *Manager) SetRegistryPersistence(initial []DockerRegistry, saveFn func([]DockerRegistry) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.saveRegsFunc = saveFn
+	if len(initial) > 0 {
+		// Pastikan Docker Hub resmi selalu tersedia sebagai entri default
+		hasDefault := false
+		for _, r := range initial {
+			if r.IsDefault || r.ID == "reg_dockerhub" {
+				hasDefault = true
+				break
+			}
+		}
+		if !hasDefault {
+			m.registries = append(defaultRegistries(), initial...)
+		} else {
+			m.registries = initial
+		}
+	}
+}
+
 func isCommandAvailable(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
 }
 
-// DetectStatus mendeteksi ketersediaan dan statistik runtime Docker Engine
+// composeBaseArgs menentukan perintah Compose yang tersedia (`docker compose` v2 atau `docker-compose` v1)
+func (m *Manager) composeBaseArgs(ctx context.Context) (string, []string) {
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(cctx, "docker", "compose", "version").Run(); err == nil {
+		return "docker", []string{"compose"}
+	}
+	if isCommandAvailable("docker-compose") {
+		return "docker-compose", nil
+	}
+	return "docker", []string{"compose"}
+}
+
+// DetectStatus mendeteksi ketersediaan, versi, jumlah sumber daya, serta pemakaian disk Docker Engine
 func (m *Manager) DetectStatus(ctx context.Context) DockerStatus {
 	st := DockerStatus{
 		Installed:           false,
 		Running:             false,
 		OneClickInstallPath: m.oneClickDir,
+		RootDir:             "/var/lib/docker",
 		DataDir:             "/var/lib/docker",
 		UnixSocket:          "unix:///var/run/docker.sock",
 		StorageDriver:       "overlay2",
 	}
 
-	if runtime.GOOS == "windows" {
-		st.UnixSocket = "npipe:////./pipe/docker_engine"
-		st.DataDir = "C:\\ProgramData\\Docker"
-		st.StorageDriver = "windowsfilter"
-	}
-
-	// 1. Cek biner docker CLI
 	if !isCommandAvailable("docker") {
 		return st
 	}
 	st.Installed = true
 
-	// 2. Ambil versi Docker CLI
-	verOut, err := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Version}}").Output()
-	if err == nil && len(bytes.TrimSpace(verOut)) > 0 {
-		st.DockerVersion = string(bytes.TrimSpace(verOut))
-		st.Running = true
-	} else {
-		// Coba format client bila daemon stopped
-		cliOut, _ := exec.CommandContext(ctx, "docker", "--version").Output()
-		st.DockerVersion = strings.TrimSpace(string(cliOut))
-	}
-
-	// 3. Ambil versi Docker Compose
-	composeOut, err := exec.CommandContext(ctx, "docker", "compose", "version", "--short").Output()
-	if err == nil && len(bytes.TrimSpace(composeOut)) > 0 {
-		st.ComposeVersion = string(bytes.TrimSpace(composeOut))
-		st.ComposeInstalled = true
-	} else {
-		// Fallback ke docker-compose standalone
-		cOut, errStand := exec.CommandContext(ctx, "docker-compose", "--version").Output()
-		if errStand == nil && len(bytes.TrimSpace(cOut)) > 0 {
-			st.ComposeVersion = strings.TrimSpace(string(cOut))
-			st.ComposeInstalled = true
+	// Cek versi Docker CLI (timeout singkat 3 detik)
+	vCtx, vCancel := context.WithTimeout(ctx, 3*time.Second)
+	if out, err := exec.CommandContext(vCtx, "docker", "version", "--format", "{{.Client.Version}}").Output(); err == nil {
+		ver := strings.TrimSpace(string(out))
+		if ver != "" {
+			st.Version = ver
+			st.DockerVersion = ver
 		}
 	}
-	if st.ComposeVersion != "" {
-		st.ComposeInstalled = true
-	}
+	vCancel()
 
-	// 4. Jika daemon tidak berjalan, kembalikan data dasar
-	if !st.Running {
+	// Cek ketersediaan Docker Compose v2 / v1
+	cCtx, cCancel := context.WithTimeout(ctx, 3*time.Second)
+	if out, err := exec.CommandContext(cCtx, "docker", "compose", "version", "--short").Output(); err == nil {
+		st.ComposeInstalled = true
+		st.ComposeVersion = strings.TrimSpace(string(out))
+	} else if isCommandAvailable("docker-compose") {
+		if out2, err2 := exec.CommandContext(cCtx, "docker-compose", "version", "--short").Output(); err2 == nil {
+			st.ComposeInstalled = true
+			st.ComposeVersion = strings.TrimSpace(string(out2))
+		}
+	}
+	cCancel()
+
+	// Ambil snapshot lengkap dari `docker info --format "{{json .}}"` dalam satu pemanggilan cepat
+	iCtx, iCancel := context.WithTimeout(ctx, 4*time.Second)
+	infoOut, err := exec.CommandContext(iCtx, "docker", "info", "--format", "{{json .}}").Output()
+	iCancel()
+	if err != nil {
 		return st
 	}
 
-	// 5. Ekstraksi metrik sistem via 'docker info' format JSON
-	infoOut, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{json .}}").Output()
-	if err == nil {
-		var infoMap map[string]interface{}
-		if err := json.Unmarshal(infoOut, &infoMap); err == nil {
-			if n, ok := infoMap["Containers"].(float64); ok {
-				st.ContainersCount = int(n)
-			}
-			if n, ok := infoMap["ContainersRunning"].(float64); ok {
-				st.ContainersRunning = int(n)
-			}
-			if n, ok := infoMap["ContainersPaused"].(float64); ok {
-				st.ContainersPaused = int(n)
-			}
-			if n, ok := infoMap["ContainersStopped"].(float64); ok {
-				st.ContainersStopped = int(n)
-			}
-			if n, ok := infoMap["Images"].(float64); ok {
-				st.ImagesCount = int(n)
-			}
-			if s, ok := infoMap["DockerRootDir"].(string); ok && s != "" {
-				st.DataDir = s
-			}
-			if s, ok := infoMap["Driver"].(string); ok && s != "" {
-				st.StorageDriver = s
-			}
+	st.Running = true
+	var info struct {
+		ServerVersion     string `json:"ServerVersion"`
+		Driver            string `json:"Driver"`
+		DockerRootDir     string `json:"DockerRootDir"`
+		Containers        int    `json:"Containers"`
+		ContainersRunning int    `json:"ContainersRunning"`
+		ContainersPaused  int    `json:"ContainersPaused"`
+		ContainersStopped int    `json:"ContainersStopped"`
+		Images            int    `json:"Images"`
+		MemoryLimit       bool   `json:"MemoryLimit"`
+		SwapLimit         bool   `json:"SwapLimit"`
+	}
+	if json.Unmarshal(infoOut, &info) == nil {
+		if info.ServerVersion != "" {
+			st.ServerVersion = info.ServerVersion
+			st.Version = info.ServerVersion
+			st.DockerVersion = info.ServerVersion
 		}
+		if info.Driver != "" {
+			st.StorageDriver = info.Driver
+		}
+		if info.DockerRootDir != "" {
+			st.RootDir = info.DockerRootDir
+			st.DataDir = info.DockerRootDir
+		}
+		st.ContainersTotal = info.Containers
+		st.ContainersCount = info.Containers
+		st.ContainersRunning = info.ContainersRunning
+		st.ContainersPaused = info.ContainersPaused
+		st.ContainersStopped = info.ContainersStopped
+		st.ImagesTotal = info.Images
+		st.ImagesCount = info.Images
+		st.MemoryLimit = info.MemoryLimit
+		st.SwapLimit = info.SwapLimit
 	}
 
-	// 6. Hitung jumlah volume dan network
-	volOut, _ := exec.CommandContext(ctx, "docker", "volume", "ls", "-q").Output()
-	if len(volOut) > 0 {
-		lines := strings.Split(strings.TrimSpace(string(volOut)), "\n")
-		st.VolumesCount = len(lines)
-	}
-
-	netOut, _ := exec.CommandContext(ctx, "docker", "network", "ls", "-q").Output()
-	if len(netOut) > 0 {
-		lines := strings.Split(strings.TrimSpace(string(netOut)), "\n")
-		st.NetworksCount = len(lines)
-	}
+	// Hitung volume, network, compose stack, dan pemakaian disk secara paralel agar respons super cepat
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		tctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(tctx, "docker", "volume", "ls", "-q").Output(); err == nil {
+			cnt := countNonEmptyLines(string(out))
+			st.VolumesTotal = cnt
+			st.VolumesCount = cnt
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		tctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(tctx, "docker", "network", "ls", "-q").Output(); err == nil {
+			cnt := countNonEmptyLines(string(out))
+			st.NetworksTotal = cnt
+			st.NetworksCount = cnt
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		tctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if out, err := exec.CommandContext(tctx, "docker", "compose", "ls", "-a", "-q").Output(); err == nil {
+			st.ComposeStacksTotal = countNonEmptyLines(string(out))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if df, err := m.GetDiskUsage(ctx); err == nil {
+			st.DiskUsage = df
+		}
+	}()
+	wg.Wait()
 
 	return st
 }
 
-// GetSystemInfo mengambil informasi lengkap mesin host untuk panel Settings
-func (m *Manager) GetSystemInfo(ctx context.Context) DockerSystemInfo {
-	host, _ := os.Hostname()
-	st := m.DetectStatus(ctx)
-
-	sysVer := "Linux (Ubuntu/Debian Compatible)"
-	if runtime.GOOS == "windows" {
-		sysVer = "Windows " + runtime.GOARCH
-	} else {
-		// Baca informasi /etc/os-release bila di Linux
-		if data, err := os.ReadFile("/etc/os-release"); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				if strings.HasPrefix(line, "PRETTY_NAME=") {
-					sysVer = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
-					break
-				}
-			}
+func countNonEmptyLines(s string) int {
+	cnt := 0
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+		if strings.TrimSpace(line) != "" {
+			cnt++
 		}
 	}
-
-	kernel := runtime.GOOS
-	if runtime.GOOS == "linux" {
-		kOut, _ := exec.CommandContext(ctx, "uname", "-r").Output()
-		if len(kOut) > 0 {
-			kernel = strings.TrimSpace(string(kOut))
-		}
-	}
-
-	dVer := st.DockerVersion
-	if dVer == "" {
-		dVer = "Belum Terpasang"
-	}
-	cVer := st.ComposeVersion
-	if cVer == "" {
-		cVer = "Belum Terpasang"
-	}
-
-	return DockerSystemInfo{
-		Hostname:             host,
-		SystemVersion:        sysVer,
-		Architecture:         runtime.GOARCH,
-		KernelVersion:        kernel,
-		CpuCore:              runtime.NumCPU(),
-		MemorySize:           "Otomatis dialokasikan host",
-		DockerVersion:        dVer,
-		DockerComposeVersion: cVer,
-		UnixAddress:          st.UnixSocket,
-		DataDirectory:        st.DataDir,
-	}
+	return cnt
 }
 
-// GetDaemonConfig membaca konfigurasi daemon.json dan pengaturan FikPanel
-func (m *Manager) GetDaemonConfig() DockerDaemonConfig {
-	cfg := DockerDaemonConfig{
-		AccelerateURL:      "Belum diatur",
-		DockerComposePath:  "docker compose",
-		PrivateRegistry:    "",
-		LogRotation:        true,
-		LogMaxSize:         "10m",
-		LogMaxFile:         "3",
-		Ipv6:               false,
-		Iptables:           true,
-		LiveRestore:        true,
-		OneClickInstallDir: m.oneClickDir,
+// GetDiskUsage membaca ringkasan pemakaian ruang disk Docker dari `docker system df`
+func (m *Manager) GetDiskUsage(ctx context.Context) (*DockerDiskUsage, error) {
+	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "system", "df", "--format", "{{json .}}").Output()
+	if err != nil {
+		return nil, err
+	}
+	return ParseSystemDFOutput(string(out)), nil
+}
+
+// ParseSystemDFOutput mengurai keluaran JSON-per-baris dari `docker system df --format "{{json .}}"`
+func ParseSystemDFOutput(raw string) *DockerDiskUsage {
+	df := &DockerDiskUsage{
+		Images:     DockerDiskUsageCategory{Type: "Images", SizeHuman: "0 B", ReclaimableHuman: "0 B"},
+		Containers: DockerDiskUsageCategory{Type: "Containers", SizeHuman: "0 B", ReclaimableHuman: "0 B"},
+		Volumes:    DockerDiskUsageCategory{Type: "Local Volumes", SizeHuman: "0 B", ReclaimableHuman: "0 B"},
+		BuildCache: DockerDiskUsageCategory{Type: "Build Cache", SizeHuman: "0 B", ReclaimableHuman: "0 B"},
 	}
 
-	if data, err := os.ReadFile(m.configPath); err == nil {
-		cfg.RawConfigJSON = string(data)
-		var parsed map[string]interface{}
-		if err := json.Unmarshal(data, &parsed); err == nil {
-			if mirrors, ok := parsed["registry-mirrors"].([]interface{}); ok && len(mirrors) > 0 {
-				cfg.AccelerateURL = fmt.Sprint(mirrors[0])
-			}
-			if ipt, ok := parsed["iptables"].(bool); ok {
-				cfg.Iptables = ipt
-			}
-			if lr, ok := parsed["live-restore"].(bool); ok {
-				cfg.LiveRestore = lr
-			}
-			if ipv6, ok := parsed["ipv6"].(bool); ok {
-				cfg.Ipv6 = ipv6
-			}
-			if logOpts, ok := parsed["log-opts"].(map[string]interface{}); ok {
-				if ms, ok := logOpts["max-size"].(string); ok {
-					cfg.LogMaxSize = ms
-				}
-				if mf, ok := logOpts["max-file"].(string); ok {
-					cfg.LogMaxFile = mf
+	scanner := bufio.NewScanner(strings.NewReader(raw))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var row struct {
+			Type        string `json:"Type"`
+			TotalCount  string `json:"TotalCount"`
+			Active      string `json:"Active"`
+			Size        string `json:"Size"`
+			Reclaimable string `json:"Reclaimable"`
+		}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			continue
+		}
+		totalCnt, _ := strconv.Atoi(strings.TrimSpace(row.TotalCount))
+		activeCnt, _ := strconv.Atoi(strings.TrimSpace(row.Active))
+		sizeBytes := ParseHumanSize(row.Size)
+		recBytes, recHuman, recPct := ParseReclaimableField(row.Reclaimable)
+
+		cat := DockerDiskUsageCategory{
+			Type:             row.Type,
+			TotalCount:       totalCnt,
+			ActiveCount:      activeCnt,
+			SizeBytes:        sizeBytes,
+			SizeHuman:        FormatBytes(sizeBytes),
+			ReclaimableBytes: recBytes,
+			ReclaimableHuman: recHuman,
+			ReclaimablePct:   recPct,
+		}
+
+		switch strings.ToLower(strings.TrimSpace(row.Type)) {
+		case "images":
+			df.Images = cat
+		case "containers":
+			df.Containers = cat
+		case "local volumes", "volumes":
+			df.Volumes = cat
+		case "build cache":
+			df.BuildCache = cat
+		}
+	}
+
+	df.TotalSizeBytes = df.Images.SizeBytes + df.Containers.SizeBytes + df.Volumes.SizeBytes + df.BuildCache.SizeBytes
+	df.TotalSizeHuman = FormatBytes(df.TotalSizeBytes)
+	df.TotalReclaimableBytes = df.Images.ReclaimableBytes + df.Containers.ReclaimableBytes + df.Volumes.ReclaimableBytes + df.BuildCache.ReclaimableBytes
+	df.TotalReclaimableHuman = FormatBytes(df.TotalReclaimableBytes)
+	return df
+}
+
+// SystemPrune menjalankan pembersihan selektif (container mati, image usang, volume bebas, network, build cache)
+func (m *Manager) SystemPrune(ctx context.Context, req SystemPruneRequest) (*SystemPruneResult, error) {
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	res := &SystemPruneResult{Details: make([]string, 0)}
+
+	runPrune := func(label string, args ...string) {
+		out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
+		text := strings.TrimSpace(string(out))
+		if err != nil {
+			res.Details = append(res.Details, fmt.Sprintf("%s: gagal (%s)", label, text))
+			return
+		}
+		// Cari baris "Total reclaimed space: ..."
+		var reclaimed int64
+		for _, line := range strings.Split(text, "\n") {
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "reclaimed space:") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					reclaimed = ParseHumanSize(parts[1])
 				}
 			}
 		}
-	} else {
-		cfg.RawConfigJSON = `{\n  "log-driver": "json-file",\n  "log-opts": {\n    "max-size": "10m",\n    "max-file": "3"\n  },\n  "live-restore": true,\n  "iptables": true\n}`
+		res.ReclaimedBytes += reclaimed
+		res.Details = append(res.Details, fmt.Sprintf("%s: dibersihkan (%s)", label, FormatBytes(reclaimed)))
 	}
 
+	if req.Containers {
+		runPrune("Kontainer Berhenti", "container", "prune", "-f")
+	}
+	if req.Images || req.AllImages {
+		if req.AllImages {
+			runPrune("Semua Citra Tak Terpakai", "image", "prune", "-a", "-f")
+		} else {
+			runPrune("Citra Dangling", "image", "prune", "-f")
+		}
+	}
+	if req.Volumes {
+		runPrune("Volume Bebas", "volume", "prune", "-f")
+	}
+	if req.Networks {
+		runPrune("Jaringan Tak Terpakai", "network", "prune", "-f")
+	}
+	if req.BuildCache {
+		runPrune("Build Cache", "builder", "prune", "-f")
+	}
+
+	res.ReclaimedHuman = FormatBytes(res.ReclaimedBytes)
+	return res, nil
+}
+
+// GetSystemInfo menyajikan detail perangkat keras host, versi OS, RAM aktual, serta versi Docker & Compose
+func (m *Manager) GetSystemInfo(ctx context.Context) DockerSystemInfo {
+	hostname, _ := os.Hostname()
+	osPretty := ReadHostOSPrettyName()
+	if osPretty == "" {
+		osPretty = fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	memTotal := ReadHostMemoryBytes()
+	info := DockerSystemInfo{
+		Hostname:         hostname,
+		OSVersion:        osPretty,
+		SystemVersion:    osPretty,
+		Architecture:     runtime.GOARCH,
+		KernelVersion:    "-",
+		CPUCores:         runtime.NumCPU(),
+		MemoryTotalBytes: memTotal,
+		MemorySize:       FormatBytes(memTotal),
+		DockerVersion:    "-",
+		ComposeVersion:   "-",
+		StorageDriver:    "overlay2",
+		UnixAddress:      "unix:///var/run/docker.sock",
+		DataDirectory:    "/var/lib/docker",
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	if runtime.GOOS != "windows" {
+		if out, err := exec.CommandContext(cctx, "uname", "-r").Output(); err == nil {
+			info.KernelVersion = strings.TrimSpace(string(out))
+		}
+	}
+
+	// Perkaya dari `docker info --format "{{json .}}"` (termasuk MemTotal & OperatingSystem bila /proc tidak ada)
+	if out, err := exec.CommandContext(cctx, "docker", "info", "--format", "{{json .}}").Output(); err == nil {
+		var di struct {
+			ServerVersion   string `json:"ServerVersion"`
+			Driver          string `json:"Driver"`
+			DockerRootDir   string `json:"DockerRootDir"`
+			OperatingSystem string `json:"OperatingSystem"`
+			KernelVersion   string `json:"KernelVersion"`
+			Architecture    string `json:"Architecture"`
+			NCPU            int    `json:"NCPU"`
+			MemTotal        int64  `json:"MemTotal"`
+			Name            string `json:"Name"`
+		}
+		if json.Unmarshal(out, &di) == nil {
+			if di.Name != "" {
+				info.Hostname = di.Name
+			}
+			if di.OperatingSystem != "" && (osPretty == "" || strings.Contains(osPretty, "/")) {
+				info.OSVersion = di.OperatingSystem
+				info.SystemVersion = di.OperatingSystem
+			}
+			if di.KernelVersion != "" {
+				info.KernelVersion = di.KernelVersion
+			}
+			if di.Architecture != "" {
+				info.Architecture = di.Architecture
+			}
+			if di.NCPU > 0 {
+				info.CPUCores = di.NCPU
+			}
+			if di.MemTotal > 0 && info.MemoryTotalBytes == 0 {
+				info.MemoryTotalBytes = di.MemTotal
+				info.MemorySize = FormatBytes(di.MemTotal)
+			}
+			if di.ServerVersion != "" {
+				info.DockerVersion = di.ServerVersion
+			}
+			if di.Driver != "" {
+				info.StorageDriver = di.Driver
+			}
+			if di.DockerRootDir != "" {
+				info.DataDirectory = di.DockerRootDir
+			}
+		}
+	}
+
+	if out, err := exec.CommandContext(cctx, "docker", "compose", "version", "--short").Output(); err == nil {
+		info.ComposeVersion = strings.TrimSpace(string(out))
+	} else if isCommandAvailable("docker-compose") {
+		if out2, err2 := exec.CommandContext(cctx, "docker-compose", "version", "--short").Output(); err2 == nil {
+			info.ComposeVersion = strings.TrimSpace(string(out2))
+		}
+	}
+
+	if info.MemoryTotalBytes == 0 {
+		info.MemorySize = "Tidak terdeteksi"
+	}
+	return info
+}
+
+// GetDaemonConfig membaca konfigurasi /etc/docker/daemon.json
+func (m *Manager) GetDaemonConfig() DockerDaemonConfig {
+	m.mu.RLock()
+	cfgPath := m.configPath
+	oneClickDir := m.oneClickDir
+	m.mu.RUnlock()
+
+	cfg := DockerDaemonConfig{
+		RegistryMirrors: []string{},
+		ComposePath:     "/usr/local/bin/docker-compose",
+		PrivateRegistry: "official",
+		LogRotation:     true,
+		LogMaxSize:      "10m",
+		LogMaxFile:      "3",
+		IPv6:            false,
+		IPv6Subnet:      "fd00::/80",
+		IPTables:        true,
+		LiveRestore:     true,
+		OneClickDir:     oneClickDir,
+		RawJSON:         "{}",
+	}
+
+	if path, err := exec.LookPath("docker-compose"); err == nil && path != "" {
+		cfg.ComposePath = path
+	}
+
+	raw, err := os.ReadFile(cfgPath)
+	if err == nil && len(bytes.TrimSpace(raw)) > 0 {
+		cfg.RawJSON = string(raw)
+		var rawMap map[string]interface{}
+		if json.Unmarshal(raw, &rawMap) == nil {
+			if mirrors, ok := rawMap["registry-mirrors"].([]interface{}); ok {
+				for _, item := range mirrors {
+					if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+						cfg.RegistryMirrors = append(cfg.RegistryMirrors, s)
+					}
+				}
+			}
+			if v, ok := rawMap["ipv6"].(bool); ok {
+				cfg.IPv6 = v
+			}
+			if v, ok := rawMap["fixed-cidr-v6"].(string); ok && v != "" {
+				cfg.IPv6Subnet = v
+			}
+			if v, ok := rawMap["iptables"].(bool); ok {
+				cfg.IPTables = v
+			}
+			if v, ok := rawMap["live-restore"].(bool); ok {
+				cfg.LiveRestore = v
+			}
+			if logOpts, ok := rawMap["log-opts"].(map[string]interface{}); ok {
+				if v, ok := logOpts["max-size"].(string); ok && v != "" {
+					cfg.LogMaxSize = v
+				}
+				if v, ok := logOpts["max-file"].(string); ok && v != "" {
+					cfg.LogMaxFile = v
+				}
+				cfg.LogRotation = true
+			}
+		}
+	} else {
+		// Hasilkan representasi JSON rapi default agar modal editor langsung terisi valid
+		defaultObj := map[string]interface{}{
+			"log-driver": "json-file",
+			"log-opts": map[string]string{
+				"max-size": cfg.LogMaxSize,
+				"max-file": cfg.LogMaxFile,
+			},
+			"live-restore": cfg.LiveRestore,
+			"iptables":     cfg.IPTables,
+		}
+		if b, err := json.MarshalIndent(defaultObj, "", "  "); err == nil {
+			cfg.RawJSON = string(b)
+		}
+	}
 	return cfg
 }
 
-// SaveDaemonConfig menyimpan pembaruan berkas konfigurasi daemon.json
+// SaveDaemonConfig memvalidasi dan menyimpan konfigurasi ke /etc/docker/daemon.json
 func (m *Manager) SaveDaemonConfig(cfg DockerDaemonConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var dataMap map[string]interface{}
-	if err := json.Unmarshal([]byte(cfg.RawConfigJSON), &dataMap); err != nil {
-		return fmt.Errorf("sintaks JSON tidak valid: %w", err)
-	}
-
-	if cfg.OneClickInstallDir != "" {
-		m.oneClickDir = cfg.OneClickInstallDir
+	if strings.TrimSpace(cfg.OneClickDir) != "" {
+		m.oneClickDir = strings.TrimSpace(cfg.OneClickDir)
 		_ = os.MkdirAll(m.oneClickDir, 0755)
 	}
 
-	prettyBytes, err := json.MarshalIndent(dataMap, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	_ = os.MkdirAll(filepath.Dir(m.configPath), 0755)
-	return os.WriteFile(m.configPath, prettyBytes, 0644)
-}
-
-// ControlService mengontrol status daemon Docker (Start, Stop, Restart, Repair)
-func (m *Manager) ControlService(ctx context.Context, action string) error {
-	if runtime.GOOS == "linux" {
-		switch action {
-		case "start":
-			return exec.CommandContext(ctx, "systemctl", "start", "docker").Run()
-		case "stop":
-			return exec.CommandContext(ctx, "systemctl", "stop", "docker").Run()
-		case "restart":
-			return exec.CommandContext(ctx, "systemctl", "restart", "docker").Run()
-		case "repair":
-			// Perbaiki permission socket dan reload daemon
-			_ = exec.CommandContext(ctx, "systemctl", "daemon-reload").Run()
-			return exec.CommandContext(ctx, "systemctl", "restart", "docker").Run()
-		default:
-			return fmt.Errorf("aksi tidak dikenal: %s", action)
+	var output []byte
+	if strings.TrimSpace(cfg.RawJSON) != "" {
+		// Validasi JSON mentah bila pengguna menyimpan langsung dari editor daemon.json
+		var check map[string]interface{}
+		if err := json.Unmarshal([]byte(cfg.RawJSON), &check); err != nil {
+			return fmt.Errorf("format JSON daemon.json tidak valid: %w", err)
 		}
+		formatted, err := json.MarshalIndent(check, "", "  ")
+		if err != nil {
+			return err
+		}
+		output = formatted
+	} else {
+		// Baca konfigurasi lama agar field kustom pengguna lain tidak hilang
+		data := make(map[string]interface{})
+		if oldRaw, err := os.ReadFile(m.configPath); err == nil {
+			_ = json.Unmarshal(oldRaw, &data)
+		}
+
+		if len(cfg.RegistryMirrors) > 0 {
+			data["registry-mirrors"] = cfg.RegistryMirrors
+		} else {
+			delete(data, "registry-mirrors")
+		}
+
+		if cfg.LogRotation {
+			data["log-driver"] = "json-file"
+			maxSize := strings.TrimSpace(cfg.LogMaxSize)
+			if maxSize == "" {
+				maxSize = "10m"
+			}
+			maxFile := strings.TrimSpace(cfg.LogMaxFile)
+			if maxFile == "" {
+				maxFile = "3"
+			}
+			data["log-opts"] = map[string]string{
+				"max-size": maxSize,
+				"max-file": maxFile,
+			}
+		} else {
+			delete(data, "log-opts")
+		}
+
+		data["ipv6"] = cfg.IPv6
+		if cfg.IPv6 {
+			subnet := strings.TrimSpace(cfg.IPv6Subnet)
+			if subnet == "" {
+				subnet = "fd00::/80"
+			}
+			data["fixed-cidr-v6"] = subnet
+		} else {
+			delete(data, "fixed-cidr-v6")
+		}
+
+		data["iptables"] = cfg.IPTables
+		data["live-restore"] = cfg.LiveRestore
+
+		formatted, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return err
+		}
+		output = formatted
 	}
 
+	if err := os.MkdirAll(filepath.Dir(m.configPath), 0755); err != nil {
+		return fmt.Errorf("gagal membuat direktori konfigurasi: %w", err)
+	}
+	if err := os.WriteFile(m.configPath, output, 0644); err != nil {
+		return fmt.Errorf("gagal menulis berkas %s: %w", m.configPath, err)
+	}
 	return nil
 }
 
-// ListContainers mengambil seluruh kontainer aktif maupun berhenti
-func (m *Manager) ListContainers(ctx context.Context) ([]DockerContainer, error) {
-	if !isCommandAvailable("docker") {
-		return []DockerContainer{}, nil
+// ControlService mengendalikan layanan systemd Docker Engine (start, stop, restart, repair)
+func (m *Manager) ControlService(ctx context.Context, action string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("kontrol layanan systemd Docker hanya didukung pada server Linux")
 	}
+	cctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{json .}}")
-	out, err := cmd.Output()
+	switch action {
+	case "start", "stop", "restart":
+		out, err := exec.CommandContext(cctx, "systemctl", action, "docker").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("gagal %s layanan docker: %s", action, strings.TrimSpace(string(out)))
+		}
+		return nil
+	case "repair":
+		_ = exec.CommandContext(cctx, "systemctl", "daemon-reload").Run()
+		_ = exec.CommandContext(cctx, "systemctl", "restart", "containerd").Run()
+		out, err := exec.CommandContext(cctx, "systemctl", "restart", "docker").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("gagal memperbaiki layanan docker: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	default:
+		return fmt.Errorf("aksi layanan tidak dikenal: %s", action)
+	}
+}
+
+type containerStatSnapshot struct {
+	CPUPercent    float64
+	MemUsageBytes int64
+	MemLimitBytes int64
+	MemUsageStr   string
+	NetIO         string
+	BlockIO       string
+}
+
+func (m *Manager) fetchContainerStats(ctx context.Context) map[string]containerStatSnapshot {
+	result := make(map[string]containerStatSnapshot)
+	cctx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "stats", "--no-stream", "--no-trunc", "--format", "{{json .}}").Output()
 	if err != nil {
-		return []DockerContainer{}, nil
+		return result
 	}
 
-	var list []DockerContainer
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
 			continue
 		}
-		var item map[string]string
-		if err := json.Unmarshal(line, &item); err == nil {
-			id := item["ID"]
-			name := strings.TrimPrefix(item["Names"], "/")
-			image := item["Image"]
-			state := strings.ToLower(item["State"])
-			status := item["Status"]
-			command := item["Command"]
-
-			// Parse ports
-			var ports []ContainerPort
-			portsRaw := item["Ports"]
-			if portsRaw != "" {
-				parts := strings.Split(portsRaw, ",")
-				for _, p := range parts {
-					p = strings.TrimSpace(p)
-					// Format contoh: 0.0.0.0:8080->80/tcp
-					if strings.Contains(p, "->") {
-						spl := strings.Split(p, "->")
-						hostPart := spl[0]
-						contPart := spl[1]
-						var pubPort uint16
-						var privPort uint16
-						var pType = "tcp"
-
-						if strings.Contains(contPart, "/") {
-							cSpl := strings.Split(contPart, "/")
-							pv, _ := strconv.Atoi(cSpl[0])
-							privPort = uint16(pv)
-							pType = cSpl[1]
-						}
-
-						if strings.Contains(hostPart, ":") {
-							hSpl := strings.Split(hostPart, ":")
-							pb, _ := strconv.Atoi(hSpl[1])
-							pubPort = uint16(pb)
-						}
-
-						ports = append(ports, ContainerPort{
-							IP:          "0.0.0.0",
-							PublicPort:  pubPort,
-							PrivatePort: privPort,
-							Type:        pType,
-						})
-					}
-				}
+		var row struct {
+			ID       string `json:"ID"`
+			Name     string `json:"Name"`
+			CPUPerc  string `json:"CPUPerc"`
+			MemUsage string `json:"MemUsage"`
+			NetIO    string `json:"NetIO"`
+			BlockIO  string `json:"BlockIO"`
+		}
+		if json.Unmarshal([]byte(line), &row) != nil {
+			continue
+		}
+		cpuVal, _ := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(row.CPUPerc), "%"), 64)
+		var memUsed, memLimit int64
+		if parts := strings.SplitN(row.MemUsage, "/", 2); len(parts) == 2 {
+			memUsed = ParseHumanSize(parts[0])
+			memLimit = ParseHumanSize(parts[1])
+		}
+		snap := containerStatSnapshot{
+			CPUPercent:    cpuVal,
+			MemUsageBytes: memUsed,
+			MemLimitBytes: memLimit,
+			MemUsageStr:   strings.TrimSpace(row.MemUsage),
+			NetIO:         strings.TrimSpace(row.NetIO),
+			BlockIO:       strings.TrimSpace(row.BlockIO),
+		}
+		if row.ID != "" {
+			result[row.ID] = snap
+			if len(row.ID) >= 12 {
+				result[row.ID[:12]] = snap
 			}
+		}
+		if row.Name != "" {
+			result[strings.TrimPrefix(row.Name, "/")] = snap
+		}
+	}
+	return result
+}
 
-			list = append(list, DockerContainer{
-				ID:        id,
-				Name:      name,
-				Image:     image,
-				State:     state,
-				Status:    status,
-				Ports:     ports,
-				Command:   command,
-				Created:   time.Now().Unix(),
-				IPAddress: "172.17.0.2",
+// ListContainers mengambil seluruh kontainer aktif & berhenti dilengkapi metrik CPU/RAM real-time
+func (m *Manager) ListContainers(ctx context.Context) ([]DockerContainer, error) {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var (
+		psOut   []byte
+		psErr   error
+		statMap map[string]containerStatSnapshot
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		psOut, psErr = exec.CommandContext(cctx, "docker", "ps", "-a", "--no-trunc", "--format", "{{json .}}").Output()
+	}()
+	go func() {
+		defer wg.Done()
+		statMap = m.fetchContainerStats(cctx)
+	}()
+	wg.Wait()
+
+	if psErr != nil {
+		return []DockerContainer{}, psErr
+	}
+
+	containers := make([]DockerContainer, 0)
+	scanner := bufio.NewScanner(bytes.NewReader(psOut))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var raw struct {
+			ID         string `json:"ID"`
+			Names      string `json:"Names"`
+			Image      string `json:"Image"`
+			Command    string `json:"Command"`
+			State      string `json:"State"`
+			Status     string `json:"Status"`
+			CreatedAt  string `json:"CreatedAt"`
+			RunningFor string `json:"RunningFor"`
+			Ports      string `json:"Ports"`
+			Networks   string `json:"Networks"`
+			Mounts     string `json:"Mounts"`
+			Labels     string `json:"Labels"`
+			Size       string `json:"Size"`
+		}
+		if json.Unmarshal([]byte(line), &raw) != nil {
+			continue
+		}
+
+		cleanName := strings.TrimPrefix(strings.TrimSpace(raw.Names), "/")
+		var netList []string
+		for _, n := range strings.Split(raw.Networks, ",") {
+			if tn := strings.TrimSpace(n); tn != "" {
+				netList = append(netList, tn)
+			}
+		}
+		if netList == nil {
+			netList = []string{}
+		}
+
+		mountsCount := 0
+		if strings.TrimSpace(raw.Mounts) != "" {
+			mountsCount = len(strings.Split(raw.Mounts, ","))
+		}
+
+		// Ekstrak label com.docker.compose.project jika kontainer merupakan bagian dari stack Compose
+		composeProject := ""
+		for _, kv := range strings.Split(raw.Labels, ",") {
+			if strings.HasPrefix(kv, "com.docker.compose.project=") {
+				composeProject = strings.TrimPrefix(kv, "com.docker.compose.project=")
+				break
+			}
+		}
+
+		shortID := raw.ID
+		if len(shortID) > 12 {
+			shortID = shortID[:12]
+		}
+
+		stat, hasStat := statMap[raw.ID]
+		if !hasStat {
+			stat, hasStat = statMap[shortID]
+		}
+		if !hasStat {
+			stat = statMap[cleanName]
+		}
+		memStr := stat.MemUsageStr
+		if memStr == "" {
+			memStr = "-"
+		}
+
+		containers = append(containers, DockerContainer{
+			ID:             raw.ID,
+			Name:           cleanName,
+			Names:          []string{cleanName},
+			Image:          raw.Image,
+			Command:        strings.Trim(raw.Command, `"`),
+			State:          strings.ToLower(strings.TrimSpace(raw.State)),
+			Status:         raw.Status,
+			Created:        ParseDockerTimestamp(raw.CreatedAt),
+			CreatedSince:   raw.RunningFor,
+			Ports:          ParseDockerPorts(raw.Ports),
+			Networks:       netList,
+			MountsCount:    mountsCount,
+			ComposeProject: composeProject,
+			CPUPercent:     stat.CPUPercent,
+			MemUsageBytes:  stat.MemUsageBytes,
+			MemLimitBytes:  stat.MemLimitBytes,
+			MemUsage:       memStr,
+			NetIO:          stat.NetIO,
+			BlockIO:        stat.BlockIO,
+			SizeRW:         raw.Size,
+		})
+	}
+
+	return containers, nil
+}
+
+// InspectContainer membaca detail lengkap kontainer dari `docker inspect` (Env, Mounts, Networks, Ports, Health)
+func (m *Manager) InspectContainer(ctx context.Context, id string) (*DockerContainerInspect, error) {
+	ref := strings.TrimSpace(id)
+	if !IsValidDockerRef(ref) {
+		return nil, fmt.Errorf("ID kontainer tidak valid")
+	}
+	cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "inspect", ref).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gagal menginspeksi kontainer: %s", strings.TrimSpace(string(out)))
+	}
+
+	var list []struct {
+		ID           string `json:"Id"`
+		Name         string `json:"Name"`
+		Created      string `json:"Created"`
+		Image        string `json:"Image"`
+		Platform     string `json:"Platform"`
+		Driver       string `json:"Driver"`
+		RestartCount int    `json:"RestartCount"`
+		State        struct {
+			Status     string `json:"Status"`
+			Running    bool   `json:"Running"`
+			Paused     bool   `json:"Paused"`
+			Restarting bool   `json:"Restarting"`
+			Pid        int    `json:"Pid"`
+			StartedAt  string `json:"StartedAt"`
+			Health     *struct {
+				Status string `json:"Status"`
+			} `json:"Health"`
+		} `json:"State"`
+		HostConfig struct {
+			RestartPolicy struct {
+				Name string `json:"Name"`
+			} `json:"RestartPolicy"`
+		} `json:"HostConfig"`
+		Config struct {
+			Hostname   string            `json:"Hostname"`
+			Image      string            `json:"Image"`
+			WorkingDir string            `json:"WorkingDir"`
+			Env        []string          `json:"Env"`
+			Cmd        []string          `json:"Cmd"`
+			Entrypoint []string          `json:"Entrypoint"`
+			Labels     map[string]string `json:"Labels"`
+		} `json:"Config"`
+		Mounts []struct {
+			Type        string `json:"Type"`
+			Name        string `json:"Name"`
+			Source      string `json:"Source"`
+			Destination string `json:"Destination"`
+			Mode        string `json:"Mode"`
+			RW          bool   `json:"RW"`
+		} `json:"Mounts"`
+		NetworkSettings struct {
+			Ports map[string][]struct {
+				HostIP   string `json:"HostIp"`
+				HostPort string `json:"HostPort"`
+			} `json:"Ports"`
+			Networks map[string]struct {
+				NetworkID  string `json:"NetworkID"`
+				IPAddress  string `json:"IPAddress"`
+				Gateway    string `json:"Gateway"`
+				MacAddress string `json:"MacAddress"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
+	}
+
+	if err := json.Unmarshal(out, &list); err != nil || len(list) == 0 {
+		return nil, fmt.Errorf("gagal mengurai data docker inspect")
+	}
+
+	raw := list[0]
+	envItems := make([]DockerEnvItem, 0, len(raw.Config.Env))
+	for _, kv := range raw.Config.Env {
+		parts := strings.SplitN(kv, "=", 2)
+		k := parts[0]
+		v := ""
+		if len(parts) == 2 {
+			v = parts[1]
+		}
+		envItems = append(envItems, DockerEnvItem{
+			Key:    k,
+			Value:  v,
+			Secret: IsSecretEnvKey(k),
+		})
+	}
+
+	mounts := make([]DockerMountItem, 0, len(raw.Mounts))
+	for _, mt := range raw.Mounts {
+		mounts = append(mounts, DockerMountItem{
+			Type:        mt.Type,
+			Name:        mt.Name,
+			Source:      mt.Source,
+			Destination: mt.Destination,
+			Mode:        mt.Mode,
+			RW:          mt.RW,
+		})
+	}
+
+	nets := make([]DockerNetworkAttachment, 0, len(raw.NetworkSettings.Networks))
+	for nName, nObj := range raw.NetworkSettings.Networks {
+		nets = append(nets, DockerNetworkAttachment{
+			Name:       nName,
+			NetworkID:  nObj.NetworkID,
+			IPAddress:  nObj.IPAddress,
+			Gateway:    nObj.Gateway,
+			MacAddress: nObj.MacAddress,
+		})
+	}
+	sort.Slice(nets, func(i, j int) bool { return nets[i].Name < nets[j].Name })
+
+	ports := make([]DockerContainerPort, 0)
+	seenPorts := make(map[string]struct{})
+	for cPortProto, bindings := range raw.NetworkSettings.Ports {
+		parts := strings.SplitN(cPortProto, "/", 2)
+		priv, _ := strconv.Atoi(parts[0])
+		proto := "tcp"
+		if len(parts) == 2 {
+			proto = parts[1]
+		}
+		if len(bindings) == 0 {
+			ports = append(ports, DockerContainerPort{PrivatePort: priv, Type: proto})
+			continue
+		}
+		for _, b := range bindings {
+			pub, _ := strconv.Atoi(b.HostPort)
+			key := fmt.Sprintf("%d->%d/%s", pub, priv, proto)
+			if _, ok := seenPorts[key]; ok {
+				continue
+			}
+			seenPorts[key] = struct{}{}
+			ports = append(ports, DockerContainerPort{
+				IP:          b.HostIP,
+				PublicPort:  pub,
+				PrivatePort: priv,
+				Type:        proto,
 			})
 		}
 	}
 
-	if list == nil {
-		list = []DockerContainer{}
+	health := ""
+	if raw.State.Health != nil {
+		health = raw.State.Health.Status
 	}
-	return list, nil
+
+	labels := raw.Config.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	return &DockerContainerInspect{
+		ID:             raw.ID,
+		Name:           strings.TrimPrefix(raw.Name, "/"),
+		Image:          raw.Config.Image,
+		ImageID:        raw.Image,
+		State:          raw.State.Status,
+		Status:         raw.State.Status,
+		Running:        raw.State.Running,
+		Paused:         raw.State.Paused,
+		Restarting:     raw.State.Restarting,
+		PID:            raw.State.Pid,
+		StartedAt:      raw.State.StartedAt,
+		CreatedAt:      raw.Created,
+		RestartPolicy:  raw.HostConfig.RestartPolicy.Name,
+		RestartCount:   raw.RestartCount,
+		Platform:       raw.Platform,
+		Driver:         raw.Driver,
+		Hostname:       raw.Config.Hostname,
+		WorkingDir:     raw.Config.WorkingDir,
+		Cmd:            raw.Config.Cmd,
+		Entrypoint:     raw.Config.Entrypoint,
+		Env:            envItems,
+		Ports:          ports,
+		Mounts:         mounts,
+		Networks:       nets,
+		Labels:         labels,
+		ComposeProject: labels["com.docker.compose.project"],
+		HealthStatus:   health,
+	}, nil
 }
 
-// CreateContainer membuat dan menjalankan kontainer Docker baru
-func (m *Manager) CreateContainer(ctx context.Context, req CreateContainerRequest) error {
-	args := []string{"run", "-d", "--name", req.Name}
+// splitCommandArgs memecah string perintah kustom menjadi slice argumen dengan dukungan tanda kutip
+func splitCommandArgs(cmd string) []string {
+	var args []string
+	var cur strings.Builder
+	var quote rune
+	escaped := false
 
-	for _, p := range req.Ports {
-		if strings.TrimSpace(p) != "" {
-			args = append(args, "-p", strings.TrimSpace(p))
+	for _, r := range strings.TrimSpace(cmd) {
+		if escaped {
+			cur.WriteRune(r)
+			escaped = false
+			continue
 		}
-	}
-
-	for _, v := range req.Volumes {
-		if strings.TrimSpace(v) != "" {
-			args = append(args, "-v", strings.TrimSpace(v))
+		if r == '\\' && quote != '\'' {
+			escaped = true
+			continue
 		}
-	}
-
-	for k, val := range req.Env {
-		if k != "" {
-			args = append(args, "-e", fmt.Sprintf("%s=%s", k, val))
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				cur.WriteRune(r)
+			}
+			continue
 		}
+		if r == '"' || r == '\'' {
+			quote = r
+			continue
+		}
+		if r == ' ' || r == '\t' {
+			if cur.Len() > 0 {
+				args = append(args, cur.String())
+				cur.Reset()
+			}
+			continue
+		}
+		cur.WriteRune(r)
+	}
+	if cur.Len() > 0 {
+		args = append(args, cur.String())
+	}
+	return args
+}
+
+// CreateContainer membuat dan langsung menjalankan kontainer Docker baru
+func (m *Manager) CreateContainer(ctx context.Context, req CreateContainerRequest) (string, error) {
+	img := strings.TrimSpace(req.Image)
+	if !IsValidDockerRef(img) {
+		return "", fmt.Errorf("nama citra (image) tidak valid")
 	}
 
-	if req.Network != "" {
-		args = append(args, "--network", req.Network)
+	if req.PullFirst {
+		pctx, pcancel := context.WithTimeout(ctx, 5*time.Minute)
+		_ = exec.CommandContext(pctx, "docker", "pull", img).Run()
+		pcancel()
 	}
 
-	if req.RestartPolicy != "" {
-		args = append(args, "--restart", req.RestartPolicy)
+	args := []string{"run", "-d"}
+	if name := strings.TrimSpace(req.Name); name != "" {
+		if !IsValidDockerRef(name) {
+			return "", fmt.Errorf("nama kontainer tidak valid")
+		}
+		args = append(args, "--name", name)
+	}
+
+	if req.AutoRemove {
+		args = append(args, "--rm")
+	} else {
+		rp := strings.TrimSpace(req.RestartPolicy)
+		if rp == "" {
+			rp = "unless-stopped"
+		}
+		args = append(args, "--restart", rp)
+	}
+
+	if netName := strings.TrimSpace(req.Network); netName != "" && netName != "default" {
+		if !IsValidDockerRef(netName) {
+			return "", fmt.Errorf("nama jaringan tidak valid")
+		}
+		args = append(args, "--network", netName)
 	}
 
 	if req.MemoryLimitMB > 0 {
-		args = append(args, "-m", fmt.Sprintf("%dm", req.MemoryLimitMB))
+		args = append(args, "--memory", fmt.Sprintf("%dm", req.MemoryLimitMB))
+	}
+	if req.CPULimit > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%.2f", req.CPULimit))
 	}
 
-	args = append(args, req.Image)
+	for _, p := range req.Ports {
+		if tp := strings.TrimSpace(p); tp != "" {
+			args = append(args, "-p", tp)
+		}
+	}
+	for _, v := range req.Volumes {
+		if tv := strings.TrimSpace(v); tv != "" {
+			args = append(args, "-v", tv)
+		}
+	}
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	out, err := cmd.CombinedOutput()
+	// Gabungkan map `env` dan slice `environment` agar kompatibel penuh dengan semua payload klien
+	for k, v := range req.Env {
+		if strings.TrimSpace(k) != "" {
+			args = append(args, "-e", fmt.Sprintf("%s=%s", strings.TrimSpace(k), v))
+		}
+	}
+	for _, kv := range req.Environment {
+		if t := strings.TrimSpace(kv); t != "" && strings.Contains(t, "=") {
+			args = append(args, "-e", t)
+		}
+	}
+
+	args = append(args, img)
+	if strings.TrimSpace(req.Command) != "" {
+		args = append(args, splitCommandArgs(req.Command)...)
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("gagal membuat kontainer (%v): %s", err, string(out))
+		return "", fmt.Errorf("gagal membuat kontainer: %s", strings.TrimSpace(string(out)))
 	}
-	return nil
+	return strings.TrimSpace(string(out)), nil
 }
 
-// ControlContainer mengeksekusi aksi lifecycle kontainer (start, stop, restart, pause, unpause, delete)
+// RecreateContainer membuat ulang kontainer dengan konfigurasi persis sama (opsional tarik citra terbaru)
+func (m *Manager) RecreateContainer(ctx context.Context, id string, pullLatest bool) (string, error) {
+	insp, err := m.InspectContainer(ctx, id)
+	if err != nil {
+		return "", err
+	}
+
+	// Tarik citra terbaru terlebih dahulu sebelum menghentikan kontainer lama agar aman bila pull gagal
+	if pullLatest {
+		pctx, pcancel := context.WithTimeout(ctx, 5*time.Minute)
+		out, pullErr := exec.CommandContext(pctx, "docker", "pull", insp.Image).CombinedOutput()
+		pcancel()
+		if pullErr != nil {
+			return "", fmt.Errorf("gagal menarik citra terbaru %s: %s", insp.Image, strings.TrimSpace(string(out)))
+		}
+	}
+
+	// Susun ulang parameter run dari hasil inspeksi
+	req := CreateContainerRequest{
+		Name:          insp.Name,
+		Image:         insp.Image,
+		RestartPolicy: insp.RestartPolicy,
+		Ports:         make([]string, 0, len(insp.Ports)),
+		Volumes:       make([]string, 0, len(insp.Mounts)),
+		Environment:   make([]string, 0, len(insp.Env)),
+	}
+	for _, p := range insp.Ports {
+		if p.PublicPort > 0 {
+			bind := fmt.Sprintf("%d:%d/%s", p.PublicPort, p.PrivatePort, p.Type)
+			if p.IP != "" && p.IP != "0.0.0.0" && p.IP != "::" {
+				bind = fmt.Sprintf("%s:%s", p.IP, bind)
+			}
+			req.Ports = append(req.Ports, bind)
+		}
+	}
+	for _, mt := range insp.Mounts {
+		src := mt.Source
+		if mt.Type == "volume" && mt.Name != "" {
+			src = mt.Name
+		}
+		if src != "" && mt.Destination != "" {
+			spec := fmt.Sprintf("%s:%s", src, mt.Destination)
+			if !mt.RW {
+				spec += ":ro"
+			}
+			req.Volumes = append(req.Volumes, spec)
+		}
+	}
+	for _, e := range insp.Env {
+		req.Environment = append(req.Environment, fmt.Sprintf("%s=%s", e.Key, e.Value))
+	}
+	if len(insp.Networks) > 0 {
+		req.Network = insp.Networks[0].Name
+	}
+
+	// Hentikan & hapus kontainer lama lalu jalankan kontainer baru dengan nama identik
+	if err := m.ControlContainer(ctx, insp.ID, "remove"); err != nil {
+		return "", fmt.Errorf("gagal menghapus kontainer lama sebelum recreate: %w", err)
+	}
+
+	newID, err := m.CreateContainer(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	// Sambungkan kembali jaringan tambahan bila kontainer sebelumnya tergabung di lebih dari 1 jaringan
+	for i := 1; i < len(insp.Networks); i++ {
+		_ = exec.CommandContext(ctx, "docker", "network", "connect", insp.Networks[i].Name, newID).Run()
+	}
+	return newID, nil
+}
+
+// ControlContainer mengendalikan status kontainer (start, stop, restart, pause, unpause, kill, remove)
 func (m *Manager) ControlContainer(ctx context.Context, id, action string) error {
+	ref := strings.TrimSpace(id)
+	if !IsValidDockerRef(ref) {
+		return fmt.Errorf("ID kontainer tidak valid")
+	}
+
 	var args []string
 	switch action {
-	case "start":
-		args = []string{"start", id}
-	case "stop":
-		args = []string{"stop", id}
-	case "restart":
-		args = []string{"restart", id}
-	case "pause":
-		args = []string{"pause", id}
-	case "unpause":
-		args = []string{"unpause", id}
-	case "delete":
-		args = []string{"rm", "-f", id}
+	case "start", "stop", "restart", "pause", "unpause", "kill":
+		args = []string{action, ref}
+	case "remove", "rm":
+		args = []string{"rm", "-f", ref}
 	default:
 		return fmt.Errorf("aksi kontainer tidak valid: %s", action)
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	out, err := cmd.CombinedOutput()
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("eksekusi aksi %s kontainer gagal: %s", action, string(out))
+		return fmt.Errorf("gagal menjalankan %s pada kontainer: %s", action, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-// GetContainerLogs mengambil catatan log keluaran kontainer
+// BulkControlContainers menerapkan satu aksi ke banyak kontainer sekaligus
+func (m *Manager) BulkControlContainers(ctx context.Context, req BulkContainerRequest) BulkContainerResult {
+	res := BulkContainerResult{
+		Succeeded: make([]string, 0, len(req.IDs)),
+		Failed:    make(map[string]string),
+	}
+	for _, id := range req.IDs {
+		cid := strings.TrimSpace(id)
+		if cid == "" {
+			continue
+		}
+		if err := m.ControlContainer(ctx, cid, req.Action); err != nil {
+			res.Failed[cid] = err.Error()
+		} else {
+			res.Succeeded = append(res.Succeeded, cid)
+		}
+	}
+	return res
+}
+
+// GetContainerLogs membaca log stdout/stderr kontainer dengan batas baris tertentu
 func (m *Manager) GetContainerLogs(ctx context.Context, id string, lines int) (string, error) {
+	return m.GetContainerLogsWithOptions(ctx, id, lines, false)
+}
+
+// GetContainerLogsWithOptions membaca log kontainer dengan dukungan opsi timestamp
+func (m *Manager) GetContainerLogsWithOptions(ctx context.Context, id string, lines int, timestamps bool) (string, error) {
+	ref := strings.TrimSpace(id)
+	if !IsValidDockerRef(ref) {
+		return "", fmt.Errorf("ID kontainer tidak valid")
+	}
 	if lines <= 0 {
 		lines = 200
 	}
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", strconv.Itoa(lines), id)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	if lines > 5000 {
+		lines = 5000
+	}
+
+	args := []string{"logs", "--tail", strconv.Itoa(lines)}
+	if timestamps {
+		args = append(args, "-t")
+	}
+	args = append(args, ref)
+
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
+	if err != nil && len(out) == 0 {
 		return "", fmt.Errorf("gagal mengambil log kontainer: %w", err)
 	}
 	return string(out), nil
 }
 
-// ListImages mengambil seluruh citra kontainer yang tersimpan di lokal
+// ListImages mengambil daftar citra lokal lengkap dengan ukuran akurat, waktu pembuatan, dan jumlah kontainer pemakai
 func (m *Manager) ListImages(ctx context.Context) ([]DockerImage, error) {
-	if !isCommandAvailable("docker") {
-		return []DockerImage{}, nil
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var (
+		imgOut []byte
+		imgErr error
+		psOut  []byte
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		imgOut, imgErr = exec.CommandContext(cctx, "docker", "image", "ls", "--no-trunc", "--format", "{{json .}}").Output()
+	}()
+	go func() {
+		defer wg.Done()
+		psOut, _ = exec.CommandContext(cctx, "docker", "ps", "-a", "--no-trunc", "--format", "{{.Image}}").Output()
+	}()
+	wg.Wait()
+
+	if imgErr != nil {
+		return []DockerImage{}, imgErr
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "images", "--format", "{{json .}}")
-	out, err := cmd.Output()
-	if err != nil {
-		return []DockerImage{}, nil
-	}
-
-	var list []DockerImage
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
+	// Hitung pemakaian citra oleh seluruh kontainer (termasuk yang berhenti)
+	usageByRef := make(map[string]int)
+	for _, line := range strings.Split(strings.TrimSpace(string(psOut)), "\n") {
+		ref := strings.TrimSpace(line)
+		if ref == "" {
 			continue
 		}
-		var item map[string]string
-		if err := json.Unmarshal(line, &item); err == nil {
-			list = append(list, DockerImage{
-				ID:         item["ID"],
-				Repository: item["Repository"],
-				Tag:        item["Tag"],
-				Size:       150 * 1024 * 1024, // estimasi 150MB
-				Created:    time.Now().Unix(),
-				Digest:     item["Digest"],
-			})
+		usageByRef[ref]++
+		if !strings.Contains(ref, ":") {
+			usageByRef[ref+":latest"]++
 		}
 	}
 
-	if list == nil {
-		list = []DockerImage{}
+	images := make([]DockerImage, 0)
+	scanner := bufio.NewScanner(bytes.NewReader(imgOut))
+	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var raw struct {
+			ID           string `json:"ID"`
+			Repository   string `json:"Repository"`
+			Tag          string `json:"Tag"`
+			Digest       string `json:"Digest"`
+			Size         string `json:"Size"`
+			CreatedAt    string `json:"CreatedAt"`
+			CreatedSince string `json:"CreatedSince"`
+		}
+		if json.Unmarshal([]byte(line), &raw) != nil {
+			continue
+		}
+
+		szBytes := ParseHumanSize(raw.Size)
+		fullRef := raw.Repository + ":" + raw.Tag
+		usedCount := usageByRef[fullRef]
+		if usedCount == 0 && raw.ID != "" {
+			usedCount = usageByRef[raw.ID]
+			if usedCount == 0 && strings.HasPrefix(raw.ID, "sha256:") && len(raw.ID) > 19 {
+				usedCount = usageByRef[raw.ID[7:19]]
+			}
+		}
+
+		dangling := raw.Repository == "<none>" && raw.Tag == "<none>"
+		images = append(images, DockerImage{
+			ID:           raw.ID,
+			Repository:   raw.Repository,
+			Tag:          raw.Tag,
+			Digest:       raw.Digest,
+			Size:         szBytes,
+			SizeHuman:    FormatBytes(szBytes),
+			Created:      ParseDockerTimestamp(raw.CreatedAt),
+			CreatedSince: raw.CreatedSince,
+			Containers:   usedCount,
+			Dangling:     dangling,
+		})
 	}
-	return list, nil
+	return images, nil
 }
 
-// PullImage mengunduh citra dari registri publik/privat
+// PullImage menarik citra Docker secara sinkron (dipertahankan untuk panggilan API sederhana)
 func (m *Manager) PullImage(ctx context.Context, imageName string) error {
-	cmd := exec.CommandContext(ctx, "docker", "pull", strings.TrimSpace(imageName))
-	out, err := cmd.CombinedOutput()
+	ref := strings.TrimSpace(imageName)
+	if !IsValidDockerRef(ref) {
+		return fmt.Errorf("nama citra tidak valid")
+	}
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "pull", ref).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("gagal mengunduh citra %s: %s", imageName, string(out))
+		return fmt.Errorf("gagal pull citra %s: %s", ref, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-// RemoveImage menghapus citra kontainer lokal
+// RemoveImage menghapus citra lokal berdasarkan ID atau nama:tag
 func (m *Manager) RemoveImage(ctx context.Context, id string, force bool) error {
+	ref := strings.TrimSpace(id)
+	if !IsValidDockerRef(ref) {
+		return fmt.Errorf("referensi citra tidak valid")
+	}
 	args := []string{"rmi"}
 	if force {
 		args = append(args, "-f")
 	}
-	args = append(args, id)
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	out, err := cmd.CombinedOutput()
+	args = append(args, ref)
+
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("gagal menghapus citra: %s", string(out))
+		return fmt.Errorf("gagal menghapus citra: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-// SearchImages mencari citra resmi di Docker Hub
-func (m *Manager) SearchImages(ctx context.Context, query string) ([]ImageSearchItem, error) {
-	if query == "" {
-		return []ImageSearchItem{}, nil
-	}
-	cmd := exec.CommandContext(ctx, "docker", "search", "--limit", "25", "--format", "{{json .}}", query)
-	out, err := cmd.Output()
-	if err != nil {
-		return []ImageSearchItem{}, nil
-	}
-
-	var list []ImageSearchItem
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var item map[string]interface{}
-		if err := json.Unmarshal(line, &item); err == nil {
-			name, _ := item["name"].(string)
-			desc, _ := item["description"].(string)
-			stars, _ := item["star_count"].(float64)
-			isOff, _ := item["is_official"].(bool)
-			isAuto, _ := item["is_automated"].(bool)
-
-			list = append(list, ImageSearchItem{
-				Name:        name,
-				Description: desc,
-				Stars:       int(stars),
-				IsOfficial:  isOff,
-				IsAutomated: isAuto,
-			})
-		}
-	}
-
-	return list, nil
-}
-
-// ListVolumes mengambil daftar volume penyimpanan Docker
+// ListVolumes mengambil daftar volume Docker lengkap dengan ukuran aktual dan ref count dari `docker system df -v`
 func (m *Manager) ListVolumes(ctx context.Context) ([]DockerVolume, error) {
-	if !isCommandAvailable("docker") {
-		return []DockerVolume{}, nil
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var (
+		lsOut []byte
+		lsErr error
+		dfOut []byte
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		lsOut, lsErr = exec.CommandContext(cctx, "docker", "volume", "ls", "--format", "{{json .}}").Output()
+	}()
+	go func() {
+		defer wg.Done()
+		dfOut, _ = exec.CommandContext(cctx, "docker", "system", "df", "-v", "--format", "{{json .}}").Output()
+	}()
+	wg.Wait()
+
+	if lsErr != nil {
+		return []DockerVolume{}, lsErr
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "volume", "ls", "--format", "{{json .}}")
-	out, err := cmd.Output()
-	if err != nil {
-		return []DockerVolume{}, nil
+	// Kumpulkan statistik ukuran dan ref count per volume dari `docker system df -v`
+	type volMetric struct {
+		sizeBytes int64
+		sizeHuman string
+		links     int
 	}
-
-	var list []DockerVolume
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	metricsMap := make(map[string]volMetric)
+	if len(dfOut) > 0 {
+		var dfVerbose struct {
+			Volumes []struct {
+				Name  string `json:"Name"`
+				Links string `json:"Links"`
+				Size  string `json:"Size"`
+			} `json:"Volumes"`
 		}
-		var item map[string]string
-		if err := json.Unmarshal(line, &item); err == nil {
-			list = append(list, DockerVolume{
-				Name:       item["Name"],
-				Driver:     item["Driver"],
-				Mountpoint: item["Mountpoint"],
-				Scope:      item["Scope"],
-			})
-		}
-	}
-
-	if list == nil {
-		list = []DockerVolume{}
-	}
-	return list, nil
-}
-
-// CreateVolume membuat volume penyimpanan Docker baru
-func (m *Manager) CreateVolume(ctx context.Context, name, driver string) error {
-	if driver == "" {
-		driver = "local"
-	}
-	cmd := exec.CommandContext(ctx, "docker", "volume", "create", "--driver", driver, name)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gagal membuat volume: %s", string(out))
-	}
-	return nil
-}
-
-// RemoveVolume menghapus volume tertentu
-func (m *Manager) RemoveVolume(ctx context.Context, name string) error {
-	cmd := exec.CommandContext(ctx, "docker", "volume", "rm", "-f", name)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gagal menghapus volume: %s", string(out))
-	}
-	return nil
-}
-
-// PruneVolumes membersihkan seluruh volume yang tidak digunakan kontainer
-func (m *Manager) PruneVolumes(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "volume", "prune", "-f")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gagal membersihkan volume tak terpakai: %s", string(out))
-	}
-	return nil
-}
-
-// ListNetworks mengambil daftar virtual network Docker
-func (m *Manager) ListNetworks(ctx context.Context) ([]DockerNetwork, error) {
-	if !isCommandAvailable("docker") {
-		return []DockerNetwork{}, nil
-	}
-
-	cmd := exec.CommandContext(ctx, "docker", "network", "ls", "--format", "{{json .}}")
-	out, err := cmd.Output()
-	if err != nil {
-		return []DockerNetwork{}, nil
-	}
-
-	var list []DockerNetwork
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var item map[string]string
-		if err := json.Unmarshal(line, &item); err == nil {
-			list = append(list, DockerNetwork{
-				ID:     item["ID"],
-				Name:   item["Name"],
-				Driver: item["Driver"],
-				Scope:  item["Scope"],
-			})
-		}
-	}
-
-	if list == nil {
-		list = []DockerNetwork{}
-	}
-	return list, nil
-}
-
-// CreateNetwork membuat virtual network baru (misal bridge kustom)
-func (m *Manager) CreateNetwork(ctx context.Context, name, driver, subnet, gateway string) error {
-	if driver == "" {
-		driver = "bridge"
-	}
-	args := []string{"network", "create", "--driver", driver}
-	if subnet != "" {
-		args = append(args, "--subnet", subnet)
-	}
-	if gateway != "" {
-		args = append(args, "--gateway", gateway)
-	}
-	args = append(args, name)
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gagal membuat network: %s", string(out))
-	}
-	return nil
-}
-
-// RemoveNetwork menghapus network virtual
-func (m *Manager) RemoveNetwork(ctx context.Context, id string) error {
-	cmd := exec.CommandContext(ctx, "docker", "network", "rm", id)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("gagal menghapus network: %s", string(out))
-	}
-	return nil
-}
-
-// ListComposeProjects memindai direktori proyek Docker Compose
-func (m *Manager) ListComposeProjects(ctx context.Context) ([]DockerComposeProject, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	entries, err := os.ReadDir(m.oneClickDir)
-	if err != nil {
-		return []DockerComposeProject{}, nil
-	}
-
-	var list []DockerComposeProject
-	for _, e := range entries {
-		if e.IsDir() {
-			projDir := filepath.Join(m.oneClickDir, e.Name())
-			ymlFile := filepath.Join(projDir, "docker-compose.yml")
-			if _, err := os.Stat(ymlFile); err == nil {
-				yamlData, _ := os.ReadFile(ymlFile)
-				list = append(list, DockerComposeProject{
-					Name:          e.Name(),
-					Status:        "running",
-					ConfigFile:    ymlFile,
-					WorkingDir:    projDir,
-					ServicesCount: 1,
-					RawYaml:       string(yamlData),
-				})
+		if json.Unmarshal(dfOut, &dfVerbose) == nil {
+			for _, v := range dfVerbose.Volumes {
+				sz := ParseHumanSize(v.Size)
+				links, _ := strconv.Atoi(strings.TrimSpace(v.Links))
+				metricsMap[v.Name] = volMetric{
+					sizeBytes: sz,
+					sizeHuman: FormatBytes(sz),
+					links:     links,
+				}
 			}
 		}
 	}
 
-	if list == nil {
-		list = []DockerComposeProject{}
-	}
-	return list, nil
-}
-
-// ComposeUp mengeksekusi stack docker compose up -d
-func (m *Manager) ComposeUp(ctx context.Context, name, yamlContent string) error {
-	projDir := filepath.Join(m.oneClickDir, name)
-	if err := os.MkdirAll(projDir, 0755); err != nil {
-		return err
-	}
-
-	ymlFile := filepath.Join(projDir, "docker-compose.yml")
-	if err := os.WriteFile(ymlFile, []byte(yamlContent), 0644); err != nil {
-		return err
-	}
-
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", ymlFile, "up", "-d")
-	cmd.Dir = projDir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("eksekusi compose up gagal: %s", string(out))
-	}
-	return nil
-}
-
-// ComposeDown menghentikan dan membersihkan stack docker compose
-func (m *Manager) ComposeDown(ctx context.Context, name string) error {
-	projDir := filepath.Join(m.oneClickDir, name)
-	ymlFile := filepath.Join(projDir, "docker-compose.yml")
-
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", ymlFile, "down")
-	cmd.Dir = projDir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("eksekusi compose down gagal: %s", string(out))
-	}
-	return nil
-}
-
-// GetTemplates mengembalikan pustaka katalog template One-Click App Store resmi
-func (m *Manager) GetTemplates() []OneClickTemplate {
-	return []OneClickTemplate{
-		{
-			ID:          "nginx",
-			Name:        "Nginx Web Server",
-			Category:    "web",
-			Description: "Server web performa tinggi untuk reverse proxy, load balancer, dan hosting berkas statis.",
-			Icon:        "ri-global-line",
-			Image:       "nginx:alpine",
-			DefaultPorts: []string{"80:80", "443:443"},
-			DefaultVolumes: []string{"./html:/usr/share/nginx/html", "./conf.d:/etc/nginx/conf.d"},
-			DefaultEnv:  map[string]string{"TZ": "Asia/Jakarta"},
-			DockerComposeYaml: `version: '3.8'
-services:
-  nginx:
-    image: nginx:alpine
-    container_name: fik_nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./html:/usr/share/nginx/html
-      - ./conf.d:/etc/nginx/conf.d
-`,
-		},
-		{
-			ID:          "redis",
-			Name:        "Redis In-Memory Cache",
-			Category:    "database",
-			Description: "Penyimpanan struktur data memori kilat untuk caching sesi, antrean broker, dan pub/sub.",
-			Icon:        "ri-database-2-line",
-			Image:       "redis:7-alpine",
-			DefaultPorts: []string{"6379:6379"},
-			DefaultVolumes: []string{"./data:/data"},
-			DefaultEnv:  map[string]string{"REDIS_PASSWORD": "fikpanel_secret"},
-			DockerComposeYaml: `version: '3.8'
-services:
-  redis:
-    image: redis:7-alpine
-    container_name: fik_redis
-    restart: always
-    command: redis-server --requirepass fikpanel_secret
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./data:/data
-`,
-		},
-		{
-			ID:          "postgres",
-			Name:        "PostgreSQL Relational DB",
-			Category:    "database",
-			Description: "Mesin database relasional open-source enterprise kelas dunia dengan dukungan JSON & GIS.",
-			Icon:        "ri-database-line",
-			Image:       "postgres:16-alpine",
-			DefaultPorts: []string{"5432:5432"},
-			DefaultVolumes: []string{"./data:/var/lib/postgresql/data"},
-			DefaultEnv: map[string]string{
-				"POSTGRES_DB":       "app_db",
-				"POSTGRES_USER":     "postgres",
-				"POSTGRES_PASSWORD": "secure_postgres_pass",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: fik_postgres
-    restart: always
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: app_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secure_postgres_pass
-    volumes:
-      - ./data:/var/lib/postgresql/data
-`,
-		},
-		{
-			ID:          "mysql",
-			Name:        "MySQL 8.0 Database",
-			Category:    "database",
-			Description: "RDBMS terpopuler di dunia yang menjadi pondasi jutaan aplikasi web dan CMS.",
-			Icon:        "ri-database-2-fill",
-			Image:       "mysql:8.0",
-			DefaultPorts: []string{"3306:3306"},
-			DefaultVolumes: []string{"./data:/var/lib/mysql"},
-			DefaultEnv: map[string]string{
-				"MYSQL_ROOT_PASSWORD": "fikpanel_root_pass",
-				"MYSQL_DATABASE":      "fik_app",
-				"MYSQL_USER":          "fik_user",
-				"MYSQL_PASSWORD":      "fik_user_pass",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  mysql:
-    image: mysql:8.0
-    container_name: fik_mysql
-    restart: always
-    ports:
-      - "3306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: fikpanel_root_pass
-      MYSQL_DATABASE: fik_app
-      MYSQL_USER: fik_user
-      MYSQL_PASSWORD: fik_user_pass
-    volumes:
-      - ./data:/var/lib/mysql
-`,
-		},
-		{
-			ID:          "phpmyadmin",
-			Name:        "phpMyAdmin Container",
-			Category:    "tool",
-			Description: "Web GUI resmi manajemen database MySQL/MariaDB yang berjalan terisolasi dalam container.",
-			Icon:        "ri-window-line",
-			Image:       "phpmyadmin/phpmyadmin:latest",
-			DefaultPorts: []string{"8080:80"},
-			DefaultVolumes: []string{},
-			DefaultEnv: map[string]string{
-				"PMA_HOST": "host.docker.internal",
-				"PMA_PORT": "3306",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
-    container_name: fik_pma_docker
-    restart: always
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: host.docker.internal
-      PMA_PORT: 3306
-`,
-		},
-		{
-			ID:          "wordpress",
-			Name:        "WordPress + MariaDB Stack",
-			Category:    "web",
-			Description: "CMS paling banyak digunakan di dunia, siap pakai lengkap dengan bundle database terisolasi.",
-			Icon:        "ri-wordpress-fill",
-			Image:       "wordpress:latest",
-			DefaultPorts: []string{"8000:80"},
-			DefaultVolumes: []string{"./wp-content:/var/www/html/wp-content"},
-			DefaultEnv: map[string]string{
-				"WORDPRESS_DB_USER":     "wp_user",
-				"WORDPRESS_DB_PASSWORD": "wp_password",
-				"WORDPRESS_DB_NAME":     "wp_site",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  db:
-    image: mariadb:10.11
-    container_name: wp_mariadb
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: wp_root_pass
-      MYSQL_DATABASE: wp_site
-      MYSQL_USER: wp_user
-      MYSQL_PASSWORD: wp_password
-    volumes:
-      - ./db_data:/var/lib/mysql
-  wordpress:
-    depends_on:
-      - db
-    image: wordpress:latest
-    container_name: wp_app
-    restart: always
-    ports:
-      - "8000:80"
-    environment:
-      WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: wp_user
-      WORDPRESS_DB_PASSWORD: wp_password
-      WORDPRESS_DB_NAME: wp_site
-    volumes:
-      - ./wp-content:/var/www/html/wp-content
-`,
-		},
-		{
-			ID:          "uptime-kuma",
-			Name:        "Uptime Kuma Monitoring",
-			Category:    "monitoring",
-			Description: "Panel pemantauan status uptime HTTP, TCP, Ping, DNS yang estetik ala Statuspage.",
-			Icon:        "ri-heart-pulse-line",
-			Image:       "louislam/uptime-kuma:1",
-			DefaultPorts: []string{"3001:3001"},
-			DefaultVolumes: []string{"./data:/app/data"},
-			DefaultEnv:  map[string]string{"PORT": "3001"},
-			DockerComposeYaml: `version: '3.8'
-services:
-  uptime-kuma:
-    image: louislam/uptime-kuma:1
-    container_name: fik_uptime_kuma
-    restart: always
-    ports:
-      - "3001:3001"
-    volumes:
-      - ./data:/app/data
-`,
-		},
-		{
-			ID:             "portainer",
-			Name:           "Portainer CE Web GUI",
-			Category:       "tool",
-			Description:    "Dashboard antarmuka visual manajemen kontainer Docker yang sangat populer.",
-			Icon:           "ri-dashboard-2-line",
-			Image:          "portainer/portainer-ce:latest",
-			DefaultPorts:   []string{"9000:9000", "9443:9443"},
-			DefaultVolumes: []string{"/var/run/docker.sock:/var/run/docker.sock", "./data:/data"},
-			DefaultEnv:     map[string]string{},
-			DockerComposeYaml: `version: '3.8'
-services:
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: fik_portainer
-    restart: always
-    ports:
-      - "9000:9000"
-      - "9443:9443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/data
-`,
-		},
-		{
-			ID:             "n8n",
-			Name:           "n8n Workflow Automation",
-			Category:       "tool",
-			Description:    "Platform otomasi alur kerja self-hosted dengan integrasi AI, Webhook, Telegram, dan ratusan API.",
-			Icon:           "ri-flow-chart",
-			Image:          "docker.n8n.io/n8nio/n8n:latest",
-			DefaultPorts:   []string{"5678:5678"},
-			DefaultVolumes: []string{"./data:/home/node/.n8n"},
-			DefaultEnv: map[string]string{
-				"GENERIC_TIMEZONE": "Asia/Jakarta",
-				"TZ":               "Asia/Jakarta",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
-    container_name: fik_n8n
-    restart: always
-    ports:
-      - "5678:5678"
-    environment:
-      GENERIC_TIMEZONE: Asia/Jakarta
-      TZ: Asia/Jakarta
-    volumes:
-      - ./data:/home/node/.n8n
-`,
-		},
-		{
-			ID:             "gitea",
-			Name:           "Gitea Self-Hosted Git",
-			Category:       "tool",
-			Description:    "Server Git privat super ringan alternatif GitHub lengkap dengan CI/CD Actions dan Issue Tracker.",
-			Icon:           "ri-git-repository-line",
-			Image:          "gitea/gitea:latest",
-			DefaultPorts:   []string{"3000:3000", "2222:22"},
-			DefaultVolumes: []string{"./data:/data"},
-			DefaultEnv: map[string]string{
-				"USER_UID": "1000",
-				"USER_GID": "1000",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  gitea:
-    image: gitea/gitea:latest
-    container_name: fik_gitea
-    restart: always
-    ports:
-      - "3000:3000"
-      - "2222:22"
-    environment:
-      USER_UID: "1000"
-      USER_GID: "1000"
-    volumes:
-      - ./data:/data
-`,
-		},
-		{
-			ID:             "minio",
-			Name:           "MinIO S3 Object Storage",
-			Category:       "database",
-			Description:    "Penyimpanan objek S3-compatible berkecepatan tinggi untuk aset aplikasi dan target cadangan FikPanel.",
-			Icon:           "ri-hard-drive-2-line",
-			Image:          "minio/minio:latest",
-			DefaultPorts:   []string{"9001:9000", "9090:9090"},
-			DefaultVolumes: []string{"./data:/data"},
-			DefaultEnv: map[string]string{
-				"MINIO_ROOT_USER":     "minioadmin",
-				"MINIO_ROOT_PASSWORD": "changeme_minio_secret",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  minio:
-    image: minio/minio:latest
-    container_name: fik_minio
-    restart: always
-    command: server /data --console-address ":9090"
-    ports:
-      - "9001:9000"
-      - "9090:9090"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: changeme_minio_secret
-    volumes:
-      - ./data:/data
-`,
-		},
-		{
-			ID:             "grafana",
-			Name:           "Grafana Observability",
-			Category:       "monitoring",
-			Description:    "Platform visualisasi dashboard metrik, log, dan alerting real-time untuk Prometheus/Loki/SQL.",
-			Icon:           "ri-bar-chart-grouped-line",
-			Image:          "grafana/grafana:latest",
-			DefaultPorts:   []string{"3002:3000"},
-			DefaultVolumes: []string{"./data:/var/lib/grafana"},
-			DefaultEnv: map[string]string{
-				"GF_SECURITY_ADMIN_USER":     "admin",
-				"GF_SECURITY_ADMIN_PASSWORD": "changeme_grafana",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  grafana:
-    image: grafana/grafana:latest
-    container_name: fik_grafana
-    restart: always
-    ports:
-      - "3002:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: changeme_grafana
-    volumes:
-      - ./data:/var/lib/grafana
-`,
-		},
-		{
-			ID:             "vaultwarden",
-			Name:           "Vaultwarden Password Vault",
-			Category:       "tool",
-			Description:    "Server pengelola kata sandi ringan kompatibel Bitwarden untuk menyimpan kredensial tim secara privat.",
-			Icon:           "ri-key-2-line",
-			Image:          "vaultwarden/server:latest",
-			DefaultPorts:   []string{"8082:80"},
-			DefaultVolumes: []string{"./data:/data"},
-			DefaultEnv: map[string]string{
-				"SIGNUPS_ALLOWED": "true",
-			},
-			DockerComposeYaml: `version: '3.8'
-services:
-  vaultwarden:
-    image: vaultwarden/server:latest
-    container_name: fik_vaultwarden
-    restart: always
-    ports:
-      - "8082:80"
-    environment:
-      SIGNUPS_ALLOWED: "true"
-    volumes:
-      - ./data:/data
-`,
-		},
-	}
-}
-
-// DeployTemplate memasang aplikasi dari katalog template dengan dukungan override port & variabel lingkungan
-func (m *Manager) DeployTemplate(ctx context.Context, req DeployTemplateRequest) error {
-	var targetTpl *OneClickTemplate
-	for _, t := range m.GetTemplates() {
-		if t.ID == req.TemplateID {
-			targetTpl = &t
-			break
-		}
-	}
-	if targetTpl == nil {
-		return fmt.Errorf("template dengan ID %s tidak ditemukan", req.TemplateID)
-	}
-
-	projName := strings.TrimSpace(req.ProjectName)
-	if projName == "" {
-		projName = targetTpl.ID + "_" + fmt.Sprintf("%d", time.Now().Unix()%1000)
-	}
-
-	yamlContent := targetTpl.DockerComposeYaml
-	// Terapkan override port host bila diubah oleh pengguna (mis. "8000:80" -> "8088:80")
-	for origPort, customPort := range req.Ports {
-		op := strings.TrimSpace(origPort)
-		cp := strings.TrimSpace(customPort)
-		if op != "" && cp != "" && op != cp && !strings.ContainsAny(cp, "\r\n\"'") {
-			yamlContent = strings.ReplaceAll(yamlContent, `"`+op+`"`, `"`+cp+`"`)
-		}
-	}
-	// Terapkan override variabel lingkungan secara aman (mencegah injeksi baris baru)
-	for k, customVal := range req.Env {
-		key := strings.TrimSpace(k)
-		val := strings.TrimSpace(customVal)
-		if key == "" || strings.ContainsAny(key+val, "\r\n") {
+	vols := make([]DockerVolume, 0)
+	scanner := bufio.NewScanner(bytes.NewReader(lsOut))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
 			continue
 		}
-		if defVal, ok := targetTpl.DefaultEnv[key]; ok && defVal != val {
-			yamlContent = strings.ReplaceAll(yamlContent, key+": "+defVal, key+": "+val)
-			yamlContent = strings.ReplaceAll(yamlContent, key+`: "`+defVal+`"`, key+`: "`+val+`"`)
+		var raw struct {
+			Name       string `json:"Name"`
+			Driver     string `json:"Driver"`
+			Mountpoint string `json:"Mountpoint"`
+			Scope      string `json:"Scope"`
+		}
+		if json.Unmarshal([]byte(line), &raw) != nil || raw.Name == "" {
+			continue
+		}
+		mp := raw.Mountpoint
+		if mp == "" {
+			mp = "/var/lib/docker/volumes/" + raw.Name + "/_data"
+		}
+		met := metricsMap[raw.Name]
+		szHuman := met.sizeHuman
+		if szHuman == "" {
+			szHuman = "0 B"
+		}
+		vols = append(vols, DockerVolume{
+			Name:       raw.Name,
+			Driver:     raw.Driver,
+			Scope:      raw.Scope,
+			Mountpoint: mp,
+			SizeBytes:  met.sizeBytes,
+			SizeHuman:  szHuman,
+			RefCount:   met.links,
+		})
+	}
+	return vols, nil
+}
+
+// CreateVolume membuat volume penyimpanan Docker baru
+func (m *Manager) CreateVolume(ctx context.Context, name, driver string) error {
+	clean := strings.TrimSpace(name)
+	if !IsValidDockerRef(clean) {
+		return fmt.Errorf("nama volume tidak valid")
+	}
+	args := []string{"volume", "create"}
+	if d := strings.TrimSpace(driver); d != "" {
+		if !IsValidDockerRef(d) {
+			return fmt.Errorf("nama driver volume tidak valid")
+		}
+		args = append(args, "--driver", d)
+	}
+	args = append(args, clean)
+
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal membuat volume: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// RemoveVolume menghapus volume berdasarkan nama
+func (m *Manager) RemoveVolume(ctx context.Context, name string) error {
+	clean := strings.TrimSpace(name)
+	if !IsValidDockerRef(clean) {
+		return fmt.Errorf("nama volume tidak valid")
+	}
+	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "volume", "rm", clean).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal menghapus volume: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// PruneVolumes membersihkan seluruh volume yang tidak terpasang pada kontainer mana pun
+func (m *Manager) PruneVolumes(ctx context.Context) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "volume", "prune", "-f").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gagal membersihkan volume usang: %s", strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ListNetworks mengambil daftar jaringan Docker lengkap dengan Subnet, Gateway, dan kontainer terhubung via `network inspect`
+func (m *Manager) ListNetworks(ctx context.Context) ([]DockerNetwork, error) {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	lsOut, err := exec.CommandContext(cctx, "docker", "network", "ls", "--no-trunc", "--format", "{{json .}}").Output()
+	if err != nil {
+		return []DockerNetwork{}, err
+	}
+
+	nets := make([]DockerNetwork, 0)
+	ids := make([]string, 0)
+	scanner := bufio.NewScanner(bytes.NewReader(lsOut))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var raw struct {
+			ID     string `json:"ID"`
+			Name   string `json:"Name"`
+			Driver string `json:"Driver"`
+			Scope  string `json:"Scope"`
+		}
+		if json.Unmarshal([]byte(line), &raw) != nil || raw.ID == "" {
+			continue
+		}
+		nets = append(nets, DockerNetwork{
+			ID:         raw.ID,
+			Name:       raw.Name,
+			Driver:     raw.Driver,
+			Scope:      raw.Scope,
+			Containers: []string{},
+		})
+		ids = append(ids, raw.ID)
+	}
+
+	// Perkaya seluruh jaringan dalam satu batch pemanggilan `docker network inspect`
+	if len(ids) > 0 {
+		inspectArgs := append([]string{"network", "inspect"}, ids...)
+		if inspOut, err := exec.CommandContext(cctx, "docker", inspectArgs...).Output(); err == nil {
+			var details []struct {
+				ID         string `json:"Id"`
+				Internal   bool   `json:"Internal"`
+				Attachable bool   `json:"Attachable"`
+				IPAM       struct {
+					Config []struct {
+						Subnet  string `json:"Subnet"`
+						Gateway string `json:"Gateway"`
+					} `json:"Config"`
+				} `json:"IPAM"`
+				Containers map[string]struct {
+					Name string `json:"Name"`
+				} `json:"Containers"`
+			}
+			if json.Unmarshal(inspOut, &details) == nil {
+				byID := make(map[string]int, len(nets))
+				for i, n := range nets {
+					byID[n.ID] = i
+				}
+				for _, d := range details {
+					idx, ok := byID[d.ID]
+					if !ok {
+						continue
+					}
+					nets[idx].Internal = d.Internal
+					nets[idx].Attachable = d.Attachable
+					if len(d.IPAM.Config) > 0 {
+						nets[idx].Subnet = d.IPAM.Config[0].Subnet
+						nets[idx].Gateway = d.IPAM.Config[0].Gateway
+					}
+					cNames := make([]string, 0, len(d.Containers))
+					for _, c := range d.Containers {
+						if c.Name != "" {
+							cNames = append(cNames, c.Name)
+						}
+					}
+					sort.Strings(cNames)
+					nets[idx].Containers = cNames
+					nets[idx].ContainersCount = len(cNames)
+				}
+			}
 		}
 	}
 
-	return m.ComposeUp(ctx, projName, yamlContent)
+	return nets, nil
 }
 
-// ListRegistries mengambil daftar kredensial private registry yang tersimpan
+// CreateNetwork membuat jaringan virtual Docker baru
+func (m *Manager) CreateNetwork(ctx context.Context, name, driver, subnet, gateway string) error {
+	clean := strings.TrimSpace(name)
+	if !IsValidDockerRef(clean) {
+		return fmt.Errorf("nama jaringan tidak valid")
+	}
+	args := []string{"network", "create"}
+	if d := strings.TrimSpace(driver); d != "" {
+		args = append(args, "--driver", d)
+	}
+	if s := strings.TrimSpace(subnet); s != "" {
+		args = append(args, "--subnet", s)
+	}
+	if g := strings.TrimSpace(gateway); g != "" {
+		args = append(args, "--gateway", g)
+	}
+	args = append(args, clean)
+
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal membuat jaringan: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// RemoveNetwork menghapus jaringan berdasarkan ID atau nama
+func (m *Manager) RemoveNetwork(ctx context.Context, id string) error {
+	clean := strings.TrimSpace(id)
+	if !IsValidDockerRef(clean) {
+		return fmt.Errorf("ID jaringan tidak valid")
+	}
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "network", "rm", clean).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gagal menghapus jaringan: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// PruneNetworks membersihkan jaringan Docker yang tidak digunakan kontainer mana pun
+func (m *Manager) PruneNetworks(ctx context.Context) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(cctx, "docker", "network", "prune", "-f").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gagal membersihkan jaringan usang: %s", strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ListComposeProjects menemukan seluruh stack Compose di host (`docker compose ls --all`) digabung dengan proyek di oneClickDir
+func (m *Manager) ListComposeProjects(ctx context.Context) ([]DockerComposeProject, error) {
+	m.mu.RLock()
+	baseDir := m.oneClickDir
+	m.mu.RUnlock()
+
+	projectsByName := make(map[string]DockerComposeProject)
+
+	// 1. Auto-discover seluruh stack Compose aktif maupun berhenti di seluruh host
+	cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	lsOut, err := exec.CommandContext(cctx, "docker", "compose", "ls", "--all", "--format", "json").Output()
+	cancel()
+	if err == nil && len(bytes.TrimSpace(lsOut)) > 0 {
+		var discovered []struct {
+			Name        string `json:"Name"`
+			Status      string `json:"Status"`
+			ConfigFiles string `json:"ConfigFiles"`
+		}
+		if json.Unmarshal(lsOut, &discovered) == nil {
+			for _, d := range discovered {
+				name := strings.TrimSpace(d.Name)
+				if name == "" {
+					continue
+				}
+				// ConfigFiles bisa berisi beberapa file dipisah koma; ambil berkas pertama
+				cfgPath := strings.TrimSpace(strings.Split(d.ConfigFiles, ",")[0])
+				workDir := ""
+				yamlStr := ""
+				if cfgPath != "" {
+					workDir = filepath.Dir(cfgPath)
+					if raw, rerr := os.ReadFile(cfgPath); rerr == nil && len(raw) <= 512*1024 {
+						yamlStr = string(raw)
+					}
+				}
+				status, total, running := ParseComposeStatusSummary(d.Status)
+				managed := strings.HasPrefix(filepath.Clean(cfgPath), filepath.Clean(baseDir))
+				projectsByName[name] = DockerComposeProject{
+					Name:            name,
+					Status:          status,
+					RawStatus:       d.Status,
+					ConfigPath:      cfgPath,
+					WorkingDir:      workDir,
+					ContainersCount: total,
+					RunningCount:    running,
+					YAMLContent:     yamlStr,
+					Managed:         managed,
+					Services:        []string{},
+				}
+			}
+		}
+	}
+
+	// 2. Gabungkan dengan proyek YAML yang tersimpan di direktori oneClickDir (termasuk yang belum pernah dijalankan)
+	if entries, err := os.ReadDir(baseDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			projDir := filepath.Join(baseDir, name)
+			ymlPath := filepath.Join(projDir, "docker-compose.yml")
+			if _, statErr := os.Stat(ymlPath); statErr != nil {
+				alt := filepath.Join(projDir, "compose.yaml")
+				if _, altErr := os.Stat(alt); altErr == nil {
+					ymlPath = alt
+				} else {
+					continue
+				}
+			}
+
+			raw, _ := os.ReadFile(ymlPath)
+			if existing, ok := projectsByName[name]; ok {
+				existing.Managed = true
+				if existing.ConfigPath == "" {
+					existing.ConfigPath = ymlPath
+					existing.WorkingDir = projDir
+				}
+				if existing.YAMLContent == "" {
+					existing.YAMLContent = string(raw)
+				}
+				projectsByName[name] = existing
+			} else {
+				projectsByName[name] = DockerComposeProject{
+					Name:            name,
+					Status:          "stopped",
+					RawStatus:       "stopped",
+					ConfigPath:      ymlPath,
+					WorkingDir:      projDir,
+					ContainersCount: 0,
+					RunningCount:    0,
+					YAMLContent:     string(raw),
+					Managed:         true,
+					Services:        []string{},
+				}
+			}
+		}
+	}
+
+	result := make([]DockerComposeProject, 0, len(projectsByName))
+	for _, p := range projectsByName {
+		result = append(result, p)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Status != result[j].Status {
+			return result[i].Status == "running"
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
+}
+
+// ComposeUp menyimpan berkas docker-compose.yml dan menjalankan stack (`compose up -d`)
+func (m *Manager) ComposeUp(ctx context.Context, projectName, yamlContent string) error {
+	name := strings.TrimSpace(projectName)
+	if !IsValidProjectName(name) {
+		return fmt.Errorf("nama proyek Compose tidak valid")
+	}
+	if strings.TrimSpace(yamlContent) == "" {
+		return fmt.Errorf("isi konfigurasi YAML Compose tidak boleh kosong")
+	}
+
+	m.mu.RLock()
+	baseDir := m.oneClickDir
+	m.mu.RUnlock()
+
+	projDir := filepath.Join(baseDir, name)
+	if err := os.MkdirAll(projDir, 0755); err != nil {
+		return fmt.Errorf("gagal membuat direktori proyek Compose: %w", err)
+	}
+
+	ymlPath := filepath.Join(projDir, "docker-compose.yml")
+	if err := os.WriteFile(ymlPath, []byte(yamlContent), 0644); err != nil {
+		return fmt.Errorf("gagal menulis docker-compose.yml: %w", err)
+	}
+
+	return m.ComposeAction(ctx, ComposeActionRequest{
+		Name:       name,
+		ConfigPath: ymlPath,
+		Action:     "up",
+	})
+}
+
+// ComposeDown menghentikan dan menghapus seluruh kontainer milik stack Compose
+func (m *Manager) ComposeDown(ctx context.Context, projectName string) error {
+	return m.ComposeAction(ctx, ComposeActionRequest{
+		Name:   projectName,
+		Action: "down",
+	})
+}
+
+// ComposeAction mengeksekusi aksi siklus hidup stack Docker Compose (up, down, restart, stop, start, pull)
+func (m *Manager) ComposeAction(ctx context.Context, req ComposeActionRequest) error {
+	name := strings.TrimSpace(req.Name)
+	if !IsValidProjectName(name) {
+		return fmt.Errorf("nama proyek Compose tidak valid")
+	}
+
+	m.mu.RLock()
+	baseDir := m.oneClickDir
+	m.mu.RUnlock()
+
+	cfgPath := strings.TrimSpace(req.ConfigPath)
+	if cfgPath == "" {
+		candidate := filepath.Join(baseDir, name, "docker-compose.yml")
+		if _, err := os.Stat(candidate); err == nil {
+			cfgPath = candidate
+		}
+	}
+
+	bin, baseArgs := m.composeBaseArgs(ctx)
+	runCompose := func(timeout time.Duration, extraArgs ...string) error {
+		cctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		args := append([]string{}, baseArgs...)
+		args = append(args, "-p", name)
+		if cfgPath != "" {
+			args = append(args, "-f", cfgPath)
+		}
+		args = append(args, extraArgs...)
+
+		cmd := exec.CommandContext(cctx, bin, args...)
+		if cfgPath != "" {
+			cmd.Dir = filepath.Dir(cfgPath)
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("compose %s gagal: %s", strings.Join(extraArgs, " "), strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(req.Action)) {
+	case "up":
+		return runCompose(5*time.Minute, "up", "-d", "--remove-orphans")
+	case "down":
+		return runCompose(2*time.Minute, "down")
+	case "stop":
+		return runCompose(1*time.Minute, "stop")
+	case "start":
+		return runCompose(1*time.Minute, "start")
+	case "restart":
+		return runCompose(2*time.Minute, "restart")
+	case "pull":
+		if err := runCompose(8*time.Minute, "pull"); err != nil {
+			return err
+		}
+		return runCompose(5*time.Minute, "up", "-d", "--remove-orphans")
+	default:
+		return fmt.Errorf("aksi Compose tidak valid: %s", req.Action)
+	}
+}
+
+// ComposeLogs mengambil gabungan tail log seluruh layanan dalam satu stack Compose
+func (m *Manager) ComposeLogs(ctx context.Context, name, configPath string, lines int) (string, error) {
+	cleanName := strings.TrimSpace(name)
+	if !IsValidProjectName(cleanName) {
+		return "", fmt.Errorf("nama proyek Compose tidak valid")
+	}
+	if lines <= 0 {
+		lines = 200
+	}
+	if lines > 2000 {
+		lines = 2000
+	}
+
+	bin, baseArgs := m.composeBaseArgs(ctx)
+	args := append([]string{}, baseArgs...)
+	args = append(args, "-p", cleanName)
+	if strings.TrimSpace(configPath) != "" {
+		args = append(args, "-f", strings.TrimSpace(configPath))
+	}
+	args = append(args, "logs", "--no-color", "--tail", strconv.Itoa(lines))
+
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cctx, bin, args...)
+	if strings.TrimSpace(configPath) != "" {
+		cmd.Dir = filepath.Dir(strings.TrimSpace(configPath))
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return "", fmt.Errorf("gagal membaca log stack Compose: %w", err)
+	}
+	return string(out), nil
+}
+
+// ListRegistries mengembalikan daftar registri Docker tersimpan
 func (m *Manager) ListRegistries() []DockerRegistry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.registries
+	out := make([]DockerRegistry, len(m.registries))
+	copy(out, m.registries)
+	return out
 }
 
-// AddRegistry mendaftarkan registri baru
-func (m *Manager) AddRegistry(name, url, username, password string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	id := fmt.Sprintf("reg_%d", time.Now().Unix())
-	m.registries = append(m.registries, DockerRegistry{
-		ID:        id,
-		Name:      name,
-		URL:       url,
-		Username:  username,
-		IsDefault: false,
-	})
-
-	// Jalankan perintah docker login di background bila password diisi
-	if username != "" && password != "" {
-		go func() {
-			cmd := exec.Command("docker", "login", url, "-u", username, "--password-stdin")
-			cmd.Stdin = strings.NewReader(password)
-			_ = cmd.Run()
-		}()
+// AddRegistry mendaftarkan registri privat baru dan langsung mengeksekusi `docker login` bila kredensial diisi
+func (m *Manager) AddRegistry(ctx context.Context, name, regURL, username, password string) error {
+	cleanName := strings.TrimSpace(name)
+	cleanURL := strings.TrimSpace(regURL)
+	cleanUser := strings.TrimSpace(username)
+	if cleanName == "" || cleanURL == "" {
+		return fmt.Errorf("nama dan URL registri wajib diisi")
 	}
 
+	loggedIn := false
+	if cleanUser != "" && password != "" {
+		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		cmd := exec.CommandContext(cctx, "docker", "login", cleanURL, "-u", cleanUser, "--password-stdin")
+		cmd.Stdin = strings.NewReader(password)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("docker login ke %s gagal: %s", cleanURL, strings.TrimSpace(string(out)))
+		}
+		loggedIn = true
+	}
+
+	m.mu.Lock()
+	id := fmt.Sprintf("reg_%d", time.Now().UnixNano())
+	m.registries = append(m.registries, DockerRegistry{
+		ID:        id,
+		Name:      cleanName,
+		URL:       cleanURL,
+		Username:  cleanUser,
+		IsDefault: false,
+		LoggedIn:  loggedIn,
+	})
+	snapshot := make([]DockerRegistry, len(m.registries))
+	copy(snapshot, m.registries)
+	saveFn := m.saveRegsFunc
+	m.mu.Unlock()
+
+	if saveFn != nil {
+		if err := saveFn(snapshot); err != nil {
+			return fmt.Errorf("registri terhubung namun gagal disimpan persisten: %w", err)
+		}
+	}
 	return nil
 }
 
-// RemoveRegistry menghapus registri dari daftar
-func (m *Manager) RemoveRegistry(id string) error {
+// RemoveRegistry menghapus registri dan menjalankan `docker logout` terhadap host registri terkait
+func (m *Manager) RemoveRegistry(ctx context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var updated []DockerRegistry
+	var targetURL string
+	updated := make([]DockerRegistry, 0, len(m.registries))
 	for _, r := range m.registries {
-		if r.ID != id || r.IsDefault {
-			updated = append(updated, r)
+		if r.ID == id && !r.IsDefault {
+			targetURL = r.URL
+			continue
 		}
+		updated = append(updated, r)
 	}
 	m.registries = updated
+	snapshot := make([]DockerRegistry, len(m.registries))
+	copy(snapshot, m.registries)
+	saveFn := m.saveRegsFunc
+	m.mu.Unlock()
+
+	if targetURL != "" {
+		cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		_ = exec.CommandContext(cctx, "docker", "logout", targetURL).Run()
+		cancel()
+	}
+
+	if saveFn != nil {
+		_ = saveFn(snapshot)
+	}
 	return nil
 }

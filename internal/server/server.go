@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.11"
+		return "0.7.12"
 	}
 	return s.version
 }
@@ -167,6 +167,7 @@ func NewServer(s *store.Store, m *metrics.Hub, svc *services.Manager, port int) 
 	srv.cronMgr.SetFailureCallback(srv.notifyCronFailure)
 	srv.cronMgr.Start(srv.bgCtx)
 	srv.sshPool.StartJanitor(srv.bgCtx)
+	srv.initDockerPersistence()
 	// Migrasikan kredensial SSH plaintext lawas ke AES-256-GCM secara transparan di awal
 	_ = srv.termSecrets.MigratePlaintextServers(srv.bgCtx)
 	srv.sites = sites.NewManager(sites.DefaultPaths(), srv.nginx, s)
@@ -593,25 +594,41 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /pma/api/tables", s.handleBuiltinWebGuiTables)
 	s.mux.HandleFunc("POST /pma/api/query", s.handleBuiltinWebGuiQuery)
 
-	// Manajemen Docker & Kontainerisasi Lengkap (10 Modul aaPanel Style)
+	// Manajemen Docker Studio (Dedicated Workspace — Docker Desktop Grade)
 	s.mux.Handle("GET /api/docker/status", s.AuthMiddleware(http.HandlerFunc(s.handleDockerStatus)))
+	s.mux.Handle("GET /api/docker/disk-usage", s.AuthMiddleware(http.HandlerFunc(s.handleDockerDiskUsage)))
+	s.mux.Handle("POST /api/docker/system/prune", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSystemPrune)))
 	s.mux.Handle("GET /api/docker/system-info", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSystemInfo)))
 	s.mux.Handle("GET /api/docker/config", s.AuthMiddleware(http.HandlerFunc(s.handleDockerGetConfig)))
 	s.mux.Handle("POST /api/docker/config", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSaveConfig)))
 	s.mux.Handle("POST /api/docker/service/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerServiceControl)))
 	s.mux.Handle("POST /api/docker/install", s.AuthMiddleware(http.HandlerFunc(s.handleDockerInstall)))
+	s.mux.Handle("GET /api/docker/tasks/{id}/stream", s.AuthMiddleware(http.HandlerFunc(s.handleDockerStreamTask)))
 
-	// Kontainer
+	// Kontainer (CRUD, Bulk, Inspect, Recreate, Live Logs SSE, Shell WebSocket PTY)
 	s.mux.Handle("GET /api/docker/containers", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListContainers)))
 	s.mux.Handle("POST /api/docker/containers", s.AuthMiddleware(http.HandlerFunc(s.handleDockerCreateContainer)))
-	s.mux.Handle("POST /api/docker/containers/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerControlContainer)))
+	s.mux.Handle("POST /api/docker/containers/bulk", s.AuthMiddleware(http.HandlerFunc(s.handleDockerBulkContainers)))
+	s.mux.Handle("GET /api/docker/containers/{id}/inspect", s.AuthMiddleware(http.HandlerFunc(s.handleDockerInspectContainer)))
+	s.mux.Handle("POST /api/docker/containers/{id}/recreate", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRecreateContainer)))
 	s.mux.Handle("GET /api/docker/containers/{id}/logs", s.AuthMiddleware(http.HandlerFunc(s.handleDockerContainerLogs)))
+	s.mux.Handle("GET /api/docker/containers/{id}/logs/stream", s.AuthMiddleware(http.HandlerFunc(s.handleDockerContainerLogsStream)))
+	s.mux.Handle("GET /api/docker/containers/{id}/exec/ws", s.AuthMiddleware(http.HandlerFunc(s.handleDockerContainerExecWS)))
+	s.mux.Handle("POST /api/docker/containers/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerControlContainer)))
 
-	// Citra (Images)
+	// Citra (Images), Docker Hub API v2, Tag Explorer, Dockerfile Builder & Tar Import/Export
 	s.mux.Handle("GET /api/docker/images", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListImages)))
 	s.mux.Handle("POST /api/docker/images/pull", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPullImage)))
-	s.mux.Handle("DELETE /api/docker/images/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveImage)))
+	s.mux.Handle("POST /api/docker/images/pull/stream", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPullImageStream)))
+	s.mux.Handle("POST /api/docker/images/build", s.AuthMiddleware(http.HandlerFunc(s.handleDockerBuildImage)))
+	s.mux.Handle("POST /api/docker/images/tag", s.AuthMiddleware(http.HandlerFunc(s.handleDockerTagImage)))
+	s.mux.Handle("POST /api/docker/images/prune", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPruneImages)))
+	s.mux.Handle("GET /api/docker/images/export", s.AuthMiddleware(http.HandlerFunc(s.handleDockerExportImage)))
+	s.mux.Handle("POST /api/docker/images/load", s.AuthMiddleware(http.HandlerFunc(s.handleDockerLoadImage)))
 	s.mux.Handle("GET /api/docker/images/search", s.AuthMiddleware(http.HandlerFunc(s.handleDockerSearchImages)))
+	s.mux.Handle("GET /api/docker/hub/tags", s.AuthMiddleware(http.HandlerFunc(s.handleDockerHubTags)))
+	s.mux.Handle("GET /api/docker/images/{id}/history", s.AuthMiddleware(http.HandlerFunc(s.handleDockerImageHistory)))
+	s.mux.Handle("DELETE /api/docker/images/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveImage)))
 
 	// Volume
 	s.mux.Handle("GET /api/docker/volumes", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListVolumes)))
@@ -622,12 +639,15 @@ func (s *Server) registerRoutes() {
 	// Jaringan (Networks)
 	s.mux.Handle("GET /api/docker/networks", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListNetworks)))
 	s.mux.Handle("POST /api/docker/networks", s.AuthMiddleware(http.HandlerFunc(s.handleDockerCreateNetwork)))
+	s.mux.Handle("POST /api/docker/networks/prune", s.AuthMiddleware(http.HandlerFunc(s.handleDockerPruneNetworks)))
 	s.mux.Handle("DELETE /api/docker/networks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleDockerRemoveNetwork)))
 
-	// Docker Compose
+	// Docker Compose (Auto-Discovery Host + Full Lifecycle + Stack Logs)
 	s.mux.Handle("GET /api/docker/compose", s.AuthMiddleware(http.HandlerFunc(s.handleDockerListCompose)))
 	s.mux.Handle("POST /api/docker/compose/up", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeUp)))
 	s.mux.Handle("POST /api/docker/compose/down", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeDown)))
+	s.mux.Handle("POST /api/docker/compose/action", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeAction)))
+	s.mux.Handle("GET /api/docker/compose/logs", s.AuthMiddleware(http.HandlerFunc(s.handleDockerComposeLogs)))
 
 	// One-Click Template
 	s.mux.Handle("GET /api/docker/templates", s.AuthMiddleware(http.HandlerFunc(s.handleDockerGetTemplates)))

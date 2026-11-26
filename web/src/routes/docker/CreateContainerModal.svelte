@@ -1,11 +1,15 @@
 <script lang="ts">
-  // Subkomponen modal pembuatan kontainer Docker baru
+  // Subkomponen modal pembuatan kontainer Docker baru dengan dukungan jaringan, batas RAM/CPU, dan auto-remove
   import '../../styles/pages/docker/create-container-modal.css';
   import Modal from '../../lib/components/ui/Modal.svelte';
+  import type { DockerNetwork } from '../../lib/types';
 
   interface NewContainerForm {
     name: string;
     image: string;
+    network: string;
+    memory_limit_mb: number;
+    cpu_limit: number;
     ports: Array<{ host: string; container: string; protocol: string }>;
     volumes: Array<{ host: string; container: string }>;
     envs: Array<{ key: string; value: string }>;
@@ -17,6 +21,7 @@
   interface Props {
     showCreateContainerModal: boolean;
     newContainer: NewContainerForm;
+    networks: DockerNetwork[];
     actionLoading: boolean;
     onSubmitCreateContainer: () => void;
     onAddPortMapping: () => void;
@@ -30,6 +35,7 @@
   let {
     showCreateContainerModal = $bindable(),
     newContainer = $bindable(),
+    networks,
     actionLoading,
     onSubmitCreateContainer,
     onAddPortMapping,
@@ -80,6 +86,41 @@
       </div>
     </div>
 
+    <div class="form-row">
+      <div class="field flex-1">
+        <label class="field__label" for="cnt-net">Jaringan (Network)</label>
+        <select id="cnt-net" class="input" bind:value={newContainer.network}>
+          <option value="default">Default (bridge)</option>
+          {#each networks as n}
+            <option value={n.name}>{n.name} ({n.driver})</option>
+          {/each}
+        </select>
+      </div>
+      <div class="field w-28">
+        <label class="field__label" for="cnt-ram">Batas RAM (MB)</label>
+        <input
+          id="cnt-ram"
+          type="number"
+          min="0"
+          class="input font-mono"
+          placeholder="0 = bebas"
+          bind:value={newContainer.memory_limit_mb}
+        />
+      </div>
+      <div class="field w-28">
+        <label class="field__label" for="cnt-cpu">Batas CPU</label>
+        <input
+          id="cnt-cpu"
+          type="number"
+          min="0"
+          step="0.25"
+          class="input font-mono"
+          placeholder="0 = bebas"
+          bind:value={newContainer.cpu_limit}
+        />
+      </div>
+    </div>
+
     <!-- Pemetaan port host ke kontainer -->
     <div class="form-section">
       <div class="form-section-head">
@@ -95,6 +136,7 @@
             type="text"
             class="input input--sm flex-1 font-mono"
             placeholder="Port Host (misal: 8080)"
+            aria-label="Port host"
             bind:value={p.host}
           />
           <span class="text-muted">:</span>
@@ -102,9 +144,10 @@
             type="text"
             class="input input--sm flex-1 font-mono"
             placeholder="Port Kontainer (misal: 80)"
+            aria-label="Port kontainer"
             bind:value={p.container}
           />
-          <select class="input input--sm w-24" bind:value={p.protocol}>
+          <select class="input input--sm w-24" aria-label="Protokol port" bind:value={p.protocol}>
             <option value="tcp">TCP</option>
             <option value="udp">UDP</option>
           </select>
@@ -135,14 +178,16 @@
           <input
             type="text"
             class="input input--sm flex-1 font-mono"
-            placeholder="Path Host (misal: /www/data/html)"
+            placeholder="Path Host atau Nama Volume"
+            aria-label="Sumber volume host"
             bind:value={v.host}
           />
           <span class="text-muted">:</span>
           <input
             type="text"
             class="input input--sm flex-1 font-mono"
-            placeholder="Path Kontainer (misal: /usr/share/nginx/html)"
+            placeholder="Path Kontainer (misal: /data)"
+            aria-label="Tujuan volume kontainer"
             bind:value={v.container}
           />
           <button
@@ -173,6 +218,7 @@
             type="text"
             class="input input--sm flex-1 font-mono"
             placeholder="KEY (misal: NODE_ENV)"
+            aria-label="Nama variabel env"
             bind:value={e.key}
           />
           <span class="text-muted">=</span>
@@ -180,6 +226,7 @@
             type="text"
             class="input input--sm flex-1 font-mono"
             placeholder="VALUE (misal: production)"
+            aria-label="Nilai variabel env"
             bind:value={e.value}
           />
           <button
@@ -199,7 +246,7 @@
     <div class="form-row">
       <div class="field flex-1">
         <label class="field__label" for="cnt-restart">Kebijakan Restart</label>
-        <select id="cnt-restart" class="input" bind:value={newContainer.restart_policy}>
+        <select id="cnt-restart" class="input" disabled={newContainer.auto_remove} bind:value={newContainer.restart_policy}>
           <option value="unless-stopped">Unless Stopped (Direkomendasikan)</option>
           <option value="always">Always Restart</option>
           <option value="on-failure">On Failure Only</option>
@@ -212,11 +259,16 @@
           id="cnt-cmd"
           type="text"
           class="input font-mono"
-          placeholder="misal: npm start atau redis-server --appendonly yes"
+          placeholder="misal: redis-server --appendonly yes"
           bind:value={newContainer.cmd}
         />
       </div>
     </div>
+
+    <label class="flex-row items-center gap-2 text-xs text-secondary">
+      <input type="checkbox" bind:checked={newContainer.auto_remove} />
+      <span>Hapus kontainer otomatis saat berhenti (<code>--rm</code>)</span>
+    </label>
   </form>
 
   {#snippet footer()}
@@ -238,4 +290,3 @@
     </button>
   {/snippet}
 </Modal>
-

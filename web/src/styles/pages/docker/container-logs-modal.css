@@ -1,18 +1,45 @@
 @layer pages {
   .pg-docker-container-logs-modal {
-    &.terminal-log-viewer,
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+
+    .logs-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .logs-toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .logs-check {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
     .terminal-log-viewer {
       background: var(--bg-inset);
       color: var(--text-secondary);
-      padding: var(--space-4);
+      padding: var(--space-3) var(--space-4);
       margin: 0;
-      max-height: 480px;
+      height: 460px;
       overflow-y: auto;
       white-space: pre-wrap;
-      word-break: break-all;
+      word-break: break-word;
       border-radius: var(--radius-md);
       border: 1px solid var(--border);
+      line-height: 1.5;
     }
   }
 }
-

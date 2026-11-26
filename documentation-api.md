@@ -4124,6 +4124,68 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Response | HTTP 200 `{"ok": true, "username": "...", "password": "...", "has_password": true, "host": "127.0.0.1", "port": 3306, "env_block": "...", "dsn_url": "..."}`; HTTP 423 `{"ok": false, "vault_locked": true, "error": "..."}` bila Vault terkunci |
 | Notes | Satu-satunya jalur untuk mengambil kredensial plaintext & blok `.env` database saat Vault terkunci (`GET /api/databases/{engine}/list` menyensor `password` menjadi `""` ketika Vault terkunci). Mencatat audit `database.reveal_secret`. |
 
+### 1.28 Docker Studio (Kontainer Exec PTY, Inspektor, Hub API v2, Streaming Pull/Build & System Prune)
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/disk-usage` · `POST /api/docker/system/prune` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST`) |
+| Query Params | Tidak ada |
+| Request Body | `POST`: `{"containers": true, "images": true, "all_images": false, "volumes": false, "networks": true, "build_cache": true}` |
+| Response | `GET`: HTTP 200 `{images, containers, volumes, build_cache, total_size_human, total_reclaimable_human}`; `POST`: HTTP 200 `{"ok": true, "result": {"reclaimed_bytes", "reclaimed_human", "details"}, "message": "..."}` |
+| Notes | Mengurai keluaran aktual `docker system df` dan membersihkan kategori ruang disk secara selektif dengan pencatatan audit `docker.system.prune`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/containers/{id}/inspect` · `POST /api/docker/containers/{id}/recreate` · `POST /api/docker/containers/bulk` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST`) |
+| Query Params | Path param `{id}` |
+| Request Body | `recreate`: `{"pull_latest": true}`; `bulk`: `{"ids": ["..."], "action": "start\|stop\|restart\|pause\|unpause\|remove"}` |
+| Response | `inspect`: HTTP 200 `{id, name, image, state, pid, restart_policy, env[], mounts[], networks[], ports[], labels}`; `recreate`: HTTP 200 `{"ok": true, "id": "..."}`; `bulk`: HTTP 200 `{"ok": true, "result": {"succeeded": [], "failed": {}}}` |
+| Notes | Variabel lingkungan sensitif (`PASS`, `SECRET`, `TOKEN`, `KEY`, `DSN`) ditandai `secret: true` untuk penyensoran default di UI; `recreate` menarik citra baru sebelum menghentikan kontainer lama agar aman bila pull gagal. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/containers/{id}/exec/ws` · `GET /api/docker/containers/{id}/logs/stream` |
+| Auth Required | Yes (Cookie `panel_session`, verifikasi Same-Origin untuk WebSocket) |
+| Headers | Upgrade `websocket` (untuk `exec/ws`), `Accept: text/event-stream` (untuk `logs/stream`) |
+| Query Params | `exec/ws`: `shell` (`auto\|/bin/bash\|/bin/sh\|/bin/ash`), `cols`, `rows`; `logs/stream`: `lines` (maks `2000`), `timestamps` (`0\|1`) |
+| Request Body | Tidak ada |
+| Response | `exec/ws`: stream biner PTY + frame JSON kontrol (`resize`, `meta`, `exit`, `error`); `logs/stream`: event SSE `data: "<line>"` dan `event: done` |
+| Notes | `exec/ws` menjalankan `docker exec -it` dengan pseudo-terminal asli (`creack/pty`) dan allowlist shell anti-injeksi; keepalive ping setiap 25 detik. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/hub/tags` · `POST /api/docker/images/pull/stream` · `POST /api/docker/images/build` · `GET /api/docker/tasks/{id}/stream` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST`) |
+| Query Params | `hub/tags`: `repo` (wajib, mis. `nginx` atau `n8nio/n8n`), `q` (filter tag opsional); `tasks/{id}/stream`: path param `{id}` |
+| Request Body | `pull/stream`: `{"image": "nginx:1.27-alpine"}`; `build`: `{"tag": "app:1.0", "dockerfile": "FROM ...", "no_cache": false, "pull": true}` |
+| Response | `hub/tags`: HTTP 200 `{"repo": "...", "tags": [{name, full_size, size_human, last_updated, architectures[]}]}`; `pull/stream` & `build`: HTTP 200 `{"ok": true, "task_id": "dk_..."}`; `tasks/{id}/stream`: SSE real-time baris output + `event: done` |
+| Notes | Meniadakan batas timeout 30 detik HTTP untuk penarikan citra besar, build Dockerfile, maupun instalasi resmi Docker CE (`POST /api/docker/install` juga mengembalikan `task_id` untuk endpoint SSE yang sama). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/docker/images/{id}/history` · `POST /api/docker/images/tag` · `POST /api/docker/images/prune` · `GET /api/docker/images/export` · `POST /api/docker/images/load` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` (untuk `POST`, `multipart/form-data` untuk `/load`) |
+| Query Params | `export`: `ref` (nama `repo:tag` atau image ID) |
+| Request Body | `tag`: `{"source": "...", "target": "..."}`; `prune`: `{"all": false}`; `load`: multipart field `file` (arsip `.tar`, maks 2 GB) |
+| Response | `history`: HTTP 200 `{"history": [{id, created_since, created_by, size_bytes, size_human}]}`; `export`: stream biner `application/x-tar`; `tag`/`prune`/`load`: HTTP 200 `{"ok": true}` |
+| Notes | Seluruh referensi citra divalidasi ketat dengan `IsValidDockerRef` agar bebas injeksi flag CLI. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/docker/compose/action` · `GET /api/docker/compose/logs` · `POST /api/docker/networks/prune` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` (untuk `POST`) |
+| Query Params | `compose/logs`: `name` (wajib), `config_path` (opsional), `lines` (default `200`, maks `2000`) |
+| Request Body | `compose/action`: `{"name": "stack-a", "config_path": "/path/docker-compose.yml", "action": "up\|down\|restart\|stop\|start\|pull"}` |
+| Response | `compose/action` & `networks/prune`: HTTP 200 `{"ok": true, "message": "..."}`; `compose/logs`: HTTP 200 `{"logs": "..."}` |
+| Notes | `GET /api/docker/compose` otomatis menggabungkan hasil `docker compose ls --all --format json` di seluruh host dengan stack di `/www/dk_project`. Registri privat di `/api/docker/registries` dipersistensikan di SQLite (`docker.registries`) beserta eksekusi `docker login`/`docker logout` nyata. |
+
 ---
 
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)

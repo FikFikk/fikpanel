@@ -1,0 +1,33 @@
+@layer pages {
+  .pg-docker-image-history-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+
+    .retag-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      padding: var(--space-3);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    .layers-wrap {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+
+    .layer-cmd {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xs);
+      color: var(--text-secondary);
+      word-break: break-all;
+      max-width: 480px;
+    }
+  }
+}

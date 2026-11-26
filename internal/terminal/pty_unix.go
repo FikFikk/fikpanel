@@ -85,6 +85,52 @@ func StartLocalPTY(homeDir string, cols, rows int) (PTYSession, error) {
 	}, nil
 }
 
+// StartDockerExecPTY membuka sesi shell interaktif dengan PTY asli ke dalam kontainer Docker target
+func StartDockerExecPTY(containerID, shell string, cols, rows int) (PTYSession, error) {
+	if cols <= 0 {
+		cols = 120
+	}
+	if rows <= 0 {
+		rows = 32
+	}
+
+	cid := strings.TrimSpace(containerID)
+	if cid == "" || strings.HasPrefix(cid, "-") || strings.ContainsAny(cid, " \t\r\n;|&$`<>\"'") {
+		return nil, errors.New("ID atau nama kontainer tidak valid")
+	}
+
+	// Bangun argumen shell secara aman menggunakan allowlist agar bebas injeksi perintah
+	args := []string{"exec", "-it", "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", cid}
+	switch strings.TrimSpace(shell) {
+	case "/bin/bash", "bash":
+		args = append(args, "/bin/bash")
+	case "/bin/sh", "sh":
+		args = append(args, "/bin/sh")
+	case "/bin/ash", "ash":
+		args = append(args, "/bin/ash")
+	case "/bin/zsh", "zsh":
+		args = append(args, "/bin/zsh")
+	default:
+		args = append(args, "/bin/sh", "-c", "if command -v bash >/dev/null 2>&1; then exec bash; elif command -v ash >/dev/null 2>&1; then exec ash; else exec sh; fi")
+	}
+
+	cmd := exec.Command("docker", args...)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
+		Cols: uint16(cols),
+		Rows: uint16(rows),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &localUnixPTY{
+		cmd:  cmd,
+		ptmx: ptmx,
+	}, nil
+}
+
 func (l *localUnixPTY) Read(p []byte) (int, error)  { return l.ptmx.Read(p) }
 func (l *localUnixPTY) Write(p []byte) (int, error) { return l.ptmx.Write(p) }
 
