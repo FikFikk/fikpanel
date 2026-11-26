@@ -59,8 +59,14 @@
       color: var(--accent-strong);
       padding: 0.35rem 0.75rem;
       border-radius: 9999px;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 600;
+      cursor: pointer;
+    }
+    .badge-status-glow.is-off {
+      background: var(--tint-danger);
+      border-color: var(--ring-danger);
+      color: var(--danger-strong);
     }
     .dot-glow {
       width: 8px;
@@ -69,6 +75,11 @@
       background: var(--accent);
       box-shadow: 0 0 8px var(--accent);
       animation: pg-waf-pulseGlow 2s infinite ease-in-out;
+    }
+    .badge-status-glow.is-off .dot-glow {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+      animation: none;
     }
 
     /* Navigasi Sub-Tab */
@@ -570,6 +581,10 @@
       font-size: 0.68rem;
       font-weight: 700;
     }
+    .tab-count-pill--danger {
+      background: var(--tint-danger);
+      color: var(--danger-strong);
+    }
 
     .method-mini {
       display: inline-block;
@@ -757,6 +772,27 @@
       border: 1px solid var(--ring-info);
     }
 
+    .enf-preview-tabs {
+      display: flex;
+      gap: 0.45rem;
+      margin-top: 0.5rem;
+    }
+    .enf-tab-btn {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.32rem 0.7rem;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      cursor: pointer;
+    }
+    .enf-tab-btn.active {
+      background: var(--tint-accent);
+      border-color: var(--ring-accent);
+      color: var(--accent-strong);
+      font-weight: 600;
+    }
     .waf-config-preview {
       max-height: 340px;
       overflow: auto;

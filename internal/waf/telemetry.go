@@ -38,12 +38,95 @@ type ThreatAssessment struct {
 	RuleName     string
 }
 
-// Cache in-memory untuk menyimpan riwayat lookup GeoIP agar cepat dan tidak boros jaringan
+// Cache in-memory + antrean async GeoIP agar agregasi log tidak pernah terblokir permintaan HTTP sinkron
 var (
 	geoCacheMutex sync.RWMutex
 	geoCache      = make(map[string]*GeoLocation)
 	httpClient    = &http.Client{Timeout: 3 * time.Second}
+	geoQueue      = make(chan string, 256)
+	geoWorkerOnce sync.Once
 )
+
+func startGeoWorker() {
+	geoWorkerOnce.Do(func() {
+		go func() {
+			for ip := range geoQueue {
+				geoCacheMutex.RLock()
+				_, exists := geoCache[ip]
+				geoCacheMutex.RUnlock()
+				if exists {
+					continue
+				}
+				if geo := lookupOnlineGeoIP(ip); geo != nil {
+					geoCacheMutex.Lock()
+					if len(geoCache) > 4096 {
+						geoCache = make(map[string]*GeoLocation)
+					}
+					geoCache[ip] = geo
+					geoCacheMutex.Unlock()
+				}
+				// Jeda halus 1,4 detik untuk mematuhi batas rate-limit ip-api.com (45 req/menit)
+				time.Sleep(1400 * time.Millisecond)
+			}
+		}()
+	})
+}
+
+// IsPrivateOrLoopbackIP mengembalikan true jika alamat IP termasuk loopback, privat RFC1918, atau link-local
+func IsPrivateOrLoopbackIP(ip string) bool {
+	clean := strings.TrimSpace(ip)
+	if h, _, err := net.SplitHostPort(clean); err == nil && h != "" {
+		clean = h
+	}
+	parsed := net.ParseIP(clean)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast()
+}
+
+// ResolveGeoLocationCached mengembalikan hasil GeoIP seketika dari cache (tanpa blocking HTTP) dan menjadwalkan lookup latar belakang
+func ResolveGeoLocationCached(ip string) *GeoLocation {
+	cleanIP := strings.TrimSpace(ip)
+	if h, _, err := net.SplitHostPort(cleanIP); err == nil && h != "" {
+		cleanIP = h
+	}
+	parsedIP := net.ParseIP(cleanIP)
+	if cleanIP == "" || parsedIP == nil {
+		return &GeoLocation{Country: "Unknown", CountryCode: "XX", Region: "-", City: "-", ISP: "Unresolved"}
+	}
+	if parsedIP.IsLoopback() || parsedIP.IsPrivate() || parsedIP.IsLinkLocalUnicast() || parsedIP.IsLinkLocalMulticast() {
+		return &GeoLocation{
+			Country:     "Local / Private Network",
+			CountryCode: "LO",
+			Region:      "Internal Network",
+			City:        "Local Node",
+			ISP:         "Private / Loopback Interface",
+		}
+	}
+
+	geoCacheMutex.RLock()
+	cached, ok := geoCache[cleanIP]
+	geoCacheMutex.RUnlock()
+	if ok && cached != nil {
+		return cached
+	}
+
+	// Jadwalkan lookup asinkron tanpa pernah menahan thread pemanggil
+	startGeoWorker()
+	select {
+	case geoQueue <- parsedIP.String():
+	default:
+	}
+
+	return &GeoLocation{
+		Country:     "Menunggu Lookup",
+		CountryCode: "XX",
+		Region:      "-",
+		City:        "-",
+		ISP:         "Pending GeoIP",
+	}
+}
 
 // ResolveGeoLocation mencari lokasi geografis detail (Negara, Provinsi, Kota, ISP, Lat/Lng) dari alamat IP
 func ResolveGeoLocation(ip string) *GeoLocation {
@@ -297,6 +380,11 @@ func matchPattern(value, pattern string) bool {
 
 // ClassifyThreatWithRules mengevaluasi permintaan terhadap saklar Global WAF, konfigurasi per-situs, aturan Black/White List, dan signature OWASP
 func ClassifyThreatWithRules(clientIP, method, path, ua string, statusCode int, globalEnabled bool, siteCfg *WAFSite, rules []WAFRule) ThreatAssessment {
+	return ClassifyThreatWithRulesAndPatches(clientIP, method, path, ua, nil, statusCode, globalEnabled, siteCfg, rules, nil)
+}
+
+// ClassifyThreatWithRulesAndPatches mengevaluasi permintaan lengkap termasuk header kustom dan paket Virtual Patch CVE aktif
+func ClassifyThreatWithRulesAndPatches(clientIP, method, path, ua string, headers map[string]string, statusCode int, globalEnabled bool, siteCfg *WAFSite, rules []WAFRule, activePatches map[string]bool) ThreatAssessment {
 	// 1. Jika WAF Global dimatikan atau proteksi situs ini dinonaktifkan, izinkan semua lalu lintas secara transparan
 	if !globalEnabled {
 		return ThreatAssessment{
@@ -385,7 +473,17 @@ func ClassifyThreatWithRules(clientIP, method, path, ua string, statusCode int, 
 		}
 	}
 
-	// 4. Evaluasi Proteksi Spesifik Situs (Fake Spider & Crawl Protection)
+	// 4. Evaluasi Paket Virtual Patch CVE yang Diaktifkan
+	if matched, vp := matchActiveVirtualPatches(activePatches, method, path, ua, headers); matched && vp != nil {
+		return ThreatAssessment{
+			IsSuspicious: true,
+			AttackType:   "CVE Virtual Patch (" + strings.Join(vp.CVEIDs, ", ") + ")",
+			Action:       "block",
+			RuleName:     "Virtual Patch: " + vp.Title,
+		}
+	}
+
+	// 5. Evaluasi Proteksi Spesifik Situs (Fake Spider & Crawl Protection)
 	if siteCfg != nil {
 		if siteCfg.FakeSpider && reFakeSpider.MatchString(ua) {
 			return ThreatAssessment{
@@ -405,7 +503,7 @@ func ClassifyThreatWithRules(clientIP, method, path, ua string, statusCode int, 
 		}
 	}
 
-	// 5. Evaluasi Signature OWASP Bawaan
+	// 6. Evaluasi Signature OWASP Bawaan
 	return ClassifyThreat(method, path, ua, statusCode)
 }
 // ClassifyThreat menganalisis URI, User-Agent, status code, dan payload untuk menentukan kategori serangan
@@ -498,13 +596,13 @@ func ClassifyThreat(method, path, ua string, statusCode int) ThreatAssessment {
 		}
 	}
 
-	// Bila status 404 pada endpoint tak lazim / probing
-	if statusCode == 404 && (strings.Contains(lowerPath, "admin") || strings.Contains(lowerPath, "manage") || strings.Contains(lowerPath, "wp-") || strings.Contains(lowerPath, "login") || strings.Contains(lowerPath, ".php") || strings.Contains(lowerPath, "config") || strings.Contains(lowerPath, "health")) {
+	// Bila status 404 pada pola probing CMS / file sensitif (hindari false-positive endpoint normal /health atau /login)
+	if statusCode == 404 && (strings.Contains(lowerPath, "wp-login") || strings.Contains(lowerPath, "wp-admin") || strings.Contains(lowerPath, "wp-content") || strings.Contains(lowerPath, "phpmyadmin") || strings.Contains(lowerPath, "admin.php") || strings.Contains(lowerPath, "config.php") || strings.Contains(lowerPath, "xmlrpc.php")) {
 		return ThreatAssessment{
 			IsSuspicious: true,
 			AttackType:   "Malicious Probe",
 			Action:       "block",
-			RuleName:     "Pencarian Titik Masuk CMS / Endpoint Tersembunyi",
+			RuleName:     "Pencarian Titik Masuk CMS / Endpoint Sensitif",
 		}
 	}
 

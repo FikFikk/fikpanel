@@ -1,13 +1,132 @@
 @layer pages {
   .pg-waf-lists {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+
+    /* Grid 2 Kolom atas: Auto-Ban Engine + Simulator Payload */
+    .tools-two-col {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 1080px) {
+      .tools-two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .autoban-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(110px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    @media (max-width: 640px) {
+      .autoban-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .autoban-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.85rem;
+    }
+    .autoban-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 0.9rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Simulator Payload WAF */
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.85rem;
+    }
+    .preset-chip {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.24rem 0.58rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .preset-chip:hover {
+      border-color: var(--ring-accent);
+      color: var(--accent-strong);
+      background: var(--tint-accent);
+    }
+    .sim-grid {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 0.65rem;
+    }
+    .sim-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.65rem;
+      margin-top: 0.65rem;
+    }
+    @media (max-width: 640px) {
+      .sim-grid,
+      .sim-grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+    .sim-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-top: 0.85rem;
+      flex-wrap: wrap;
+    }
+    .sim-result-box {
+      margin-top: 0.85rem;
+      padding: 0.8rem 0.95rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-inset);
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+    }
+    .sim-result-box.is-blocked {
+      border-color: var(--ring-danger);
+      background: var(--tint-danger);
+    }
+    .sim-result-box.is-allowed {
+      border-color: var(--ring-accent);
+      background: var(--tint-accent);
+    }
+    .sim-result-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-weight: 700;
+    }
+
     /* Sub-tab Daftar Hitam/Putih */
     .rule-subtabs {
       display: flex;
       gap: 0.4rem;
       flex-wrap: wrap;
-      margin-bottom: 1.25rem;
+      margin-bottom: 1.15rem;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 0.5rem;
+      padding-bottom: 0.55rem;
     }
     .rule-subtab-btn {
       background: var(--bg-inset);
@@ -43,6 +162,16 @@
       gap: 0.85rem;
       align-items: flex-end;
     }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .field-label {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
     .pill-group {
       display: flex;
       background: var(--bg-surface);
@@ -63,7 +192,15 @@
     .pill-opt.active {
       background: var(--accent);
       color: var(--text-on-accent);
-      font-weight: bold;
+      font-weight: 700;
+    }
+    .rules-table-wrap {
+      margin-top: 1.15rem;
+    }
+    .empty-cell {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: var(--text-muted);
     }
   }
 }

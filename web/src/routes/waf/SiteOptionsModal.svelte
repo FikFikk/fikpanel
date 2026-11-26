@@ -18,12 +18,11 @@
 </script>
 
 <div class="pg-waf-site-options-modal">
-  <!-- Modal Ubah Opsi Situs WAF -->
   {#if showSiteModal && editingSite}
     <Modal
       open={showSiteModal && !!editingSite}
-      title={`Modifikasi Proteksi WAF: ${editingSite.site_name}`}
-      subtitle="Konfigurasi mitigasi bot, CC flood, dan CDN"
+      title={`Konfigurasi Proteksi WAF: ${editingSite.site_name}`}
+      subtitle="Atur pemblokiran bot, rate limiting Nginx, dan dukungan Real-IP CDN"
       size="md"
       onclose={() => (showSiteModal = false)}
     >
@@ -31,49 +30,48 @@
         <div class="form-check-group">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={editingSite.fake_spider} />
-            <span>Blokir Fake Spider & Malicious Crawlers</span>
+            <span>Blokir Fake Spider &amp; Bad Crawlers di Nginx</span>
           </label>
         </div>
 
         <div class="form-check-group">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={editingSite.using_cdn} />
-            <span>Situs Menggunakan CDN / Reverse Proxy Cloudflare</span>
+            <span>Situs di Balik CDN / Cloudflare (Aktifkan Real-IP CF-Connecting-IP)</span>
           </label>
         </div>
 
         <div class="form-check-group">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={editingSite.crawl_protection} />
-            <span>Aktifkan Crawl Protection (Anti-Scraping)</span>
+            <span>Aktifkan Anti-Crawl / Anti-Scraping (Scrapy, wget, python-requests)</span>
           </label>
         </div>
 
         <div class="form-check-group">
           <label class="custom-chk">
             <input type="checkbox" bind:checked={editingSite.rate_limit} />
-            <span>Aktifkan Waiting Room / Rate Limiting</span>
+            <span>Aktifkan Pembatasan Laju Permintaan (Nginx limit_req)</span>
           </label>
         </div>
 
-        <div class="form-group mt-3">
-          <label for="smart-cc">Ambang Batas Smart CC Defense (Permintaan / Detik)</label>
+        <div class="form-group">
+          <label for="smart-cc">Ambang Batas Smart CC (Permintaan / Detik per IP)</label>
           <input
             id="smart-cc"
             type="number"
             bind:value={editingSite.smart_cc}
-            min="10"
+            min="5"
             max="10000"
-            class="input-dark"
+            class="input-dark mono"
           />
         </div>
       </div>
 
       {#snippet footer()}
-        <button type="button" class="btn btn-ghost" onclick={() => (showSiteModal = false)}>Batal</button>
-        <button type="button" class="btn btn-primary" onclick={onSaveSiteSettings}>Simpan Konfigurasi</button>
+        <button type="button" class="btn btn--ghost btn--sm" onclick={() => (showSiteModal = false)}>Batal</button>
+        <button type="button" class="btn btn--primary btn--sm" onclick={onSaveSiteSettings}>Simpan Konfigurasi</button>
       {/snippet}
     </Modal>
   {/if}
 </div>
-

@@ -3,7 +3,12 @@ package waf
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"math"
+	"net"
+	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -92,29 +97,62 @@ type VisitorItem struct {
 	LastSeen    int64  `json:"last_seen"`
 }
 
+// AutoBanConfig merepresentasikan konfigurasi blokir otomatis terhadap IP penyerang berulang
+type AutoBanConfig struct {
+	Enabled        bool `json:"enabled"`
+	Threshold      int  `json:"threshold"`
+	WindowMinutes  int  `json:"window_minutes"`
+	BanMinutes     int  `json:"ban_minutes"`
+	SyncUFW        bool `json:"sync_ufw"`
+	ExcludePrivate bool `json:"exclude_private"`
+}
+
+// PayloadTestRequest adalah parameter simulasi pengujian aturan WAF dan Virtual Patch
+type PayloadTestRequest struct {
+	Method    string            `json:"method"`
+	Path      string            `json:"path"`
+	UserAgent string            `json:"user_agent"`
+	ClientIP  string            `json:"client_ip"`
+	SiteName  string            `json:"site_name"`
+	Headers   map[string]string `json:"headers"`
+}
+
+// PayloadTestResult mengembalikan hasil evaluasi simulasi payload terhadap mesin WAF aktif
+type PayloadTestResult struct {
+	Blocked        bool   `json:"blocked"`
+	AttackType     string `json:"attack_type"`
+	Action         string `json:"action"`
+	RuleName       string `json:"rule_name"`
+	MatchedPatchID string `json:"matched_patch_id,omitempty"`
+}
+
 // WAFOverview merepresentasikan ringkasan metrik dashboard WAF dan observabilitas lalu lintas HTTP
 type WAFOverview struct {
-	TodayRequests        int64                 `json:"today_requests"`
-	MaliciousRequests    int64                 `json:"malicious_requests"`
-	YesterdayRequests    int64                 `json:"yesterday_requests"`
-	YesterdayMalicious   int64                 `json:"yesterday_malicious"`
-	TotalRequestsAllTime int64                 `json:"total_requests_all_time"`
-	TotalBandwidthBytes  int64                 `json:"total_bandwidth_bytes"`
-	StatusBreakdown      StatusBreakdown       `json:"status_breakdown"`
-	InterceptRate        float64               `json:"intercept_rate"`
-	RealtimeQPS          float64               `json:"realtime_qps"`
-	OriginLatencyMs      int                   `json:"origin_latency_ms"`
-	TopAttackIPs         []AttackIPItem        `json:"top_attack_ips"`
-	AttackedDomains      []AttackedDomain      `json:"attacked_domains"`
-	TrafficRanking       []TrafficRankItem     `json:"traffic_ranking"`
-	VisitedPages         []VisitedPageItem     `json:"visited_pages"`
-	TopVisitors          []VisitorItem         `json:"top_visitors"`
-	RecentEvents         []WAFEvent            `json:"recent_events"`
-	RecentAccessLogs     []WAFAccessLog        `json:"recent_access_logs"`
-	TotalRulesCount      int                   `json:"total_rules_count"`
-	WAFGlobalEnabled     bool                  `json:"waf_global_enabled"`
-	HostLocation         HostLocation          `json:"host_location"`
-	Enforcement          *WAFEnforcementStatus `json:"enforcement,omitempty"`
+	TodayRequests             int64                 `json:"today_requests"`
+	MaliciousRequests         int64                 `json:"malicious_requests"`
+	YesterdayRequests         int64                 `json:"yesterday_requests"`
+	YesterdayMalicious        int64                 `json:"yesterday_malicious"`
+	TotalRequestsAllTime      int64                 `json:"total_requests_all_time"`
+	TotalEventsAllTime        int64                 `json:"total_events_all_time"`
+	TotalBandwidthBytes       int64                 `json:"total_bandwidth_bytes"`
+	StatusBreakdown           StatusBreakdown       `json:"status_breakdown"`
+	InterceptRate             float64               `json:"intercept_rate"`
+	RealtimeQPS               float64               `json:"realtime_qps"`
+	OriginLatencyMs           int                   `json:"origin_latency_ms"`
+	TopAttackIPs              []AttackIPItem        `json:"top_attack_ips"`
+	AttackedDomains           []AttackedDomain      `json:"attacked_domains"`
+	TrafficRanking            []TrafficRankItem     `json:"traffic_ranking"`
+	VisitedPages              []VisitedPageItem     `json:"visited_pages"`
+	TopVisitors               []VisitorItem         `json:"top_visitors"`
+	RecentEvents              []WAFEvent            `json:"recent_events"`
+	RecentAccessLogs          []WAFAccessLog        `json:"recent_access_logs"`
+	TotalRulesCount           int                   `json:"total_rules_count"`
+	ActiveVirtualPatchesCount int                   `json:"active_virtual_patches_count"`
+	CVEHostMatchedCount       int                   `json:"cve_host_matched_count"`
+	WAFGlobalEnabled          bool                  `json:"waf_global_enabled"`
+	HostLocation              HostLocation          `json:"host_location"`
+	Enforcement               *WAFEnforcementStatus `json:"enforcement,omitempty"`
+	AutoBan                   *AutoBanConfig        `json:"autoban,omitempty"`
 }
 
 type AttackIPItem struct {
@@ -163,9 +201,11 @@ type Manager struct {
 	logWatcher      *LogWatcher
 	mu              sync.RWMutex
 	policyMu        sync.RWMutex
+	autoBanMu       sync.Mutex
 	globalEnabled   bool
 	policySites     map[string]WAFSite
 	policyRules     []WAFRule
+	policyPatches   map[string]bool
 	lastEnforcement *WAFEnforcementStatus
 }
 
@@ -176,9 +216,11 @@ func NewManager(s *store.Store) *Manager {
 		logWatcher:    NewLogWatcher(s.DB(), "/var/log/nginx"),
 		globalEnabled: true,
 		policySites:   make(map[string]WAFSite),
+		policyPatches: make(map[string]bool),
 	}
 	if m.logWatcher != nil {
-		m.logWatcher.SetPolicyProvider(m.getPolicySnapshot)
+		m.logWatcher.SetPolicyProvider(m.getFullPolicySnapshot)
+		m.logWatcher.SetThreatCallback(m.handleAutoBanTrigger)
 	}
 	ctx := context.Background()
 	go func() {
@@ -192,8 +234,8 @@ func NewManager(s *store.Store) *Manager {
 	return m
 }
 
-// getPolicySnapshot mengembalikan salinan thread-safe state Global WAF, aturan situs, dan aturan Black/White List
-func (m *Manager) getPolicySnapshot() (bool, map[string]WAFSite, []WAFRule) {
+// getFullPolicySnapshot mengembalikan salinan thread-safe state Global WAF, situs, aturan Black/White List, dan Virtual Patch aktif
+func (m *Manager) getFullPolicySnapshot() (bool, map[string]WAFSite, []WAFRule, map[string]bool) {
 	m.policyMu.RLock()
 	defer m.policyMu.RUnlock()
 	siteCopy := make(map[string]WAFSite, len(m.policySites))
@@ -202,10 +244,20 @@ func (m *Manager) getPolicySnapshot() (bool, map[string]WAFSite, []WAFRule) {
 	}
 	rulesCopy := make([]WAFRule, len(m.policyRules))
 	copy(rulesCopy, m.policyRules)
-	return m.globalEnabled, siteCopy, rulesCopy
+	patchCopy := make(map[string]bool, len(m.policyPatches))
+	for k, v := range m.policyPatches {
+		patchCopy[k] = v
+	}
+	return m.globalEnabled, siteCopy, rulesCopy, patchCopy
 }
 
-// reloadPolicyCache memuat ulang state waf.global_enabled, waf_sites, dan waf_rules dari SQLite ke memori
+// getPolicySnapshot mengembalikan salinan thread-safe state Global WAF, aturan situs, dan aturan Black/White List
+func (m *Manager) getPolicySnapshot() (bool, map[string]WAFSite, []WAFRule) {
+	g, s, r, _ := m.getFullPolicySnapshot()
+	return g, s, r
+}
+
+// reloadPolicyCache memuat ulang state waf.global_enabled, waf_sites, waf_rules, dan waf_virtual_patches dari SQLite ke memori
 func (m *Manager) reloadPolicyCache(ctx context.Context) {
 	globalEnabled := true
 	if val, err := m.store.GetSetting(ctx, "waf.global_enabled"); err == nil && val != "" {
@@ -217,11 +269,13 @@ func (m *Manager) reloadPolicyCache(ctx context.Context) {
 		siteMap[s.SiteName] = s
 	}
 	rules, _ := m.ListRules(ctx, "")
+	patches := m.loadVirtualPatchMap(ctx)
 
 	m.policyMu.Lock()
 	m.globalEnabled = globalEnabled
 	m.policySites = siteMap
 	m.policyRules = rules
+	m.policyPatches = patches
 	m.policyMu.Unlock()
 }
 
@@ -329,11 +383,19 @@ func (m *Manager) GetOverview(ctx context.Context) (*WAFOverview, error) {
 	defer m.mu.RUnlock()
 
 	var ov WAFOverview
-	globalEnabled, _, _ := m.getPolicySnapshot()
+	globalEnabled, _, _, activePatches := m.getFullPolicySnapshot()
 	ov.WAFGlobalEnabled = globalEnabled
+	for _, en := range activePatches {
+		if en {
+			ov.ActiveVirtualPatchesCount++
+		}
+	}
 	ov.OriginLatencyMs = MeasureOriginLatencyMs()
 	ov.HostLocation = DetectHostLocation(ctx)
 	ov.Enforcement = m.lastEnforcement
+	abCfg := m.GetAutoBanConfig(ctx)
+	ov.AutoBan = &abCfg
+	ov.CVEHostMatchedCount = m.CountHostMatchedCVEsCached(ctx)
 
 	// Ambil agregasi trafik riil dari berkas log akses Nginx di server (tanpa angka fiktif)
 	var agg *LogAggregates
@@ -360,12 +422,14 @@ func (m *Manager) GetOverview(ctx context.Context) (*WAFOverview, error) {
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	startOfYesterday := startOfDay - 86400
 
-	var todayMalicious, yesterdayMalicious int64
+	var todayMalicious, yesterdayMalicious, totalEventsAllTime int64
 	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(1) FROM waf_events WHERE created_at >= ?", startOfDay).Scan(&todayMalicious)
 	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(1) FROM waf_events WHERE created_at >= ? AND created_at < ?", startOfYesterday, startOfDay).Scan(&yesterdayMalicious)
+	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(1) FROM waf_events").Scan(&totalEventsAllTime)
 
 	ov.MaliciousRequests = todayMalicious
 	ov.YesterdayMalicious = yesterdayMalicious
+	ov.TotalEventsAllTime = totalEventsAllTime
 	if ov.TodayRequests > 0 {
 		ov.InterceptRate = float64(ov.MaliciousRequests) / float64(ov.TodayRequests) * 100
 		if ov.InterceptRate > 100 {
@@ -373,7 +437,7 @@ func (m *Manager) GetOverview(ctx context.Context) (*WAFOverview, error) {
 		}
 	}
 
-	// 1. Top Attack IPs dengan geolokasi dan ISP lengkap
+	// 1. Top Attack IPs publik dengan geolokasi dan ISP lengkap (mengecualikan IP loopback/privat agar tidak mengotori laporan)
 	rowsIP, err := m.store.DB().QueryContext(ctx, `
 		SELECT client_ip, 
 		       COALESCE(country, ''), 
@@ -384,14 +448,20 @@ func (m *Manager) GetOverview(ctx context.Context) (*WAFOverview, error) {
 		       COUNT(1) as cnt 
 		FROM waf_events 
 		GROUP BY client_ip, country, country_code, region, city, isp 
-		ORDER BY cnt DESC LIMIT 10
+		ORDER BY cnt DESC LIMIT 25
 	`)
 	if err == nil {
 		defer rowsIP.Close()
 		for rowsIP.Next() {
 			var item AttackIPItem
 			if err := rowsIP.Scan(&item.IP, &item.Country, &item.CountryCode, &item.Region, &item.City, &item.ISP, &item.Count); err == nil {
+				if IsPrivateOrLoopbackIP(item.IP) {
+					continue
+				}
 				ov.TopAttackIPs = append(ov.TopAttackIPs, item)
+				if len(ov.TopAttackIPs) >= 10 {
+					break
+				}
 			}
 		}
 	}
@@ -801,4 +871,161 @@ func (m *Manager) ListAccessLogs(limit int) []WAFAccessLog {
 		return nil
 	}
 	return m.logWatcher.GetRecentAccessLogs(limit)
+}
+
+// GetAutoBanConfig membaca konfigurasi Auto-Ban IP penyerang berulang dari tabel settings
+func (m *Manager) GetAutoBanConfig(ctx context.Context) AutoBanConfig {
+	cfg := AutoBanConfig{
+		Enabled:        false,
+		Threshold:      5,
+		WindowMinutes:  10,
+		BanMinutes:     60,
+		SyncUFW:        false,
+		ExcludePrivate: true,
+	}
+	raw, err := m.store.GetSetting(ctx, "waf.autoban_config")
+	if err == nil && strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &cfg)
+	}
+	if cfg.Threshold < 2 {
+		cfg.Threshold = 2
+	}
+	if cfg.WindowMinutes < 1 {
+		cfg.WindowMinutes = 1
+	}
+	if cfg.BanMinutes < 5 {
+		cfg.BanMinutes = 5
+	}
+	return cfg
+}
+
+// UpdateAutoBanConfig menyimpan konfigurasi Auto-Ban ke SQLite dengan validasi batas aman
+func (m *Manager) UpdateAutoBanConfig(ctx context.Context, cfg AutoBanConfig) (AutoBanConfig, error) {
+	if cfg.Threshold < 2 {
+		cfg.Threshold = 2
+	}
+	if cfg.Threshold > 500 {
+		cfg.Threshold = 500
+	}
+	if cfg.WindowMinutes < 1 {
+		cfg.WindowMinutes = 1
+	}
+	if cfg.WindowMinutes > 1440 {
+		cfg.WindowMinutes = 1440
+	}
+	if cfg.BanMinutes < 5 {
+		cfg.BanMinutes = 5
+	}
+	if cfg.BanMinutes > 43200 {
+		cfg.BanMinutes = 43200
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return cfg, err
+	}
+	if err := m.store.SetSetting(ctx, "waf.autoban_config", string(b)); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+// handleAutoBanTrigger dieksekusi oleh LogWatcher setiap kali ancaman dicatat untuk memblokir penyerang berulang secara otomatis
+func (m *Manager) handleAutoBanTrigger(ctx context.Context, clientIP, siteName, attackType string) {
+	ip := strings.TrimSpace(clientIP)
+	if ip == "" || net.ParseIP(ip) == nil {
+		return
+	}
+	cfg := m.GetAutoBanConfig(ctx)
+	if !cfg.Enabled {
+		return
+	}
+	if cfg.ExcludePrivate && IsPrivateOrLoopbackIP(ip) {
+		return
+	}
+
+	m.autoBanMu.Lock()
+	defer m.autoBanMu.Unlock()
+
+	_, _, rules, _ := m.getFullPolicySnapshot()
+	for _, r := range rules {
+		if r.RuleType == "ip_whitelist" && MatchIPRule(ip, r.StartIP, r.EndIP) {
+			return
+		}
+		if r.RuleType == "ip_blacklist" && MatchIPRule(ip, r.StartIP, r.EndIP) {
+			return
+		}
+	}
+
+	since := time.Now().Add(-time.Duration(cfg.WindowMinutes) * time.Minute).Unix()
+	var cnt int
+	if err := m.store.DB().QueryRowContext(ctx, "SELECT COUNT(1) FROM waf_events WHERE client_ip = ? AND created_at >= ?", ip, since).Scan(&cnt); err != nil {
+		return
+	}
+	if cnt < cfg.Threshold {
+		return
+	}
+
+	ipVer := "IPv4"
+	if strings.Contains(ip, ":") {
+		ipVer = "IPv6"
+	}
+	remark := fmt.Sprintf("Auto-Ban (%s — %d serangan/%dm di %s)", attackType, cnt, cfg.WindowMinutes, siteName)
+	_, _ = m.AddRule(ctx, WAFRule{
+		RuleType:  "ip_blacklist",
+		IPVersion: ipVer,
+		StartIP:   ip,
+		Remarks:   remark,
+	})
+
+	// Sinkronkan blokir ke firewall kernel UFW bila diaktifkan di Linux
+	if cfg.SyncUFW && runtime.GOOS == "linux" {
+		if ufwBin, err := exec.LookPath("ufw"); err == nil {
+			uCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+			_ = exec.CommandContext(uCtx, ufwBin, "insert", "1", "deny", "from", ip, "to", "any", "comment", "FikPanel WAF Auto-Ban").Run()
+			cancel()
+		}
+	}
+}
+
+// TestPayload mensimulasikan permintaan HTTP terhadap kebijakan WAF, aturan kustom, Virtual Patch aktif, dan signature OWASP
+func (m *Manager) TestPayload(ctx context.Context, req PayloadTestRequest) PayloadTestResult {
+	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = "GET"
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		path = "/"
+	}
+	ua := strings.TrimSpace(req.UserAgent)
+	if ua == "" {
+		ua = "Mozilla/5.0 (compatible; WAF-Simulator/1.0)"
+	}
+	clientIP := strings.TrimSpace(req.ClientIP)
+	if clientIP == "" {
+		clientIP = "203.0.113.25"
+	}
+
+	globalEnabled, siteMap, rules, activePatches := m.getFullPolicySnapshot()
+	var siteCfg *WAFSite
+	if sn := strings.TrimSpace(req.SiteName); sn != "" {
+		if s, ok := siteMap[sn]; ok {
+			cp := s
+			siteCfg = &cp
+		}
+	}
+
+	assess := ClassifyThreatWithRulesAndPatches(clientIP, method, path, ua, req.Headers, 200, globalEnabled, siteCfg, rules, activePatches)
+	res := PayloadTestResult{
+		Blocked:    assess.IsSuspicious && assess.Action != "allow",
+		AttackType: assess.AttackType,
+		Action:     assess.Action,
+		RuleName:   assess.RuleName,
+	}
+	if globalEnabled && (siteCfg == nil || siteCfg.Status) {
+		if matched, vp := matchActiveVirtualPatches(activePatches, method, path, ua, req.Headers); matched && vp != nil {
+			res.MatchedPatchID = vp.ID
+		}
+	}
+	return res
 }

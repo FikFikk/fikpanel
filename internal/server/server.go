@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.5"
+		return "0.7.6"
 	}
 	return s.version
 }
@@ -635,11 +635,18 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("DELETE /api/k8s/resources", s.AuthMiddleware(http.HandlerFunc(s.handleK8sDeleteResource)))
 	s.mux.Handle("POST /api/k8s/install-k3s", s.AuthMiddleware(http.HandlerFunc(s.handleK8sInstallK3s)))
 
-	// Web Application Firewall (WAF) Terpadu & Attack Map
+	// Web Application Firewall (WAF) Terpadu, CVE Threat Intel, Virtual Patch & Attack Map
 	s.mux.Handle("GET /api/waf/overview", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFOverview)))
 	s.mux.Handle("POST /api/waf/global", s.AuthMiddleware(http.HandlerFunc(s.handleToggleWAFGlobal)))
 	s.mux.Handle("GET /api/waf/enforcement", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFEnforcement)))
 	s.mux.Handle("POST /api/waf/sync", s.AuthMiddleware(http.HandlerFunc(s.handleSyncWAFEnforcement)))
+	s.mux.Handle("POST /api/waf/attach-vhosts", s.AuthMiddleware(http.HandlerFunc(s.handleAttachWAFVhosts)))
+	s.mux.Handle("GET /api/waf/cve", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFCVEFeed)))
+	s.mux.Handle("GET /api/waf/virtual-patches", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFVirtualPatches)))
+	s.mux.Handle("POST /api/waf/virtual-patches/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleToggleWAFVirtualPatch)))
+	s.mux.Handle("GET /api/waf/autoban", s.AuthMiddleware(http.HandlerFunc(s.handleGetWAFAutoBan)))
+	s.mux.Handle("POST /api/waf/autoban", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWAFAutoBan)))
+	s.mux.Handle("POST /api/waf/test-payload", s.AuthMiddleware(http.HandlerFunc(s.handleTestWAFPayload)))
 	s.mux.Handle("GET /api/waf/sites", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFSites)))
 	s.mux.Handle("POST /api/waf/sites/{domain}", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateWAFSite)))
 	s.mux.Handle("GET /api/waf/rules", s.AuthMiddleware(http.HandlerFunc(s.handleListWAFRules)))

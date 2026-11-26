@@ -1,4 +1,4 @@
-﻿package metrics
+package metrics
 
 // Point merepresentasikan satu titik telemetri sistem pada waktu tertentu
 type Point struct {

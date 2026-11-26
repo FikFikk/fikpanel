@@ -10,6 +10,10 @@
     WAFEvent,
     WAFAccessLog,
     WAFEnforcementStatus,
+    CVEFeedReport,
+    VirtualPatch,
+    WAFAutoBanConfig,
+    WAFPayloadTestResult,
     CloudflareConfig,
     CloudflareZone,
     CloudflareDNSRecord,
@@ -17,7 +21,9 @@
   import { notify } from '../lib/stores/toast.svelte';
   import { confirmDialog } from '../lib/stores/confirm.svelte';
   import Modal from '../lib/components/ui/Modal.svelte';
+  import PageHeader from '../lib/components/ui/PageHeader.svelte';
   import OverviewTab from './waf/OverviewTab.svelte';
+  import CveIntelTab from './waf/CveIntelTab.svelte';
   import LiveAccessTab from './waf/LiveAccessTab.svelte';
   import SiteProtectionTab from './waf/SiteProtectionTab.svelte';
   import AttackMapTab from './waf/AttackMapTab.svelte';
@@ -31,7 +37,7 @@
   import '../styles/pages/waf/shared.css';
 
   // State Tab Navigasi WAF
-  type WAFTab = 'overview' | 'live_access' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
+  type WAFTab = 'overview' | 'cve_intel' | 'live_access' | 'website' | 'attack_map' | 'blacklist' | 'cloudflare';
   let activeTab = $state<WAFTab>('overview');
 
   // State Telemetri & Filter Attack Map
@@ -113,8 +119,34 @@
   let showSiteModal = $state(false);
   let showEnforcementModal = $state(false);
   let enforcementStatus = $state<WAFEnforcementStatus | null>(null);
+  let enforcementPreviewTab = $state<'rules' | 'http'>('rules');
   let syncingWAF = $state(false);
+  let attachingVhosts = $state(false);
   let togglingGlobalWAF = $state(false);
+
+  // State CVE Threat Intel & Virtual Patching
+  let cveReport = $state<CVEFeedReport | null>(null);
+  let loadingCVE = $state(false);
+  let refreshingCVE = $state(false);
+  let togglingPatchId = $state('');
+
+  // State Auto-Ban & Simulator Payload WAF
+  let autobanConfig = $state<WAFAutoBanConfig>({
+    enabled: false,
+    threshold: 5,
+    window_minutes: 10,
+    ban_minutes: 60,
+    sync_ufw: false,
+    exclude_private: true,
+  });
+  let savingAutoBan = $state(false);
+  let simMethod = $state('POST');
+  let simPath = $state('/index.php?%ADd+allow_url_include%3d1');
+  let simUA = $state('curl/8.5');
+  let simIP = $state('203.0.113.25');
+  let simHeader = $state('');
+  let simTesting = $state(false);
+  let simResult = $state<WAFPayloadTestResult | null>(null);
   // Filtered Sites
   let filteredSites = $derived(
     sites.filter((s) => !siteSearch.trim() || s.site_name.toLowerCase().includes(siteSearch.toLowerCase()))
@@ -127,6 +159,9 @@
       const res = await apiFetch<{ ok: boolean; overview: WAFOverview }>('/api/waf/overview');
       if (res?.overview) {
         overview = res.overview;
+        if (res.overview.autoban) {
+          autobanConfig = { ...res.overview.autoban };
+        }
         if (res.overview.recent_access_logs && accessLogs.length === 0) {
           accessLogs = res.overview.recent_access_logs;
         }
@@ -201,6 +236,147 @@
       notify(err.message || 'Gagal menyinkronkan konfigurasi WAF', 'error');
     } finally {
       syncingWAF = false;
+    }
+  }
+
+  // Pasang include waf-rules.conf ke seluruh virtual host Nginx dengan validasi nginx -t & rollback aman
+  async function handleAttachVhosts() {
+    const ok = await confirmDialog({
+      title: 'Pasang Aturan WAF ke Semua Vhost Nginx',
+      message: 'FikPanel akan menyisipkan directive include waf-rules.conf ke berkas vhost yang belum terproteksi lalu memvalidasi dengan nginx -t (rollback otomatis bila gagal). Lanjutkan?',
+      confirmLabel: 'Pasang Sekarang',
+    });
+    if (!ok) return;
+
+    try {
+      attachingVhosts = true;
+      const res = await apiFetch<{ ok: boolean; modified: number; enforcement?: WAFEnforcementStatus; message?: string }>('/api/waf/attach-vhosts', {
+        method: 'POST',
+      });
+      if (res?.enforcement) {
+        enforcementStatus = res.enforcement;
+        if (overview) overview.enforcement = res.enforcement;
+      }
+      notify(res?.message || 'Berhasil memasang aturan WAF ke vhost Nginx', 'success');
+      await loadOverview(true);
+    } catch (err: any) {
+      notify(err.message || 'Gagal memasang aturan WAF ke vhost Nginx', 'error');
+    } finally {
+      attachingVhosts = false;
+    }
+  }
+
+  // Ambil feed berita CVE (CISA KEV + GitHub Advisories) beserta deteksi stack host & virtual patches
+  async function loadCVEFeed(forceRefresh = false) {
+    try {
+      if (forceRefresh) {
+        refreshingCVE = true;
+      } else {
+        loadingCVE = true;
+      }
+      const res = await apiFetch<{ ok: boolean; report: CVEFeedReport }>(
+        `/api/waf/cve${forceRefresh ? '?refresh=1' : ''}`
+      );
+      if (res?.report) {
+        cveReport = res.report;
+      }
+      if (forceRefresh) {
+        notify('Feed berita CVE & korelasi stack host berhasil diperbarui', 'success');
+      }
+    } catch (err: any) {
+      notify(err.message || 'Gagal memuat feed CVE Threat Intel', 'error');
+    } finally {
+      loadingCVE = false;
+      refreshingCVE = false;
+    }
+  }
+
+  // Aktifkan atau nonaktifkan satu paket Virtual Patch CVE 1-klik
+  async function handleToggleVirtualPatch(patchId: string, enabled: boolean) {
+    try {
+      togglingPatchId = patchId;
+      const res = await apiFetch<{ ok: boolean; enforcement?: WAFEnforcementStatus; message?: string }>(
+        `/api/waf/virtual-patches/${encodeURIComponent(patchId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled }),
+        }
+      );
+      if (res?.enforcement) {
+        enforcementStatus = res.enforcement;
+        if (overview) {
+          overview.enforcement = res.enforcement;
+          overview.active_virtual_patches_count = res.enforcement.active_virtual_patches_count ?? overview.active_virtual_patches_count;
+        }
+      }
+      notify(res?.message || `Virtual Patch ${enabled ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+      await loadCVEFeed(false);
+    } catch (err: any) {
+      notify(err.message || 'Gagal memperbarui Virtual Patch', 'error');
+    } finally {
+      togglingPatchId = '';
+    }
+  }
+
+  // Lompat ke Simulator Payload dari kartu Virtual Patch dan langsung menguji eksploit terkait
+  async function handleTestPatchFromCVE(vp: VirtualPatch) {
+    activeTab = 'blacklist';
+    simMethod = vp.test_header ? 'POST' : 'GET';
+    simPath = vp.test_path || '/';
+    simHeader = vp.test_header || '';
+    simUA = 'Mozilla/5.0 (WAF-CVE-Probe)';
+    await loadRules();
+    await handleTestPayload();
+  }
+
+  // Simpan konfigurasi Auto-Ban penyerang berulang
+  async function handleSaveAutoBan() {
+    try {
+      savingAutoBan = true;
+      const res = await apiFetch<{ ok: boolean; autoban: WAFAutoBanConfig; message?: string }>('/api/waf/autoban', {
+        method: 'POST',
+        body: JSON.stringify(autobanConfig),
+      });
+      if (res?.autoban) {
+        autobanConfig = { ...res.autoban };
+        if (overview) overview.autoban = { ...res.autoban };
+      }
+      notify(res?.message || 'Konfigurasi Auto-Ban berhasil disimpan', 'success');
+    } catch (err: any) {
+      notify(err.message || 'Gagal menyimpan konfigurasi Auto-Ban', 'error');
+    } finally {
+      savingAutoBan = false;
+    }
+  }
+
+  // Jalankan simulasi payload terhadap aturan WAF & Virtual Patch aktif
+  async function handleTestPayload() {
+    try {
+      simTesting = true;
+      const headers: Record<string, string> = {};
+      if (simHeader.trim()) {
+        const idx = simHeader.indexOf(':');
+        if (idx > 0) {
+          headers[simHeader.slice(0, idx).trim()] = simHeader.slice(idx + 1).trim();
+        }
+      }
+      const res = await apiFetch<{ ok: boolean; result: WAFPayloadTestResult }>('/api/waf/test-payload', {
+        method: 'POST',
+        body: JSON.stringify({
+          method: simMethod,
+          path: simPath,
+          user_agent: simUA,
+          client_ip: simIP,
+          headers,
+        }),
+      });
+      if (res?.result) {
+        simResult = res.result;
+      }
+    } catch (err: any) {
+      notify(err.message || 'Gagal menjalankan simulasi payload WAF', 'error');
+    } finally {
+      simTesting = false;
     }
   }
 
@@ -1142,54 +1318,57 @@
 </script>
 
 <div class="pg-waf waf-container">
-  <!-- WAF Top Navigation Bar -->
-  <header class="waf-header">
-    <div class="waf-brand-title">
-      <div class="waf-icon-glow">
-        <i class="ri-shield-flash-line"></i>
-      </div>
-      <div>
-        <h1 class="waf-title">Web Application Firewall (WAF)</h1>
-        <p class="waf-desc">Proteksi lalu lintas web real-time, mitigasi serangan CC Flood, SQLi, XSS, dan integrasi Cloudflare Edge</p>
-      </div>
-    </div>
-    <div class="waf-top-actions">
+  <!-- Header Standar Halaman WAF -->
+  <PageHeader
+    title="Web Application Firewall"
+    subtitle="Proteksi lalu lintas Nginx, intelijen CVE & Virtual Patch 1-klik, Auto-Ban, serta Cloudflare Edge"
+    icon="ri-shield-flash-line"
+  >
+    {#snippet actions()}
       <button
         type="button"
         class="btn-live-pulse {autoRefresh ? 'active' : ''}"
-        onclick={() => autoRefresh = !autoRefresh}
+        onclick={() => (autoRefresh = !autoRefresh)}
         title="Pembaruan telemetri & peta otomatis setiap 6 detik"
       >
         <span class="pulse-dot {autoRefresh ? 'live' : ''}"></span>
-        {autoRefresh ? 'Live Stream (6d)' : 'Live Dijeda'}
+        {autoRefresh ? 'Live (6d)' : 'Dijeda'}
       </button>
       <button
         type="button"
-        class="badge-status-glow"
+        class="badge-status-glow {overview?.waf_global_enabled === false ? 'is-off' : ''}"
         onclick={toggleGlobalWAF}
         disabled={togglingGlobalWAF}
         title="Klik untuk mengaktifkan / menonaktifkan Global WAF"
       >
         <span class="dot-glow"></span>
-        {overview?.waf_global_enabled === false ? 'Global WAF Nonaktif (Klik Aktifkan)' : 'Proteksi Mesin Aktif'}
+        {overview?.waf_global_enabled === false ? 'WAF Nonaktif' : 'WAF Aktif'}
       </button>
       <button
         type="button"
-        class="btn btn-secondary btn-sm"
+        class="btn btn--secondary btn--sm"
         onclick={openEnforcementInspector}
         title="Lihat konfigurasi Nginx WAF yang diterapkan secara langsung"
       >
         <i class="ri-file-code-line"></i> Aturan Nginx
       </button>
-      <button class="btn btn-secondary btn-sm" onclick={() => { loadOverview(); loadAccessLogs(); loadEvents(); }} disabled={loadingOverview}>
+      <button
+        type="button"
+        class="btn btn--secondary btn--sm"
+        onclick={() => { loadOverview(); loadAccessLogs(); loadEvents(); }}
+        disabled={loadingOverview}
+      >
         <i class="ri-refresh-line {loadingOverview ? 'spin' : ''}"></i> Segarkan
       </button>
-    </div>
-  </header>
+    {/snippet}
+  </PageHeader>
 
-  <!-- Sub-Tabs Navigation -->
-  <nav class="tabs waf-tabs-nav">
+  <!-- Navigasi 7 Tab WAF -->
+  <div class="tabs waf-tabs-nav" role="tablist">
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'overview'}
       class="tabs__tab waf-tab-btn {activeTab === 'overview' ? 'active' : ''}"
       class:is-active={activeTab === 'overview'}
       onclick={() => { activeTab = 'overview'; loadOverview(); }}
@@ -1197,35 +1376,65 @@
       <i class="ri-dashboard-2-line"></i> Overview
     </button>
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'cve_intel'}
+      class="tabs__tab waf-tab-btn {activeTab === 'cve_intel' ? 'active' : ''}"
+      class:is-active={activeTab === 'cve_intel'}
+      onclick={() => { activeTab = 'cve_intel'; if (!cveReport) loadCVEFeed(false); }}
+    >
+      <i class="ri-bug-line"></i> CVE &amp; Virtual Patch
+      {#if (cveReport?.host_matched_count ?? overview?.cve_host_matched_count ?? 0) > 0}
+        <span class="tab-count-pill tab-count-pill--danger">
+          {cveReport?.host_matched_count ?? overview?.cve_host_matched_count ?? 0}
+        </span>
+      {/if}
+    </button>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'live_access'}
       class="tabs__tab waf-tab-btn {activeTab === 'live_access' ? 'active' : ''}"
       class:is-active={activeTab === 'live_access'}
       onclick={() => { activeTab = 'live_access'; loadAccessLogs(); loadOverview(true); }}
     >
-      <i class="ri-pulse-line"></i> Lalu Lintas & Akses Detail
+      <i class="ri-pulse-line"></i> Lalu Lintas Live
       <span class="tab-count-pill">{accessLogs.length || overview?.recent_access_logs?.length || 0}</span>
     </button>
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'website'}
       class="tabs__tab waf-tab-btn {activeTab === 'website' ? 'active' : ''}"
       class:is-active={activeTab === 'website'}
       onclick={() => { activeTab = 'website'; loadSites(); }}
     >
-      <i class="ri-global-line"></i> WebSite ({sites.length})
+      <i class="ri-global-line"></i> Proteksi Situs ({sites.length})
     </button>
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'attack_map'}
       class="tabs__tab waf-tab-btn {activeTab === 'attack_map' ? 'active' : ''}"
       class:is-active={activeTab === 'attack_map'}
       onclick={() => { activeTab = 'attack_map'; loadEvents(); }}
     >
-      <i class="ri-radar-line"></i> Attack Map
+      <i class="ri-radar-line"></i> Peta Serangan
     </button>
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'blacklist'}
       class="tabs__tab waf-tab-btn {activeTab === 'blacklist' ? 'active' : ''}"
       class:is-active={activeTab === 'blacklist'}
       onclick={() => { activeTab = 'blacklist'; loadRules(); }}
     >
-      <i class="ri-shield-keyhole-line"></i> Black/White List
+      <i class="ri-shield-keyhole-line"></i> Aturan &amp; Auto-Ban
     </button>
     <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === 'cloudflare'}
       class="tabs__tab waf-tab-btn {activeTab === 'cloudflare' ? 'active' : ''}"
       class:is-active={activeTab === 'cloudflare'}
       onclick={() => { activeTab = 'cloudflare'; loadCloudflare(); }}
@@ -1235,7 +1444,7 @@
         <span class="cf-online-dot"></span>
       {/if}
     </button>
-  </nav>
+  </div>
 
   <!-- TAB 1: OVERVIEW -->
   {#if activeTab === 'overview'}
@@ -1243,10 +1452,13 @@
       {overview}
       {events}
       {accessLogs}
+      {attachingVhosts}
       {overviewMapAction}
       {formatBytes}
       {formatTime}
       onOpenAttackMap={() => { activeTab = 'attack_map'; loadEvents(); }}
+      onOpenCveIntel={() => { activeTab = 'cve_intel'; if (!cveReport) loadCVEFeed(false); }}
+      onAttachVhosts={handleAttachVhosts}
       onInspectAttackIP={inspectAttackIP}
       onQuickBlockIP={quickBlockIP}
       onFilterAccessByPath={(path) => {
@@ -1259,7 +1471,20 @@
       onOpenEnforcementModal={openEnforcementInspector}
     />
 
-  <!-- TAB 1B: LIVE HTTP ACCESS & VISITOR OBSERVATORY -->
+  <!-- TAB 2: CVE THREAT INTEL & VIRTUAL PATCHING -->
+  {:else if activeTab === 'cve_intel'}
+    <CveIntelTab
+      report={cveReport}
+      loading={loadingCVE}
+      refreshing={refreshingCVE}
+      {togglingPatchId}
+      onRefresh={loadCVEFeed}
+      onTogglePatch={handleToggleVirtualPatch}
+      onTestPatchPayload={handleTestPatchFromCVE}
+      {formatDateTime}
+    />
+
+  <!-- TAB 3: LIVE HTTP ACCESS & VISITOR OBSERVATORY -->
   {:else if activeTab === 'live_access'}
     <LiveAccessTab
       {overview}
@@ -1281,7 +1506,7 @@
       onSelectAccessLog={(log) => (selectedAccessLog = log)}
     />
 
-  <!-- TAB 2: WEBSITE PROTECTION (Screenshot 3) -->
+  <!-- TAB 4: PROTEKSI SITUS -->
   {:else if activeTab === 'website'}
     <SiteProtectionTab
       bind:siteSearch
@@ -1294,7 +1519,7 @@
       onEditSite={(site) => { editingSite = { ...site }; showSiteModal = true; }}
     />
 
-  <!-- TAB 3: ATTACK MAP (Screenshot 4) -->
+  <!-- TAB 5: PETA SERANGAN -->
   {:else if activeTab === 'attack_map'}
     <AttackMapTab
       {events}
@@ -1315,7 +1540,7 @@
       onClearEvents={handleClearEvents}
     />
 
-  <!-- TAB 4: BLACK / WHITE LIST (Screenshot 5) -->
+  <!-- TAB 6: ATURAN BLACK/WHITE LIST, AUTO-BAN & SIMULATOR PAYLOAD -->
   {:else if activeTab === 'blacklist'}
     <ListsTab
       bind:activeRuleType
@@ -1327,12 +1552,23 @@
       {submittingRule}
       {loadingRules}
       {rules}
+      bind:autoban={autobanConfig}
+      {savingAutoBan}
+      bind:simMethod
+      bind:simPath
+      bind:simUA
+      bind:simIP
+      bind:simHeader
+      {simTesting}
+      {simResult}
       onLoadRules={loadRules}
       onAddRule={handleAddRule}
       onDeleteRule={deleteRule}
+      onSaveAutoBan={handleSaveAutoBan}
+      onRunPayloadTest={handleTestPayload}
     />
 
-  <!-- TAB 5: CLOUDFLARE HUB -->
+  <!-- TAB 7: CLOUDFLARE HUB -->
   {:else if activeTab === 'cloudflare'}
     <CloudflareHub
       {cfConfig}
@@ -1428,7 +1664,7 @@
     <Modal
       open={showEnforcementModal}
       title="Transparansi Penegakan Aturan WAF Nginx"
-      subtitle={enf?.config_path ? `Berkas Aktif: ${enf.config_path}` : 'Sinkronisasi langsung aturan Black/White List & Signature OWASP ke Nginx'}
+      subtitle={enf?.config_path ? `Server Block: ${enf.config_path}` : 'Sinkronisasi langsung aturan Black/White List, Virtual Patch & Rate Limit ke Nginx'}
       size="xl"
       onclose={() => (showEnforcementModal = false)}
     >
@@ -1436,41 +1672,70 @@
         <div class="drawer-info-grid">
           <div class="info-row">
             <span class="info-lbl">Status Mesin Global WAF:</span>
-            <span class="info-val font-bold {overview?.waf_global_enabled === false ? 'text-danger' : 'text-success'}">
-              {overview?.waf_global_enabled === false ? 'DINONAKTIFKAN (Pass-Through)' : 'AKTIF (Enforcing)'}
+            <span class="info-val {overview?.waf_global_enabled === false ? 'text-danger' : 'text-accent'}">
+              <strong>{overview?.waf_global_enabled === false ? 'DINONAKTIFKAN (Pass-Through)' : 'AKTIF (Enforcing)'}</strong>
             </span>
           </div>
           <div class="info-row">
-            <span class="info-lbl">Lokasi Origin Server:</span>
-            <span class="info-val mono">{hostServerLocation.name}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-lbl">Aturan Aktif & Situs Terproteksi:</span>
+            <span class="info-lbl">Vhost Nginx Terpasang Include WAF:</span>
             <span class="info-val mono">
-              {enf?.active_rules_count ?? overview?.total_rules_count ?? 0} Aturan · {enf?.protected_sites_count ?? sites.length} Situs Aktif
+              {enf?.attached_vhosts_count ?? 0} / {enf?.total_vhosts_count ?? 0} berkas vhost
             </span>
           </div>
           <div class="info-row">
-            <span class="info-lbl">Sinkronisasi Terakhir:</span>
-            <span class="info-val mono text-xs">{enf?.last_synced_at ? formatDateTime(enf.last_synced_at) : '-'}</span>
+            <span class="info-lbl">Aturan, Virtual Patch &amp; Situs Aktif:</span>
+            <span class="info-val mono">
+              {enf?.active_rules_count ?? overview?.total_rules_count ?? 0} Aturan · {enf?.active_virtual_patches_count ?? overview?.active_virtual_patches_count ?? 0} Virtual Patch · {enf?.protected_sites_count ?? sites.length} Situs
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Cloudflare Real-IP (`CF-Connecting-IP`):</span>
+            <span class="info-val mono">{enf?.cloudflare_real_ip_enabled ? 'Aktif di waf-http.conf' : 'Nonaktif (centang Pakai CDN pada situs)'}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">Lokasi Origin &amp; Sinkronisasi Terakhir:</span>
+            <span class="info-val mono text-xs">{hostServerLocation.name} · {enf?.last_synced_at ? formatDateTime(enf.last_synced_at) : '-'}</span>
           </div>
         </div>
         {#if enf?.last_sync_error}
           <div class="rule-box text-xs text-danger">{enf.last_sync_error}</div>
         {/if}
-        <div class="info-col mt-3">
-          <span class="info-lbl">Isi Konfigurasi Nginx WAF (`waf-rules.conf`):</span>
-          <pre class="payload-box waf-config-preview mono text-xs">{enf?.config_preview || '# Memuat konfigurasi...'}</pre>
+
+        <div class="enf-preview-tabs">
+          <button
+            type="button"
+            class="enf-tab-btn {enforcementPreviewTab === 'rules' ? 'active' : ''}"
+            onclick={() => (enforcementPreviewTab = 'rules')}
+          >
+            waf-rules.conf (Server Block)
+          </button>
+          <button
+            type="button"
+            class="enf-tab-btn {enforcementPreviewTab === 'http' ? 'active' : ''}"
+            onclick={() => (enforcementPreviewTab = 'http')}
+          >
+            waf-http.conf (Rate Limit &amp; Real-IP)
+          </button>
+        </div>
+
+        <div class="info-col">
+          <span class="info-lbl mono text-xs">
+            {enforcementPreviewTab === 'rules' ? (enf?.config_path || 'waf-rules.conf') : (enf?.http_config_path || 'waf-http.conf')}
+          </span>
+          <pre class="payload-box waf-config-preview mono text-xs">{enforcementPreviewTab === 'rules' ? (enf?.config_preview || '# Memuat konfigurasi...') : (enf?.http_config_preview || '# Memuat konfigurasi http...')}</pre>
         </div>
       </div>
       {#snippet footer()}
-        <button type="button" class="btn btn-secondary btn-sm" onclick={toggleGlobalWAF} disabled={togglingGlobalWAF}>
-          <i class="ri-shut-down-line"></i> {overview?.waf_global_enabled === false ? 'Aktifkan Global WAF' : 'Matikan Global WAF'}
+        <button type="button" class="btn btn--secondary btn--sm" onclick={toggleGlobalWAF} disabled={togglingGlobalWAF}>
+          <i class="ri-shut-down-line"></i> {overview?.waf_global_enabled === false ? 'Aktifkan WAF' : 'Matikan WAF'}
         </button>
-        <button type="button" class="btn btn-primary btn-sm" onclick={syncWAFNginxNow} disabled={syncingWAF}>
-          <i class="ri-refresh-line {syncingWAF ? 'spin' : ''}"></i> {syncingWAF ? 'Menyinkronkan...' : 'Sinkronkan Ulang ke Nginx'}
+        <button type="button" class="btn btn--secondary btn--sm" onclick={handleAttachVhosts} disabled={attachingVhosts}>
+          <i class="ri-plug-line {attachingVhosts ? 'spin' : ''}"></i> {attachingVhosts ? 'Memasang...' : 'Pasang ke Semua Vhost'}
         </button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick={() => (showEnforcementModal = false)}>Tutup</button>
+        <button type="button" class="btn btn--primary btn--sm" onclick={syncWAFNginxNow} disabled={syncingWAF}>
+          <i class="ri-refresh-line {syncingWAF ? 'spin' : ''}"></i> {syncingWAF ? 'Menyinkronkan...' : 'Sinkronkan Nginx'}
+        </button>
+        <button type="button" class="btn btn--ghost btn--sm" onclick={() => (showEnforcementModal = false)}>Tutup</button>
       {/snippet}
     </Modal>
   {/if}

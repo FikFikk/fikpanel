@@ -3726,12 +3726,86 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.23 Web Application Firewall (WAF), CVE Threat Intel, Virtual Patch & Auto-Ban
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/attach-vhosts` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "modified": 3, "enforcement": {...}, "message": "Berhasil memasang aturan WAF ke 3 berkas vhost Nginx"}` |
+| Notes | Menyisipkan directive `include <waf-rules.conf>;` ke seluruh berkas virtual host Nginx yang belum terproteksi, memvalidasi dengan `nginx -t` (rollback otomatis bila gagal), me-reload Nginx, dan mencatat audit `waf.attach_vhosts`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/cve` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `refresh` (string, opsional: `1` / `true` untuk menarik ulang feed live dari CISA KEV & GitHub Security Advisories) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "report": {"last_fetched_at": 1795668000, "sources_status": {...}, "installed_stack": [...], "total_count": 25, "kev_count": 12, "host_matched_count": 6, "active_patches_count": 2, "advisories": [...], "virtual_patches": [...]}}` |
+| Notes | Mengembalikan berita CVE yang dikorelasikan terhadap stack runtime/framework terpasang di host (`affected`, `installed_stack`, `global`) dengan cache SQLite 6 jam (`waf_cve_cache`) dan fallback katalog kritis saat offline. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/virtual-patches` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "patches": [{"id": "vp-php-cgi-2024-4577", "cve_ids": ["CVE-2024-4577"], "title": "...", "enabled": true, ...}]}` |
+| Notes | Menampilkan 10 paket Virtual Patch CVE bawaan beserta status aktif dan payload uji referensinya. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/virtual-patches/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (mis. `vp-php-cgi-2024-4577`, `vp-react2shell-2025-55182`, `vp-nextjs-2025-29927`) |
+| Request Body | `enabled` (bool, wajib) |
+| Response | HTTP 200 `{"ok": true, "patch_id": "...", "enabled": true, "enforcement": {...}, "message": "..."}` |
+| Notes | Menyimpan status patch pada `waf_virtual_patches`, langsung menulis ulang `waf-rules.conf` + reload Nginx, dan mencatat audit `waf.virtual_patch`. Mengembalikan HTTP 400 bila ID patch tidak dikenali. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/waf/autoban` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "autoban": {"enabled": false, "threshold": 5, "window_minutes": 10, "ban_minutes": 60, "sync_ufw": false, "exclude_private": true}}` |
+| Notes | Mengambil konfigurasi Auto-Ban IP penyerang berulang dari pengaturan `waf.autoban_config`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/autoban` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool), `threshold` (int, 2–500), `window_minutes` (int, 1–1440), `ban_minutes` (int, 5–43200), `sync_ufw` (bool), `exclude_private` (bool) |
+| Response | HTTP 200 `{"ok": true, "autoban": {...}, "message": "Konfigurasi Auto-Ban WAF berhasil disimpan"}` |
+| Notes | Memvalidasi batas aman nilai Auto-Ban, menyimpannya ke SQLite, dan mencatat audit `waf.autoban_update`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/waf/test-payload` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `method` (string, default `GET`), `path` (string), `user_agent` (string), `client_ip` (string), `site_name` (string opsional), `headers` (object `map[string]string` opsional) |
+| Response | HTTP 200 `{"ok": true, "result": {"blocked": true, "attack_type": "CVE Virtual Patch (CVE-2024-4577)", "action": "block", "rule_name": "...", "matched_patch_id": "vp-php-cgi-2024-4577"}}` |
+| Notes | Mensimulasikan permintaan HTTP terhadap kebijakan WAF aktif, daftar putih/hitam, Virtual Patch aktif, dan signature OWASP tanpa mengubah log atau memblokir IP nyata. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |
 |---|---|---|---|
 | `srv.StartUptimeProber` | Setiap 15 detik (background ticker, maks 6 probe konkuren) | Mengevaluasi monitor Uptime & SSL yang sudah jatuh tempo berdasarkan `interval_sec`, memeriksa status HTTP/keyword/TLS peer cert/TCP port, dan menyiarkan alert Webhook (`DOWN`/`RECOVERED`/`SSL EXPIRING`) | Mencatat hasil ke `uptime_checks`, memperbarui ringkasan `uptime_monitors`, dan memangkas histori pemeriksaan > 7 hari |
-| `waf.LogWatcher.Start` | Setiap 4 detik (background daemon) | Memindai byte baru pada seluruh access log Nginx (`/var/log/nginx/*.access.log`), mendeteksi probe keamanan, mengekstrak telemetri client (IP, User-Agent, Device, OS, Browser), mengklasifikasikan jenis ancaman, dan melengkapi koordinat geolokasi (Country, City, ISP, Lat/Long) | Mengisi dan memperbarui entri pada tabel `waf_events`; melakukan deduplikasi event dari IP dan path yang sama dalam jeda 15 detik |
+| `waf.LogWatcher.Start` | Setiap 4 detik (background daemon) + worker GeoIP asinkron | Memindai byte baru pada seluruh access log Nginx (`/var/log/nginx/*.access.log` & `/www/sites/*/logs/*.access.log`), mengklasifikasikan serangan terhadap kebijakan WAF & Virtual Patch aktif, menjaga cache agregasi 15 detik, dan memicu Auto-Ban penyerang berulang | Mengisi `waf_events` (deduplikasi 15 detik), memperbarui cache GeoIP secara non-blocking, dan menambahkan `ip_blacklist` (+ UFW opsional) bila ambang Auto-Ban terlampaui |
 | `fikpanel renew-ssl` (Default Cron Job) | Setiap hari pukul 02:00 (`0 2 * * *`) | Memindai seluruh domain dan memperpanjang sertifikat SSL Let's Encrypt / ACME (HTTP-01 maupun DNS-01) yang tersisa < 30 hari | Menulis sertifikat atomik, reload Nginx, mencatat output eksekusi ke `cron_logs` dan audit log `ssl.renew` |
 | `sites.RunRenewLoop` | Setiap 12 jam (sejak panel start & saat boot) | Memperpanjang sertifikat `issued` dengan sisa masa aktif < 30 hari via ACME HTTP-01 atau DNS-01 (mempertahankan `challenge_type` & `dns_provider` tersimpan) | Status sementara `pending`, file cert ditulis atomik, Nginx di-reload; audit `ssl.renew`; gagal = `failed` + `last_error` |
 | `nginx.RunWatchdog` | Setiap 1 menit (sejak panel start) | Bila setting `daemon=true` dan Nginx mati, jalankan ulang setelah lolos `nginx -t` | Nginx otomatis start; dihentikan saat panel shutdown (context dibatalkan) |

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 
 	"fikpanel/internal/store"
+	"fikpanel/internal/waf"
 )
 
 // vhostTmpl adalah template server block Nginx untuk static, php, dan proxy
@@ -61,6 +63,9 @@ server {
 {{define "body"}}
     access_log {{.LogDir}}/{{.Domain}}.access.log;
     error_log  {{.LogDir}}/{{.Domain}}.error.log;
+{{- if .WAFInclude}}
+    include {{.WAFInclude}};
+{{- end}}
 
     # Halaman galat (Prioritas: /error/*.html di proyek -> fallback bawaan FikPanel)
     error_page 403 /_fik_error_403;
@@ -180,6 +185,7 @@ type vhostData struct {
 	HSTS        bool
 	CertPath    string
 	KeyPath     string
+	WAFInclude  string
 }
 
 // AllDomains mengembalikan domain utama + alias situs
@@ -213,6 +219,15 @@ func (m *Manager) Render(site *store.Site, cert *store.Certificate) (string, err
 	certPath, keyPath := m.certFiles(site.Domain)
 	sslReady := site.SSLMode != "none" && site.SSLMode != "cloudflare" && cert != nil && cert.Status == "issued" && m.certExists(site.Domain)
 
+	// Sisipkan aturan WAF Nginx secara otomatis bila berkas waf-rules.conf sudah tersedia pada host
+	wafInclude := ""
+	if !m.mock {
+		wafPath := waf.DefaultWAFRulesPath()
+		if fi, err := os.Stat(wafPath); err == nil && !fi.IsDir() {
+			wafInclude = wafPath
+		}
+	}
+
 	data := vhostData{
 		Domain:      site.Domain,
 		ServerNames: strings.Join(AllDomains(site), " "),
@@ -229,6 +244,7 @@ func (m *Manager) Render(site *store.Site, cert *store.Certificate) (string, err
 		HSTS:        site.HSTS == 1,
 		CertPath:    certPath,
 		KeyPath:     keyPath,
+		WAFInclude:  wafInclude,
 	}
 	var buf bytes.Buffer
 	if err := vhostTmpl.Execute(&buf, data); err != nil {

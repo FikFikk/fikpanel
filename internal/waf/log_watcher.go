@@ -78,15 +78,20 @@ type DomainTrafficStat struct {
 
 // LogWatcher memindai log akses Nginx secara berkala untuk mendeteksi ancaman dan telemetri akses detail
 type LogWatcher struct {
-	db             *sql.DB
-	fileOffsets    map[string]int64
-	mu             sync.Mutex
-	accessMu       sync.RWMutex
-	recentAccess   []WAFAccessLog
-	seqID          int64
-	logDir         string
-	stopChan       chan struct{}
-	policyProvider func() (bool, map[string]WAFSite, []WAFRule)
+	db                *sql.DB
+	fileOffsets       map[string]int64
+	mu                sync.Mutex
+	accessMu          sync.RWMutex
+	recentAccess      []WAFAccessLog
+	seqID             int64
+	logDir            string
+	stopChan          chan struct{}
+	policyProvider    func() (bool, map[string]WAFSite, []WAFRule, map[string]bool)
+	onThreatCallback  func(ctx context.Context, clientIP, siteName, attackType string)
+	aggMu             sync.Mutex
+	cachedAgg         *LogAggregates
+	cachedAggAt       time.Time
+	cachedAggSig      string
 }
 
 // Format log Nginx kombinasi standar (mendukung request HTTP normal maupun payload biner mentah tanpa spasi):
@@ -107,26 +112,33 @@ func NewLogWatcher(db *sql.DB, logDir string) *LogWatcher {
 	}
 }
 
-// SetPolicyProvider mendaftarkan callback penyedia aturan dan opsi situs WAF aktif
-func (w *LogWatcher) SetPolicyProvider(fn func() (bool, map[string]WAFSite, []WAFRule)) {
+// SetPolicyProvider mendaftarkan callback penyedia aturan, opsi situs, dan virtual patch WAF aktif
+func (w *LogWatcher) SetPolicyProvider(fn func() (bool, map[string]WAFSite, []WAFRule, map[string]bool)) {
 	w.accessMu.Lock()
 	w.policyProvider = fn
 	w.accessMu.Unlock()
 }
 
-// evaluateThreat mengevaluasi request menggunakan aturan WAF dinamis jika tersedia
+// SetThreatCallback mendaftarkan callback pemicu Auto-Ban setiap kali serangan baru tercatat
+func (w *LogWatcher) SetThreatCallback(fn func(ctx context.Context, clientIP, siteName, attackType string)) {
+	w.accessMu.Lock()
+	w.onThreatCallback = fn
+	w.accessMu.Unlock()
+}
+
+// evaluateThreat mengevaluasi request menggunakan aturan WAF dinamis beserta virtual patch aktif
 func (w *LogWatcher) evaluateThreat(siteName, clientIP, method, rawPath, userAgent string, statusCode int) ThreatAssessment {
 	w.accessMu.RLock()
 	fn := w.policyProvider
 	w.accessMu.RUnlock()
 	if fn != nil {
-		globalEnabled, siteMap, rules := fn()
+		globalEnabled, siteMap, rules, patches := fn()
 		var siteCfg *WAFSite
 		if sc, ok := siteMap[siteName]; ok {
 			copySite := sc
 			siteCfg = &copySite
 		}
-		return ClassifyThreatWithRules(clientIP, method, rawPath, userAgent, statusCode, globalEnabled, siteCfg, rules)
+		return ClassifyThreatWithRulesAndPatches(clientIP, method, rawPath, userAgent, nil, statusCode, globalEnabled, siteCfg, rules, patches)
 	}
 	return ClassifyThreat(method, rawPath, userAgent, statusCode)
 }
@@ -183,40 +195,49 @@ func extractSiteNameFromLogFile(name string) (string, bool) {
 	return "", false
 }
 
-// scanAllLogs memeriksa seluruh file *.access.log (serta *.access.log.1 saat inisialisasi) di folder log Nginx
+// collectLogDirectories mengembalikan seluruh direktori log Nginx utama dan direktori log situs terpadu /www/sites/*/logs
+func (w *LogWatcher) collectLogDirectories() []string {
+	dirs := []string{w.logDir}
+	if matches, err := filepath.Glob("/www/sites/*/logs"); err == nil {
+		dirs = append(dirs, matches...)
+	}
+	return dirs
+}
+
+// scanAllLogs memeriksa seluruh file *.access.log (serta *.access.log.1 saat inisialisasi) di folder log Nginx & situs
 func (w *LogWatcher) scanAllLogs(ctx context.Context, isInitial bool) {
-	if _, err := os.Stat(w.logDir); os.IsNotExist(err) {
-		return
-	}
+	for _, dir := range w.collectLogDirectories() {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
 
-	entries, err := os.ReadDir(w.logDir)
-	if err != nil {
-		return
-	}
+		if isInitial {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				if strings.HasSuffix(name, "access.log.1") {
+					if siteName, ok := extractSiteNameFromLogFile(name); ok {
+						w.processLogFile(ctx, filepath.Join(dir, name), siteName, true)
+					}
+				}
+			}
+		}
 
-	// Pada saat inisialisasi, pindai berkas .access.log.1 terlebih dahulu agar urutan waktu kronologis
-	if isInitial {
 		for _, entry := range entries {
 			if entry.IsDir() {
 				continue
 			}
 			name := entry.Name()
-			if strings.HasSuffix(name, "access.log.1") {
+			if strings.HasSuffix(name, "access.log") {
 				if siteName, ok := extractSiteNameFromLogFile(name); ok {
-					w.processLogFile(ctx, filepath.Join(w.logDir, name), siteName, true)
+					w.processLogFile(ctx, filepath.Join(dir, name), siteName, isInitial)
 				}
-			}
-		}
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasSuffix(name, "access.log") {
-			if siteName, ok := extractSiteNameFromLogFile(name); ok {
-				w.processLogFile(ctx, filepath.Join(w.logDir, name), siteName, isInitial)
 			}
 		}
 	}
@@ -348,7 +369,7 @@ func (w *LogWatcher) parseAndRecordLine(ctx context.Context, line, siteName stri
 
 	// Evaluasi apakah permintaan ini mencurigakan atau merupakan serangan
 	threat := w.evaluateThreat(siteName, clientIP, method, rawPath, userAgent, statusCode)
-	geo := ResolveGeoLocation(clientIP)
+	geo := ResolveGeoLocationCached(clientIP)
 	deviceInfo := ParseUserAgent(userAgent)
 
 	entry := WAFAccessLog{
@@ -411,6 +432,15 @@ func (w *LogWatcher) parseAndRecordLine(ctx context.Context, line, siteName stri
 
 	if err != nil {
 		log.Printf("[WAF] Gagal merekam peristiwa serangan: %v", err)
+		return
+	}
+
+	// Picu evaluasi Auto-Ban secara asinkron bila dikonfigurasi
+	w.accessMu.RLock()
+	cb := w.onThreatCallback
+	w.accessMu.RUnlock()
+	if cb != nil {
+		go cb(ctx, clientIP, siteName, threat.AttackType)
 	}
 }
 
@@ -449,16 +479,74 @@ func (w *LogWatcher) GetRecentAccessLogs(limit int) []WAFAccessLog {
 	return copied
 }
 
-// ComputeLogAggregates memindai berkas log Nginx di disk untuk menghitung metrik trafik riil (hari ini, kemarin, bandwidth, status, endpoint, pengunjung)
+// ComputeLogAggregates memindai berkas log Nginx di disk dengan cache berbasis tanda tangan ukuran/mtime + TTL 15 detik
 func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
+	w.aggMu.Lock()
+	defer w.aggMu.Unlock()
+
+	// Bangun tanda tangan cepat dari seluruh berkas log untuk menghindari full-scan berulang tiap polling 6 detik
+	dirs := w.collectLogDirectories()
+	var sigBuilder strings.Builder
+	type logTarget struct {
+		path     string
+		siteName string
+		isGzip   bool
+	}
+	var targets []logTarget
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			fullPath := filepath.Join(dir, name)
+			if siteName, ok := extractSiteNameFromLogFile(name); ok {
+				if fi, err := entry.Info(); err == nil {
+					sigBuilder.WriteString(fullPath)
+					sigBuilder.WriteString(":")
+					sigBuilder.WriteString(strconv.FormatInt(fi.Size(), 10))
+					sigBuilder.WriteString(":")
+					sigBuilder.WriteString(strconv.FormatInt(fi.ModTime().Unix(), 10))
+					sigBuilder.WriteByte(';')
+				}
+				targets = append(targets, logTarget{path: fullPath, siteName: siteName})
+				continue
+			}
+			if strings.Contains(name, "access.log.") && strings.HasSuffix(name, ".gz") {
+				siteName := strings.Split(name, ".access.log")[0]
+				if siteName == "" || siteName == "access" {
+					siteName = "default-server"
+				}
+				if fi, err := entry.Info(); err == nil {
+					sigBuilder.WriteString(fullPath)
+					sigBuilder.WriteString(":")
+					sigBuilder.WriteString(strconv.FormatInt(fi.Size(), 10))
+					sigBuilder.WriteByte(';')
+				}
+				targets = append(targets, logTarget{path: fullPath, siteName: siteName, isGzip: true})
+			}
+		}
+	}
+
+	sig := sigBuilder.String()
+	if w.cachedAgg != nil && (w.cachedAggSig == sig || time.Since(w.cachedAggAt) < 15*time.Second) {
+		return w.cachedAgg
+	}
+
 	agg := &LogAggregates{
 		DomainStats:  make(map[string]*DomainTrafficStat),
 		PageStats:    make(map[string]*VisitedPageItem),
 		VisitorStats: make(map[string]*VisitorItem),
 	}
 
-	entries, err := os.ReadDir(w.logDir)
-	if err != nil {
+	if len(targets) == 0 {
+		w.cachedAgg = agg
+		w.cachedAggSig = sig
+		w.cachedAggAt = time.Now()
 		return agg
 	}
 
@@ -567,10 +655,10 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 				}
 			}
 
-			// Catat statistik pengunjung per IP
+			// Catat statistik pengunjung per IP (non-blocking GeoIP cache)
 			vStat, ok := agg.VisitorStats[clientIP]
 			if !ok {
-				geo := ResolveGeoLocation(clientIP)
+				geo := ResolveGeoLocationCached(clientIP)
 				dev := ParseUserAgent(userAgent)
 				vStat = &VisitorItem{
 					IP:          clientIP,
@@ -600,40 +688,29 @@ func (w *LogWatcher) ComputeLogAggregates() *LogAggregates {
 		}
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		fullPath := filepath.Join(w.logDir, name)
-
-		if siteName, ok := extractSiteNameFromLogFile(name); ok {
-			if f, err := os.Open(fullPath); err == nil {
-				processReader(f, siteName, true)
+	for _, tgt := range targets {
+		if !tgt.isGzip {
+			if f, err := os.Open(tgt.path); err == nil {
+				processReader(f, tgt.siteName, true)
 				_ = f.Close()
 			}
 			continue
 		}
-
-		// Hitung juga total baris dari arsip log terkompresi (.access.log.*.gz) untuk total all-time
-		if strings.Contains(name, "access.log.") && strings.HasSuffix(name, ".gz") {
-			siteName := strings.Split(name, ".access.log")[0]
-			if siteName == "" || siteName == "access" {
-				siteName = "default-server"
+		if f, err := os.Open(tgt.path); err == nil {
+			if gr, err := gzip.NewReader(f); err == nil {
+				processReader(gr, tgt.siteName, false)
+				_ = gr.Close()
 			}
-			if f, err := os.Open(fullPath); err == nil {
-				if gr, err := gzip.NewReader(f); err == nil {
-					processReader(gr, siteName, false)
-					_ = gr.Close()
-				}
-				_ = f.Close()
-			}
+			_ = f.Close()
 		}
 	}
 
 	if agg.Recent60sRequests > 0 {
 		agg.RealtimeQPS = float64(agg.Recent60sRequests) / 60.0
 	}
+	w.cachedAgg = agg
+	w.cachedAggSig = sig
+	w.cachedAggAt = time.Now()
 	return agg
 }
 

@@ -1491,6 +1491,7 @@ export interface WAFOverview {
   yesterday_requests: number;
   yesterday_malicious: number;
   total_requests_all_time?: number;
+  total_events_all_time?: number;
   total_bandwidth_bytes?: number;
   status_breakdown?: {
     s2xx: number;
@@ -1538,9 +1539,12 @@ export interface WAFOverview {
   recent_events: WAFEvent[];
   recent_access_logs?: WAFAccessLog[];
   total_rules_count: number;
+  active_virtual_patches_count?: number;
+  cve_host_matched_count?: number;
   waf_global_enabled: boolean;
   host_location?: WAFHostLocation;
   enforcement?: WAFEnforcementStatus;
+  autoban?: WAFAutoBanConfig;
 }
 
 export interface WAFHostLocation {
@@ -1558,11 +1562,87 @@ export interface WAFEnforcementStatus {
   global_enabled: boolean;
   nginx_enforced: boolean;
   config_path: string;
+  http_config_path?: string;
   active_rules_count: number;
+  active_virtual_patches_count?: number;
   protected_sites_count: number;
+  attached_vhosts_count?: number;
+  total_vhosts_count?: number;
+  cloudflare_real_ip_enabled?: boolean;
   last_synced_at: number;
   last_sync_error?: string;
   config_preview?: string;
+  http_config_preview?: string;
+}
+
+export interface InstalledStackItem {
+  product: string;
+  label: string;
+  version: string;
+  installed: boolean;
+}
+
+export interface CVEAdvisory {
+  cve_id: string;
+  ghsa_id?: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | string;
+  cvss_score: number;
+  source: 'cisa_kev' | 'github_advisory' | 'builtin_advisory' | string;
+  product: string;
+  affected_range?: string;
+  patched_version?: string;
+  published_at: string;
+  is_kev: boolean;
+  reference_url: string;
+  virtual_patch_id?: string;
+  virtual_patch_active: boolean;
+  host_match: 'affected' | 'installed_stack' | 'global' | string;
+  installed_version?: string;
+}
+
+export interface VirtualPatch {
+  id: string;
+  cve_ids: string[];
+  title: string;
+  product: string;
+  severity: 'critical' | 'high' | 'medium' | string;
+  description: string;
+  mitigation: string;
+  test_path: string;
+  test_header?: string;
+  nginx_snippet: string;
+  enabled: boolean;
+}
+
+export interface CVEFeedReport {
+  last_fetched_at: number;
+  sources_status: Record<string, string>;
+  installed_stack: InstalledStackItem[];
+  total_count: number;
+  kev_count: number;
+  host_matched_count: number;
+  active_patches_count: number;
+  advisories: CVEAdvisory[];
+  virtual_patches: VirtualPatch[];
+}
+
+export interface WAFAutoBanConfig {
+  enabled: boolean;
+  threshold: number;
+  window_minutes: number;
+  ban_minutes: number;
+  sync_ufw: boolean;
+  exclude_private: boolean;
+}
+
+export interface WAFPayloadTestResult {
+  blocked: boolean;
+  attack_type: string;
+  action: string;
+  rule_name: string;
+  matched_patch_id?: string;
 }
 
 // ── Cloudflare Integration ──────────────────────────────────────────────────

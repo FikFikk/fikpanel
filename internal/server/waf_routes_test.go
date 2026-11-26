@@ -107,4 +107,67 @@ func TestWAFRoutesDynamicAndSecure(t *testing.T) {
 	if wToggle.Code != http.StatusOK || !strings.Contains(wToggle.Body.String(), `"waf_global_enabled":false`) {
 		t.Fatalf("expected global WAF toggle false to succeed, got %d: %s", wToggle.Code, wToggle.Body.String())
 	}
+
+	// Aktifkan kembali Global WAF sebelum menguji Virtual Patch & Simulator Payload
+	toggleOnBody, _ := json.Marshal(map[string]bool{"enabled": true})
+	reqToggleOn := httptest.NewRequest("POST", "/api/waf/global", bytes.NewReader(toggleOnBody))
+	reqToggleOn.Header.Set("Content-Type", "application/json")
+	reqToggleOn.Header.Set("X-Panel-Request", "1")
+	reqToggleOn.AddCookie(sessionCookie)
+	srv.server.Handler.ServeHTTP(httptest.NewRecorder(), reqToggleOn)
+
+	// 5. Aktifkan Virtual Patch PHP2Shell (CVE-2024-4577) via POST /api/waf/virtual-patches/{id}
+	vpBody, _ := json.Marshal(map[string]bool{"enabled": true})
+	reqVP := httptest.NewRequest("POST", "/api/waf/virtual-patches/vp-php-cgi-2024-4577", bytes.NewReader(vpBody))
+	reqVP.Header.Set("Content-Type", "application/json")
+	reqVP.Header.Set("X-Panel-Request", "1")
+	reqVP.AddCookie(sessionCookie)
+	wVP := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wVP, reqVP)
+	if wVP.Code != http.StatusOK || !strings.Contains(wVP.Body.String(), "vp-php-cgi-2024-4577") {
+		t.Fatalf("ekspektasi 200 saat mengaktifkan virtual patch, dapat %d: %s", wVP.Code, wVP.Body.String())
+	}
+
+	// 6. Uji Simulator Payload via POST /api/waf/test-payload
+	testPayloadBody, _ := json.Marshal(map[string]interface{}{
+		"method": "POST",
+		"path":   "/index.php?%ADd+allow_url_include%3d1",
+	})
+	reqSim := httptest.NewRequest("POST", "/api/waf/test-payload", bytes.NewReader(testPayloadBody))
+	reqSim.Header.Set("Content-Type", "application/json")
+	reqSim.Header.Set("X-Panel-Request", "1")
+	reqSim.AddCookie(sessionCookie)
+	wSim := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wSim, reqSim)
+	if wSim.Code != http.StatusOK || !strings.Contains(wSim.Body.String(), `"blocked":true`) {
+		t.Fatalf("ekspektasi payload PHP2Shell terblokir via API, dapat %d: %s", wSim.Code, wSim.Body.String())
+	}
+
+	// 7. Simpan dan baca konfigurasi Auto-Ban via POST & GET /api/waf/autoban
+	abBody, _ := json.Marshal(map[string]interface{}{
+		"enabled":         true,
+		"threshold":       4,
+		"window_minutes":  15,
+		"ban_minutes":     120,
+		"sync_ufw":        false,
+		"exclude_private": true,
+	})
+	reqAB := httptest.NewRequest("POST", "/api/waf/autoban", bytes.NewReader(abBody))
+	reqAB.Header.Set("Content-Type", "application/json")
+	reqAB.Header.Set("X-Panel-Request", "1")
+	reqAB.AddCookie(sessionCookie)
+	wAB := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wAB, reqAB)
+	if wAB.Code != http.StatusOK || !strings.Contains(wAB.Body.String(), `"threshold":4`) {
+		t.Fatalf("ekspektasi simpan autoban sukses, dapat %d: %s", wAB.Code, wAB.Body.String())
+	}
+
+	// 8. Verifikasi endpoint daftar Virtual Patches
+	reqListVP := httptest.NewRequest("GET", "/api/waf/virtual-patches", nil)
+	reqListVP.AddCookie(sessionCookie)
+	wListVP := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(wListVP, reqListVP)
+	if wListVP.Code != http.StatusOK || !strings.Contains(wListVP.Body.String(), "vp-react2shell-2025-55182") {
+		t.Fatalf("ekspektasi daftar virtual patches memuat React2Shell, dapat %d: %s", wListVP.Code, wListVP.Body.String())
+	}
 }

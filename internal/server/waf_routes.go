@@ -360,7 +360,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"gagal membuat request tile upstream"}`, http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/0.3.19; +https://fikpanel.net)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FikPanel/"+s.Version()+"; +https://fikpanel.net)")
 
 	resp, err := wafTileClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -368,7 +368,7 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 		osmURL := fmt.Sprintf("https://tile.openstreetmap.org/%s/%s/%s.png", z, x, y)
 		fallbackReq, _ := http.NewRequestWithContext(r.Context(), "GET", osmURL, nil)
 		if fallbackReq != nil {
-			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/0.3.19 (Admin panel map proxy)")
+			fallbackReq.Header.Set("User-Agent", "FikPanel-WAF/"+s.Version()+" (Admin panel map proxy)")
 			resp, err = wafTileClient.Do(fallbackReq)
 		}
 	}
@@ -404,5 +404,189 @@ func (s *Server) handleWAFMapTile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=2592000, immutable")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(bodyBytes)
+}
+
+// handleAttachWAFVhosts menyisipkan include waf-rules.conf ke seluruh virtual host Nginx yang belum terpasang dengan validasi nginx -t
+func (s *Server) handleAttachWAFVhosts(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	modified, st, err := s.waf.AttachAllNginxVhosts(r.Context())
+	if err != nil {
+		_ = s.store.RecordAudit(r.Context(), "user", "waf.attach_vhosts", "nginx", false, err.Error(), nil)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":          false,
+			"error":       err.Error(),
+			"enforcement": st,
+		})
+		return
+	}
+
+	msg := fmt.Sprintf("Berhasil memasang aturan WAF ke %d berkas vhost Nginx", modified)
+	if modified == 0 {
+		msg = "Seluruh berkas vhost Nginx sudah terpasang dengan aturan WAF"
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.attach_vhosts", "nginx", true, msg, nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          true,
+		"modified":    modified,
+		"enforcement": st,
+		"message":     msg,
+	})
+}
+
+// handleGetWAFCVEFeed mengembalikan berita CVE (CISA KEV, GitHub Advisories, kurasi kritis), stack host, dan Virtual Patch
+func (s *Server) handleGetWAFCVEFeed(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	forceRefresh := r.URL.Query().Get("refresh") == "1" || strings.EqualFold(r.URL.Query().Get("refresh"), "true")
+	report, err := s.waf.GetCVEFeedReport(r.Context(), forceRefresh)
+	if err != nil {
+		http.Error(w, `{"error":"gagal memuat feed CVE: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"report": report,
+	})
+}
+
+// handleListWAFVirtualPatches mengembalikan daftar seluruh paket Virtual Patch 1-klik beserta status aktifnya
+func (s *Server) handleListWAFVirtualPatches(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	patches := s.waf.ListVirtualPatches(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"patches": patches,
+	})
+}
+
+// handleToggleWAFVirtualPatch mengaktifkan atau menonaktifkan satu paket Virtual Patch CVE dan menyinkronkan ke Nginx
+func (s *Server) handleToggleWAFVirtualPatch(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	patchID := strings.TrimSpace(r.PathValue("id"))
+	if patchID == "" {
+		http.Error(w, `{"error":"ID virtual patch tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	st, err := s.waf.SetVirtualPatchEnabled(r.Context(), patchID, req.Enabled)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	stateStr := "dinonaktifkan"
+	if req.Enabled {
+		stateStr = "diaktifkan"
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.virtual_patch", patchID, true, "Virtual Patch "+patchID+" "+stateStr, nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          true,
+		"patch_id":    patchID,
+		"enabled":     req.Enabled,
+		"enforcement": st,
+		"message":     "Virtual Patch berhasil " + stateStr + " dan disinkronkan ke Nginx",
+	})
+}
+
+// handleGetWAFAutoBan mengembalikan konfigurasi Auto-Ban IP penyerang berulang
+func (s *Server) handleGetWAFAutoBan(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	cfg := s.waf.GetAutoBanConfig(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"autoban": cfg,
+	})
+}
+
+// handleUpdateWAFAutoBan menyimpan konfigurasi Auto-Ban IP penyerang berulang
+func (s *Server) handleUpdateWAFAutoBan(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var req waf.AutoBanConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	saved, err := s.waf.UpdateAutoBanConfig(r.Context(), req)
+	if err != nil {
+		http.Error(w, `{"error":"gagal menyimpan konfigurasi Auto-Ban"}`, http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.store.RecordAudit(r.Context(), "user", "waf.autoban_update", "autoban", true, fmt.Sprintf("Memperbarui Auto-Ban WAF (enabled=%v, threshold=%d/%dm)", saved.Enabled, saved.Threshold, saved.WindowMinutes), nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"autoban": saved,
+		"message": "Konfigurasi Auto-Ban WAF berhasil disimpan",
+	})
+}
+
+// handleTestWAFPayload menjalankan simulasi payload terhadap mesin aturan WAF dan Virtual Patch aktif
+func (s *Server) handleTestWAFPayload(w http.ResponseWriter, r *http.Request) {
+	if s.waf == nil {
+		http.Error(w, `{"error":"WAF engine belum diinisialisasi"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var req waf.PayloadTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"payload JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+
+	res := s.waf.TestPayload(r.Context(), req)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"result": res,
+	})
 }
 
