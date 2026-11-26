@@ -122,17 +122,21 @@ type siteDeployOptions struct {
 	RebuildAssets   bool
 }
 
-// siteDeployResult merangkum hasil eksekusi deploy atau rollback situs
+// siteDeployResult merangkum hasil eksekusi deploy atau rollback situs beserta uji kesehatan HTTP pasca deploy
 type siteDeployResult struct {
-	Domain        string
-	Branch        string
-	Repo          string
-	OldCommit     string
-	NewCommit     string
-	CommitMessage string
-	Updated       bool
-	DurationMs    int64
-	Output        string
+	Domain          string
+	Branch          string
+	Repo            string
+	OldCommit       string
+	NewCommit       string
+	CommitMessage   string
+	Updated         bool
+	DurationMs      int64
+	Output          string
+	HealthOK        bool
+	HealthCode      int
+	HealthLatencyMs int64
+	HealthSummary   string
 }
 
 // runLaravelProductionOptimize membersihkan cache lama lalu membangun cache produksi Laravel & Filament (v3/v4)
@@ -284,17 +288,7 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 
 	phpBin := resolvePHPBinary(site.PHPVersion)
 	compPrefix := resolveComposerCommand(phpBin)
-
-	execEnv := append(os.Environ(),
-		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new",
-		"COMPOSER_ALLOW_SUPERUSER=1",
-		"COMPOSER_MEMORY_LIMIT=-1",
-		"NODE_OPTIONS=--max-old-space-size=768",
-		"CI=true",
-		"HOME=/root",
-	)
+	execEnv := fullRuntimeExecEnv()
 
 	_, hasArtisanErr := os.Stat(filepath.Join(projectDir, "artisan"))
 	hasArtisan := hasArtisanErr == nil
@@ -372,6 +366,12 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 			if hasArtisan {
 				sanitizeFilamentShieldPolicies(projectDir)
 				runLaravelProductionOptimize(dctx, projectDir, phpBin, execEnv, opts.AutoOptimize, appendStepLog)
+				qCmd := exec.CommandContext(dctx, phpBin, "artisan", "queue:restart")
+				qCmd.Dir = projectDir
+				qCmd.Env = execEnv
+				_, _ = qCmd.CombinedOutput()
+			} else if site.Kind == "node" || site.Kind == "go" || site.Kind == "python" || site.Kind == "static" {
+				s.buildAndStartNonPHPProject(dctx, site, projectDir, execEnv, appendStepLog)
 			}
 			fixSiteWebPermissions(dctx, projectDir, site)
 		}
@@ -397,27 +397,39 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 		}
 		fixSiteWebPermissions(dctx, projectDir, site)
 	} else {
-		// Mode standar: git pull + Composer (PHP versi situs) + Migrate + Rebuild Vite (jika berubah) + Laravel/Filament Optimize
-		pullCmd := exec.CommandContext(dctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "pull", "origin", branch)
-		pullCmd.Env = execEnv
-		pullOut, pullErr := pullCmd.CombinedOutput()
-		restoreEnv()
-		if pullErr != nil {
-			cleanErr := strings.TrimSpace(string(pullOut))
+		// Mode standar anti-konflik: git fetch + reset --hard origin/<branch> (kebal konflik berkas policy hasil sanitasi) dengan .env selalu dipulihkan
+		fetchCmd := exec.CommandContext(dctx, "git", "-C", projectDir, "fetch", "origin", branch)
+		fetchCmd.Env = execEnv
+		fetchOut, fetchErr := fetchCmd.CombinedOutput()
+		if fetchErr != nil {
+			restoreEnv()
+			cleanErr := strings.TrimSpace(string(fetchOut))
 			if token != "" {
 				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
 			}
-			err := fmt.Errorf("git pull gagal: %s", cleanErr)
+			err := fmt.Errorf("git fetch origin %s gagal: %s", branch, cleanErr)
 			recordHistory("failed", oldCommit, "", err)
 			return nil, err
 		}
-		appendStepLog("git pull origin "+branch, string(pullOut))
+		resetCmd := exec.CommandContext(dctx, "git", "-C", projectDir, "-c", "core.fileMode=false", "reset", "--hard", "origin/"+branch)
+		resetCmd.Env = execEnv
+		resetOut, resetErr := resetCmd.CombinedOutput()
+		restoreEnv()
+		if resetErr != nil {
+			cleanErr := strings.TrimSpace(string(resetOut))
+			if token != "" {
+				cleanErr = strings.ReplaceAll(cleanErr, token, "***")
+			}
+			err := fmt.Errorf("git reset --hard origin/%s gagal: %s", branch, cleanErr)
+			recordHistory("failed", oldCommit, "", err)
+			return nil, err
+		}
+		appendStepLog("git fetch && reset --hard origin/"+branch, strings.TrimSpace(string(fetchOut)+"\n"+string(resetOut)))
 
 		_, _, _, pulledCommit := inspectProjectGitMeta(projectDir)
 
 		if runtime.GOOS != "windows" {
 			_, hasComposer := os.Stat(filepath.Join(projectDir, "composer.json"))
-			_, hasPackageJSON := os.Stat(filepath.Join(projectDir, "package.json"))
 
 			if hasComposer == nil && opts.RunComposer {
 				compCmd := exec.CommandContext(dctx, "sh", "-c", compPrefix+" install --no-interaction --prefer-dist --optimize-autoloader")
@@ -458,19 +470,17 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 				if opts.ClearCache || opts.AutoOptimize {
 					runLaravelProductionOptimize(dctx, projectDir, phpBin, execEnv, opts.AutoOptimize, appendStepLog)
 				}
-			}
 
-			if hasPackageJSON == nil && site.Kind == "node" && opts.RunComposer {
-				npmScript := "if [ -f package-lock.json ]; then (npm ci --no-audit --no-fund || npm install --no-audit --no-fund); else npm install --no-audit --no-fund; fi && npm run build"
-				npmCmd := exec.CommandContext(dctx, "sh", "-c", npmScript)
-				npmCmd.Dir = projectDir
-				npmCmd.Env = execEnv
-				npmOut, _ := npmCmd.CombinedOutput()
-				appendStepLog("npm install && npm run build", string(npmOut))
-				if _, err := os.Stat(filepath.Join(projectDir, "ecosystem.config.cjs")); err == nil {
-					pm2Out, _ := exec.CommandContext(dctx, "pm2", "restart", "ecosystem.config.cjs", "--update-env").CombinedOutput()
-					appendStepLog("pm2 restart ecosystem.config.cjs", string(pm2Out))
+				// Beri sinyal queue worker agar memuat ulang kode terbaru secara mulus tanpa memutus job aktif
+				qCmd := exec.CommandContext(dctx, phpBin, "artisan", "queue:restart")
+				qCmd.Dir = projectDir
+				qCmd.Env = execEnv
+				if qOut, qErr := qCmd.CombinedOutput(); qErr == nil && strings.TrimSpace(string(qOut)) != "" {
+					appendStepLog(phpBin+" artisan queue:restart", string(qOut))
 				}
+			} else if site.Kind == "node" || site.Kind == "go" || site.Kind == "python" || site.Kind == "static" {
+				// Pipeline build & restart universal untuk Node.js (PM2), Static SPA (dist/), Golang (systemd), & Python (.venv + systemd)
+				s.buildAndStartNonPHPProject(dctx, site, projectDir, execEnv, appendStepLog)
 			}
 
 			fixSiteWebPermissions(dctx, projectDir, site)
@@ -486,6 +496,10 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 		appendStepLog(phpBin+" artisan up", string(upOut))
 	}
 
+	// Uji kesehatan HTTP origin lokal pasca-deploy untuk mendeteksi error 500/502 secara instan
+	hc := runPostDeploySmokeTest(dctx, site)
+	appendStepLog("Post-Deploy HTTP Smoke Test", hc.Summary)
+
 	_, branchNow, repoNow, newCommit := inspectProjectGitMeta(projectDir)
 	if branchNow != "" {
 		branch = branchNow
@@ -496,18 +510,26 @@ func (s *Server) executeSiteDeploy(ctx context.Context, site *store.Site, opts s
 	commitMsgBytes, _ := exec.CommandContext(dctx, "git", "-C", projectDir, "log", "-1", "--pretty=%s").Output()
 	commitMsg := strings.TrimSpace(string(commitMsgBytes))
 
-	recordHistory("success", newCommit, commitMsg, nil)
+	deployStatus := "success"
+	if !hc.OK {
+		deployStatus = "warning"
+	}
+	recordHistory(deployStatus, newCommit, commitMsg, nil)
 
 	return &siteDeployResult{
-		Domain:        site.Domain,
-		Branch:        branch,
-		Repo:          repoSlug,
-		OldCommit:     oldCommit,
-		NewCommit:     newCommit,
-		CommitMessage: commitMsg,
-		Updated:       oldCommit != "" && newCommit != "" && oldCommit != newCommit,
-		DurationMs:    time.Since(started).Milliseconds(),
-		Output:        strings.TrimSpace(logBuilder.String()),
+		Domain:          site.Domain,
+		Branch:          branch,
+		Repo:            repoSlug,
+		OldCommit:       oldCommit,
+		NewCommit:       newCommit,
+		CommitMessage:   commitMsg,
+		Updated:         oldCommit != "" && newCommit != "" && oldCommit != newCommit,
+		DurationMs:      time.Since(started).Milliseconds(),
+		Output:          strings.TrimSpace(logBuilder.String()),
+		HealthOK:        hc.OK,
+		HealthCode:      hc.StatusCode,
+		HealthLatencyMs: hc.LatencyMs,
+		HealthSummary:   hc.Summary,
 	}, nil
 }
 
@@ -584,19 +606,27 @@ func (s *Server) handleGetSiteDeployInfo(w http.ResponseWriter, r *http.Request)
 		schedID = schedJob.ID
 	}
 
+	procMgr, procUnit, procState, queueEnabled := inspectSiteProcess(r.Context(), site)
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":                true,
-		"config":            cfg,
-		"webhook_url":       buildPublicWebhookURL(r, id, cfg.WebhookSecret),
-		"has_git":           hasGit,
-		"branch":            branch,
-		"current_commit":    currentCommit,
-		"is_laravel":        isLaravel,
-		"is_filament":       isFilament,
-		"php_binary":        resolvePHPBinary(site.PHPVersion),
-		"scheduler_enabled": schedEnabled,
-		"scheduler_cron_id": schedID,
-		"deployments":       deployments,
+		"ok":                   true,
+		"config":               cfg,
+		"webhook_url":          buildPublicWebhookURL(r, id, cfg.WebhookSecret),
+		"has_git":              hasGit,
+		"branch":               branch,
+		"current_commit":       currentCommit,
+		"is_laravel":           isLaravel,
+		"is_filament":          isFilament,
+		"php_binary":           resolvePHPBinary(site.PHPVersion),
+		"scheduler_enabled":    schedEnabled,
+		"scheduler_cron_id":    schedID,
+		"queue_worker_enabled": queueEnabled,
+		"queue_unit":           siteQueueUnitName(site.Domain),
+		"process_manager":      procMgr,
+		"process_unit":         procUnit,
+		"process_state":        procState,
+		"framework":            site.Framework,
+		"deployments":          deployments,
 	})
 }
 
@@ -714,17 +744,21 @@ func (s *Server) handleSiteDeployRollback(w http.ResponseWriter, r *http.Request
 
 	s.auditSite(r, "site.deploy.rollback", site.Domain, true, fmt.Sprintf("commit=%s->%s", res.OldCommit, res.NewCommit))
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":             true,
-		"domain":         res.Domain,
-		"branch":         res.Branch,
-		"repo":           res.Repo,
-		"old_commit":     res.OldCommit,
-		"new_commit":     res.NewCommit,
-		"commit_message": res.CommitMessage,
-		"updated":        res.Updated,
-		"duration_ms":    res.DurationMs,
-		"output":         res.Output,
-		"message":        fmt.Sprintf("Rollback %s ke #%s berhasil", res.Domain, res.NewCommit),
+		"ok":                true,
+		"domain":            res.Domain,
+		"branch":            res.Branch,
+		"repo":              res.Repo,
+		"old_commit":        res.OldCommit,
+		"new_commit":        res.NewCommit,
+		"commit_message":    res.CommitMessage,
+		"updated":           res.Updated,
+		"duration_ms":       res.DurationMs,
+		"output":            res.Output,
+		"health_ok":         res.HealthOK,
+		"health_code":       res.HealthCode,
+		"health_latency_ms": res.HealthLatencyMs,
+		"health_summary":    res.HealthSummary,
+		"message":           fmt.Sprintf("Rollback %s ke #%s berhasil", res.Domain, res.NewCommit),
 	})
 }
 

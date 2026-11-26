@@ -43,7 +43,7 @@
     { label: 'Custom :5000', url: 'http://127.0.0.1:5000' }
   ];
 
-  // Pilihan template One-Click Deploy
+  // Pilihan template One-Click Deploy nyata (membangun kode & menjalankan layanan otomatis)
   const DEPLOY_TEMPLATES: {
     id: string;
     name: string;
@@ -58,8 +58,8 @@
     {
       id: 'laravel',
       name: 'Laravel Starter',
-      version: 'Laravel 11.x (PHP-FPM)',
-      desc: 'Struktur public/index.php siap pakai beserta injeksi .env database MySQL otomatis.',
+      version: 'Composer create-project + MySQL',
+      desc: 'Menjalankan composer create-project laravel/laravel, suntik .env + APP_KEY, migrate & storage:link otomatis.',
       kind: 'php',
       needsDB: true,
       icon: 'ri-code-s-slash-line',
@@ -68,8 +68,8 @@
     {
       id: 'wordpress',
       name: 'WordPress CMS',
-      version: 'WordPress Latest',
-      desc: 'Siapkan struktur WordPress beserta file konfigurasi wp-config-sample-fikpanel.php otomatis.',
+      version: 'WordPress Latest (Auto-Download)',
+      desc: 'Mengunduh core resmi wordpress.org/latest.tar.gz, ekstrak otomatis & buat wp-config.php dengan salt acak.',
       kind: 'php',
       needsDB: true,
       icon: 'ri-article-line',
@@ -78,10 +78,9 @@
     {
       id: 'express',
       name: 'Node.js Web / API',
-      version: 'Node.js HTTP / Express (:3000)',
-      desc: 'Proyek Node.js siap jalan dengan reverse proxy otomatis ke http://127.0.0.1:3000.',
+      version: 'Node.js HTTP + PM2 Auto-Port',
+      desc: 'Membuat server Node.js siap pakai dengan endpoint /health, port bebas otomatis & langsung aktif di PM2.',
       kind: 'node',
-      defaultUpstream: 'http://127.0.0.1:3000',
       needsDB: false,
       icon: 'ri-nodejs-line',
       badge: 'Node.js'
@@ -89,21 +88,19 @@
     {
       id: 'gin',
       name: 'Golang HTTP Service',
-      version: 'Go 1.22+ HTTP (:8080)',
-      desc: 'Proyek Golang performa tinggi dengan reverse proxy otomatis ke http://127.0.0.1:8080.',
+      version: 'Go 1.21+ + systemd Auto-Port',
+      desc: 'Menghasilkan proyek Go, mengompilasi biner produksi, membuat unit systemd & langsung Online.',
       kind: 'go',
-      defaultUpstream: 'http://127.0.0.1:8080',
       needsDB: false,
       icon: 'ri-terminal-box-line',
       badge: 'Golang'
     },
     {
       id: 'fastapi',
-      name: 'Python FastAPI / WSGI',
-      version: 'FastAPI + Uvicorn (:8000)',
-      desc: 'Proyek Python web service dengan reverse proxy otomatis ke http://127.0.0.1:8000.',
+      name: 'Python FastAPI',
+      version: 'FastAPI + .venv + Uvicorn systemd',
+      desc: 'Membuat virtualenv terisolasi (.venv aman PEP 668), memasang FastAPI/Uvicorn & menyalakan service systemd.',
       kind: 'python',
-      defaultUpstream: 'http://127.0.0.1:8000',
       needsDB: false,
       icon: 'ri-code-box-line',
       badge: 'Python'
@@ -111,8 +108,8 @@
     {
       id: 'spa',
       name: 'Modern Static / SPA',
-      version: 'HTML5 + SPA Routing',
-      desc: 'Landing page responsif dengan routing fallback index.html untuk React, Vue, atau Svelte.',
+      version: 'HTML5 + Nginx SPA Routing',
+      desc: 'Web statis super ringan (0 MB RAM proses) dengan fallback try_files /index.html untuk React/Vue/Vite/Svelte.',
       kind: 'static',
       needsDB: false,
       icon: 'ri-html5-line',
@@ -140,7 +137,7 @@
   let dbPass = $state('');
   let dbTouched = $state(false);
 
-  // State provisioning akun Super Admin otomatis (Laravel / Filament)
+  // State provisioning akun Super Admin otomatis (Laravel / Filament) & deteksi stack Git
   let createAdmin = $state(true);
   let adminName = $state('Super Admin');
   let adminEmail = $state('');
@@ -148,6 +145,8 @@
   let adminEmailTouched = $state(false);
   let isFilamentRepo = $state(false);
   let isLaravelRepo = $state(false);
+  let detectedStackBadge = $state('');
+  let upstreamTouched = $state(false);
 
   // State One-Click Deploy
   let selectedTemplate = $state('laravel');
@@ -306,14 +305,26 @@
     }
   });
 
+  // Ambil port TCP lokal yang benar-benar bebas dari server agar tidak bentrok antar aplikasi
+  async function suggestFreeUpstream(targetKind: SiteKind) {
+    if (upstreamTouched || (targetKind !== 'node' && targetKind !== 'go' && targetKind !== 'python')) return;
+    try {
+      const res = await apiFetch<{ ok: boolean; upstream: string }>(`/api/sites/next-port?kind=${targetKind}`);
+      if (res?.upstream && !upstreamTouched) {
+        upstream = res.upstream;
+      }
+    } catch {
+      // Gunakan fallback standar bila gagal memeriksa port bebas
+      if (targetKind === 'node') upstream = 'http://127.0.0.1:3100';
+      else if (targetKind === 'go') upstream = 'http://127.0.0.1:8100';
+      else if (targetKind === 'python') upstream = 'http://127.0.0.1:8500';
+    }
+  }
+
   function selectKind(k: SiteKind) {
     kind = k;
-    if (k === 'node' && (upstream === 'http://127.0.0.1:8080' || upstream === 'http://127.0.0.1:8000')) {
-      upstream = 'http://127.0.0.1:3000';
-    } else if (k === 'go' && (upstream === 'http://127.0.0.1:3000' || upstream === 'http://127.0.0.1:8000')) {
-      upstream = 'http://127.0.0.1:8080';
-    } else if (k === 'python' && (upstream === 'http://127.0.0.1:3000' || upstream === 'http://127.0.0.1:8080')) {
-      upstream = 'http://127.0.0.1:8000';
+    if (k === 'node' || k === 'go' || k === 'python') {
+      suggestFreeUpstream(k);
     }
   }
 
@@ -492,7 +503,10 @@
       const res = await apiFetch<{
         branches: string[];
         detected_kind?: SiteKind;
+        detected_framework?: string;
         detected_post_cmd?: string;
+        package_manager?: string;
+        is_static_spa?: boolean;
         needs_db?: boolean;
         is_laravel?: boolean;
         is_filament?: boolean;
@@ -501,7 +515,7 @@
       if (gitBranches.length > 0 && !gitBranches.includes(gitBranch)) {
         gitBranch = gitBranches[0];
       }
-      // Prioritaskan hasil inspeksi file proyek aktual (package.json, composer.json, go.mod, ecosystem.config.cjs)
+      // Prioritaskan hasil inspeksi file proyek aktual (package.json, composer.json, go.mod, requirements.txt)
       if (res.detected_kind) {
         selectKind(res.detected_kind);
       }
@@ -515,6 +529,14 @@
       isLaravelRepo = !!(res.is_laravel || res.is_filament);
       if (isFilamentRepo || isLaravelRepo) {
         createAdmin = true;
+      }
+      if (res.detected_framework) {
+        const pmNote = res.package_manager && res.package_manager !== 'npm' ? ` · ${res.package_manager}` : '';
+        detectedStackBadge = res.is_static_spa
+          ? `${res.detected_framework}${pmNote} → Nginx Static (0 RAM)`
+          : `${res.detected_framework}${pmNote}`;
+      } else {
+        detectedStackBadge = '';
       }
     } catch {
       gitBranches = [gitBranch];
@@ -934,6 +956,7 @@
           {#if createDB}<dt>Database MySQL</dt><dd class="mono">{dbName} (user: {dbUser})</dd>{/if}
           {#if createDB && createAdmin && kind === 'php'}<dt>Super Admin</dt><dd class="mono">{adminEmail} (pass: {adminPass})</dd>{/if}
           {#if created.deploy_notes?.app_url}<dt>APP_URL (.env)</dt><dd class="mono">{created.deploy_notes.app_url}</dd>{/if}
+          {#if created.deploy_notes?.health_check}<dt>Smoke Test</dt><dd class="mono">{created.deploy_notes.health_check}</dd>{/if}
           <dt>Domain</dt><dd class="mono">{[created.domain, ...JSON.parse(created.aliases || '[]')].join(', ')}</dd>
         </dl>
         {#if created.deploy_notes?.deploy_warnings || created.deploy_notes?.git_warning || created.deploy_notes?.db_warning || created.deploy_notes?.admin_warning || created.deploy_notes?.filament_user_warning}
@@ -1548,7 +1571,12 @@
 
                 <label class="fld" for="as-git-post">
                   <div class="row-between">
-                    <span class="fld-label">Post-Clone Build Command <em>opsional</em></span>
+                    <span class="fld-label">
+                      Post-Clone Build Command <em>opsional</em>
+                      {#if detectedStackBadge}
+                        <span class="filament-pill">{detectedStackBadge}</span>
+                      {/if}
+                    </span>
                     <div class="presets">
                       <button type="button" class="preset" onclick={() => (gitPostCmd = 'composer install --no-interaction --prefer-dist')}>
                         composer install
@@ -1738,8 +1766,8 @@
                 />
               </label>
               <label class="fld" for="as-upstream">
-                <span class="fld-label">Upstream Aplikasi (Reverse Proxy Nginx)</span>
-                <input id="as-upstream" class="mono" type="text" placeholder="http://127.0.0.1:3000" bind:value={upstream} />
+                <span class="fld-label">Upstream Aplikasi (Port Bebas Otomatis)</span>
+                <input id="as-upstream" class="mono" type="text" placeholder="http://127.0.0.1:3100" bind:value={upstream} oninput={() => (upstreamTouched = true)} />
               </label>
               <div class="presets">
                 {#each UPSTREAM_PRESETS as p (p.label)}
@@ -1915,7 +1943,7 @@
               <div class="deploy-prog-pct mono">{deployPercent}%</div>
             </div>
             <div class="deploy-prog-track">
-              <div class="deploy-prog-fill" style="width: {deployPercent}%"></div>
+              <div class="deploy-prog-fill" style="--prog-w: {deployPercent}%"></div>
             </div>
             <div class="stepper deploy-prog-steps">
               <span class="stepper__step dp-step" class:done={deployPercent >= 15} class:active={deployPercent < 15}>

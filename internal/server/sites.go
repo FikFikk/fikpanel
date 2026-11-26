@@ -158,18 +158,17 @@ func (s *Server) buildSite(r *http.Request, in SiteInput, base *store.Site) (*st
 	site.Upstream, site.RootPath, site.PHPVersion = "", "", ""
 	switch in.Kind {
 	case "proxy", "node", "go", "python":
-		ups := in.Upstream
-		if strings.TrimSpace(ups) == "" {
-			switch in.Kind {
-			case "node":
-				ups = "http://127.0.0.1:3000"
-			case "go":
-				ups = "http://127.0.0.1:8080"
-			case "python":
-				ups = "http://127.0.0.1:8000"
-			default:
-				ups = "http://127.0.0.1:3000"
-			}
+		ups := strings.TrimSpace(in.Upstream)
+		isDefaultPort := ups == "" ||
+			(in.Kind == "node" && ups == "http://127.0.0.1:3000") ||
+			(in.Kind == "go" && ups == "http://127.0.0.1:8080") ||
+			(in.Kind == "python" && ups == "http://127.0.0.1:8000")
+		// Alokasikan port bebas otomatis untuk situs baru (node/go/python) agar tidak bentrok port default
+		if base.ID == 0 && in.Kind != "proxy" && (ups == "" || (isDefaultPort && s.isUpstreamPortTaken(r.Context(), ups, 0))) {
+			freePort := s.allocateFreeAppPort(r.Context(), in.Kind)
+			ups = fmt.Sprintf("http://127.0.0.1:%d", freePort)
+		} else if ups == "" {
+			ups = "http://127.0.0.1:3000"
 		}
 		if site.Upstream, err = sites.ValidateUpstream(ups); err != nil {
 			return nil, &sites.ValidationError{Msg: err.Error()}
@@ -613,15 +612,18 @@ func (s *Server) handleDeleteSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hentikan proses PM2 jika situs berbasis Node.js / Go / Python
-	if runtime.GOOS != "windows" && (site.Kind == "node" || site.Kind == "go" || site.Kind == "python") {
-		_ = exec.CommandContext(r.Context(), "pm2", "delete", site.Domain).Run()
-		if projectDir != "" {
-			ecoPath := filepath.Join(projectDir, "ecosystem.config.cjs")
-			if _, err := os.Stat(ecoPath); err == nil {
-				_ = exec.CommandContext(r.Context(), "pm2", "delete", ecoPath).Run()
+	// Hentikan proses PM2 dan hapus unit systemd terkelola (app & queue worker) agar tidak meninggalkan daemon yatim
+	if runtime.GOOS != "windows" {
+		if site.Kind == "node" || site.Kind == "go" || site.Kind == "python" {
+			_ = exec.CommandContext(r.Context(), "pm2", "delete", site.Domain).Run()
+			if projectDir != "" {
+				ecoPath := filepath.Join(projectDir, "ecosystem.config.cjs")
+				if _, err := os.Stat(ecoPath); err == nil {
+					_ = exec.CommandContext(r.Context(), "pm2", "delete", ecoPath).Run()
+				}
 			}
 		}
+		cleanupSiteManagedUnits(r.Context(), site.Domain)
 	}
 
 	// 3. Hapus database fisik MySQL beserta akun penggunanya jika dipilih

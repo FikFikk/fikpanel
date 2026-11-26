@@ -23,6 +23,10 @@
     updated: boolean;
     duration_ms?: number;
     output?: string;
+    health_ok?: boolean;
+    health_code?: number;
+    health_latency_ms?: number;
+    health_summary?: string;
   }
 
   // Antarmuka properti untuk modal Git Pull, Webhook Auto-Deploy, & Rollback
@@ -258,20 +262,22 @@
       <!-- ═══ SUB-TAB 1: PULL & DEPLOY ═══ -->
       {#if subTab === 'pull'}
         <div class="git-cmd-section">
-          <div class="git-opt-row">
-            <label class="git-opt-check" for="gp-opt-maint">
-              <input id="gp-opt-maint" type="checkbox" bind:checked={optMaintenance} disabled={gitPullRunning} />
-              <span>Maintenance Mode (<code class="mono">artisan down/up</code>)</span>
-            </label>
-            <label class="git-opt-check" for="gp-opt-opt">
-              <input id="gp-opt-opt" type="checkbox" bind:checked={optAutoOptimize} disabled={gitPullRunning} />
-              <span>Optimize Produksi (<code class="mono">optimize</code> + <code class="mono">filament:optimize</code>)</span>
-            </label>
-            <label class="git-opt-check" for="gp-opt-assets">
-              <input id="gp-opt-assets" type="checkbox" bind:checked={optRebuildAssets} disabled={gitPullRunning} />
-              <span>Rebuild Vite Otomatis (Anti-OOM 768 MB)</span>
-            </label>
-          </div>
+          {#if gitPullTarget.kind === 'php'}
+            <div class="git-opt-row">
+              <label class="git-opt-check" for="gp-opt-maint">
+                <input id="gp-opt-maint" type="checkbox" bind:checked={optMaintenance} disabled={gitPullRunning} />
+                <span>Maintenance Mode (<code class="mono">artisan down/up</code>)</span>
+              </label>
+              <label class="git-opt-check" for="gp-opt-opt">
+                <input id="gp-opt-opt" type="checkbox" bind:checked={optAutoOptimize} disabled={gitPullRunning} />
+                <span>Optimize Produksi (<code class="mono">optimize</code> + <code class="mono">filament:optimize</code> + <code class="mono">queue:restart</code>)</span>
+              </label>
+              <label class="git-opt-check" for="gp-opt-assets">
+                <input id="gp-opt-assets" type="checkbox" bind:checked={optRebuildAssets} disabled={gitPullRunning} />
+                <span>Rebuild Vite Otomatis (Anti-OOM 768 MB)</span>
+              </label>
+            </div>
+          {/if}
 
           <div class="git-cmd-label-row">
             <span class="git-cmd-label">
@@ -298,7 +304,15 @@
               class="git-cmd-input mono"
               bind:value={gitPullCustomCmd}
               disabled={gitPullRunning}
-              placeholder="Otomatis: down → git pull → composer → build Vite → migrate → optimize → up"
+              placeholder={gitPullTarget.kind === 'php'
+                ? 'Otomatis: fetch+reset (anti-konflik) → composer → build Vite → migrate → optimize → queue:restart → smoke test'
+                : gitPullTarget.kind === 'node'
+                  ? 'Otomatis: fetch+reset → pnpm/yarn/bun/npm build → Prisma/Drizzle → PM2 startOrReload → smoke test'
+                  : gitPullTarget.kind === 'go'
+                    ? 'Otomatis: fetch+reset → go build (.fikpanel-bin) → systemctl restart → smoke test'
+                    : gitPullTarget.kind === 'python'
+                      ? 'Otomatis: fetch+reset → .venv pip install → Django migrate → systemctl restart → smoke test'
+                      : 'Otomatis: fetch+reset → build SPA ke dist/ → Nginx static routing → smoke test'}
             />
           </div>
 
@@ -322,7 +336,7 @@
           <div class="git-confirm-note">
             <i class="ri-shield-check-line" aria-hidden="true"></i>
             <span>
-              Dijalankan di <code class="mono">{getProjectRootDir(gitPullTarget)}</code>. File <code class="mono">.env</code> (izin <code class="mono">0640</code>) dicadangkan otomatis &amp; PHP-FPM di-reload setelah selesai.
+              Dijalankan di <code class="mono">{getProjectRootDir(gitPullTarget)}</code>. File <code class="mono">.env</code> (izin <code class="mono">0640</code>) dicadangkan otomatis, bebas konflik <code class="mono">git pull</code>, dan diverifikasi dengan HTTP Smoke Test.
             </span>
           </div>
         </div>
@@ -338,8 +352,8 @@
         {/if}
 
         {#if gitPullResult}
-          <div class="git-pull-alert {gitPullResult.updated ? 'is-updated' : 'is-uptodate'}">
-            <i class={gitPullResult.updated ? 'ri-checkbox-circle-fill' : 'ri-information-fill'} aria-hidden="true"></i>
+          <div class="git-pull-alert {gitPullResult.health_ok === false ? 'is-error' : gitPullResult.updated ? 'is-updated' : 'is-uptodate'}">
+            <i class={gitPullResult.health_ok === false ? 'ri-alert-fill' : gitPullResult.updated ? 'ri-checkbox-circle-fill' : 'ri-information-fill'} aria-hidden="true"></i>
             <div>
               {#if gitPullResult.updated}
                 <strong>Berhasil Diperbarui ({gitPullResult.old_commit} &rarr; {gitPullResult.new_commit})</strong>
@@ -348,6 +362,9 @@
               {/if}
               {#if gitPullResult.commit_message}
                 <p>Commit terakhir: <span class="mono">"{gitPullResult.commit_message}"</span></p>
+              {/if}
+              {#if gitPullResult.health_summary}
+                <p>Smoke Test Origin: <strong class="mono">{gitPullResult.health_summary}</strong></p>
               {/if}
             </div>
           </div>

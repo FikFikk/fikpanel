@@ -507,9 +507,12 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 		branches = []string{"main", "master"}
 	}
 
-	// Inspeksi struktur berkas root repositori agar deteksi runtime akurat meski GitHub melabeli (CSS/HTML)
+	// Inspeksi struktur berkas root repositori agar deteksi runtime, framework, dan SPA akurat
 	detectedKind := ""
+	detectedFramework := ""
 	detectedPostCmd := ""
+	packageManager := "npm"
+	isStaticSPA := false
 	needsDB := false
 	isLaravel := false
 	isFilament := false
@@ -532,64 +535,108 @@ func (s *Server) handleGitListBranches(w http.ResponseWriter, r *http.Request) {
 				fileSet[strings.ToLower(f.Name)] = true
 			}
 			switch {
+			case fileSet["pnpm-lock.yaml"]:
+				packageManager = "pnpm"
+			case fileSet["yarn.lock"]:
+				packageManager = "yarn"
+			case fileSet["bun.lockb"] || fileSet["bun.lock"]:
+				packageManager = "bun"
+			}
+
+			fetchRawFile := func(relPath string) []byte {
+				fURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repo, relPath)
+				fReq, _ := http.NewRequestWithContext(ctx, "GET", fURL, nil)
+				fReq.Header.Set("Accept", "application/vnd.github.raw")
+				fReq.Header.Set("User-Agent", "FikPanel-Server")
+				if token != "" {
+					fReq.Header.Set("Authorization", "Bearer "+token)
+				}
+				fResp, err := client.Do(fReq)
+				if err != nil {
+					return nil
+				}
+				defer fResp.Body.Close()
+				rawBytes, _ := io.ReadAll(io.LimitReader(fResp.Body, 128*1024))
+				return rawBytes
+			}
+
+			switch {
 			case fileSet["composer.json"] || fileSet["artisan"]:
 				detectedKind = "php"
+				detectedFramework = "PHP"
 				needsDB = true
 				if fileSet["artisan"] {
 					isLaravel = true
-					detectedPostCmd = "composer install --no-interaction --prefer-dist --optimize-autoloader && php artisan key:generate --force && php artisan migrate --force"
+					detectedFramework = "Laravel"
+					detectedPostCmd = laravelDefaultCmd
 				} else {
 					detectedPostCmd = "composer install --no-interaction --prefer-dist"
 				}
-				// Periksa isi composer.json untuk mendeteksi penggunaan Filament Panel
 				if fileSet["composer.json"] {
-					compURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/composer.json", repo)
-					compReq, _ := http.NewRequestWithContext(ctx, "GET", compURL, nil)
-					compReq.Header.Set("Accept", "application/vnd.github.raw")
-					compReq.Header.Set("User-Agent", "FikPanel-Server")
-					if token != "" {
-						compReq.Header.Set("Authorization", "Bearer "+token)
-					}
-					if compResp, err := client.Do(compReq); err == nil {
-						rawComp, _ := io.ReadAll(io.LimitReader(compResp.Body, 128*1024))
-						_ = compResp.Body.Close()
-						compStr := strings.ToLower(string(rawComp))
-						if strings.Contains(compStr, "filament/filament") {
-							isFilament = true
-							isLaravel = true
-						} else if strings.Contains(compStr, "laravel/framework") {
-							isLaravel = true
-						}
+					compStr := strings.ToLower(string(fetchRawFile("composer.json")))
+					if strings.Contains(compStr, "filament/filament") {
+						isFilament = true
+						isLaravel = true
+						detectedFramework = "Filament"
+					} else if strings.Contains(compStr, "laravel/framework") {
+						isLaravel = true
+						detectedFramework = "Laravel"
 					}
 				}
+			case fileSet["wp-config-sample.php"] || fileSet["wp-includes"]:
+				detectedKind = "php"
+				detectedFramework = "WordPress"
+				needsDB = true
 			case fileSet["go.mod"]:
 				detectedKind = "go"
-				detectedPostCmd = "go build -o app ."
+				detectedFramework = "Go"
+				detectedPostCmd = "Auto: go build + systemd service"
+			case fileSet["requirements.txt"] || fileSet["pyproject.toml"] || fileSet["manage.py"]:
+				detectedKind = "python"
+				detectedFramework = "Python"
+				if fileSet["manage.py"] {
+					detectedFramework = "Django"
+					needsDB = true
+				}
+				detectedPostCmd = "Auto: .venv pip install + Uvicorn/Gunicorn systemd"
 			case fileSet["package.json"] || fileSet["ecosystem.config.cjs"] || fileSet["ecosystem.config.js"]:
-				detectedKind = "node"
 				if fileSet["drizzle.config.ts"] || fileSet["drizzle.config.js"] || fileSet["prisma"] {
 					needsDB = true
 				}
-				if fileSet["ecosystem.config.cjs"] {
-					detectedPostCmd = "npm install && npm run build && (pm2 restart ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs)"
-				} else {
-					detectedPostCmd = "npm install && npm run build"
+				if fileSet["package.json"] {
+					rawPkg := fetchRawFile("package.json")
+					fw, spa, _, _, _, _, hasPrisma, hasDrizzle := inspectPackageJSON(rawPkg)
+					detectedFramework = fw
+					isStaticSPA = spa
+					if hasPrisma || hasDrizzle {
+						needsDB = true
+					}
 				}
-			case fileSet["requirements.txt"] || fileSet["pyproject.toml"] || fileSet["manage.py"]:
-				detectedKind = "python"
-				detectedPostCmd = "pip install -r requirements.txt"
+				if isStaticSPA {
+					detectedKind = "static"
+					detectedPostCmd = fmt.Sprintf("Auto: %s install && %s run build → Nginx Static SPA", packageManager, packageManager)
+				} else {
+					detectedKind = "node"
+					if detectedFramework == "" {
+						detectedFramework = "Node.js"
+					}
+					detectedPostCmd = fmt.Sprintf("Auto: %s install && build + PM2 startOrReload", packageManager)
+				}
 			}
 		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":                true,
-		"branches":          branches,
-		"detected_kind":     detectedKind,
-		"detected_post_cmd": detectedPostCmd,
-		"needs_db":          needsDB,
-		"is_laravel":        isLaravel,
-		"is_filament":       isFilament,
+		"ok":                 true,
+		"branches":           branches,
+		"detected_kind":      detectedKind,
+		"detected_framework": detectedFramework,
+		"detected_post_cmd":  detectedPostCmd,
+		"package_manager":    packageManager,
+		"is_static_spa":      isStaticSPA,
+		"needs_db":           needsDB,
+		"is_laravel":         isLaravel,
+		"is_filament":        isFilament,
 	})
 }
 
@@ -774,10 +821,10 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 		}
 	}
 
-	// 2. One-Click Deploy Template
+	// 2. One-Click Deploy Template Nyata (Laravel, WordPress, Express PM2, Go systemd, FastAPI .venv, Static SPA)
 	if tpl := strings.TrimSpace(strings.ToLower(in.DeployTemplate)); tpl != "" && created.RootPath != "" && runtime.GOOS != "windows" {
-		updateSiteDeployProgress(created.Domain, 45, "template", "Menyiapkan struktur berkas template "+tpl+"...")
-		if err := provisionDeployTemplate(created, tpl, dbName, dbUser, dbPass); err != nil {
+		updateSiteDeployProgress(created.Domain, 45, "template", "Menyiapkan & membangun proyek template "+tpl+"...")
+		if err := s.provisionRealDeployTemplate(ctx, created, tpl, dbName, dbUser, dbPass, notes); err != nil {
 			notes["template_warning"] = err.Error()
 		} else {
 			notes["template"] = tpl
@@ -849,6 +896,18 @@ func (s *Server) applyPostSiteProvisioning(ctx context.Context, created *store.S
 			_ = s.store.RecordAudit(s.bgCtx, "user", "ssl.issue", domain, ok, msg, uid)
 		})
 		notes["ssl"] = "issuing"
+	}
+
+	// 6. Uji Kesehatan HTTP Lokal Pasca-Deploy (Smoke Test)
+	if runtime.GOOS != "windows" {
+		updateSiteDeployProgress(created.Domain, 98, "health", "Menjalankan uji kesehatan HTTP origin lokal...")
+		hc := runPostDeploySmokeTest(ctx, created)
+		notes["health_check"] = hc.Summary
+		if hc.OK {
+			notes["health_ok"] = "true"
+		} else {
+			notes["health_ok"] = "false"
+		}
 	}
 
 	updateSiteDeployProgress(created.Domain, 100, "done", "Deployment selesai! Situs siap digunakan.")
@@ -975,6 +1034,19 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			notes["app_url"] = appURL
 		}
 
+		// Hormati Redis bila .env.example memintanya dan Redis aktif di 127.0.0.1:6379; selain itu pakai driver file yang aman
+		sessionDriver := "file"
+		cacheStore := "file"
+		if rawEx, exErr := os.ReadFile(filepath.Join(targetDir, ".env.example")); exErr == nil && isLocalRedisListening() {
+			exStr := string(rawEx)
+			if strings.Contains(exStr, "SESSION_DRIVER=redis") {
+				sessionDriver = "redis"
+			}
+			if strings.Contains(exStr, "CACHE_STORE=redis") || strings.Contains(exStr, "CACHE_DRIVER=redis") {
+				cacheStore = "redis"
+			}
+		}
+
 		var envLines []string
 		envLines = append(envLines, fmt.Sprintf("PORT=%s", appPort))
 		envLines = append(envLines, "NODE_ENV=production")
@@ -983,9 +1055,9 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		envLines = append(envLines, "APP_DEBUG=false")
 		envLines = append(envLines, fmt.Sprintf("APP_URL=%s", appURL))
 		envLines = append(envLines, fmt.Sprintf("APP_KEY=%s", existingAppKey))
-		envLines = append(envLines, "SESSION_DRIVER=file")
+		envLines = append(envLines, "SESSION_DRIVER="+sessionDriver)
 		envLines = append(envLines, fmt.Sprintf("SESSION_COOKIE=%s", sessionCookieName))
-		envLines = append(envLines, "CACHE_STORE=file")
+		envLines = append(envLines, "CACHE_STORE="+cacheStore)
 		if createDB && dbName != "" && dbUser != "" {
 			envLines = append(envLines, fmt.Sprintf("DATABASE_URL=\"mysql://%s:%s@127.0.0.1:3306/%s\"", url.QueryEscape(dbUser), url.QueryEscape(dbPass), dbName))
 			envLines = append(envLines, "DB_CONNECTION=mysql")
@@ -1076,39 +1148,35 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 		hasComposer = true
 	}
 
-	if postCmd != "" || hasArtisan || hasComposer {
-		// Sisipkan otomatis npx drizzle-kit push apabila repo memakai Drizzle ORM dan DB diaktifkan
-		hasDrizzle := false
-		if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.ts")); err == nil {
-			hasDrizzle = true
-		} else if _, err := os.Stat(filepath.Join(targetDir, "drizzle.config.js")); err == nil {
-			hasDrizzle = true
-		}
-		if hasDrizzle && createDB && !strings.Contains(postCmd, "drizzle-kit") {
-			if strings.Contains(postCmd, "npm run build") {
-				postCmd = strings.Replace(postCmd, "npm run build", "npm run build && npx drizzle-kit push", 1)
-			} else {
-				postCmd = postCmd + " && npx drizzle-kit push"
-			}
-		}
+	insp := inspectLocalProject(targetDir)
+	isNonPHPStack := !hasArtisan && !hasComposer && (site.Kind == "node" || site.Kind == "go" || site.Kind == "python" || insp.IsStaticSPA || insp.Kind == "node" || insp.Kind == "go" || insp.Kind == "python")
 
+	if postCmd != "" || hasArtisan || hasComposer || isNonPHPStack {
 		bctx, bcancel := context.WithTimeout(ctx, 300*time.Second)
 		defer bcancel()
 		phpBin := resolvePHPBinary(site.PHPVersion)
 		compCmd := resolveComposerCommand(phpBin)
-		buildEnv := append(os.Environ(),
-			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-			"CI=true",
-			"COMPOSER_ALLOW_SUPERUSER=1",
-			"COMPOSER_MEMORY_LIMIT=-1",
-			"NODE_OPTIONS=--max-old-space-size=768",
-		)
+		buildEnv := fullRuntimeExecEnv()
 
 		var deployWarnings []string
 		var combinedLog []byte
+		appendCombined := func(title, out string) {
+			combinedLog = append(combinedLog, []byte("==> "+title+"\n")...)
+			if trimmed := strings.TrimSpace(out); trimmed != "" {
+				combinedLog = append(combinedLog, []byte(trimmed+"\n\n")...)
+			} else {
+				combinedLog = append(combinedLog, []byte("OK\n\n")...)
+			}
+		}
 
 		// Otomasi penuh proyek PHP Biasa, Laravel, & Laravel Filament dalam tahapan terukur agar persentase progress akurat
 		if hasArtisan {
+			// Pastikan ekstensi wajib Filament (php<ver>-intl & bcmath) terpasang sebelum composer install
+			if insp.IsFilament {
+				updateSiteDeployProgress(site.Domain, 50, "composer", "Memeriksa ekstensi PHP wajib Filament (intl, bcmath)...")
+				ensureLaravelPHPExtensions(bctx, site.PHPVersion, appendCombined)
+			}
+
 			runStage := func(pct int, stage, label, script string) error {
 				updateSiteDeployProgress(site.Domain, pct, stage, label)
 				c := exec.CommandContext(bctx, "sh", "-c", script)
@@ -1152,7 +1220,7 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 
 			// Hormati perintah post-deploy kustom yang ditulis user bila berbeda dari preset bawaan Laravel
 			trimmedPost := strings.TrimSpace(postCmd)
-			if trimmedPost != "" && trimmedPost != laravelDefaultCmd {
+			if trimmedPost != "" && trimmedPost != laravelDefaultCmd && !strings.HasPrefix(trimmedPost, "Auto:") {
 				if err := runStage(88, "custom_cmd", "Menjalankan perintah post-deploy kustom...", trimmedPost); err != nil {
 					deployWarnings = append(deployWarnings, "Perintah post-deploy kustom selesai dengan error")
 				}
@@ -1161,6 +1229,29 @@ func (s *Server) cloneGitRepoToSite(ctx context.Context, site *store.Site, repoU
 			// Bersihkan placeholder stub '{{ ViewAny }}' pada app/Policies/*.php hasil shield:generate
 			sanitizeFilamentShieldPolicies(targetDir)
 
+			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o640)
+		} else if isNonPHPStack {
+			// Pipeline universal zero-config untuk Node.js (PM2), Static SPA (Nginx dist/), Golang (systemd), & Python (.venv + systemd)
+			updateSiteDeployProgress(site.Domain, 62, "build", "Membangun proyek "+insp.Framework+" & menyalakan layanan terkelola...")
+			nonPHPWarns := s.buildAndStartNonPHPProject(bctx, site, targetDir, buildEnv, appendCombined)
+			deployWarnings = append(deployWarnings, nonPHPWarns...)
+
+			trimmedPost := strings.TrimSpace(postCmd)
+			isAutoPlaceholder := trimmedPost == "" || strings.HasPrefix(trimmedPost, "Auto:") ||
+				trimmedPost == "npm install && npm run build" ||
+				trimmedPost == "go build -o app ." ||
+				trimmedPost == "pip install -r requirements.txt"
+			if !isAutoPlaceholder {
+				updateSiteDeployProgress(site.Domain, 86, "custom_cmd", "Menjalankan perintah post-deploy kustom...")
+				cCmd := exec.CommandContext(bctx, "sh", "-c", trimmedPost)
+				cCmd.Dir = targetDir
+				cCmd.Env = buildEnv
+				cOut, cErr := cCmd.CombinedOutput()
+				appendCombined(trimmedPost, string(cOut))
+				if cErr != nil {
+					deployWarnings = append(deployWarnings, "Perintah post-deploy kustom melaporkan galat")
+				}
+			}
 			_ = os.WriteFile(filepath.Join(targetDir, "fikpanel-deploy.log"), combinedLog, 0o640)
 		} else {
 			if hasComposer && (postCmd == "" || strings.Contains(postCmd, "composer install")) {
@@ -2277,6 +2368,9 @@ func (s *Server) enrichSiteRuntimeMeta(ctx context.Context, site *store.Site, ng
 	site.HasCICD = hasCICD
 	site.CICDProvider = cicdProvider
 
+	// Deteksi status process manager terkelola (PM2 / systemd) serta Queue Worker Laravel
+	site.ProcessManager, site.ProcessUnit, site.ProcessState, site.QueueWorkerEnabled = inspectSiteProcess(ctx, site)
+
 	// Deteksi atau lengkapi metadata framework dan runtime cerdas
 	rt := discovery.DetectProjectRuntime(site.RootPath, site.Upstream, site.Domain)
 	needDBUpdate := false
@@ -2380,16 +2474,20 @@ func (s *Server) handleSiteGitPull(w http.ResponseWriter, r *http.Request) {
 
 	s.auditSite(r, "site.git.pull", site.Domain, true, fmt.Sprintf("branch=%s commit=%s->%s (%dms)", res.Branch, res.OldCommit, res.NewCommit, res.DurationMs))
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":             true,
-		"domain":         res.Domain,
-		"branch":         res.Branch,
-		"repo":           res.Repo,
-		"old_commit":     res.OldCommit,
-		"new_commit":     res.NewCommit,
-		"commit_message": res.CommitMessage,
-		"updated":        res.Updated,
-		"duration_ms":    res.DurationMs,
-		"output":         res.Output,
+		"ok":                true,
+		"domain":            res.Domain,
+		"branch":            res.Branch,
+		"repo":              res.Repo,
+		"old_commit":        res.OldCommit,
+		"new_commit":        res.NewCommit,
+		"commit_message":    res.CommitMessage,
+		"updated":           res.Updated,
+		"duration_ms":       res.DurationMs,
+		"output":            res.Output,
+		"health_ok":         res.HealthOK,
+		"health_code":       res.HealthCode,
+		"health_latency_ms": res.HealthLatencyMs,
+		"health_summary":    res.HealthSummary,
 	})
 }
 

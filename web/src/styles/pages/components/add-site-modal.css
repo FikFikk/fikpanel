@@ -263,7 +263,7 @@
   .cmp-add-site .deploy-prog-text small { font-size: 0.73rem; color: var(--text-muted); }
   .cmp-add-site .deploy-prog-pct { font-size: 1.05rem; font-weight: 700; color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); padding: 0.2rem 0.6rem; border-radius: 999px; flex-shrink: 0; }
   .cmp-add-site .deploy-prog-track { width: 100%; height: 10px; background: var(--bg-inset); border-radius: 999px; overflow: hidden; border: 1px solid var(--border-strong); }
-  .cmp-add-site .deploy-prog-fill { height: 100%; min-width: 6px; background: linear-gradient(90deg, var(--accent-hover), var(--accent), var(--accent-strong)); box-shadow: 0 0 10px var(--ring-accent); border-radius: 999px; transition: width 0.35s ease; }
+  .cmp-add-site .deploy-prog-fill { width: var(--prog-w, 0%); height: 100%; min-width: 6px; background: linear-gradient(90deg, var(--accent-hover), var(--accent), var(--accent-strong)); box-shadow: 0 0 10px var(--ring-accent); border-radius: 999px; transition: width 0.35s ease; }
   .cmp-add-site .deploy-prog-steps { padding-top: 0.15rem; }
 
   @media (max-width: 680px) {

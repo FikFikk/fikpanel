@@ -33,18 +33,22 @@ type Site struct {
 	SSLStatus  string `json:"ssl_status"`
 	SSLExpires int64  `json:"ssl_expires"`
 
-	// Metadata runtime, status hidup, log akses nyata, repositori Git, dan pipeline CI/CD (diperkaya saat query API)
-	LiveStatus    string `json:"live_status,omitempty"`
-	LiveDetail    string `json:"live_detail,omitempty"`
-	RequestCount  int64  `json:"request_count"`
-	RequestSource string `json:"request_source,omitempty"`
-	BackupCount   int    `json:"backup_count"`
-	HasGit        bool   `json:"has_git"`
-	GitBranch     string `json:"git_branch,omitempty"`
-	GitRepo       string `json:"git_repo,omitempty"`
-	GitCommit     string `json:"git_commit,omitempty"`
-	HasCICD       bool   `json:"has_cicd"`
-	CICDProvider  string `json:"cicd_provider,omitempty"`
+	// Metadata runtime, status hidup, log akses nyata, proses terkelola, repositori Git, dan pipeline CI/CD (diperkaya saat query API)
+	LiveStatus         string `json:"live_status,omitempty"`
+	LiveDetail         string `json:"live_detail,omitempty"`
+	RequestCount       int64  `json:"request_count"`
+	RequestSource      string `json:"request_source,omitempty"`
+	BackupCount        int    `json:"backup_count"`
+	HasGit             bool   `json:"has_git"`
+	GitBranch          string `json:"git_branch,omitempty"`
+	GitRepo            string `json:"git_repo,omitempty"`
+	GitCommit          string `json:"git_commit,omitempty"`
+	HasCICD            bool   `json:"has_cicd"`
+	CICDProvider       string `json:"cicd_provider,omitempty"`
+	ProcessManager     string `json:"process_manager,omitempty"`
+	ProcessUnit        string `json:"process_unit,omitempty"`
+	ProcessState       string `json:"process_state,omitempty"`
+	QueueWorkerEnabled bool   `json:"queue_worker_enabled,omitempty"`
 }
 
 // Certificate merepresentasikan metadata sertifikat TLS milik sebuah situs

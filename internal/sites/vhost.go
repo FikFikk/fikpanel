@@ -117,18 +117,20 @@ server {
         rewrite ^ /50x.html break;
     }
 {{- if or (eq .Kind "proxy") (eq .Kind "node") (eq .Kind "go") (eq .Kind "python")}}
+    client_max_body_size 64m;
 
     location / {
         proxy_pass {{.Upstream}};
         proxy_http_version 1.1;
-        proxy_intercept_errors on;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $http_connection;
-        proxy_read_timeout 60s;
+        proxy_connect_timeout 15s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
     }
 {{- else}}
 
@@ -136,10 +138,12 @@ server {
 {{- if eq .Kind "php"}}
     index index.php index.html index.htm;
     client_max_body_size 64m;
+{{- if not .HasCustomRootLocation}}
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
+{{- end}}
 
     location ~ \.php$ {
         try_files $uri =404;
@@ -152,10 +156,16 @@ server {
     }
 {{- else}}
     index index.html index.htm;
+{{- if not .HasCustomRootLocation}}
 
     location / {
+{{- if .IsSPA}}
+        try_files $uri $uri/ /index.html;
+{{- else}}
         try_files $uri $uri/ =404;
+{{- end}}
     }
+{{- end}}
 {{- end}}
 
     location ~ /\.(?!well-known) {
@@ -170,22 +180,24 @@ server {
 {{end}}`))
 
 type vhostData struct {
-	Domain      string
-	ServerNames string
-	Kind        string
-	Root        string
-	Upstream    string
-	PHPSocket   string
-	ExtraConf   string
-	LogDir      string
-	ACMEWebroot string
-	ErrorDir    string
-	SSL         bool
-	ForceHTTPS  bool
-	HSTS        bool
-	CertPath    string
-	KeyPath     string
-	WAFInclude  string
+	Domain                string
+	ServerNames           string
+	Kind                  string
+	Root                  string
+	Upstream              string
+	PHPSocket             string
+	ExtraConf             string
+	LogDir                string
+	ACMEWebroot           string
+	ErrorDir              string
+	SSL                   bool
+	ForceHTTPS            bool
+	HSTS                  bool
+	CertPath              string
+	KeyPath               string
+	WAFInclude            string
+	IsSPA                 bool
+	HasCustomRootLocation bool
 }
 
 // AllDomains mengembalikan domain utama + alias situs
@@ -228,23 +240,36 @@ func (m *Manager) Render(site *store.Site, cert *store.Certificate) (string, err
 		}
 	}
 
+	// Deteksi apakah situs statis memakai routing SPA (Vite/React/Vue/Svelte) dan apakah ExtraConf sudah menimpa location /
+	extraTrim := strings.TrimSpace(site.ExtraConf)
+	fwLower := strings.ToLower(strings.TrimSpace(site.Framework))
+	isSPA := site.Kind == "static" && (strings.Contains(fwLower, "spa") ||
+		strings.Contains(fwLower, "vite") ||
+		strings.Contains(fwLower, "react") ||
+		strings.Contains(fwLower, "vue") ||
+		strings.Contains(fwLower, "svelte") ||
+		strings.Contains(fwLower, "angular"))
+	hasCustomRootLoc := strings.Contains(extraTrim, "location / {") || strings.Contains(extraTrim, "location /{")
+
 	data := vhostData{
-		Domain:      site.Domain,
-		ServerNames: strings.Join(AllDomains(site), " "),
-		Kind:        site.Kind,
-		Root:        site.RootPath,
-		Upstream:    site.Upstream,
-		PHPSocket:   phpSocket(site.PHPVersion),
-		ExtraConf:   strings.TrimSpace(site.ExtraConf),
-		LogDir:      filepath.ToSlash(m.paths.LogDir),
-		ACMEWebroot: filepath.ToSlash(m.paths.ACMEWebroot),
-		ErrorDir:    filepath.ToSlash(m.paths.ErrorDir),
-		SSL:         sslReady,
-		ForceHTTPS:  site.ForceHTTPS == 1,
-		HSTS:        site.HSTS == 1,
-		CertPath:    certPath,
-		KeyPath:     keyPath,
-		WAFInclude:  wafInclude,
+		Domain:                site.Domain,
+		ServerNames:           strings.Join(AllDomains(site), " "),
+		Kind:                  site.Kind,
+		Root:                  site.RootPath,
+		Upstream:              site.Upstream,
+		PHPSocket:             phpSocket(site.PHPVersion),
+		ExtraConf:             extraTrim,
+		LogDir:                filepath.ToSlash(m.paths.LogDir),
+		ACMEWebroot:           filepath.ToSlash(m.paths.ACMEWebroot),
+		ErrorDir:              filepath.ToSlash(m.paths.ErrorDir),
+		SSL:                   sslReady,
+		ForceHTTPS:            site.ForceHTTPS == 1,
+		HSTS:                  site.HSTS == 1,
+		CertPath:              certPath,
+		KeyPath:               keyPath,
+		WAFInclude:            wafInclude,
+		IsSPA:                 isSPA,
+		HasCustomRootLocation: hasCustomRootLoc,
 	}
 	var buf bytes.Buffer
 	if err := vhostTmpl.Execute(&buf, data); err != nil {

@@ -5,7 +5,7 @@
   import { confirmDialog } from '../stores/confirm.svelte';
   import ManagerModal from './ManagerModal.svelte';
   import CodeMirrorEditor from './ui/CodeMirrorEditor.svelte';
-  import type { DNSProviderMeta, DomainReport, ManagerTab, SiteDetail, SiteKind, SiteMeta } from '../types';
+  import type { DNSProviderMeta, DomainReport, LaravelReadinessReport, ManagerTab, SiteDetail, SiteEnvEntry, SiteKind, SiteMeta } from '../types';
   import '../../styles/pages/components/site-settings.css';
 
   interface Props {
@@ -36,8 +36,9 @@
     if (kind === 'php') {
       tabs.push(
         { id: 'directory', label: 'Directory', icon: 'ri-folder-settings-line' },
+        { id: 'env', label: 'Env (.env)', icon: 'ri-key-2-line' },
         { id: 'php', label: 'PHP Version', icon: 'ri-code-s-slash-line' },
-        { id: 'laravel_admin', label: 'Super Admin (Filament)', icon: 'ri-shield-user-line' },
+        { id: 'laravel_admin', label: 'Laravel & Filament', icon: 'ri-shield-user-line' },
         { id: 'rewrite', label: 'URL Rewrite', icon: 'ri-shuffle-line' },
         { id: 'default_doc', label: 'Default Document', icon: 'ri-file-list-3-line' },
       );
@@ -50,11 +51,14 @@
     } else if (kind === 'node' || kind === 'go' || kind === 'python') {
       const runtimeLabel =
         kind === 'node'
-          ? 'Node.js & Port'
+          ? 'Node.js & Proses'
           : kind === 'go'
-            ? 'Go Runtime & Port'
-            : 'Python & Port';
-      tabs.push({ id: 'proxy', label: runtimeLabel, icon: 'ri-cpu-line' });
+            ? 'Go Runtime & Proses'
+            : 'Python & Proses';
+      tabs.push(
+        { id: 'proxy', label: runtimeLabel, icon: 'ri-cpu-line' },
+        { id: 'env', label: 'Env (.env)', icon: 'ri-key-2-line' },
+      );
     } else {
       tabs.push({ id: 'proxy', label: 'Reverse Proxy', icon: 'ri-arrow-left-right-line' });
     }
@@ -188,12 +192,30 @@
   let laravelSchedulerBusy = $state(false);
   let laravelOptimizeBusy = $state(false);
   let laravelOptimizeOutput = $state('');
+  let laravelReadiness = $state<LaravelReadinessReport | null>(null);
+  let laravelQueueBusy = $state(false);
+  let laravelExtInstalling = $state(false);
 
-  // 9. Tab Reverse Proxy
+  // 8c. Tab Editor .env Aman (Structured & Raw)
+  let envMode = $state<'structured' | 'raw'>('structured');
+  let envPath = $state('');
+  let envExists = $state(false);
+  let envRaw = $state('');
+  let envEntries = $state<SiteEnvEntry[]>([]);
+  let envRevealed = $state<Record<string, boolean>>({});
+  let envApplyCache = $state(true);
+  let envLoading = $state(false);
+  let envSaving = $state(false);
+
+  // 9. Tab Reverse Proxy & Manajemen Proses Aplikasi (PM2 / systemd)
   let fUpstream = $state('');
   let proxyWs = $state(true);
-  let proxyTimeout = $state('60s');
+  let proxyTimeout = $state('120s');
   let proxySaving = $state(false);
+  let procActionBusy = $state<'' | 'start' | 'restart' | 'stop'>('');
+  let procLogs = $state('');
+  let procLogSource = $state('');
+  let procLogsLoading = $state(false);
 
   // 10. Tab Redirect
   let redirectType = $state('301');
@@ -392,7 +414,7 @@
     if (!detail) return;
     laravelLoading = true;
     try {
-      const [r, dep] = await Promise.all([
+      const [r, dep, ready] = await Promise.all([
         apiFetch<{
           ok: boolean;
           is_laravel: boolean;
@@ -403,13 +425,15 @@
           ok: boolean;
           scheduler_enabled?: boolean;
           php_binary?: string;
-        }>(`/api/sites/${siteId}/deploy`).catch(() => ({ ok: false, scheduler_enabled: false, php_binary: 'php' }))
+        }>(`/api/sites/${siteId}/deploy`).catch(() => ({ ok: false, scheduler_enabled: false, php_binary: 'php' })),
+        apiFetch<LaravelReadinessReport>(`/api/sites/${siteId}/laravel/readiness`).catch(() => null),
       ]);
       isLaravelProject = !!r.is_laravel;
       isFilamentProject = !!r.is_filament;
       laravelUsers = r.users || [];
-      laravelSchedulerEnabled = Boolean(dep?.scheduler_enabled);
-      laravelPhpBinary = dep?.php_binary || 'php';
+      laravelSchedulerEnabled = Boolean(ready?.scheduler_enabled ?? dep?.scheduler_enabled);
+      laravelPhpBinary = ready?.php_binary || dep?.php_binary || 'php';
+      laravelReadiness = ready;
       if (!lAdminEmail) {
         lAdminEmail = `admin@${detail.site.domain}`;
       }
@@ -417,6 +441,145 @@
       onNotify(`Gagal memuat data admin: ${(err as Error).message}`);
     } finally {
       laravelLoading = false;
+    }
+  }
+
+  // Aktifkan / nonaktifkan Laravel Queue Worker (systemd)
+  async function toggleLaravelQueueWorker() {
+    if (!detail || laravelQueueBusy) return;
+    laravelQueueBusy = true;
+    const nextVal = !laravelReadiness?.queue_worker_enabled;
+    try {
+      const res = await apiFetch<{ ok: boolean; queue_worker_enabled: boolean; message: string }>(
+        `/api/sites/${siteId}/laravel/queue`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ enabled: nextVal, tries: 3, timeout: 120 }),
+        }
+      );
+      if (laravelReadiness) {
+        laravelReadiness = { ...laravelReadiness, queue_worker_enabled: Boolean(res.queue_worker_enabled) };
+      }
+      onNotify(res.message || 'Status Laravel Queue Worker diperbarui');
+      onChanged();
+    } catch (err) {
+      onNotify(`Gagal mengubah Queue Worker: ${(err as Error).message}`);
+    } finally {
+      laravelQueueBusy = false;
+    }
+  }
+
+  // Pasang ekstensi PHP yang hilang (intl, bcmath, dll.) secara 1-klik untuk Filament/Laravel
+  async function installMissingPHPExtensions() {
+    if (!detail || laravelExtInstalling) return;
+    laravelExtInstalling = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string }>(
+        `/api/sites/${siteId}/laravel/install-extensions`,
+        { method: 'POST', timeoutMs: 185_000 }
+      );
+      onNotify(res.message || 'Ekstensi PHP berhasil dipasang');
+      await loadLaravelAdmin();
+    } catch (err) {
+      onNotify(`Gagal memasang ekstensi PHP: ${(err as Error).message}`);
+    } finally {
+      laravelExtInstalling = false;
+    }
+  }
+
+  // Muat berkas .env proyek untuk editor visual & mentah
+  async function loadSiteEnv() {
+    envLoading = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; exists: boolean; path: string; raw: string; entries: SiteEnvEntry[] }>(
+        `/api/sites/${siteId}/env`
+      );
+      envExists = Boolean(res.exists);
+      envPath = res.path || '';
+      envRaw = res.raw || '';
+      envEntries = res.entries || [];
+    } catch (err) {
+      onNotify(`Gagal membaca .env: ${(err as Error).message}`);
+    } finally {
+      envLoading = false;
+    }
+  }
+
+  // Simpan perubahan berkas .env (izin 0640) beserta opsi reload cache / restart proses
+  async function saveSiteEnv() {
+    if (envSaving) return;
+    envSaving = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; raw: string; entries: SiteEnvEntry[]; message?: string }>(
+        `/api/sites/${siteId}/env`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            mode: envMode,
+            raw: envRaw,
+            entries: envEntries,
+            apply_cache: envApplyCache,
+          }),
+          timeoutMs: 60_000,
+        }
+      );
+      envRaw = res.raw || '';
+      envEntries = res.entries || [];
+      envExists = true;
+      onNotify(res.message || 'Berkas .env berhasil disimpan');
+      onChanged();
+    } catch (err) {
+      onNotify(`Gagal menyimpan .env: ${(err as Error).message}`);
+    } finally {
+      envSaving = false;
+    }
+  }
+
+  function addEnvRow() {
+    envEntries = [...envEntries, { key: '', value: '', secret: false }];
+  }
+
+  function removeEnvRow(idx: number) {
+    envEntries = envEntries.filter((_, i) => i !== idx);
+  }
+
+  // Jalankan aksi start/restart/stop pada proses aplikasi (PM2 / systemd / PHP-FPM)
+  async function runProcessAction(action: 'start' | 'restart' | 'stop') {
+    if (procActionBusy) return;
+    procActionBusy = action;
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string; output?: string }>(
+        `/api/sites/${siteId}/process/action`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ action }),
+          timeoutMs: 95_000,
+        }
+      );
+      onNotify(res.message || `Proses berhasil di-${action}`);
+      await load();
+      onChanged();
+      await loadProcessLogs('app');
+    } catch (err) {
+      onNotify(`Aksi proses gagal: ${(err as Error).message}`);
+    } finally {
+      procActionBusy = '';
+    }
+  }
+
+  // Baca log stdout/stderr terbaru proses aplikasi atau queue worker
+  async function loadProcessLogs(target: 'app' | 'queue' = 'app') {
+    procLogsLoading = true;
+    try {
+      const res = await apiFetch<{ ok: boolean; source: string; content: string }>(
+        `/api/sites/${siteId}/process/logs?target=${target}`
+      );
+      procLogSource = res.source || target;
+      procLogs = res.content || '(Belum ada catatan log proses)';
+    } catch (err) {
+      procLogs = `Gagal membaca log proses: ${(err as Error).message}`;
+    } finally {
+      procLogsLoading = false;
     }
   }
 
@@ -497,6 +660,8 @@
         loadDNSProviders();
       }
       if (tab === 'laravel_admin') loadLaravelAdmin();
+      if (tab === 'env') loadSiteEnv();
+      if (tab === 'proxy') loadProcessLogs('app');
       if (tab === 'conf') loadVhost();
       if (tab === 'logs') loadLogs(logSubTab);
     });
@@ -595,15 +760,30 @@
     }
   }
 
+  // Gabungkan potongan konfigurasi Nginx per bagian bermarker agar antar tab tidak saling menimpa extra_conf
+  function mergeExtraConfSection(existing: string, section: string, content: string): string {
+    const startTag = `# BEGIN FIKPANEL:${section}`;
+    const endTag = `# END FIKPANEL:${section}`;
+    const escapedStart = startTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedEnd = endTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const blockRe = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g');
+    const cleaned = (existing || '').replace(blockRe, '').trim();
+    const trimmedContent = (content || '').trim();
+    if (!trimmedContent) return cleaned;
+    const wrapped = `${startTag}\n${trimmedContent}\n${endTag}`;
+    return cleaned ? `${cleaned}\n\n${wrapped}` : wrapped;
+  }
+
   async function saveRewrite() {
     if (!detail) return;
     rewriteSaving = true;
     try {
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'REWRITE', rewriteContent.trim());
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: rewriteContent.trim() })
+        body: sitePayload({ extra_conf: merged })
       });
-      onNotify('Aturan URL rewrite berhasil disimpan');
+      onNotify('Aturan URL rewrite berhasil disimpan tanpa menimpa aturan tab lain');
       await load();
       onChanged();
     } catch (err) {
@@ -643,10 +823,11 @@
     if (!detail) return;
     defaultDocSaving = true;
     try {
-      const conf = `index ${defaultDocs.trim()};`;
+      const conf = defaultDocs.trim() ? `index ${defaultDocs.trim()};` : '';
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'DEFAULT_DOC', conf);
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: conf })
+        body: sitePayload({ extra_conf: merged })
       });
       onNotify('Dokumen bawaan disimpan');
       await load();
@@ -815,9 +996,10 @@
     redirectSaving = true;
     try {
       const rule = `rewrite ^${redirectFrom} ${redirectTo} ${redirectType === '301' ? 'permanent' : 'redirect'};`;
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'REDIRECT', rule);
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: rule })
+        body: sitePayload({ extra_conf: merged })
       });
       onNotify('Aturan pengalihan (redirect) berhasil disimpan');
       await load();
@@ -838,9 +1020,10 @@
         const exts = hotlinkExts.split(',').map((s) => s.trim()).filter(Boolean).join('|');
         conf = `location ~* \\.(${exts})$ {\n    valid_referers none blocked ${hotlinkDomains.replace(/,/g, ' ')};\n    if ($invalid_referer) {\n        return 403;\n    }\n}`;
       }
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'HOTLINK', conf);
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: conf })
+        body: sitePayload({ extra_conf: merged })
       });
       onNotify(hotlinkEnabled ? 'Perlindungan hotlink diaktifkan' : 'Perlindungan hotlink dinonaktifkan');
       await load();
@@ -858,11 +1041,12 @@
     try {
       let conf = '';
       if (maintenanceEnabled) {
-        conf = `# Maintenance Mode\nreturn 503 "${maintenanceMsg.replace(/"/g, '\\"')}";`;
+        conf = `return 503 "${maintenanceMsg.replace(/"/g, '\\"')}";`;
       }
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'MAINTENANCE', conf);
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: conf })
+        body: sitePayload({ extra_conf: merged })
       });
       onNotify(maintenanceEnabled ? 'Mode pemeliharaan diaktifkan' : 'Mode pemeliharaan dinonaktifkan');
       await load();
@@ -880,16 +1064,17 @@
     try {
       let conf = '';
       if (limitSubTab === 'auth') {
-        conf = `# Limit Access Auth\nlocation ${limitPath.trim()} {\n    auth_basic "Area Terbatas";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n}`;
+        conf = `location ${limitPath.trim()} {\n    auth_basic "Area Terbatas";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n}`;
       } else if (limitSubTab === 'deny') {
         const exts = denyExt.split(',').map((s) => s.trim().replace(/^\./, '')).filter(Boolean).join('|');
-        conf = `# Deny Sensitive Files\nlocation ~* \\.(${exts})$ {\n    deny all;\n}`;
+        conf = `location ~* \\.(${exts})$ {\n    deny all;\n}`;
       } else if (limitSubTab === 'traffic' && rateLimitEnabled) {
-        conf = `# Traffic Control Rate Limit\nlimit_req zone=one burst=20 nodelay;`;
+        conf = `limit_req zone=one burst=20 nodelay;`;
       }
+      const merged = mergeExtraConfSection(detail.site.extra_conf, 'LIMIT_ACCESS', conf);
       await apiFetch(`/api/sites/${siteId}`, {
         method: 'PUT',
-        body: sitePayload({ extra_conf: conf })
+        body: sitePayload({ extra_conf: merged })
       });
       onNotify('Pengaturan pembatasan akses berhasil disimpan');
       await load();
@@ -1010,6 +1195,111 @@
         <div class="ss-actions">
           <button class="btn btn-primary" onclick={saveDirectory} disabled={dirSaving}>
             {#if dirSaving}<i class="ri-loader-4-line spin"></i>{:else}<i class="ri-save-line"></i>{/if} Simpan Direktori
+          </button>
+        </div>
+      </section>
+
+    <!-- 2b. TAB: EDITOR .ENV AMAN -->
+    {:else if tab === 'env'}
+      <section class="ss-sec fill">
+        <div class="conf-head">
+          <div class="sec-title">
+            <h4>Environment Variables (<code class="mono">.env</code>)</h4>
+            <p class="ss-desc">
+              Edit variabel rahasia langsung tanpa membuka File Manager. Disimpan dengan izin ketat <code class="mono">0640</code>{envPath ? ` di ${envPath}` : ''}.
+            </p>
+          </div>
+          <div class="btn-group">
+            <div class="tabs tabs--pill sub-nav compact">
+              <button type="button" class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={envMode === 'structured'} onclick={() => (envMode = 'structured')}>Visual</button>
+              <button type="button" class="tabs__tab btn btn-ghost btn-xs sub-btn" class:is-active={envMode === 'raw'} onclick={() => (envMode = 'raw')}>Teks Mentah</button>
+            </div>
+            <button type="button" class="btn btn-secondary btn-xs btn-mini" onclick={loadSiteEnv} disabled={envLoading}>
+              <i class="ri-refresh-line" class:spin={envLoading} aria-hidden="true"></i> Refresh
+            </button>
+          </div>
+        </div>
+
+        {#if envLoading}
+          <div class="ss-empty"><i class="ri-loader-4-line spin" aria-hidden="true"></i><p>Membaca berkas .env…</p></div>
+        {:else if envMode === 'structured'}
+          <div class="env-list">
+            {#each envEntries as row, i (i)}
+              <div class="env-row">
+                <input
+                  type="text"
+                  class="mono env-key-input"
+                  aria-label="Nama variabel environment"
+                  placeholder="NAMA_KUNCI"
+                  bind:value={row.key}
+                />
+                <div class="env-val-wrap">
+                  <input
+                    type={row.secret && !envRevealed[row.key + i] ? 'password' : 'text'}
+                    class="mono"
+                    aria-label="Nilai variabel {row.key}"
+                    placeholder="Nilai..."
+                    bind:value={row.value}
+                  />
+                  {#if row.secret}
+                    <button
+                      type="button"
+                      class="env-icon-btn"
+                      aria-label={envRevealed[row.key + i] ? 'Sembunyikan nilai rahasia' : 'Tampilkan nilai rahasia'}
+                      onclick={() => (envRevealed = { ...envRevealed, [row.key + i]: !envRevealed[row.key + i] })}
+                    >
+                      <i class={envRevealed[row.key + i] ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
+                    </button>
+                  {/if}
+                </div>
+                <button
+                  type="button"
+                  class="env-icon-btn is-del"
+                  aria-label="Hapus variabel {row.key}"
+                  onclick={() => removeEnvRow(i)}
+                >
+                  <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                </button>
+              </div>
+            {:else}
+              <div class="note warn">
+                <i class="ri-information-line" aria-hidden="true"></i>
+                <span>Berkas <code class="mono">.env</code> belum ada atau masih kosong. Klik tombol di bawah untuk menambah variabel pertama.</span>
+              </div>
+            {/each}
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary btn-xs" onclick={addEnvRow}>
+              <i class="ri-add-line" aria-hidden="true"></i> Tambah Variabel
+            </button>
+          </div>
+        {:else}
+          <textarea
+            class="code-editor"
+            rows="14"
+            spellcheck="false"
+            aria-label="Konten mentah berkas .env"
+            placeholder="APP_ENV=production&#10;APP_DEBUG=false"
+            bind:value={envRaw}
+          ></textarea>
+        {/if}
+
+        <label class="toggle-row" for="ss-env-apply">
+          <div>
+            <b>Terapkan Otomatis Setelah Simpan</b>
+            <small>
+              {detail.site.kind === 'php'
+                ? 'Jalankan php artisan optimize:clear & optimize agar perubahan .env langsung aktif'
+                : 'Restart proses aplikasi (PM2 / systemd) dengan variabel environment terbaru'}
+            </small>
+          </div>
+          <input id="ss-env-apply" type="checkbox" bind:checked={envApplyCache} /><span class="track"></span>
+        </label>
+
+        <div class="ss-actions">
+          <button type="button" class="btn btn-primary" onclick={saveSiteEnv} disabled={envSaving || envLoading}>
+            {#if envSaving}<i class="ri-loader-4-line spin" aria-hidden="true"></i>{:else}<i class="ri-save-line" aria-hidden="true"></i>{/if}
+            Simpan .env{envExists ? '' : ' Baru'}
           </button>
         </div>
       </section>
@@ -1528,15 +1818,82 @@
         </div>
 
         {#if isLaravelProject || isFilamentProject}
+          <!-- Checklist Kesiapan Produksi Filament & Ekstensi PHP -->
+          {#if laravelReadiness}
+            <div class="ladmin-form-card">
+              <div class="ladmin-form-head">
+                <b><i class="ri-stethoscope-line" aria-hidden="true"></i> Checklist Kesiapan Produksi ({laravelReadiness.php_binary})</b>
+                {#if laravelReadiness.missing_extensions.length > 0}
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-xs"
+                    onclick={installMissingPHPExtensions}
+                    disabled={laravelExtInstalling}
+                  >
+                    {#if laravelExtInstalling}
+                      <i class="ri-loader-4-line spin" aria-hidden="true"></i> Memasang…
+                    {:else}
+                      <i class="ri-download-cloud-2-line" aria-hidden="true"></i> Pasang Ekstensi Kurang ({laravelReadiness.missing_extensions.join(', ')})
+                    {/if}
+                  </button>
+                {:else}
+                  <span class="tag">Ekstensi Lengkap</span>
+                {/if}
+              </div>
+
+              <div class="readiness-ext-grid">
+                {#each laravelReadiness.extensions as ext (ext.name)}
+                  <span class="readiness-pill mono" class:is-ok={ext.installed} class:is-miss={!ext.installed}>
+                    <i class={ext.installed ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'} aria-hidden="true"></i>
+                    <span>{ext.name}</span>
+                  </span>
+                {/each}
+              </div>
+
+              <div class="readiness-checks">
+                <span class="rc-item" class:is-ok={laravelReadiness.storage_linked} class:is-warn={!laravelReadiness.storage_linked}>
+                  <i class={laravelReadiness.storage_linked ? 'ri-check-line' : 'ri-error-warning-line'} aria-hidden="true"></i>
+                  public/storage symlink
+                </span>
+                <span class="rc-item" class:is-ok={laravelReadiness.filament_user_ok} class:is-warn={!laravelReadiness.filament_user_ok}>
+                  <i class={laravelReadiness.filament_user_ok ? 'ri-check-line' : 'ri-error-warning-line'} aria-hidden="true"></i>
+                  {laravelReadiness.filament_user_ok ? 'FilamentUser OK' : 'User.php belum pakai FilamentUser'}
+                </span>
+                <span class="rc-item" class:is-ok={laravelReadiness.app_debug !== 'true'} class:is-warn={laravelReadiness.app_debug === 'true'}>
+                  <i class={laravelReadiness.app_debug !== 'true' ? 'ri-check-line' : 'ri-alert-line'} aria-hidden="true"></i>
+                  APP_ENV={laravelReadiness.app_env || '-'} · DEBUG={laravelReadiness.app_debug || '-'}
+                </span>
+                <span class="rc-item" class:is-ok={laravelReadiness.redis_available}>
+                  <i class={laravelReadiness.redis_available ? 'ri-flashlight-line' : 'ri-information-line'} aria-hidden="true"></i>
+                  Redis {laravelReadiness.redis_available ? 'Aktif (:6379)' : 'Tidak Aktif'}
+                </span>
+              </div>
+            </div>
+          {/if}
+
           <div class="ladmin-form-card">
             <div class="ladmin-form-head">
-              <b><i class="ri-flashlight-line" aria-hidden="true"></i> Optimasi Produksi &amp; Scheduler ({laravelPhpBinary})</b>
+              <b><i class="ri-flashlight-line" aria-hidden="true"></i> Worker, Scheduler &amp; Optimasi Produksi ({laravelPhpBinary})</b>
               <span class="tag">{laravelSchedulerEnabled ? 'Scheduler Aktif' : 'Scheduler Nonaktif'}</span>
             </div>
+            <label class="toggle-row" for="ss-laravel-queue">
+              <div>
+                <b>Laravel Queue Worker (<code class="mono">artisan queue:work</code>)</b>
+                <small>Jalankan daemon systemd khusus untuk Filament Export/Import, antrean email, &amp; background job; otomatis restart tiap deploy.</small>
+              </div>
+              <input
+                id="ss-laravel-queue"
+                type="checkbox"
+                checked={Boolean(laravelReadiness?.queue_worker_enabled)}
+                onchange={toggleLaravelQueueWorker}
+                disabled={laravelQueueBusy}
+              />
+              <span class="track"></span>
+            </label>
             <label class="toggle-row" for="ss-laravel-scheduler">
               <div>
                 <b>Laravel Task Scheduler (<code class="mono">* * * * *</code>)</b>
-                <small>Daftarkan otomatis <code class="mono">{laravelPhpBinary} artisan schedule:run</code> di Cron Manager untuk notifikasi, export, &amp; job terjadwal.</small>
+                <small>Daftarkan otomatis <code class="mono">{laravelPhpBinary} artisan schedule:run</code> di Cron Manager untuk job terjadwal.</small>
               </div>
               <input
                 id="ss-laravel-scheduler"
@@ -1548,6 +1905,11 @@
               <span class="track"></span>
             </label>
             <div class="ss-actions">
+              {#if laravelReadiness?.queue_worker_enabled}
+                <button type="button" class="btn btn-ghost btn-sm" onclick={() => loadProcessLogs('queue')} disabled={procLogsLoading}>
+                  <i class="ri-terminal-line" aria-hidden="true"></i> Log Queue Worker
+                </button>
+              {/if}
               <button
                 type="button"
                 class="btn btn-secondary"
@@ -1563,6 +1925,9 @@
             </div>
             {#if laravelOptimizeOutput}
               <pre class="code-editor-sm">{laravelOptimizeOutput}</pre>
+            {/if}
+            {#if procLogs && procLogSource.includes('queue')}
+              <pre class="code-editor-sm">{procLogs}</pre>
             {/if}
           </div>
         {/if}
@@ -1656,6 +2021,38 @@
             {detail.site.kind === 'proxy' ? 'Simpan Reverse Proxy' : 'Simpan Pengaturan Runtime'}
           </button>
         </div>
+
+        {#if detail.site.kind === 'node' || detail.site.kind === 'go' || detail.site.kind === 'python'}
+          <div class="ladmin-form-card mt">
+            <div class="ladmin-form-head">
+              <b>
+                <i class="ri-cpu-line" aria-hidden="true"></i>
+                Kontrol Proses Aplikasi ({detail.site.process_manager ? detail.site.process_manager.toUpperCase() : detail.site.kind === 'node' ? 'PM2' : 'systemd'})
+              </b>
+              <span class="tag">{detail.site.process_state || detail.site.live_status || 'unknown'}</span>
+            </div>
+            <p class="ss-desc">
+              Unit aktif: <code class="mono">{detail.site.process_unit || detail.site.domain}</code>. Klik <b>Start / Restart</b> untuk membangun atau menghidupkan proses secara otomatis jika status aplikasi <i>Down</i>.
+            </p>
+            <div class="proc-ctrl-row">
+              <button type="button" class="btn btn-primary btn-sm" disabled={Boolean(procActionBusy)} onclick={() => runProcessAction('start')}>
+                <i class={procActionBusy === 'start' ? 'ri-loader-4-line spin' : 'ri-play-fill'} aria-hidden="true"></i> Start / Bootstrap
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" disabled={Boolean(procActionBusy)} onclick={() => runProcessAction('restart')}>
+                <i class={procActionBusy === 'restart' ? 'ri-loader-4-line spin' : 'ri-restart-line'} aria-hidden="true"></i> Restart
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" disabled={Boolean(procActionBusy)} onclick={() => runProcessAction('stop')}>
+                <i class={procActionBusy === 'stop' ? 'ri-loader-4-line spin' : 'ri-stop-circle-line'} aria-hidden="true"></i> Stop
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" disabled={procLogsLoading} onclick={() => loadProcessLogs('app')}>
+                <i class={procLogsLoading ? 'ri-loader-4-line spin' : 'ri-refresh-line'} aria-hidden="true"></i> Muat Log Proses
+              </button>
+            </div>
+            {#if procLogs}
+              <pre class="log-viewer proc-log-box">{procLogs}</pre>
+            {/if}
+          </div>
+        {/if}
       </section>
 
     <!-- 10. TAB: REDIRECT -->

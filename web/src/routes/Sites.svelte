@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch, formatBytes } from '../lib/api';
-  import type { Site, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
+  import type { Site, SiteKind, SoftwareItem, SitesData, NginxStatus } from '../lib/types';
+  import PageHeader from '../lib/components/ui/PageHeader.svelte';
   import NginxManager from '../lib/components/NginxManager.svelte';
   import AddSiteModal from '../lib/components/AddSiteModal.svelte';
   import SiteSettings from '../lib/components/SiteSettings.svelte';
@@ -9,7 +10,6 @@
   import LogsModal from './sites/LogsModal.svelte';
   import GitPullModal from './sites/GitPullModal.svelte';
   import DeleteModal from './sites/DeleteModal.svelte';
-  import Modal from '../lib/components/ui/Modal.svelte';
   import '../styles/pages/sites.css';
 
   interface Props {
@@ -38,12 +38,18 @@
     webServer = { ...webServer, installed: st.installed, running: st.running, version: st.version };
   }
 
-  // Filter dan Pencarian
-  let activeTab = $state<'all' | 'php' | 'node' | 'proxy' | 'go' | 'python' | 'static'>('all');
+  // Filter dinamis, kartu kesehatan, urutan, dan mode tampilan
+  type HealthFilter = 'all' | 'online' | 'issues' | 'git';
+  type SortMode = 'status' | 'domain' | 'traffic' | 'recent';
+
+  let activeRuntime = $state<'all' | SiteKind>('all');
+  let healthFilter = $state<HealthFilter>('all');
+  let sortBy = $state<SortMode>('status');
+  let viewMode = $state<'table' | 'grid'>('table');
   let searchQuery = $state('');
   let selectedIds = $state<Set<number>>(new Set());
 
-  // Modal Tambah Situs & Pengaturan Situs (Domain, Situs, SSL, Konfigurasi)
+  // Modal Tambah Situs & Pengaturan Situs (Domain, .env, Runtime, SSL, Konfigurasi)
   let showAddModal = $state(false);
   let settingsTarget = $state<{ id: number; tab: string } | null>(null);
 
@@ -56,7 +62,7 @@
   let logLoading = $state(false);
   let logLive = $state(true);
 
-  // Modal Git Pull & Auto-Deploy (khusus situs yang dibuat dari Git)
+  // Modal Git Pull & Auto-Deploy (khusus situs yang terhubung Git)
   interface GitPullResponse {
     ok: boolean;
     domain: string;
@@ -67,6 +73,10 @@
     commit_message: string;
     updated: boolean;
     output: string;
+    health_ok?: boolean;
+    health_code?: number;
+    health_latency_ms?: number;
+    health_summary?: string;
   }
   let gitPullTarget = $state<Site | null>(null);
   let gitPullRunning = $state(false);
@@ -77,32 +87,41 @@
   let renewingAllSSL = $state(false);
   let refreshingSites = $state(false);
   let backingUpSiteId = $state<number | null>(null);
+  let restartingSiteId = $state<number | null>(null);
   let bulkBusy = $state(false);
+
+  // Metadata tampilan untuk chip runtime dinamis
+  const RUNTIME_META: Record<SiteKind, { label: string; icon: string; cls: string }> = {
+    php: { label: 'PHP', icon: 'ri-code-s-slash-line', cls: 'icon-php' },
+    node: { label: 'Node.js', icon: 'ri-nodejs-line', cls: 'icon-node' },
+    go: { label: 'Go', icon: 'ri-braces-line', cls: 'icon-go' },
+    python: { label: 'Python', icon: 'ri-terminal-box-line', cls: 'icon-python' },
+    static: { label: 'Static / SPA', icon: 'ri-html5-line', cls: 'icon-static' },
+    proxy: { label: 'Proxy', icon: 'ri-shuffle-line', cls: 'icon-proxy' },
+  };
 
   function toggleMoreMenu(siteId: number, e: MouseEvent) {
     e.stopPropagation();
     openMoreSiteId = openMoreSiteId === siteId ? null : siteId;
   }
 
-  // Daftar snippet perintah dinamis yang dapat ditambahkan/dihapus dengan 1 klik pada modal Git Pull
+  // Daftar snippet perintah dinamis pada modal Git Pull
   const gitPullSnippets = [
     { label: '+ composer install', cmd: 'composer install --no-interaction --optimize-autoloader', phpOnly: true },
     { label: '+ php artisan migrate', cmd: 'php artisan migrate --force', phpOnly: true },
     { label: '+ artisan optimize', cmd: 'php artisan optimize && php artisan filament:optimize', phpOnly: true },
-    { label: '+ filament:assets', cmd: 'php artisan filament:assets', phpOnly: true },
+    { label: '+ queue:restart', cmd: 'php artisan queue:restart', phpOnly: true },
     { label: '+ npm run build', cmd: 'NODE_OPTIONS=--max-old-space-size=768 npm run build', phpOnly: false },
   ];
 
-  // Memeriksa apakah snippet tertentu sudah ada di dalam rangkaian perintah Git Pull
   function hasGitSnippet(snippetCmd: string): boolean {
     const parts = gitPullCustomCmd.split('&&').map((p) => p.trim());
     return parts.includes(snippetCmd);
   }
 
-  // Menambah atau menghapus snippet perintah dari input dinamis Git Pull
   function toggleGitSnippet(snippetCmd: string) {
     const branch = gitPullTarget?.git_branch || 'main';
-    const basePull = `git pull origin ${branch}`;
+    const basePull = `git fetch origin ${branch} && git reset --hard origin/${branch}`;
     const parts = gitPullCustomCmd
       .split('&&')
       .map((p) => p.trim())
@@ -130,27 +149,95 @@
   let deletePasteWarning = $state(false);
   let deletingSite = $state(false);
 
-  // Filter daftar situs berdasarkan tab dan pencarian
+  // Hitung KPI kesehatan situs secara real-time
+  let kpiCounts = $derived.by(() => {
+    let online = 0;
+    let issues = 0;
+    let gitCount = 0;
+    for (const s of sites) {
+      const st = s.live_status || (s.enabled === 1 ? 'running' : 'stopped');
+      if (st === 'running') online++;
+      else if (st === 'down' || st === 'degraded') issues++;
+      if (s.has_git) gitCount++;
+    }
+    return { total: sites.length, online, issues, git: gitCount };
+  });
+
+  // Bangun daftar chip runtime secara dinamis hanya untuk runtime yang benar-benar ada di server
+  let runtimeChips = $derived.by(() => {
+    const counts = new Map<SiteKind, number>();
+    for (const s of sites) {
+      counts.set(s.kind, (counts.get(s.kind) || 0) + 1);
+    }
+    const order: SiteKind[] = ['php', 'node', 'go', 'python', 'static', 'proxy'];
+    return order
+      .filter((k) => (counts.get(k) || 0) > 0)
+      .map((k) => ({ kind: k, count: counts.get(k) || 0, ...RUNTIME_META[k] }));
+  });
+
+  // Reset filter runtime bila runtime yang dipilih sudah tidak memiliki situs
+  $effect(() => {
+    if (activeRuntime !== 'all' && !runtimeChips.some((c) => c.kind === activeRuntime)) {
+      activeRuntime = 'all';
+    }
+  });
+
+  // Peringkat prioritas status agar situs bermasalah langsung terlihat di atas saat diurutkan berdasarkan status
+  function statusRank(s: Site): number {
+    const st = s.live_status || (s.enabled === 1 ? 'running' : 'stopped');
+    if (st === 'down') return 0;
+    if (st === 'degraded') return 1;
+    if (st === 'running') return 2;
+    return 3;
+  }
+
+  // Filter & urutkan daftar situs berdasarkan kartu KPI, chip runtime, pencarian, dan sort selector
   let filteredSites = $derived.by(() => {
     let result = sites;
-    if (activeTab !== 'all') {
-      result = result.filter(s => s.kind === activeTab);
+
+    if (healthFilter === 'online') {
+      result = result.filter((s) => (s.live_status || (s.enabled === 1 ? 'running' : 'stopped')) === 'running');
+    } else if (healthFilter === 'issues') {
+      result = result.filter((s) => {
+        const st = s.live_status || (s.enabled === 1 ? 'running' : 'stopped');
+        return st === 'down' || st === 'degraded';
+      });
+    } else if (healthFilter === 'git') {
+      result = result.filter((s) => Boolean(s.has_git));
+    }
+
+    if (activeRuntime !== 'all') {
+      result = result.filter((s) => s.kind === activeRuntime);
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(s =>
-        s.domain.toLowerCase().includes(q) ||
-        s.aliases.toLowerCase().includes(q) ||
-        (s.description && s.description.toLowerCase().includes(q)) ||
-        (s.root_path && s.root_path.toLowerCase().includes(q)) ||
-        (s.upstream && s.upstream.toLowerCase().includes(q))
+      result = result.filter(
+        (s) =>
+          s.domain.toLowerCase().includes(q) ||
+          s.aliases.toLowerCase().includes(q) ||
+          (s.framework && s.framework.toLowerCase().includes(q)) ||
+          (s.git_repo && s.git_repo.toLowerCase().includes(q)) ||
+          (s.description && s.description.toLowerCase().includes(q)) ||
+          (s.root_path && s.root_path.toLowerCase().includes(q)) ||
+          (s.upstream && s.upstream.toLowerCase().includes(q)),
       );
     }
-    return result;
+
+    const sorted = [...result];
+    if (sortBy === 'status') {
+      sorted.sort((a, b) => statusRank(a) - statusRank(b) || a.domain.localeCompare(b.domain));
+    } else if (sortBy === 'domain') {
+      sorted.sort((a, b) => a.domain.localeCompare(b.domain));
+    } else if (sortBy === 'traffic') {
+      sorted.sort((a, b) => (b.request_count ?? 0) - (a.request_count ?? 0) || a.domain.localeCompare(b.domain));
+    } else {
+      sorted.sort((a, b) => (b.updated_at || b.id) - (a.updated_at || a.id));
+    }
+    return sorted;
   });
 
-  // Memuat daftar situs dan status Nginx dari server (silent = tanpa indikator loading)
+  // Memuat daftar situs dan status Nginx dari server
   async function loadSites(silent = false) {
     if (!silent) loading = true;
     else refreshingSites = true;
@@ -158,7 +245,6 @@
       const data = await apiFetch<SitesData>('/api/sites');
       const nextSites = data.sites || [];
       sites = nextSites;
-      // Bersihkan ID terpilih yang sudah tidak ada dalam daftar situs
       if (selectedIds.size > 0) {
         const validIds = new Set(nextSites.map((item) => item.id));
         const pruned = new Set([...selectedIds].filter((id) => validIds.has(id)));
@@ -177,14 +263,13 @@
     }
   }
 
-  // Selama ada sertifikat berstatus pending, segarkan daftar secara senyap agar badge SSL ikut berubah
   $effect(() => {
     if (!sites.some((s) => s.ssl_status === 'pending')) return;
     const t = setTimeout(() => loadSites(true), 3000);
     return () => clearTimeout(t);
   });
 
-  // Memeriksa dan memperbarui sertifikat SSL untuk seluruh situs terdaftar
+  // Periksa & perbarui SSL untuk seluruh situs yang perlu diperpanjang
   async function renewAllSSL() {
     if (renewingAllSSL) return;
     if (sites.length === 0) {
@@ -194,7 +279,6 @@
 
     renewingAllSSL = true;
     try {
-      // Cari situs yang SSL-nya belum aktif, gagal, atau sisa masa berlakunya <= 30 hari (kecuali Cloudflare Edge mode)
       const needRenew = sites.filter(
         (s) => s.ssl_mode !== 'cloudflare' && (s.ssl_status !== 'issued' || s.ssl_mode === 'none' || sslDaysLeft(s) <= 30),
       );
@@ -202,9 +286,7 @@
       if (needRenew.length === 0) {
         await loadSites(true);
         const minDays = Math.min(...sites.map((s) => sslDaysLeft(s)));
-        onNotify(
-          `Semua sertifikat SSL (${sites.length} situs) masih aktif & aman (${minDays} hari tersisa)`,
-        );
+        onNotify(`Semua sertifikat SSL (${sites.length} situs) masih aktif & aman (${minDays} hari tersisa)`);
         return;
       }
 
@@ -242,7 +324,25 @@
     settingsTarget = { id: s.id, tab };
   }
 
-  // Memicu instalasi 1-klik untuk Nginx
+  // Mulai ulang atau hidupkan proses aplikasi (PM2 / systemd / PHP-FPM) secara 1-klik langsung dari daftar situs
+  async function restartSiteProcess(site: Site) {
+    if (restartingSiteId !== null) return;
+    restartingSiteId = site.id;
+    try {
+      const res = await apiFetch<{ ok: boolean; message?: string }>(`/api/sites/${site.id}/process/action`, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'restart' }),
+        timeoutMs: 95_000,
+      });
+      onNotify(res.message || `Proses aplikasi ${site.domain} berhasil dimulai ulang`);
+      await loadSites(true);
+    } catch (err: any) {
+      onNotify(err.message || `Gagal memulai ulang aplikasi ${site.domain}`);
+    } finally {
+      restartingSiteId = null;
+    }
+  }
+
   async function installNginx() {
     installingNginx = true;
     try {
@@ -261,12 +361,11 @@
     }
   }
 
-  // Mengubah status aktif/nonaktif situs
   async function toggleSite(id: number) {
     try {
       await apiFetch(`/api/sites/${id}/toggle`, { method: 'POST' });
-      await loadSites();
-      onNotify('Status operasional situs diperbarui');
+      await loadSites(true);
+      onNotify('Status virtual host situs diperbarui');
     } catch (err: any) {
       onNotify(err.message || 'Gagal mengubah status');
     }
@@ -343,21 +442,18 @@
     }
   }
 
-  // Navigasi cepat langsung ke folder situs di File Manager FikPanel
   function openInFileManager(targetPath: string) {
     sessionStorage.setItem('fikpanel_open_path', targetPath);
     window.location.hash = '#/files';
     onNotify(`Membuka File Manager di direktori ${targetPath}`);
   }
 
-  // Navigasi cepat langsung ke Terminal Web di folder situs
   function openInTerminal(targetPath: string) {
     sessionStorage.setItem('fikpanel_term_path', targetPath);
     window.location.hash = '#/terminal';
     onNotify(`Membuka terminal pada direktori ${targetPath}`);
   }
 
-  // Buka penampil log situs nyata dari server sekaligus menyinkronkan jumlah request terbaru
   async function fetchSiteLogs(site: Site, type: 'access' | 'error', silent = false) {
     if (!silent) logLoading = true;
     try {
@@ -405,7 +501,6 @@
     }
   }
 
-  // Polling log & counter otomatis tiap 5 detik saat modal log terbuka dalam mode Live
   $effect(() => {
     const targetId = logTarget?.id;
     const tab = logTab;
@@ -421,7 +516,6 @@
     return () => clearInterval(timer);
   });
 
-  // Buka modal Git Pull & Webhook Auto-Deploy (kosongkan custom command agar memakai pipeline otomatis aman)
   function openGitPullModal(site: Site) {
     gitPullTarget = site;
     gitPullRunning = false;
@@ -459,10 +553,11 @@
         const refreshed = sites.find((s) => s.id === gitPullTarget?.id);
         if (refreshed) gitPullTarget = refreshed;
       }
+      const hcNote = res.health_summary ? ` · ${res.health_summary}` : '';
       onNotify(
         res.updated
-          ? `Deploy ${res.domain} berhasil (${res.old_commit} → ${res.new_commit})`
-          : `Deploy ${res.domain} selesai (sudah commit terbaru #${res.new_commit})`,
+          ? `Deploy ${res.domain} berhasil (${res.old_commit} → ${res.new_commit})${hcNote}`
+          : `Deploy ${res.domain} selesai (#${res.new_commit})${hcNote}`,
       );
     } catch (err: any) {
       gitPullError = err.message || 'Gagal menjalankan Git Pull pada situs ini';
@@ -471,7 +566,6 @@
     }
   }
 
-  // Memicu pencadangan arsip nyata situs ke server (POST /api/sites/{id}/backup)
   async function triggerBackup(site: Site) {
     if (backingUpSiteId !== null || bulkBusy) return;
     backingUpSiteId = site.id;
@@ -501,7 +595,6 @@
     selectedIds = new Set();
   }
 
-  // Jalankan backup massal untuk seluruh situs yang dicentang
   async function bulkBackupSites() {
     if (bulkBusy || selectedIds.size === 0) return;
     const targets = sites.filter((s) => selectedIds.has(s.id));
@@ -528,7 +621,6 @@
     }
   }
 
-  // Perbarui sertifikat SSL secara massal untuk situs terpilih (non-Cloudflare)
   async function bulkRenewSSL() {
     if (bulkBusy || selectedIds.size === 0) return;
     const targets = sites.filter((s) => selectedIds.has(s.id) && s.ssl_mode !== 'cloudflare');
@@ -565,7 +657,6 @@
     }
   }
 
-  // Toggle status aktif/nonaktif untuk seluruh situs terpilih
   async function bulkToggleSites() {
     if (bulkBusy || selectedIds.size === 0) return;
     const targets = sites.filter((s) => selectedIds.has(s.id));
@@ -589,11 +680,10 @@
     }
   }
 
-  // Toggle seleksi checkbox
   function toggleSelectAll(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
     if (checked) {
-      selectedIds = new Set(filteredSites.map(s => s.id));
+      selectedIds = new Set(filteredSites.map((s) => s.id));
     } else {
       selectedIds = new Set();
     }
@@ -609,13 +699,14 @@
   onMount(() => {
     loadSites();
 
-    // Segarkan otomatis status live & jumlah permintaan tiap 10 detik saat tab aktif dan tidak sibuk
+    // Segarkan otomatis status live tiap 12 detik saat tab aktif dan tidak sedang sibuk
     const pollTimer = setInterval(() => {
       if (
         document.visibilityState === 'visible' &&
         !loading &&
         !refreshingSites &&
         backingUpSiteId === null &&
+        restartingSiteId === null &&
         !bulkBusy &&
         !deletingSite &&
         !gitPullRunning &&
@@ -623,9 +714,8 @@
       ) {
         loadSites(true);
       }
-    }, 10_000);
+    }, 12_000);
 
-    // Segarkan seketika ketika pengguna kembali dari tab website ke FikPanel
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && !loading && !refreshingSites && !bulkBusy && backingUpSiteId === null) {
         loadSites(true);
@@ -643,146 +733,241 @@
 <svelte:window onclick={() => { if (openMoreSiteId !== null) openMoreSiteId = null; }} />
 
 <div class="pg-sites sites-container">
-  <!-- ═════════ 1. Header Tab Kategori Proyek + Status Mesin Nginx di Kanan ═════════ -->
-  <div class="project-tabs-bar">
-    <div class="project-tabs-list">
-      <button class="proj-tab {activeTab === 'all' ? 'active' : ''}" onclick={() => (activeTab = 'all')}>
-        <span>Semua Proyek</span>
-      </button>
-      <button class="proj-tab {activeTab === 'php' ? 'active' : ''}" onclick={() => (activeTab = 'php')}>
-        <i class="ri-code-s-slash-line icon-php"></i>
-        <span>PHP Project</span>
-      </button>
-      <button class="proj-tab {activeTab === 'node' ? 'active' : ''}" onclick={() => (activeTab = 'node')}>
-        <i class="ri-javascript-line icon-node"></i>
-        <span>Node.js Project</span>
-      </button>
-      <button class="proj-tab {activeTab === 'proxy' ? 'active' : ''}" onclick={() => (activeTab = 'proxy')}>
-        <i class="ri-shuffle-line icon-proxy"></i>
-        <span>Proxy Project</span>
-      </button>
-      <button class="proj-tab {activeTab === 'go' ? 'active' : ''}" onclick={() => (activeTab = 'go')}>
-        <i class="ri-braces-line icon-go"></i>
-        <span>Go Project</span>
-      </button>
-      <button class="proj-tab {activeTab === 'python' ? 'active' : ''}" onclick={() => (activeTab = 'python')}>
-        <i class="ri-terminal-box-line icon-python"></i>
-        <span>Python Project</span>
-      </button>
-      <button class="proj-tab {activeTab === 'static' ? 'active' : ''}" onclick={() => (activeTab = 'static')}>
-        <i class="ri-html5-line icon-static"></i>
-        <span>Static HTML</span>
-      </button>
-    </div>
-
-    <!-- Badge Engine Web Server di Ujung Kanan Bar Kategori -->
-    <div class="project-tabs-right">
+  <!-- ═════════ 1. Header Halaman + Status Mesin Nginx + Aksi Utama ═════════ -->
+  <PageHeader
+    title="Website & Aplikasi"
+    subtitle="Deploy multi-runtime (PHP/Filament, Node.js, Go, Python, SPA), Auto-SSL, .env, & manajemen proses 1-klik"
+    icon="ri-global-line"
+  >
+    {#snippet actions()}
       {#if webServer.installed}
         <button
           id="nginx-badge-btn"
+          type="button"
           class="server-badge clickable {webServer.running ? 'is-running' : 'is-stopped'}"
           title="Klik untuk membuka Nginx Manager"
           onclick={() => (showNginxManager = true)}
         >
           <span class="pulse-indicator"></span>
-          <i class="ri-server-line"></i>
+          <i class="ri-server-line" aria-hidden="true"></i>
           <span class="server-label">Nginx {webServer.version || '1.24.0'}</span>
           <span class="server-status-tag">{webServer.running ? 'Running' : 'Stopped'}</span>
-          <i class="ri-settings-4-line badge-gear"></i>
+          <i class="ri-settings-4-line badge-gear" aria-hidden="true"></i>
         </button>
       {:else}
         <div class="server-badge is-missing" title="Nginx belum terpasang">
-          <i class="ri-alert-fill"></i>
+          <i class="ri-alert-fill" aria-hidden="true"></i>
           <span>Nginx Belum Terpasang</span>
         </div>
       {/if}
-    </div>
-  </div>
-
-  <!-- ═════════ 2. Action Toolbar: Tombol Tambah, Perbarui SSL Semua, & Search ═════════ -->
-  <div class="action-toolbar">
-    <div class="tb-left">
-      <button class="btn btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
-        <i class="ri-add-line"></i>
-        <span>Tambah Situs</span>
-      </button>
 
       <button
-        class="btn btn-renew-ssl"
+        type="button"
+        class="btn-renew-ssl"
         title="Periksa masa aktif & perbarui semua sertifikat SSL"
         disabled={renewingAllSSL}
         onclick={renewAllSSL}
       >
-        <i class={renewingAllSSL ? 'ri-loader-4-line spin' : 'ri-shield-keyhole-line'}></i>
-        <span>{renewingAllSSL ? 'Memeriksa SSL...' : 'Perbarui SSL Semua'}</span>
+        <i class={renewingAllSSL ? 'ri-loader-4-line spin' : 'ri-shield-keyhole-line'} aria-hidden="true"></i>
+        <span>{renewingAllSSL ? 'Memeriksa…' : 'Perbarui SSL'}</span>
       </button>
 
       <button
-        class="btn btn-refresh-sites"
-        title="Segarkan status live upstream dan hitungan permintaan terbaru"
+        type="button"
+        class="btn-refresh-sites"
+        title="Segarkan status live upstream & proses"
         disabled={loading || refreshingSites}
         onclick={() => loadSites(true)}
       >
-        <i class={refreshingSites ? 'ri-loader-4-line spin' : 'ri-refresh-line'}></i>
-        <span>Segarkan</span>
+        <i class={refreshingSites ? 'ri-loader-4-line spin' : 'ri-refresh-line'} aria-hidden="true"></i>
+      </button>
+
+      <button type="button" class="btn-add-site" id="add-site-btn" onclick={() => (showAddModal = true)}>
+        <i class="ri-rocket-2-line" aria-hidden="true"></i>
+        <span>Deploy / Tambah Situs</span>
+      </button>
+    {/snippet}
+  </PageHeader>
+
+  <!-- ═════════ 2. 4 Kartu Filter Kesehatan Interaktif ═════════ -->
+  {#if webServer.installed}
+    <div class="sites-kpi-grid" role="group" aria-label="Filter cepat kesehatan situs">
+      <button
+        type="button"
+        class="sites-kpi-card"
+        class:is-active={healthFilter === 'all'}
+        onclick={() => (healthFilter = 'all')}
+      >
+        <div class="kpi-top">
+          <span class="kpi-label">Semua Situs</span>
+          <i class="ri-apps-2-line kpi-icon" aria-hidden="true"></i>
+        </div>
+        <strong class="kpi-value mono">{kpiCounts.total}</strong>
+        <small class="kpi-sub">{runtimeChips.length} runtime aktif di server</small>
+      </button>
+
+      <button
+        type="button"
+        class="sites-kpi-card tone-success"
+        class:is-active={healthFilter === 'online'}
+        onclick={() => (healthFilter = healthFilter === 'online' ? 'all' : 'online')}
+      >
+        <div class="kpi-top">
+          <span class="kpi-label">Online &amp; Sehat</span>
+          <i class="ri-checkbox-circle-line kpi-icon" aria-hidden="true"></i>
+        </div>
+        <strong class="kpi-value mono">{kpiCounts.online}</strong>
+        <small class="kpi-sub">Upstream &amp; vhost merespons normal</small>
+      </button>
+
+      <button
+        type="button"
+        class="sites-kpi-card tone-danger"
+        class:is-active={healthFilter === 'issues'}
+        onclick={() => (healthFilter = healthFilter === 'issues' ? 'all' : 'issues')}
+      >
+        <div class="kpi-top">
+          <span class="kpi-label">Bermasalah / Down</span>
+          <i class="ri-error-warning-line kpi-icon" aria-hidden="true"></i>
+        </div>
+        <strong class="kpi-value mono">{kpiCounts.issues}</strong>
+        <small class="kpi-sub">{kpiCounts.issues > 0 ? 'Klik untuk inspeksi & restart 1-klik' : 'Semua layanan berjalan lancar'}</small>
+      </button>
+
+      <button
+        type="button"
+        class="sites-kpi-card tone-accent"
+        class:is-active={healthFilter === 'git'}
+        onclick={() => (healthFilter = healthFilter === 'git' ? 'all' : 'git')}
+      >
+        <div class="kpi-top">
+          <span class="kpi-label">Terhubung Git</span>
+          <i class="ri-git-branch-line kpi-icon" aria-hidden="true"></i>
+        </div>
+        <strong class="kpi-value mono">{kpiCounts.git}</strong>
+        <small class="kpi-sub">Auto-deploy, webhook &amp; rollback aktif</small>
       </button>
     </div>
 
-    <div class="tb-right">
-      <div class="search-box">
-        <i class="ri-search-line search-icon"></i>
-        <input
-          type="text"
-          placeholder="Cari domain atau folder..."
-          bind:value={searchQuery}
-        />
-        {#if searchQuery}
+    <!-- ═════════ 3. Bar Filter Runtime Dinamis + Pencarian + Urutan + Toggle View ═════════ -->
+    <div class="sites-filter-bar">
+      <div class="runtime-chips-wrap" role="tablist" aria-label="Filter runtime dinamis">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeRuntime === 'all'}
+          class="rt-chip"
+          class:is-active={activeRuntime === 'all'}
+          onclick={() => (activeRuntime = 'all')}
+        >
+          <span>Semua</span>
+          <span class="rt-count mono">{sites.length}</span>
+        </button>
+
+        {#each runtimeChips as chip (chip.kind)}
           <button
-            class="btn-clear-search"
-            aria-label="Hapus pencarian"
-            title="Hapus pencarian"
-            onclick={() => (searchQuery = '')}
-          >&times;</button>
-        {/if}
+            type="button"
+            role="tab"
+            aria-selected={activeRuntime === chip.kind}
+            class="rt-chip"
+            class:is-active={activeRuntime === chip.kind}
+            onclick={() => (activeRuntime = activeRuntime === chip.kind ? 'all' : chip.kind)}
+          >
+            <i class="{chip.icon} {chip.cls}" aria-hidden="true"></i>
+            <span>{chip.label}</span>
+            <span class="rt-count mono">{chip.count}</span>
+          </button>
+        {/each}
+      </div>
+
+      <div class="filter-controls-right">
+        <div class="search-box">
+          <i class="ri-search-line search-icon" aria-hidden="true"></i>
+          <input
+            type="text"
+            aria-label="Cari domain, framework, repo, atau port"
+            placeholder="Cari domain, framework, port..."
+            bind:value={searchQuery}
+          />
+          {#if searchQuery}
+            <button
+              type="button"
+              class="btn-clear-search"
+              aria-label="Hapus pencarian"
+              title="Hapus pencarian"
+              onclick={() => (searchQuery = '')}
+            >&times;</button>
+          {/if}
+        </div>
+
+        <select class="sort-select" aria-label="Urutkan situs" bind:value={sortBy}>
+          <option value="status">Prioritas Status</option>
+          <option value="domain">Domain (A–Z)</option>
+          <option value="traffic">Trafik Tertinggi</option>
+          <option value="recent">Terbaru</option>
+        </select>
+
+        <div class="view-toggle" role="group" aria-label="Mode tampilan">
+          <button
+            type="button"
+            class="view-btn"
+            class:is-active={viewMode === 'table'}
+            aria-label="Tampilan tabel"
+            title="Tampilan Tabel"
+            onclick={() => (viewMode = 'table')}
+          >
+            <i class="ri-list-check-2" aria-hidden="true"></i>
+          </button>
+          <button
+            type="button"
+            class="view-btn"
+            class:is-active={viewMode === 'grid'}
+            aria-label="Tampilan kartu grid"
+            title="Tampilan Kartu"
+            onclick={() => (viewMode = 'grid')}
+          >
+            <i class="ri-layout-grid-line" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  {/if}
 
-  <!-- ═════════ 2b. Bar Aksi Massal (muncul saat >= 1 situs dicentang) ═════════ -->
+  <!-- ═════════ 4. Bar Aksi Massal (muncul saat >= 1 situs dicentang) ═════════ -->
   {#if selectedIds.size > 0 && webServer.installed}
     <div class="bulk-action-bar">
       <div class="bulk-action-info">
-        <i class="ri-checkbox-multiple-line"></i>
+        <i class="ri-checkbox-multiple-line" aria-hidden="true"></i>
         <span><strong>{selectedIds.size}</strong> situs dipilih</span>
       </div>
       <div class="bulk-action-btns">
         <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkBackupSites}>
-          <i class={bulkBusy ? 'ri-loader-4-line spin' : 'ri-archive-line'}></i>
+          <i class={bulkBusy ? 'ri-loader-4-line spin' : 'ri-archive-line'} aria-hidden="true"></i>
           <span>Backup Terpilih</span>
         </button>
         <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkRenewSSL}>
-          <i class="ri-shield-keyhole-line"></i>
+          <i class="ri-shield-keyhole-line" aria-hidden="true"></i>
           <span>Perbarui SSL</span>
         </button>
         <button type="button" class="btn-bulk" disabled={bulkBusy} onclick={bulkToggleSites}>
-          <i class="ri-shut-down-line"></i>
-          <span>Toggle Status</span>
+          <i class="ri-shut-down-line" aria-hidden="true"></i>
+          <span>Toggle Vhost</span>
         </button>
         <button type="button" class="btn-bulk btn-bulk--ghost" disabled={bulkBusy} onclick={clearSelection}>
-          <i class="ri-close-line"></i>
+          <i class="ri-close-line" aria-hidden="true"></i>
           <span>Batal</span>
         </button>
       </div>
     </div>
   {/if}
 
-  <!-- ═════════ 3. Tampilan Utama: Warning Nginx Belum Terpasang vs Tabel ═════════ -->
+  <!-- ═════════ 5. Tampilan Utama: Warning Nginx vs Tabel/Grid Situs ═════════ -->
   {#if !webServer.installed}
     <div class="dep-warning-card">
       <div class="dep-warn-glow"></div>
       <div class="dep-warn-content">
         <div class="dep-warn-icon-box">
-          <i class="ri-error-warning-fill"></i>
+          <i class="ri-error-warning-fill" aria-hidden="true"></i>
         </div>
         <div class="dep-warn-details">
           <h3>Nginx Web Server Belum Terpasang di Server!</h3>
@@ -791,23 +976,25 @@
           </p>
           <div class="dep-warn-actions">
             <button
+              type="button"
               class="btn btn-install-now"
               onclick={installNginx}
               disabled={installingNginx}
             >
               {#if installingNginx}
-                <i class="ri-loader-4-line spin"></i>
+                <i class="ri-loader-4-line spin" aria-hidden="true"></i>
                 <span>Memulai Pemasangan Nginx...</span>
               {:else}
-                <i class="ri-download-cloud-2-line"></i>
+                <i class="ri-download-cloud-2-line" aria-hidden="true"></i>
                 <span>Pasang Nginx Sekarang (1-Klik)</span>
               {/if}
             </button>
             <button
+              type="button"
               class="btn btn--ghost"
               onclick={() => (window.location.hash = '#/terminal')}
             >
-              <i class="ri-terminal-box-line"></i>
+              <i class="ri-terminal-box-line" aria-hidden="true"></i>
               <span>Pasang via Terminal</span>
             </button>
           </div>
@@ -815,16 +1002,18 @@
       </div>
     </div>
   {:else}
-    <!-- TABEL SITUS WEB -->
     <SitesTable
       {loading}
       {filteredSites}
       {selectedIds}
       {backingUpSiteId}
+      {restartingSiteId}
+      {viewMode}
       bind:openMoreSiteId
       onToggleSelectAll={toggleSelectAll}
       onToggleSelectSite={toggleSelectSite}
       onToggleSite={toggleSite}
+      onRestartProcess={restartSiteProcess}
       onTriggerBackup={triggerBackup}
       onOpenInFileManager={openInFileManager}
       onOpenInTerminal={openInTerminal}
@@ -839,7 +1028,7 @@
     />
   {/if}
 
-  <!-- ═════════ MODAL: Tambah Situs ═════════ -->
+  <!-- ═════════ MODAL: Tambah / Deploy Situs ═════════ -->
   {#if showAddModal}
     <AddSiteModal
       onClose={() => (showAddModal = false)}

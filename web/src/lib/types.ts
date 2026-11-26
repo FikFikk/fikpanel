@@ -54,6 +54,10 @@ export interface Site {
   git_commit?: string;
   has_cicd?: boolean;
   cicd_provider?: string;
+  process_manager?: 'systemd' | 'pm2' | string;
+  process_unit?: string;
+  process_state?: 'active' | 'inactive' | 'failed' | string;
+  queue_worker_enabled?: boolean;
 }
 
 export interface DomainCheck {
@@ -1412,6 +1416,9 @@ export interface NginxDiscoveredItem {
   ssl_key_path?: string;
   ssl_issuer?: string;
   ssl_not_after?: number;
+  kind?: SiteKind;
+  framework?: string;
+  php_version?: string;
 }
 
 export interface DockerDiscoveredItem {
@@ -1911,7 +1918,43 @@ export interface SiteDeployInfo {
   php_binary: string;
   scheduler_enabled: boolean;
   scheduler_cron_id: number;
+  queue_worker_enabled?: boolean;
+  queue_unit?: string;
+  process_manager?: string;
+  process_unit?: string;
+  process_state?: string;
+  framework?: string;
   deployments: SiteDeploymentItem[];
+}
+
+export interface SiteEnvEntry {
+  key: string;
+  value: string;
+  secret: boolean;
+}
+
+export interface LaravelReadinessExt {
+  name: string;
+  installed: boolean;
+  required: boolean;
+}
+
+export interface LaravelReadinessReport {
+  ok: boolean;
+  php_binary: string;
+  php_version: string;
+  extensions: LaravelReadinessExt[];
+  missing_extensions: string[];
+  storage_linked: boolean;
+  vendor_ready: boolean;
+  filament_user_ok: boolean;
+  app_env: string;
+  app_debug: string;
+  queue_connection: string;
+  queue_worker_enabled: boolean;
+  queue_unit: string;
+  scheduler_enabled: boolean;
+  redis_available: boolean;
 }
 
 

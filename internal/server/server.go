@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.7"
+		return "0.7.8"
 	}
 	return s.version
 }
@@ -277,6 +277,7 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/sites", s.AuthMiddleware(http.HandlerFunc(s.handleCreateSite)))
 	s.mux.Handle("POST /api/sites/batch", s.AuthMiddleware(http.HandlerFunc(s.handleBatchCreateSites)))
 	s.mux.Handle("GET /api/sites/meta", s.AuthMiddleware(http.HandlerFunc(s.handleSiteMeta)))
+	s.mux.Handle("GET /api/sites/next-port", s.AuthMiddleware(http.HandlerFunc(s.handleNextFreeAppPort)))
 	s.mux.Handle("POST /api/sites/check-domains", s.AuthMiddleware(http.HandlerFunc(s.handleCheckDomains)))
 	s.mux.Handle("GET /api/sites/git/status", s.AuthMiddleware(http.HandlerFunc(s.handleGitStatus)))
 	s.mux.Handle("GET /api/sites/git/avatar", s.AuthMiddleware(http.HandlerFunc(s.handleGitAvatar)))
@@ -304,6 +305,13 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/sites/{id}/laravel-admin", s.AuthMiddleware(http.HandlerFunc(s.handleSaveSiteLaravelAdmin)))
 	s.mux.Handle("POST /api/sites/{id}/laravel/scheduler", s.AuthMiddleware(http.HandlerFunc(s.handleToggleLaravelScheduler)))
 	s.mux.Handle("POST /api/sites/{id}/laravel/optimize", s.AuthMiddleware(http.HandlerFunc(s.handleOptimizeLaravelSite)))
+	s.mux.Handle("GET /api/sites/{id}/laravel/readiness", s.AuthMiddleware(http.HandlerFunc(s.handleGetLaravelReadiness)))
+	s.mux.Handle("POST /api/sites/{id}/laravel/install-extensions", s.AuthMiddleware(http.HandlerFunc(s.handleInstallLaravelExtensions)))
+	s.mux.Handle("POST /api/sites/{id}/laravel/queue", s.AuthMiddleware(http.HandlerFunc(s.handleToggleLaravelQueueWorker)))
+	s.mux.Handle("GET /api/sites/{id}/env", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteEnv)))
+	s.mux.Handle("PUT /api/sites/{id}/env", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSiteEnv)))
+	s.mux.Handle("POST /api/sites/{id}/process/action", s.AuthMiddleware(http.HandlerFunc(s.handleSiteProcessAction)))
+	s.mux.Handle("GET /api/sites/{id}/process/logs", s.AuthMiddleware(http.HandlerFunc(s.handleSiteProcessLogs)))
 	s.mux.Handle("GET /api/sites/{id}/deploy", s.AuthMiddleware(http.HandlerFunc(s.handleGetSiteDeployInfo)))
 	s.mux.Handle("PUT /api/sites/{id}/deploy/config", s.AuthMiddleware(http.HandlerFunc(s.handleUpdateSiteDeployConfig)))
 	s.mux.Handle("POST /api/sites/{id}/deploy/rollback", s.AuthMiddleware(http.HandlerFunc(s.handleSiteDeployRollback)))

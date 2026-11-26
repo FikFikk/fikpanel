@@ -3884,6 +3884,80 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.25 Universal Auto-Deploy, Alokasi Port Bebas, Proses Aplikasi, Editor `.env` & Kesiapan Laravel/Filament
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/next-port` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `kind` (string, opsional: `node`, `go`, `python`, `proxy`; default `node`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "kind": "node", "port": 3100, "upstream": "http://127.0.0.1:3100"}` |
+| Notes | Memilih port TCP lokal yang bebas di tabel `sites` sekaligus diverifikasi dengan `net.Listen` (`3100–3999` Node, `8100–8499` Go, `8500–8999` Python) untuk mencegah bentrok port antar aplikasi. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/env` & `PUT /api/sites/{id}/env` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `PUT`: `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `PUT`: `mode` (`structured` atau `raw`), `entries` (`[{key, value, secret}]`), `raw` (string), `apply_cache` (bool — jalankan `artisan optimize` atau restart PM2/systemd setelah simpan) |
+| Response | HTTP 200 `{"ok": true, "exists": true, "path": "/.../project/.env", "raw": "...", "entries": [{"key": "APP_ENV", "value": "production", "secret": false}], "message": "..."}` |
+| Notes | Memvalidasi nama variabel (`^[A-Za-z_][A-Za-z0-9_]*$`), menyamarkan kunci rahasia secara default di UI (`PASS`/`SECRET`/`TOKEN`/`KEY`), menyimpan berkas dengan izin `0640` (`www-data:www-data` untuk PHP), dan mencatat audit `site.env.save`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/process/action` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `action` (string, wajib: `start`, `restart`, `stop`) |
+| Response | HTTP 200 `{"ok": true, "manager": "systemd|pm2|php-fpm", "unit": "...", "output": "...", "message": "..."}` |
+| Notes | Mengontrol daemon aplikasi terkelola (`fikpanel-app-<slug>.service` untuk Go/Python, PM2 dengan `cmd.Dir` proyek untuk Node.js, atau reload PHP-FPM + Queue Worker untuk PHP). Jika aplikasi Node/Go/Python belum memiliki service saat `start`/`restart`, engine otomatis melakukan bootstrap `ecosystem.config.cjs`/unit systemd. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/process/logs` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `target` (string, opsional: `app` atau `queue`; default `app`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "source": "systemd:fikpanel-app-... | pm2:...", "content": "..."}` |
+| Notes | Mengambil 120 baris log stdout/stderr terbaru dari `journalctl -u` (untuk Go, Python, dan Laravel Queue Worker) atau `pm2 logs --nostream` (untuk Node.js). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/sites/{id}/laravel/readiness` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "php_binary": "/usr/bin/php8.3", "extensions": [{"name": "intl", "installed": true, "required": true}], "missing_extensions": [], "storage_linked": true, "vendor_ready": true, "filament_user_ok": true, "app_env": "production", "app_debug": "false", "queue_worker_enabled": true, "scheduler_enabled": true, "redis_available": true}` |
+| Notes | Mengaudit kesiapan produksi proyek Laravel/Filament terhadap binary PHP-FPM situs (ekstensi `intl`/`bcmath`/`mbstring`/`xml`/`zip`/`pdo_mysql`/`curl`/`gd`, symlink storage, implementasi `FilamentUser`, status Queue Worker & Scheduler, serta konektivitas Redis). |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/laravel/install-extensions` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "installed": ["php8.3-intl", "php8.3-bcmath"], "output": "...", "message": "..."}` |
+| Notes | Memasang seluruh ekstensi wajib Laravel/Filament yang belum terpasang sesuai versi PHP situs via `apt-get install -y` non-interaktif lalu me-reload `php<ver>-fpm`; mencatat audit `site.laravel.extensions`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/sites/{id}/laravel/queue` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `Content-Type: application/json`, `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | `enabled` (bool), `tries` (int, default `3`, rentang 1–10), `timeout` (int, default `120`, rentang 1–600) |
+| Response | HTTP 200 `{"ok": true, "queue_worker_enabled": true, "queue_unit": "fikpanel-queue-<slug>.service", "message": "..."}` |
+| Notes | Membuat/menjalankan atau mencopot unit systemd `fikpanel-queue-<slug>.service` (`www-data`, `php<ver> artisan queue:work --sleep=3 --tries=3 --max-time=3600`); otomatis menerima sinyal `artisan queue:restart` setiap selesai deploy/rollback. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |
