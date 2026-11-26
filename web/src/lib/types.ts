@@ -528,18 +528,73 @@ export interface AppPackage {
   name: string;
   category: 'webserver' | 'runtime' | 'database' | 'tools';
   version: string;
+  installed_version?: string;
+  candidate_version?: string;
+  update_available?: boolean;
+  disk_size_kb?: number;
   description: string;
   icon: string;
   installed: boolean;
   status: 'running' | 'stopped' | 'not_installed';
+  service_unit?: string;
+  manager_route?: string;
+  critical?: boolean;
   apt_packages: string[];
+}
+
+export interface StackBundleComponent {
+  id: string;
+  name: string;
+  installed: boolean;
+  status: string;
+  version: string;
+}
+
+export interface StackBundle {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  icon: string;
+  badge: string;
+  app_ids: string[];
+  components: StackBundleComponent[];
+  installed_count: number;
+  total_count: number;
+  missing_app_ids: string[];
+  ready: boolean;
+}
+
+export interface UpgradablePackage {
+  name: string;
+  current_version: string;
+  candidate_version: string;
+  architecture?: string;
+}
+
+export interface PackageDetail {
+  name: string;
+  installed: boolean;
+  installed_version?: string;
+  candidate_version?: string;
+  update_available?: boolean;
+  section?: string;
+  maintainer?: string;
+  homepage?: string;
+  installed_size_kb?: number;
+  download_size?: string;
+  depends?: string;
+  description: string;
 }
 
 export interface InstallTask {
   app_id: string;
-  status: 'running' | 'success' | 'failed';
+  action?: 'install' | 'uninstall' | 'upgrade' | 'apt-update' | 'bundle' | string;
+  title?: string;
+  status: 'queued' | 'running' | 'success' | 'failed';
   logs: string;
   started_at: number;
+  finished_at?: number;
 }
 
 // ── System Operations Console (Host, Process, Network, Swap/Memory, Cleaner, Updates & Diagnostics) ──
@@ -1205,6 +1260,19 @@ export interface DockerComposeProject {
   yaml_content: string;
 }
 
+export interface DockerAppTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  icon: string;
+  image: string;
+  default_ports: string[];
+  default_volumes: string[];
+  default_env: Record<string, string>;
+  docker_compose_yaml: string;
+}
+
 export interface OneClickTemplate {
   id: string;
   name: string;
@@ -1692,6 +1760,7 @@ export interface CloudflareZone {
 
 export interface GlobalPackage {
   name: string;
+  version?: string;
   description: string;
   installed: boolean;
 }

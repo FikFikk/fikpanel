@@ -3800,6 +3800,90 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 
 ---
 
+### 1.24 App Store, Stack Bundles 1-Klik, Kontrol Layanan & Inspektor Paket APT
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/catalog` *(diperluas)* |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `refresh` (string, opsional: `1`/`true` untuk memindai ulang host tanpa cache 10 detik) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "apps": [{"id": "nginx", "version": "1.24.0", "installed_version": "1.24.0", "candidate_version": "1.26.2", "update_available": true, "disk_size_kb": 1840, "service_unit": "nginx", "manager_route": "#/website", "critical": true, ...}]}` |
+| Notes | Memindai 27 software server kurasi menggunakan 1 batch `dpkg-query`, 1 batch `systemctl is-active`, cache `apt list --upgradable`, dan fallback deteksi biner/socket. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/bundles` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "bundles": [{"id": "bundle-laravel", "name": "Laravel & Filament Production", "installed_count": 4, "total_count": 7, "missing_app_ids": ["redis", "composer", "supervisor"], "ready": false, "components": [...]}]}` |
+| Notes | Mengembalikan 5 Stack Bundles 1-klik beserta status komponen terpasang di host saat ini. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/bundles/{id}/install` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (`bundle-laravel`, `bundle-nextjs`, `bundle-golang`, `bundle-wordpress`, `bundle-devops`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task_id": "bundle:bundle-laravel", "message": "Instalasi Stack Bundle telah dijadwalkan di background"}` |
+| Notes | Hanya memasang komponen bundel yang belum terpasang dalam satu transaksi `apt-get install` live streaming di belakang antrean mutex APT; mencatat audit `appstore.bundle_install`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/upgrade/{id}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID katalog atau `pkg:<nama-paket-debian>`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task_id": "upgrade:nginx", "message": "Pembaruan paket telah dijadwalkan di background"}` |
+| Notes | Menjalankan `apt-get install -y --only-upgrade -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold` secara live streaming dengan validasi ketat regex nama paket Debian; mencatat audit `appstore.upgrade`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/apt-update` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Tidak ada |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "task_id": "sys:apt-update", "message": "Sinkronisasi indeks repositori APT dimulai"}` |
+| Notes | Menjalankan `apt-get update` nyata secara asinkron dengan live log streaming dan menghapus cache status katalog/upgradable pasca selesai; mencatat audit `appstore.apt_update`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `POST /api/appstore/service/{id}/{action}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | `X-Panel-Request: 1` |
+| Query Params | Path param `{id}` (ID katalog ber-daemon), `{action}` (`start`, `stop`, `restart`, `reload`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "message": "Layanan nginx berhasil di-restart"}` |
+| Notes | Menjalankan kontrol unit systemd terkait secara langsung dengan allowlist aksi ketat dan invalidasi cache status katalog; mencatat audit `appstore.service_<action>`. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/inspect/{name}` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | Path param `{name}` (ID katalog atau nama paket Debian) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "detail": {"name": "nginx", "installed": true, "installed_version": "1.24.0", "candidate_version": "1.26.2", "update_available": true, "section": "web", "installed_size_kb": 1840, "download_size": "520 KB", "depends": "...", "description": "..."}}` |
+| Notes | Menggabungkan hasil `dpkg-query` dan `apt-cache show` dengan validasi regex nama paket Debian. |
+
+| Field | Detail |
+|---|---|
+| Method + Endpoint | `GET /api/appstore/upgradable` & `GET /api/appstore/tasks` |
+| Auth Required | Yes (Cookie `panel_session`) |
+| Headers | Tidak ada |
+| Query Params | `refresh=1` (opsional pada `/upgradable`) |
+| Request Body | Tidak ada |
+| Response | HTTP 200 `{"ok": true, "packages": [...]}` / `{"ok": true, "tasks": [{"app_id": "...", "action": "install", "status": "running", "started_at": ...}]}` |
+| Notes | Menyajikan daftar paket APT yang memiliki versi lebih baru serta antrean/riwayat maksimal 30 tugas App Store terbaru. |
+
+---
+
 ## 2. Tugas Terjadwal (Cron Jobs & Background Tasks)
 
 | Perintah / Daemon | Frekuensi | Tujuan | Efek Samping |

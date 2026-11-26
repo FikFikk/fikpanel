@@ -133,7 +133,7 @@ func (s *Server) TLSEnabled() bool { return s.certs != nil }
 // Version mengembalikan versi biner server aktif
 func (s *Server) Version() string {
 	if s.version == "" {
-		return "0.7.6"
+		return "0.7.7"
 	}
 	return s.version
 }
@@ -462,11 +462,19 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("POST /api/system/updates/apply-security", s.AuthMiddleware(http.HandlerFunc(s.handleApplySecurityUpdates)))
 	s.mux.Handle("GET /api/system/diagnostics", s.AuthMiddleware(http.HandlerFunc(s.handleGetSystemDiagnostics)))
 
-	// Software App Store & Toolkit Installer
+	// Software App Store, Stack Bundles, Service Control & APT Toolkit
 	s.mux.Handle("GET /api/appstore/catalog", s.AuthMiddleware(http.HandlerFunc(s.handleListAppStore)))
+	s.mux.Handle("GET /api/appstore/bundles", s.AuthMiddleware(http.HandlerFunc(s.handleListAppBundles)))
+	s.mux.Handle("POST /api/appstore/bundles/{id}/install", s.AuthMiddleware(http.HandlerFunc(s.handleInstallAppBundle)))
 	s.mux.Handle("GET /api/appstore/search", s.AuthMiddleware(http.HandlerFunc(s.handleSearchAppStore)))
+	s.mux.Handle("GET /api/appstore/upgradable", s.AuthMiddleware(http.HandlerFunc(s.handleListAppUpgradable)))
+	s.mux.Handle("GET /api/appstore/inspect/{name}", s.AuthMiddleware(http.HandlerFunc(s.handleInspectAppPackage)))
+	s.mux.Handle("POST /api/appstore/apt-update", s.AuthMiddleware(http.HandlerFunc(s.handleAptUpdate)))
 	s.mux.Handle("POST /api/appstore/install/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleInstallApp)))
+	s.mux.Handle("POST /api/appstore/upgrade/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUpgradeApp)))
 	s.mux.Handle("POST /api/appstore/uninstall/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleUninstallApp)))
+	s.mux.Handle("POST /api/appstore/service/{id}/{action}", s.AuthMiddleware(http.HandlerFunc(s.handleControlAppService)))
+	s.mux.Handle("GET /api/appstore/tasks", s.AuthMiddleware(http.HandlerFunc(s.handleListAppTasks)))
 	s.mux.Handle("GET /api/appstore/tasks/{id}", s.AuthMiddleware(http.HandlerFunc(s.handleGetAppTask)))
 
 	// Persistent System Monitor History, Analytics, Export & Threshold Alerts

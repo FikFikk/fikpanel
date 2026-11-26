@@ -1000,15 +1000,15 @@ services:
 `,
 		},
 		{
-			ID:          "portainer",
-			Name:        "Portainer CE Web GUI",
-			Category:    "tool",
-			Description: "Dashboard antarmuka visual manajemen kontainer Docker yang sangat populer.",
-			Icon:        "ri-dashboard-2-line",
-			Image:       "portainer/portainer-ce:latest",
-			DefaultPorts: []string{"9000:9000", "9443:9443"},
+			ID:             "portainer",
+			Name:           "Portainer CE Web GUI",
+			Category:       "tool",
+			Description:    "Dashboard antarmuka visual manajemen kontainer Docker yang sangat populer.",
+			Icon:           "ri-dashboard-2-line",
+			Image:          "portainer/portainer-ce:latest",
+			DefaultPorts:   []string{"9000:9000", "9443:9443"},
 			DefaultVolumes: []string{"/var/run/docker.sock:/var/run/docker.sock", "./data:/data"},
-			DefaultEnv:  map[string]string{},
+			DefaultEnv:     map[string]string{},
 			DockerComposeYaml: `version: '3.8'
 services:
   portainer:
@@ -1023,10 +1023,151 @@ services:
       - ./data:/data
 `,
 		},
+		{
+			ID:             "n8n",
+			Name:           "n8n Workflow Automation",
+			Category:       "tool",
+			Description:    "Platform otomasi alur kerja self-hosted dengan integrasi AI, Webhook, Telegram, dan ratusan API.",
+			Icon:           "ri-flow-chart",
+			Image:          "docker.n8n.io/n8nio/n8n:latest",
+			DefaultPorts:   []string{"5678:5678"},
+			DefaultVolumes: []string{"./data:/home/node/.n8n"},
+			DefaultEnv: map[string]string{
+				"GENERIC_TIMEZONE": "Asia/Jakarta",
+				"TZ":               "Asia/Jakarta",
+			},
+			DockerComposeYaml: `version: '3.8'
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: fik_n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      GENERIC_TIMEZONE: Asia/Jakarta
+      TZ: Asia/Jakarta
+    volumes:
+      - ./data:/home/node/.n8n
+`,
+		},
+		{
+			ID:             "gitea",
+			Name:           "Gitea Self-Hosted Git",
+			Category:       "tool",
+			Description:    "Server Git privat super ringan alternatif GitHub lengkap dengan CI/CD Actions dan Issue Tracker.",
+			Icon:           "ri-git-repository-line",
+			Image:          "gitea/gitea:latest",
+			DefaultPorts:   []string{"3000:3000", "2222:22"},
+			DefaultVolumes: []string{"./data:/data"},
+			DefaultEnv: map[string]string{
+				"USER_UID": "1000",
+				"USER_GID": "1000",
+			},
+			DockerComposeYaml: `version: '3.8'
+services:
+  gitea:
+    image: gitea/gitea:latest
+    container_name: fik_gitea
+    restart: always
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+    volumes:
+      - ./data:/data
+`,
+		},
+		{
+			ID:             "minio",
+			Name:           "MinIO S3 Object Storage",
+			Category:       "database",
+			Description:    "Penyimpanan objek S3-compatible berkecepatan tinggi untuk aset aplikasi dan target cadangan FikPanel.",
+			Icon:           "ri-hard-drive-2-line",
+			Image:          "minio/minio:latest",
+			DefaultPorts:   []string{"9001:9000", "9090:9090"},
+			DefaultVolumes: []string{"./data:/data"},
+			DefaultEnv: map[string]string{
+				"MINIO_ROOT_USER":     "minioadmin",
+				"MINIO_ROOT_PASSWORD": "changeme_minio_secret",
+			},
+			DockerComposeYaml: `version: '3.8'
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: fik_minio
+    restart: always
+    command: server /data --console-address ":9090"
+    ports:
+      - "9001:9000"
+      - "9090:9090"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: changeme_minio_secret
+    volumes:
+      - ./data:/data
+`,
+		},
+		{
+			ID:             "grafana",
+			Name:           "Grafana Observability",
+			Category:       "monitoring",
+			Description:    "Platform visualisasi dashboard metrik, log, dan alerting real-time untuk Prometheus/Loki/SQL.",
+			Icon:           "ri-bar-chart-grouped-line",
+			Image:          "grafana/grafana:latest",
+			DefaultPorts:   []string{"3002:3000"},
+			DefaultVolumes: []string{"./data:/var/lib/grafana"},
+			DefaultEnv: map[string]string{
+				"GF_SECURITY_ADMIN_USER":     "admin",
+				"GF_SECURITY_ADMIN_PASSWORD": "changeme_grafana",
+			},
+			DockerComposeYaml: `version: '3.8'
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fik_grafana
+    restart: always
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: changeme_grafana
+    volumes:
+      - ./data:/var/lib/grafana
+`,
+		},
+		{
+			ID:             "vaultwarden",
+			Name:           "Vaultwarden Password Vault",
+			Category:       "tool",
+			Description:    "Server pengelola kata sandi ringan kompatibel Bitwarden untuk menyimpan kredensial tim secara privat.",
+			Icon:           "ri-key-2-line",
+			Image:          "vaultwarden/server:latest",
+			DefaultPorts:   []string{"8082:80"},
+			DefaultVolumes: []string{"./data:/data"},
+			DefaultEnv: map[string]string{
+				"SIGNUPS_ALLOWED": "true",
+			},
+			DockerComposeYaml: `version: '3.8'
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: fik_vaultwarden
+    restart: always
+    ports:
+      - "8082:80"
+    environment:
+      SIGNUPS_ALLOWED: "true"
+    volumes:
+      - ./data:/data
+`,
+		},
 	}
 }
 
-// DeployTemplate memasang aplikasi dari katalog template
+// DeployTemplate memasang aplikasi dari katalog template dengan dukungan override port & variabel lingkungan
 func (m *Manager) DeployTemplate(ctx context.Context, req DeployTemplateRequest) error {
 	var targetTpl *OneClickTemplate
 	for _, t := range m.GetTemplates() {
@@ -1039,12 +1180,34 @@ func (m *Manager) DeployTemplate(ctx context.Context, req DeployTemplateRequest)
 		return fmt.Errorf("template dengan ID %s tidak ditemukan", req.TemplateID)
 	}
 
-	projName := req.ProjectName
+	projName := strings.TrimSpace(req.ProjectName)
 	if projName == "" {
 		projName = targetTpl.ID + "_" + fmt.Sprintf("%d", time.Now().Unix()%1000)
 	}
 
-	return m.ComposeUp(ctx, projName, targetTpl.DockerComposeYaml)
+	yamlContent := targetTpl.DockerComposeYaml
+	// Terapkan override port host bila diubah oleh pengguna (mis. "8000:80" -> "8088:80")
+	for origPort, customPort := range req.Ports {
+		op := strings.TrimSpace(origPort)
+		cp := strings.TrimSpace(customPort)
+		if op != "" && cp != "" && op != cp && !strings.ContainsAny(cp, "\r\n\"'") {
+			yamlContent = strings.ReplaceAll(yamlContent, `"`+op+`"`, `"`+cp+`"`)
+		}
+	}
+	// Terapkan override variabel lingkungan secara aman (mencegah injeksi baris baru)
+	for k, customVal := range req.Env {
+		key := strings.TrimSpace(k)
+		val := strings.TrimSpace(customVal)
+		if key == "" || strings.ContainsAny(key+val, "\r\n") {
+			continue
+		}
+		if defVal, ok := targetTpl.DefaultEnv[key]; ok && defVal != val {
+			yamlContent = strings.ReplaceAll(yamlContent, key+": "+defVal, key+": "+val)
+			yamlContent = strings.ReplaceAll(yamlContent, key+`: "`+defVal+`"`, key+`: "`+val+`"`)
+		}
+	}
+
+	return m.ComposeUp(ctx, projName, yamlContent)
 }
 
 // ListRegistries mengambil daftar kredensial private registry yang tersimpan

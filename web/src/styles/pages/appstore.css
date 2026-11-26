@@ -1,8 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   APP STORE PAGE — gaya khusus katalog aplikasi & paket server (.pg-appstore)
-   Komponen umum (.page-header, .card, .input-wrap, .input__icon, .input,
-   .tabs, .segmented, .table, .badge, .dot, .btn, .state, .modal, .spinner)
-   diambil dari @layer components & utilities.
+   APP STORE PAGE — gaya terpusat katalog server, bundel, Docker 1-klik & APT
    ════════════════════════════════════════════════════════════════════════════ */
 
 @layer pages {
@@ -13,7 +10,114 @@
       gap: var(--space-4);
     }
 
-    /* Area pencarian & autocomplete */
+    /* 4 Kartu KPI Ringkas (rata kiri presisi, bebas bentrok global) */
+    .as-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+      gap: var(--space-3);
+    }
+
+    .as-kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      text-align: left;
+      gap: 0.3rem;
+    }
+
+    .as-kpi-card.is-warn {
+      border-color: var(--ring-warning);
+      background: var(--tint-warning);
+    }
+
+    .as-kpi-card.is-accent {
+      border-color: var(--ring-accent);
+      background: var(--tint-accent);
+    }
+
+    .as-kpi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      width: 100%;
+    }
+
+    .as-kpi-label {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      font-weight: var(--weight-medium);
+    }
+
+    .as-kpi-icon {
+      font-size: 1.15rem;
+    }
+
+    .as-kpi-val {
+      font-size: 1.6rem;
+      font-weight: var(--weight-bold);
+      line-height: 1.15;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .as-kpi-sub {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
+
+    /* Navigasi Tab Utama App Store */
+    .as-main-tabs {
+      display: flex;
+      gap: var(--space-2);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: var(--space-1);
+      overflow-x: auto;
+    }
+
+    .as-tab-count {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 0.05rem 0.42rem;
+      border-radius: 9999px;
+      font-size: var(--text-2xs);
+      font-weight: var(--weight-semibold);
+      font-family: var(--font-mono);
+    }
+
+    .as-tab-count--warn {
+      background: var(--tint-warning);
+      border-color: var(--ring-warning);
+      color: var(--warning-strong);
+    }
+
+    /* Banner Tugas Berjalan Aktif */
+    .active-task-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      background: var(--tint-info);
+      border: 1px solid var(--ring-info);
+      font-size: var(--text-xs);
+    }
+
+    .active-task-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--text);
+    }
+
+    /* Area Pencarian & Autocomplete */
     .search-section {
       position: relative;
       z-index: var(--z-dropdown);
@@ -40,7 +144,6 @@
       right: var(--space-2);
     }
 
-    /* Popover Autocomplete */
     .search-popover {
       position: absolute;
       top: calc(100% + var(--space-2));
@@ -139,10 +242,10 @@
       padding: 0;
     }
 
-    /* Grid Kartu Aplikasi */
+    /* Grid Kartu Katalog Server (Tata Letak Seragam Tanpa Loncatan Badge) */
     .apps-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(310px, 100%), 1fr));
       gap: var(--space-4);
     }
 
@@ -160,6 +263,10 @@
       transform: translateY(-2px);
     }
 
+    .app-card.has-update {
+      border-color: var(--ring-warning);
+    }
+
     .app-card__header {
       display: flex;
       align-items: flex-start;
@@ -167,8 +274,8 @@
     }
 
     .app-card__icon-box {
-      width: 48px;
-      height: 48px;
+      width: 44px;
+      height: 44px;
       border-radius: var(--radius-lg);
       background: var(--bg-inset);
       border: 1px solid var(--border);
@@ -179,24 +286,16 @@
     }
 
     .app-card__icon {
-      font-size: 1.6rem;
+      font-size: 1.45rem;
       color: var(--accent);
     }
 
     .app-card__meta {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 0.2rem;
       min-width: 0;
       flex: 1;
-    }
-
-    .app-card__title-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
-      justify-content: space-between;
-      flex-wrap: wrap;
     }
 
     .app-card__name {
@@ -209,8 +308,46 @@
       text-overflow: ellipsis;
     }
 
+    .app-card__subrow {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
     .app-card__cat {
       font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
+
+    .app-card__ver-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .ver-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .ver-pill--update {
+      background: var(--tint-warning);
+      border-color: var(--ring-warning);
+      color: var(--warning-strong);
+      font-weight: var(--weight-semibold);
+    }
+
+    .ver-pill--size {
       color: var(--text-subtle);
     }
 
@@ -233,22 +370,171 @@
       gap: var(--space-2);
       padding-top: var(--space-3);
       border-top: 1px solid var(--border-subtle);
+      flex-wrap: wrap;
     }
 
     .app-card__actions {
       display: flex;
       align-items: center;
-      gap: var(--space-2);
+      gap: 0.35rem;
+      flex-wrap: wrap;
     }
 
-    /* Gaya Tabel Katalog & Paket APT */
+    /* Stack Bundles Grid */
+    .bundles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+      gap: var(--space-4);
+    }
+
+    .bundle-card {
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-3);
+    }
+
+    .bundle-card.is-ready {
+      border-color: var(--ring-accent);
+    }
+
+    .bundle-head {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+
+    .bundle-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .bundle-tagline {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+    }
+
+    .bundle-progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .bundle-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: var(--text-2xs);
+      color: var(--text-muted);
+    }
+
+    .bundle-progress-bar {
+      height: 6px;
+      width: 100%;
+      border-radius: 9999px;
+      background: var(--bg-inset);
+      overflow: hidden;
+    }
+
+    .bundle-progress-fill {
+      height: 100%;
+      width: var(--bar-w, 0%);
+      background: var(--accent);
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+    }
+
+    .bundle-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.38rem;
+    }
+
+    .bundle-comp-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.7rem;
+      padding: 0.16rem 0.5rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .bundle-comp-chip.is-installed {
+      background: var(--tint-accent);
+      border-color: var(--ring-accent);
+      color: var(--accent-strong);
+    }
+
+    /* Docker 1-Klik Apps Tab */
+    .docker-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      background: var(--tint-warning);
+      border: 1px solid var(--ring-warning);
+    }
+
+    .docker-banner-info {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .docker-banner-info i {
+      font-size: 1.4rem;
+      color: var(--warning-strong);
+    }
+
+    .docker-meta-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .docker-deploy-form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .deploy-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .deploy-field label {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      font-weight: var(--weight-medium);
+    }
+
+    .deploy-kv-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-3);
+    }
+
+    /* Tabel Katalog, APT & Tugas */
     .col-software { min-width: 220px; }
-    .col-category { width: 150px; }
+    .col-category { width: 140px; }
     .col-status { width: 130px; }
-    .col-ops { min-width: 180px; }
+    .col-ops { min-width: 210px; }
     .col-pkg { width: 220px; }
     .col-pkg-status { width: 140px; }
-    .col-pkg-action { width: 130px; }
+    .col-pkg-action { width: 170px; }
 
     .text-right {
       text-align: right;
@@ -273,7 +559,7 @@
     }
 
     .table-icon-wrap i {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
       color: var(--accent);
     }
 
@@ -291,32 +577,36 @@
     .table-actions {
       display: inline-flex;
       align-items: center;
-      gap: var(--space-2);
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
-    /* Hasil Pencarian Paket Linux (APT) */
-    .global-results-section {
+    .apt-sections {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .section-card {
+      padding: var(--space-4);
       display: flex;
       flex-direction: column;
       gap: var(--space-3);
-      margin-top: var(--space-2);
     }
 
-    .global-results-head {
+    .section-card-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-top: var(--space-2);
-      border-top: 1px solid var(--border);
-    }
-
-    .global-head-title {
-      display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: var(--space-2);
     }
 
-    .global-head-title h3 {
+    .section-card-title {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
       margin: 0;
       font-size: var(--text-sm);
       font-weight: var(--weight-semibold);
@@ -329,10 +619,63 @@
       gap: var(--space-2);
     }
 
-    /* Konten Modal Log APT */
+    /* Modal Inspektor Detail Paket */
+    .inspect-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+
+    .inspect-cell {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .inspect-lbl {
+      font-size: var(--text-2xs);
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .inspect-val {
+      font-size: var(--text-xs);
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .inspect-desc {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      white-space: pre-line;
+      line-height: var(--leading-relaxed);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .inspect-apt-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: var(--space-2);
+    }
+
+    /* Konten Modal Log APT Live */
     .status-banner {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
       gap: var(--space-2);
       padding: var(--space-2) var(--space-3);
       border-radius: var(--radius-md);
@@ -340,21 +683,22 @@
       margin-bottom: var(--space-3);
     }
 
-    .status-banner.running {
+    .status-banner.running,
+    .status-banner.queued {
       background: var(--tint-warning);
-      border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+      border: 1px solid var(--ring-warning);
       color: var(--warning-strong);
     }
 
     .status-banner.success {
       background: var(--tint-accent);
-      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border: 1px solid var(--ring-accent);
       color: var(--accent-strong);
     }
 
     .status-banner.failed {
       background: var(--tint-danger);
-      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+      border: 1px solid var(--ring-danger);
       color: var(--danger-strong);
     }
 
@@ -371,7 +715,7 @@
       border-radius: var(--radius-md);
       font-size: var(--text-2xs);
       color: var(--text-secondary);
-      max-height: 320px;
+      max-height: 360px;
       overflow-y: auto;
       white-space: pre-wrap;
       word-break: break-all;
