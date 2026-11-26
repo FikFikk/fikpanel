@@ -161,7 +161,76 @@ func validateBackupFileName(raw string) (string, string, error) {
 	return base, fullPath, nil
 }
 
-// handleSyncDatabases memindai database fisik pada server host dan menyinkronkannya ke panel
+// collectProjectDirsForCredentialScan mengumpulkan seluruh direktori proyek terdaftar untuk pemindaian kredensial DB
+func (s *Server) collectProjectDirsForCredentialScan(ctx context.Context) []string {
+	var dirs []string
+	if sitesList, err := s.store.ListSites(ctx); err == nil {
+		for _, st := range sitesList {
+			if p := strings.TrimSpace(st.RootPath); p != "" {
+				dirs = append(dirs, p)
+			}
+		}
+	}
+	if rawRoots, err := s.store.GetSetting(ctx, "discovery.custom_roots"); err == nil && rawRoots != "" {
+		var customRoots []string
+		if err := json.Unmarshal([]byte(rawRoots), &customRoots); err == nil {
+			dirs = append(dirs, customRoots...)
+		}
+	}
+	return dirs
+}
+
+// recoverMissingDBCredentials mengisi username/password yang masih kosong di SQLite dari berkas .env/config proyek tanpa mengubah server DB
+func (s *Server) recoverMissingDBCredentials(ctx context.Context, engine string, records []store.DatabaseRecord) int {
+	needScan := false
+	for _, rec := range records {
+		if strings.TrimSpace(rec.Password) == "" {
+			needScan = true
+			break
+		}
+	}
+	if !needScan {
+		return 0
+	}
+
+	creds := database.DiscoverLocalDBCredentials(s.collectProjectDirsForCredentialScan(ctx))
+	if len(creds) == 0 {
+		return 0
+	}
+
+	recovered := 0
+	engKey := strings.ToLower(engine)
+	for i := range records {
+		if strings.TrimSpace(records[i].Password) != "" {
+			continue
+		}
+		lookupKey := engKey + ":" + strings.ToLower(strings.TrimSpace(records[i].Name))
+		c, ok := creds[lookupKey]
+		if !ok || strings.TrimSpace(c.Password) == "" {
+			continue
+		}
+		user := strings.TrimSpace(c.Username)
+		if user == "" {
+			user = records[i].Username
+		}
+		if user == "" {
+			user = records[i].Name
+		}
+		loc := strings.TrimSpace(c.Host)
+		if loc == "" {
+			loc = records[i].Location
+		}
+		if err := s.store.UpdateDatabaseCredentials(ctx, engine, records[i].Name, user, c.Password, loc); err == nil {
+			records[i].Username = user
+			records[i].Password = c.Password
+			records[i].Location = loc
+			recovered++
+		}
+	}
+	return recovered
+}
+
+// handleSyncDatabases memindai database fisik pada server host, menyinkronkannya ke panel, dan otomatis mendeteksi kredensial dari .env/config proyek
 func (s *Server) handleSyncDatabases(w http.ResponseWriter, r *http.Request) {
 	engine := strings.ToLower(r.PathValue("engine"))
 	if engine == "" {
@@ -181,6 +250,10 @@ func (s *Server) handleSyncDatabases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pindai kredensial dari .env, wp-config.php, docker-compose.yml, dan config-db.php di server
+	creds := database.DiscoverLocalDBCredentials(s.collectProjectDirsForCredentialScan(r.Context()))
+	engKey := strings.ToLower(engine)
+
 	existingMap := make(map[string]store.DatabaseRecord, len(existingList))
 	for _, rec := range existingList {
 		existingMap[rec.Name] = rec
@@ -188,9 +261,25 @@ func (s *Server) handleSyncDatabases(w http.ResponseWriter, r *http.Request) {
 
 	discovered := 0
 	updated := 0
+	credsRecovered := 0
 	for _, h := range hostList {
-		if _, ok := existingMap[h.Name]; !ok {
+		c, hasCred := creds[engKey+":"+strings.ToLower(strings.TrimSpace(h.Name))]
+		if rec, ok := existingMap[h.Name]; !ok {
 			owner := h.Owner
+			pass := ""
+			loc := "localhost"
+			if hasCred {
+				if strings.TrimSpace(c.Username) != "" {
+					owner = c.Username
+				}
+				if strings.TrimSpace(c.Password) != "" {
+					pass = c.Password
+					credsRecovered++
+				}
+				if strings.TrimSpace(c.Host) != "" {
+					loc = c.Host
+				}
+			}
 			if owner == "" {
 				owner = h.Name
 			}
@@ -198,9 +287,9 @@ func (s *Server) handleSyncDatabases(w http.ResponseWriter, r *http.Request) {
 				Engine:    engine,
 				Name:      h.Name,
 				Username:  owner,
-				Password:  "",
+				Password:  pass,
 				SizeBytes: h.SizeBytes,
-				Location:  "localhost",
+				Location:  loc,
 				Note:      "",
 			})
 			if createErr == nil {
@@ -210,18 +299,38 @@ func (s *Server) handleSyncDatabases(w http.ResponseWriter, r *http.Request) {
 			if err := s.store.UpdateDatabaseSize(r.Context(), engine, h.Name, h.SizeBytes); err == nil {
 				updated++
 			}
+			// Isi otomatis password & username yang sebelumnya kosong dari .env/config proyek tanpa mengubah server DB
+			if strings.TrimSpace(rec.Password) == "" && hasCred && strings.TrimSpace(c.Password) != "" {
+				user := strings.TrimSpace(c.Username)
+				if user == "" {
+					user = rec.Username
+				}
+				loc := strings.TrimSpace(c.Host)
+				if loc == "" {
+					loc = rec.Location
+				}
+				if err := s.store.UpdateDatabaseCredentials(r.Context(), engine, h.Name, user, c.Password, loc); err == nil {
+					credsRecovered++
+				}
+			}
 		}
 	}
 
+	// Pulihkan juga kredensial database eksisting yang sudah ada di daftar panel bila belum tercakup hostList
+	if refreshed, err := s.store.ListDatabases(r.Context(), engine); err == nil {
+		credsRecovered += s.recoverMissingDBCredentials(r.Context(), engine, refreshed)
+	}
+
 	_ = s.store.RecordAudit(r.Context(), "user", "database.sync", engine, true,
-		fmt.Sprintf("Sinkronisasi host %s: %d database baru ditemukan, %d diperbarui", engine, discovered, updated), nil)
+		fmt.Sprintf("Sinkronisasi host %s: %d baru, %d kredensial terdeteksi dari konfigurasi proyek, %d diperbarui", engine, discovered, credsRecovered, updated), nil)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":         true,
-		"discovered": discovered,
-		"updated":    updated,
-		"total_host": len(hostList),
-		"message":    fmt.Sprintf("Sinkronisasi selesai: %d database baru diimpor, %d ukuran diperbarui", discovered, updated),
+		"ok":                    true,
+		"discovered":            discovered,
+		"updated":               updated,
+		"credentials_recovered": credsRecovered,
+		"total_host":            len(hostList),
+		"message":               fmt.Sprintf("Sinkronisasi selesai: %d DB baru, %d kredensial terbaca otomatis dari proyek, %d diperbarui", discovered, credsRecovered, updated),
 	})
 }
 

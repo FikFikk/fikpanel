@@ -123,6 +123,24 @@ func (s *Store) UpdateDatabasePassword(ctx context.Context, engine, name, newPas
 	return nil
 }
 
+// UpdateDatabaseCredentials memperbarui username, password, dan host akses pada vault panel
+func (s *Store) UpdateDatabaseCredentials(ctx context.Context, engine, name, username, password, location string) error {
+	if location == "" {
+		location = "localhost"
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE databases SET username = ?, password = ?, location = ? WHERE engine = ? AND name = ?`,
+		username, password, location, engine, name)
+	if err != nil {
+		return fmt.Errorf("gagal memperbarui kredensial database: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // UpdateDatabaseSize memperbarui estimasi ukuran byte database di penyimpanan SQLite
 func (s *Store) UpdateDatabaseSize(ctx context.Context, engine, name string, sizeBytes int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE databases SET size_bytes = ? WHERE engine = ? AND name = ?`, sizeBytes, engine, name)

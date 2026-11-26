@@ -95,6 +95,9 @@ func (s *Server) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Otomatis pulihkan kredensial yang masih kosong dari berkas .env/wp-config/config-db proyek di server
+	s.recoverMissingDBCredentials(r.Context(), engine, list)
+
 	// Kalkulasi ukuran aktual database secara dinamis dari host engine
 	sizes, errSizes := database.GetDatabaseSizes(r.Context(), engine)
 	enriched := make([]DatabaseEnrichedItem, 0, len(list))
@@ -235,10 +238,12 @@ func (s *Server) handleDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 
 // UpdateDatabasePasswordRequest merepresentasikan muatan permintaan pembaruan kata sandi
 type UpdateDatabasePasswordRequest struct {
-	Password string `json:"password"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	VaultOnly bool   `json:"vault_only"` // true = hanya catat di vault panel tanpa mengubah password di server DB
 }
 
-// handleUpdateDatabasePassword memperbarui kata sandi pengguna database di host engine dan SQLite
+// handleUpdateDatabasePassword memperbarui kata sandi pengguna database di host engine (kecuali vault_only) dan SQLite
 func (s *Server) handleUpdateDatabasePassword(w http.ResponseWriter, r *http.Request) {
 	engine := strings.ToLower(r.PathValue("engine"))
 	name := strings.TrimSpace(r.PathValue("name"))
@@ -265,30 +270,40 @@ func (s *Server) handleUpdateDatabasePassword(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	username := strings.TrimSpace(dbRecord.Username)
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = strings.TrimSpace(dbRecord.Username)
+	}
 	if username == "" {
 		username = name
 	}
 
-	// Perbarui kata sandi di engine database fisik (MySQL/MariaDB)
-	if err := database.UpdateUserPassword(r.Context(), engine, username, newPassword); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"gagal memperbarui kata sandi di server: %v"}`, err), http.StatusInternalServerError)
-		return
+	// Hanya eksekusi ALTER USER di engine fisik apabila bukan mode vault_only
+	if !req.VaultOnly {
+		if err := database.UpdateUserPassword(r.Context(), engine, username, newPassword); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"gagal memperbarui kata sandi di server: %v"}`, err), http.StatusInternalServerError)
+			return
+		}
 	}
 
-	// Perbarui catatan kata sandi di SQLite store FikPanel
-	if err := s.store.UpdateDatabasePassword(r.Context(), engine, name, newPassword); err != nil {
+	// Simpan kredensial ke vault SQLite FikPanel
+	if err := s.store.UpdateDatabaseCredentials(r.Context(), engine, name, username, newPassword, dbRecord.Location); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"gagal menyimpan kata sandi ke panel: %v"}`, err), http.StatusInternalServerError)
 		return
 	}
 
-	_ = s.store.RecordAudit(r.Context(), "user", "database.update_password", fmt.Sprintf("%s:%s", engine, name), true,
-		fmt.Sprintf("Memperbarui kata sandi pengguna database %s (%s)", name, engine), nil)
+	auditDesc := fmt.Sprintf("Memperbarui kata sandi pengguna database %s (%s)", name, engine)
+	msg := fmt.Sprintf("Kata sandi database %s berhasil diperbarui di server dan panel", name)
+	if req.VaultOnly {
+		auditDesc = fmt.Sprintf("Mencatat kredensial eksisting database %s (%s) ke vault panel", name, engine)
+		msg = fmt.Sprintf("Kredensial %s berhasil disimpan ke vault panel tanpa mengubah server database", name)
+	}
+	_ = s.store.RecordAudit(r.Context(), "user", "database.update_password", fmt.Sprintf("%s:%s", engine, name), true, auditDesc, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
-		"message": fmt.Sprintf("Kata sandi database %s berhasil diperbarui", name),
+		"message": msg,
 	})
 }
 

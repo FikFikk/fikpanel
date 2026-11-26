@@ -67,7 +67,9 @@
   let showRootPassModal = $state(false);
   let showUserPassModal = $state(false);
   let selectedUserPassDb = $state<DatabaseItem | null>(null);
+  let userPassUsername = $state('');
   let userPassValue = $state('');
+  let userPassVaultOnly = $state(false);
   let savingUserPass = $state(false);
   let showTasksDrawer = $state(false);
   let showEngineManager = $state(false);
@@ -407,7 +409,8 @@
 
   // Salin blok .env & URL koneksi 1-klik untuk Laravel / Node / Go
   function copyConnectionEnv(db: DatabaseItem) {
-    const pass = db.password || '<PASSWORD_BELUM_DISETEL>';
+    const hasPass = Boolean(db.password && db.password.trim());
+    const pass = hasPass ? db.password : '';
     const host = db.location === '%' || !db.location ? '127.0.0.1' : db.location;
     let snippet = '';
     if (activeEngine === 'postgresql') {
@@ -432,6 +435,12 @@
       ].join('\n');
     }
     copyText(snippet, `Konfigurasi .env (${db.name})`);
+    if (!hasPass) {
+      notify(
+        `Password "${db.name}" belum tercatat di vault (MySQL menyimpan hash satu arah). Klik "Sinkron Host" untuk memindai otomatis dari file .env proyek di server, atau catat via tombol Sandi (mode Vault).`,
+        'warning'
+      );
+    }
   }
 
   // Aksi seleksi massal (Bulk Actions)
@@ -870,7 +879,10 @@
 
   function openUserPasswordModal(db: DatabaseItem) {
     selectedUserPassDb = db;
+    userPassUsername = db.username || db.name;
     userPassValue = db.password || '';
+    // Default ke mode aman (vault_only) bila password sebelumnya kosong agar tidak memutus aplikasi produksi
+    userPassVaultOnly = !db.password;
     showUserPassModal = true;
   }
 
@@ -886,7 +898,11 @@
         `/api/databases/${activeEngine}/${encodeURIComponent(selectedUserPassDb.name)}/password`,
         {
           method: 'PUT',
-          body: JSON.stringify({ password: userPassValue.trim() }),
+          body: JSON.stringify({
+            username: userPassUsername.trim() || selectedUserPassDb.username,
+            password: userPassValue.trim(),
+            vault_only: userPassVaultOnly,
+          }),
         }
       );
       notify(res.message || 'Password database berhasil diperbarui', 'success');
@@ -1458,11 +1474,13 @@
     onSave={saveRootPassword}
   />
 
-  <!-- Modal Ubah Password Pengguna -->
+  <!-- Modal Ubah / Catat Kredensial Pengguna -->
   <UserPasswordModal
     open={showUserPassModal && Boolean(selectedUserPassDb)}
     db={selectedUserPassDb}
+    bind:username={userPassUsername}
     bind:newPassword={userPassValue}
+    bind:vaultOnly={userPassVaultOnly}
     saving={savingUserPass}
     onGeneratePassword={generateUserPassword}
     onClose={() => (showUserPassModal = false)}

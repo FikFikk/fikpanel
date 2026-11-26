@@ -2,6 +2,8 @@ package server
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -162,5 +164,69 @@ func TestValidateBackupFileName(t *testing.T) {
 	base, _, err := validateBackupFileName("db_mysql_kostash_20261126-120000.sql.gz")
 	if err != nil || base != "db_mysql_kostash_20261126-120000.sql.gz" {
 		t.Fatalf("berkas backup valid gagal divalidasi: %v", err)
+	}
+}
+
+// TestCredentialDiscoveryParsers memverifikasi ekstraksi kredensial database dari .env, DATABASE_URL, wp-config.php, docker-compose, dan config-db.php
+func TestCredentialDiscoveryParsers(t *testing.T) {
+	// 1. Parser .env Laravel + DATABASE_URL
+	envSample := `
+APP_NAME=QRFik
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE="qr-fik"
+DB_USERNAME=qrfik_user
+DB_PASSWORD="Super#Secret!99"
+DATABASE_URL=postgresql://pguser:pg%23pass@localhost:5432/analytics_db
+`
+	creds := database.ParseEnvCredentials(envSample, "/var/www/qr-fik/.env")
+	if len(creds) != 2 {
+		t.Fatalf("jumlah kredensial .env = %d, ingin 2", len(creds))
+	}
+
+	// 2. Parser wp-config.php
+	wpSample := `<?php
+define( 'DB_NAME', 'wp_blog' );
+define( 'DB_USER', 'wp_admin' );
+define( 'DB_PASSWORD', 'WpSecret123' );
+define( 'DB_HOST', 'localhost:3306' );
+`
+	wpCred, ok := database.ParseWPConfigCredentials(wpSample, "/var/www/blog/wp-config.php")
+	if !ok || wpCred.DBName != "wp_blog" || wpCred.Username != "wp_admin" || wpCred.Password != "WpSecret123" || wpCred.Host != "localhost" {
+		t.Fatalf("parsing wp-config.php gagal: %+v (ok=%v)", wpCred, ok)
+	}
+
+	// 3. Parser /etc/phpmyadmin/config-db.php
+	pmaSample := `<?php
+$dbuser='phpmyadmin';
+$dbpass='PmaAutoPass42';
+$dbname='phpmyadmin';
+$dbserver='localhost';
+`
+	pmaCred, ok := database.ParsePhpMyAdminConfigDB(pmaSample, "/etc/phpmyadmin/config-db.php")
+	if !ok || pmaCred.DBName != "phpmyadmin" || pmaCred.Password != "PmaAutoPass42" {
+		t.Fatalf("parsing config-db.php gagal: %+v (ok=%v)", pmaCred, ok)
+	}
+
+	// 4. End-to-end DiscoverLocalDBCredentials pada direktori sementara (termasuk root_path /public Laravel)
+	tmpDir := t.TempDir()
+	projDir := filepath.Join(tmpDir, "qr-fik")
+	pubDir := filepath.Join(projDir, "public")
+	if err := os.MkdirAll(pubDir, 0755); err != nil {
+		t.Fatalf("gagal membuat direktori uji: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projDir, ".env"), []byte(envSample), 0644); err != nil {
+		t.Fatalf("gagal menulis .env uji: %v", err)
+	}
+
+	found := database.DiscoverLocalDBCredentials([]string{pubDir})
+	mysqlCred, ok := found["mysql:qr-fik"]
+	if !ok || mysqlCred.Username != "qrfik_user" || mysqlCred.Password != "Super#Secret!99" {
+		t.Fatalf("DiscoverLocalDBCredentials gagal membaca mysql:qr-fik dari induk /public: %+v", found)
+	}
+	pgCred, ok := found["postgresql:analytics_db"]
+	if !ok || pgCred.Username != "pguser" || pgCred.Password != "pg#pass" {
+		t.Fatalf("DiscoverLocalDBCredentials gagal membaca postgresql:analytics_db: %+v", found)
 	}
 }

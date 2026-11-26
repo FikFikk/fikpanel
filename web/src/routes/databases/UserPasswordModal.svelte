@@ -3,11 +3,13 @@
   import type { DatabaseItem } from '../../lib/types';
   import '../../styles/pages/databases/user-password-modal.css';
 
-  // Antarmuka properti komponen modal ubah password database
+  // Antarmuka properti komponen modal kredensial & password pengguna database
   interface Props {
     open: boolean;
     db: DatabaseItem | null;
+    username: string;
     newPassword: string;
+    vaultOnly: boolean;
     saving: boolean;
     onGeneratePassword: () => void;
     onClose: () => void;
@@ -17,7 +19,9 @@
   let {
     open,
     db,
+    username = $bindable(),
     newPassword = $bindable(),
+    vaultOnly = $bindable(),
     saving,
     onGeneratePassword,
     onClose,
@@ -29,24 +33,39 @@
 
 <Modal
   {open}
-  title="Ubah Password Database"
+  title="Kredensial & Password Database"
   size="md"
-  onclose={onClose}
+  onclose={() => { if (!saving) onClose(); }}
 >
   <div class="pg-databases-user-password-modal">
     <p class="modal__subtitle">
-      Perbarui kata sandi untuk database <strong>{db?.name}</strong> (Pengguna: <code>{db?.username || db?.name}</code>).
+      Kelola username dan kata sandi untuk database <strong>{db?.name}</strong>.
     </p>
 
     <div class="form-group">
-      <label for="db-user-pass" class="form-label">Kata Sandi Baru</label>
+      <label for="db-user-name" class="form-label">Username Database</label>
+      <input
+        id="db-user-name"
+        type="text"
+        class="form-input"
+        placeholder="Misal: qr-fik atau root"
+        bind:value={username}
+        disabled={saving}
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="db-user-pass" class="form-label">
+        {vaultOnly ? 'Kata Sandi Eksisting (untuk disimpan di Vault Panel)' : 'Kata Sandi Baru'}
+      </label>
       <div class="input-with-button">
         <input
           id="db-user-pass"
           type={showPass ? 'text' : 'password'}
           class="form-input"
-          placeholder="Masukkan kata sandi baru..."
+          placeholder="Masukkan kata sandi..."
           bind:value={newPassword}
+          disabled={saving}
         />
         <button
           type="button"
@@ -56,28 +75,39 @@
         >
           <i class={showPass ? 'ri-eye-off-line' : 'ri-eye-line'} aria-hidden="true"></i>
         </button>
-        <button
-          type="button"
-          class="btn btn-outline"
-          onclick={onGeneratePassword}
-          title="Buat kata sandi acak kuat"
-        >
-          Acak
-        </button>
+        {#if !vaultOnly}
+          <button
+            type="button"
+            class="btn btn-outline"
+            onclick={onGeneratePassword}
+            title="Buat kata sandi acak kuat"
+            disabled={saving}
+          >
+            Acak
+          </button>
+        {/if}
       </div>
     </div>
+
+    <label class="vault-option-box">
+      <input type="checkbox" bind:checked={vaultOnly} disabled={saving} />
+      <span>
+        <strong>Hanya catat di vault panel (jangan ubah password di server database)</strong>
+        Gunakan opsi ini bila aplikasi produksi Anda sudah berjalan memakai password eksisting agar koneksi aplikasi tidak terputus.
+      </span>
+    </label>
   </div>
 
   {#snippet footer()}
-    <button class="btn btn-outline" onclick={onClose} disabled={saving}>
+    <button type="button" class="btn btn-outline" onclick={onClose} disabled={saving}>
       Batal
     </button>
-    <button class="btn btn-primary" onclick={onSubmit} disabled={saving || !newPassword.trim()}>
+    <button type="button" class="btn btn-primary" onclick={onSubmit} disabled={saving || !newPassword.trim()}>
       {#if saving}
         <span class="spinner" aria-hidden="true"></span>
         <span>Menyimpan...</span>
       {:else}
-        <span>Simpan Password</span>
+        <span>{vaultOnly ? 'Simpan ke Vault Panel' : 'Ubah di Server & Panel'}</span>
       {/if}
     </button>
   {/snippet}

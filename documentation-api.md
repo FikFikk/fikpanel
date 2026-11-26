@@ -3967,8 +3967,8 @@ Semua endpoint: Auth Required = Yes (Cookie `panel_session`); mutasi wajib menye
 | Headers | `X-Panel-Request: 1` |
 | Query Params | Path param `{engine}` (`mysql`, `postgresql`) |
 | Request Body | Tidak ada |
-| Response | HTTP 200 `{"ok": true, "discovered": 2, "updated": 6, "total_host": 8, "message": "..."}` |
-| Notes | Memindai skema fisik dari server host (`information_schema` / `pg_database`), mengimpor database baru ke panel, dan memperbarui ukuran disk aktual tanpa menimpa sandi/catatan eksisting. |
+| Response | HTTP 200 `{"ok": true, "discovered": 2, "updated": 6, "credentials_recovered": 4, "total_host": 8, "message": "..."}` |
+| Notes | Memindai skema fisik dari server host (`information_schema` / `pg_database`), otomatis memulihkan `username` & `password` plaintext yang masih kosong dari berkas `.env`/`wp-config.php`/`docker-compose.yml`/`/etc/phpmyadmin/config-db.php` proyek di server tanpa mengubah server DB, serta memperbarui ukuran disk aktual. Endpoint `PUT /api/databases/{engine}/{name}/password` juga mendukung field opsional `username` dan `vault_only: true` untuk mencatat kredensial eksisting ke vault panel saja. |
 
 | Field | Detail |
 |---|---|

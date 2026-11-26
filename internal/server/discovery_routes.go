@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"fikpanel/internal/cloudflare"
+	"fikpanel/internal/database"
 	"fikpanel/internal/discovery"
 	"fikpanel/internal/sites"
 	"fikpanel/internal/store"
@@ -450,6 +451,10 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Proses adopsi basis data yang dipilih pengguna ke database SQLite FikPanel
+	discoveredCreds := map[string]database.DiscoveredDBCredential{}
+	if len(payload.Databases) > 0 {
+		discoveredCreds = database.DiscoverLocalDBCredentials(s.collectProjectDirsForCredentialScan(r.Context()))
+	}
 	for _, dbItem := range payload.Databases {
 		dbName := strings.TrimSpace(dbItem.Name)
 		if dbName == "" {
@@ -466,13 +471,28 @@ func (s *Server) handleDiscoveryAdopt(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		user := dbName
+		pass := ""
+		loc := "localhost"
+		if c, ok := discoveredCreds[engine+":"+strings.ToLower(dbName)]; ok {
+			if strings.TrimSpace(c.Username) != "" {
+				user = c.Username
+			}
+			if strings.TrimSpace(c.Password) != "" {
+				pass = c.Password
+			}
+			if strings.TrimSpace(c.Host) != "" {
+				loc = c.Host
+			}
+		}
+
 		rec := store.DatabaseRecord{
-			Engine:      engine,
-			Name:        dbName,
-			Username:    dbName,
-			Password:    "",
-			Location:    "localhost",
-			Note:        "Diadopsi secara otomatis dari host server oleh FikPanel",
+			Engine:   engine,
+			Name:     dbName,
+			Username: user,
+			Password: pass,
+			Location: loc,
+			Note:     "",
 		}
 		_, err := s.store.CreateDatabase(r.Context(), rec)
 		if err == nil {
